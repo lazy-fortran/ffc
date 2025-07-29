@@ -1,4 +1,4 @@
-program fortc_main
+program ffc_main
     use backend_factory, only: create_backend
     use backend_interface, only: backend_t, backend_options_t
     use ast_core, only: ast_arena_t, create_ast_stack
@@ -15,7 +15,7 @@ program fortc_main
     ! Get command line arguments
     num_args = command_argument_count()
     if (num_args < 1) then
-        print *, "Usage: fortc <input.f90> [options]"
+        print *, "Usage: ffc <input.f90> [options]"
         print *, "Options:"
         print *, "  -o <file>     Output file"
         print *, "  --emit-hlfir  Emit HLFIR code"
@@ -135,4 +135,4 @@ contains
         close(unit)
     end subroutine write_to_file
 
-end program fortc_main
+end program ffc_main
