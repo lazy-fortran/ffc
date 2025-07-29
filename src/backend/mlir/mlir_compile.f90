@@ -1,7 +1,8 @@
 module mlir_compile
     use backend_interface
-    use temp_utils
-    use system_utils, only: sys_run_command, sys_file_exists
+    ! TODO: Replace with stdlib equivalents
+    ! use temp_utils
+    ! use system_utils, only: sys_run_command, sys_file_exists
     implicit none
     private
 
@@ -15,19 +16,9 @@ contains
         logical, intent(out) :: success
         character(len=*), intent(out) :: error_msg
 
-        type(temp_dir_manager) :: temp_mgr
-        character(len=:), allocatable :: mlir_file, llvm_mlir_file, llvm_file, obj_file
-        character(len=:), allocatable :: wrapper_file, wrapper_obj
-        character(len=:), allocatable :: command
-        character(len=1024) :: cmd_output
-        integer :: unit, exit_code
-        logical :: is_executable
-
+        ! TODO: Implement MLIR compilation using stdlib utilities
         success = .false.
-        error_msg = ""
-
-        ! Create temporary directory
-        call temp_mgr%create('mlir_compile')
+        error_msg = "MLIR compilation not yet implemented with stdlib utilities"
 
         ! Write MLIR to temporary file
         mlir_file = temp_mgr%get_file_path('temp.mlir')

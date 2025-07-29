@@ -3,7 +3,7 @@
 module mlir_control_flow
     use ast_core
     use ast_core, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
-    use string_utils, only: int_to_char
+    use stdlib_strings, only: to_string
     use mlir_backend_types
     use mlir_hlfir_helpers
     implicit none
@@ -52,9 +52,9 @@ contains
         end if
 
         ! Get the actual SSA values for loop bounds and convert to index type
-        start_ssa = "%"//int_to_char(backend%ssa_counter - 2)  ! start value
-        end_ssa = "%"//int_to_char(backend%ssa_counter - 1)    ! end value
-        step_ssa = "%"//int_to_char(backend%ssa_counter)       ! step value
+        start_ssa = "%"//to_string(backend%ssa_counter - 2)  ! start value
+        end_ssa = "%"//to_string(backend%ssa_counter - 1)    ! end value
+        step_ssa = "%"//to_string(backend%ssa_counter)       ! step value
 
         ! HLFIR Implementation: Use fir.do_loop instead of fir.do_loop
         ! Set loop context to track loop variable
@@ -314,8 +314,8 @@ contains
         mlir = ""
 
         ! Get start and end values - they are integer values in the node
-        start_val = trim(int_to_char(node%start_value))
-        end_val = trim(int_to_char(node%end_value))
+        start_val = trim(to_string(node%start_value))
+        end_val = trim(to_string(node%end_value))
 
         ! Generate range syntax (MLIR doesn't have native range support, so expand)
         mlir = mlir//start_val//" to "//end_val

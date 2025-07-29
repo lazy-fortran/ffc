@@ -5,6 +5,7 @@ author = "krystophny"
 license = "MIT"
 
 [dependencies]
+stdlib = "*"
 fortfront = { git = "https://github.com/lazy-fortran/fortfront.git" }
 
 [build]

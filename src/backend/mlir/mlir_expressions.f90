@@ -3,7 +3,7 @@
 module mlir_expressions
     use ast_core
     use ast_core, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
-    use string_utils, only: int_to_char
+    use stdlib_strings, only: to_string
     use mlir_backend_types
     use mlir_hlfir_helpers
     implicit none
@@ -296,13 +296,13 @@ contains
             array_size = size(node%element_indices)
             
             ! HLFIR: Create array using hlfir.array_ctor
-            mlir = mlir//generate_hlfir_constant_code(backend%next_ssa_value(), int_to_char(array_size), "index", indent_str)
+            mlir = mlir//generate_hlfir_constant_code(backend%next_ssa_value(), to_string(array_size), "index", indent_str)
             size_ssa = backend%last_ssa_value
             
             ! Allocate array storage
             alloc_ssa = backend%next_ssa_value()
-            mlir = mlir//indent_str//alloc_ssa//" = hlfir.allocate !fir.array<"//int_to_char(array_size)//"xi32>"// &
-                   " : !fir.heap<!fir.array<"//int_to_char(array_size)//"xi32>>"//new_line('a')
+            mlir = mlir//indent_str//alloc_ssa//" = hlfir.allocate !fir.array<"//to_string(array_size)//"xi32>"// &
+                   " : !fir.heap<!fir.array<"//to_string(array_size)//"xi32>>"//new_line('a')
             
             ! HLFIR: Use hlfir.array_ctor for array construction
             store_ssa = backend%next_ssa_value()
@@ -316,7 +316,7 @@ contains
                 mlir = mlir//trim(backend%last_ssa_value)
             end do
             
-            mlir = mlir//") : !hlfir.expr<!fir.array<"//int_to_char(array_size)//"xi32>>"//new_line('a')
+            mlir = mlir//") : !hlfir.expr<!fir.array<"//to_string(array_size)//"xi32>>"//new_line('a')
             
             backend%last_ssa_value = store_ssa
         else
