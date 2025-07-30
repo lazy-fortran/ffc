@@ -1,4 +1,4 @@
-# ffc
+# fortfc
 
 **Fortran Fortran Compiler** - MLIR backend for compilation via HLFIR/LLVM.
 
