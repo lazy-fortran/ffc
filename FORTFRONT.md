@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines additional API requirements needed from fortfront to enable fortfc to use MLIR C bindings directly instead of generating MLIR text. These requirements extend the base API defined in ../fluff/FORTFRONT.md.
+This document outlines additional API requirements needed from fortfront to provide comprehensive AST and semantic information access. These requirements extend the base API defined in ../fluff/FORTFRONT.md and focus purely on Fortran language constructs and analysis.
 
 ## 1. Enhanced AST Node Access
 
@@ -64,12 +64,12 @@ function get_node_type_info(ctx, arena, node_index) result(type_info)
 end function
 ```
 
-### Type Conversion Utilities
+### Type String Representation
 ```fortran
-! Convert fortfront type to MLIR type descriptor
-function get_mlir_type_descriptor(type_info) result(descriptor)
+! Get standardized type string representation
+function get_type_string(type_info) result(type_str)
     type(type_info_t), intent(in) :: type_info
-    character(len=:), allocatable :: descriptor  ! e.g., "i32", "f64", "!fir.array<10xi32>"
+    character(len=:), allocatable :: type_str  ! e.g., "integer(4)", "real(8)", "integer(4), dimension(10)"
 end function
 ```
 
@@ -257,7 +257,7 @@ end function
 ## Implementation Priority for fortfc
 
 1. **Critical** - Node type queries and direct typed access
-2. **Critical** - Enhanced type information with MLIR descriptors
+2. **Critical** - Enhanced type information for complete type analysis
 3. **Critical** - Symbol table access for variable resolution
 4. **High** - Literal value extraction
 5. **High** - Control flow analysis
@@ -267,7 +267,7 @@ end function
 9. **Low** - C interoperability features
 
 These extensions will enable fortfc to:
-- Build MLIR operations programmatically using C bindings
-- Generate accurate type information for MLIR
+- Access complete AST structure programmatically
+- Obtain detailed type and semantic information
 - Properly resolve symbols and scopes
-- Handle all Fortran constructs without text generation
+- Handle all Fortran language constructs comprehensively
