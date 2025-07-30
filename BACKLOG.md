@@ -167,22 +167,59 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [ ] Optimize value lookups
 - [ ] Add debug helpers
 
-### 3.3 Type Conversion System [8 story points]
+### 3.3 Type Conversion System [13 story points]
 **RED Tests:**
-- [ ] Test Fortran to MLIR type conversion
-- [ ] Test array type handling
-- [ ] Test derived type mapping
-- [ ] Test type inference integration
+- [ ] Test integer type conversion (i8, i16, i32, i64)
+- [ ] Test real type conversion (f32, f64)
+- [ ] Test logical type conversion (i1)
+- [ ] Test character type conversion (!fir.char)
+- [ ] Test complex type conversion (!fir.complex)
+- [ ] Test fixed-size array conversion (!fir.array<NxT>)
+- [ ] Test assumed-shape array conversion (!fir.box<!fir.array<?xT>>)
+- [ ] Test allocatable array conversion (!fir.ref<!fir.box<!fir.heap<!fir.array<?xT>>>>)
+- [ ] Test pointer type conversion (!fir.ref<!fir.box<!fir.ptr<T>>>)
+- [ ] Test derived type conversion (!fir.type<name{fields}>)
+- [ ] Test function type signatures
 
 **GREEN Implementation:**
-- [ ] Create `src/builder/type_converter.f90`
-- [ ] Map fortfront types to MLIR
-- [ ] Handle complex types
-- [ ] Integrate with semantic info
+- [ ] Create `src/builder/fortfc_type_converter.f90` as per TYPE_CONVERSION.md
+- [ ] Implement `mlir_type_converter_t` type with context management
+- [ ] Implement `convert_type` function for basic types
+- [ ] Implement `get_mlir_type_string` for type descriptor generation
+- [ ] Add `create_integer_type`, `create_float_type` C binding wrappers
+- [ ] Add `create_fir_char_type` for character types
+- [ ] Implement `create_array_type` with shape handling
+- [ ] Add support for !fir.box types (descriptors)
+- [ ] Add support for !fir.heap types (allocatable)
+- [ ] Add support for !fir.ptr types (pointers)
+- [ ] Implement derived type name mangling (_QTtypename)
+- [ ] Create type caching mechanism
 
 **REFACTOR:**
-- [ ] Cache type conversions
-- [ ] Add type validation
+- [ ] Extract type factory patterns
+- [ ] Optimize type descriptor string generation
+- [ ] Add comprehensive type validation
+- [ ] Create type compatibility checking
+- [ ] Add debug type dumping utilities
+
+### 3.4 Type Conversion Helpers [5 story points]
+**RED Tests:**
+- [ ] Test type builder helper functions
+- [ ] Test array shape extraction from fortfront
+- [ ] Test reference type wrapping logic
+- [ ] Test type equivalence checking
+
+**GREEN Implementation:**
+- [ ] Create `get_array_descriptor` for array type strings
+- [ ] Create `wrap_with_reference_type` for !fir.ref handling
+- [ ] Create `wrap_with_box_type` for descriptor handling
+- [ ] Create `mangle_derived_type_name` for Fortran name mangling
+- [ ] Add `is_assumed_shape`, `is_allocatable`, `is_pointer` helpers
+- [ ] Create `get_element_type` for nested type extraction
+
+**REFACTOR:**
+- [ ] Consolidate type helper patterns
+- [ ] Add type assertion utilities
 
 ## Epic 4: AST to MLIR Conversion
 
@@ -341,6 +378,12 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [ ] Create integration test suite
 - [ ] Add performance benchmarks
 - [ ] Create memory leak tests
+- [ ] Add type conversion validation tests:
+  - [ ] Compare generated types with flang output
+  - [ ] Test all TYPE_CONVERSION.md examples
+  - [ ] Validate array descriptor formats
+  - [ ] Test edge cases (zero-size arrays, etc.)
+  - [ ] Verify derived type name mangling
 
 ### 7.2 Documentation [8 story points]
 **Tasks:**
@@ -375,6 +418,7 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 1. Epic 3.1: Builder Context Management
 2. Epic 3.2: SSA Value Management
 3. Epic 3.3: Type Conversion System
+4. Epic 3.4: Type Conversion Helpers
 
 ### Phase 4 (Weeks 7-8): Code Generation
 1. Epic 4.1: Program and Module Generation
