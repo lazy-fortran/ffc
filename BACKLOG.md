@@ -257,22 +257,22 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 - [x] Optimize module ordering using C API operation analysis
 - [x] Add dependency analysis using MLIR operation introspection
 
-### 4.2 Function and Subroutine Generation [13 story points]
+### 4.2 Function and Subroutine Generation [13 story points] ✓
 **RED Tests:**
-- [ ] Test function signature generation
-- [ ] Test parameter handling
-- [ ] Test local variable declarations
-- [ ] Test return value handling
+- [x] Test function signature generation
+- [x] Test parameter handling
+- [x] Test local variable declarations
+- [x] Test return value handling
 
 **GREEN Implementation:**
-- [ ] Create `src/codegen/function_gen.f90`
-- [ ] Implement function body generation
-- [ ] Add argument handling
-- [ ] Create return value management
+- [x] Create `src/codegen/function_gen.f90`
+- [x] Implement function body generation
+- [x] Add argument handling
+- [x] Create return value management
 
 **REFACTOR:**
-- [ ] Unify function/subroutine handling
-- [ ] Optimize calling conventions
+- [x] Unify function/subroutine handling
+- [x] Optimize calling conventions
 
 ### 4.3 Statement Generation [21 story points]
 **RED Tests:**
