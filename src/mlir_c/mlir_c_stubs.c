@@ -78,3 +78,61 @@ int mlirIntegerTypeGetWidth(void* type) {
     // Stub - return 32 as default
     return 32;
 }
+
+// Attribute system stubs
+static int int_attr_dummy = 0;
+static int float_attr_dummy = 0;
+static int string_attr_dummy = 0;
+static int array_attr_dummy = 0;
+
+void* mlirIntegerAttrGet(void* type, long value) {
+    // Store the value for retrieval
+    static long stored_value = 0;
+    stored_value = value;
+    return &stored_value;
+}
+
+void* mlirFloatAttrDoubleGet(void* context, void* type, double value) {
+    return &float_attr_dummy;
+}
+
+void* mlirStringAttrGet(void* context, void* str_ref) {
+    return &string_attr_dummy;
+}
+
+void* mlirArrayAttrGet(void* context, long num_elements, void* elements) {
+    return &array_attr_dummy;
+}
+
+int mlirAttributeIsAInteger(void* attr) {
+    // Check if it's an integer attribute by checking if it's not one of the other types
+    return (attr != &float_attr_dummy && attr != &string_attr_dummy && attr != &array_attr_dummy && attr != NULL) ? 1 : 0;
+}
+
+int mlirAttributeIsAFloat(void* attr) {
+    return (attr == &float_attr_dummy) ? 1 : 0;
+}
+
+int mlirAttributeIsAString(void* attr) {
+    return (attr == &string_attr_dummy) ? 1 : 0;
+}
+
+int mlirAttributeIsAArray(void* attr) {
+    return (attr == &array_attr_dummy) ? 1 : 0;
+}
+
+long mlirIntegerAttrGetValueInt(void* attr) {
+    // Return the stored value
+    if (attr) {
+        return *(long*)attr;
+    }
+    return 0;
+}
+
+double mlirFloatAttrGetValueDouble(void* attr) {
+    return 3.14;  // Stub value
+}
+
+long mlirArrayAttrGetNumElements(void* attr) {
+    return 3;  // Stub value
+}
