@@ -17,3 +17,6 @@ auto-examples = false
 implicit-external = false
 implicit-typing = false
 source-form = "free"
+
+[[library]]
+source-dir = "src"

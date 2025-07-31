@@ -1,0 +1,62 @@
+# Build directories
+build/
+/build/
+
+# FPM build artifacts
+*.mod
+*.smod
+
+# Compiled Object files
+*.o
+*.obj
+
+# Fortran module files
+*.mod
+*.smod
+
+# Libraries
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# Executables
+*.exe
+*.out
+ffc
+
+# MLIR/LLVM artifacts
+*.mlir
+*.ll
+*.bc
+*.s
+
+# Test artifacts
+test_*.f90
+!test/
+!test/**/*.f90
+debug_*.txt
+debug_*.mlir
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.*.swp
+.*.swo
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+*.gcda
+*.gcno
+*.gcov
+coverage.xml
+coverage_html/

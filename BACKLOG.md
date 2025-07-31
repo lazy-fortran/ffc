@@ -8,20 +8,20 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 ### 1.1 Create Basic C Bindings Module [5 story points]
 **RED Tests:**
-- [ ] Test MLIR context creation and destruction
-- [ ] Test MLIR module creation
-- [ ] Test location creation
-- [ ] Test string ref handling
+- [x] Test MLIR context creation and destruction
+- [x] Test MLIR module creation
+- [x] Test location creation
+- [x] Test string ref handling
 
 **GREEN Implementation:**
-- [ ] Create `src/mlir_c/mlir_c_core.f90`
-- [ ] Define opaque types for Context, Module, Operation, Value
-- [ ] Add C interface declarations
-- [ ] Implement Fortran wrappers with error handling
+- [x] Create `src/mlir_c/mlir_c_core.f90`
+- [x] Define opaque types for Context, Module, Operation, Value
+- [x] Add C interface declarations
+- [x] Implement Fortran wrappers with error handling
 
 **REFACTOR:**
-- [ ] Add RAII-style resource management
-- [ ] Create builder pattern for common operations
+- [x] Add RAII-style resource management
+- [x] Create builder pattern for common operations
 
 ### 1.2 Type System Bindings [8 story points]
 **RED Tests:**
