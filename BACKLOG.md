@@ -25,20 +25,20 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 ### 1.2 Type System Bindings [8 story points]
 **RED Tests:**
-- [ ] Test integer type creation (i1, i8, i16, i32, i64)
-- [ ] Test float type creation (f32, f64)
-- [ ] Test array type creation
-- [ ] Test reference type creation
+- [x] Test integer type creation (i1, i8, i16, i32, i64)
+- [x] Test float type creation (f32, f64)
+- [x] Test array type creation
+- [x] Test reference type creation
 
 **GREEN Implementation:**
-- [ ] Create `src/mlir_c/mlir_c_types.f90`
-- [ ] Implement type construction functions
-- [ ] Add type query functions
-- [ ] Handle type caching
+- [x] Create `src/mlir_c/mlir_c_types.f90`
+- [x] Implement type construction functions
+- [x] Add type query functions
+- [x] Handle type caching
 
 **REFACTOR:**
-- [ ] Create type factory with memoization
-- [ ] Add type validation
+- [x] Create type factory with memoization
+- [x] Add type validation
 
 ### 1.3 Attribute System Bindings [5 story points]
 **RED Tests:**

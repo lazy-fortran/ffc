@@ -1,0 +1,110 @@
+program test_mlir_c_core
+    use iso_fortran_env, only: error_unit
+    implicit none
+
+    logical :: all_tests_passed
+
+    print *, "=== MLIR C API Core Tests ==="
+    print *
+
+    all_tests_passed = .true.
+
+    ! Run all tests - these will fail initially (RED phase)
+    if (.not. test_mlir_context_creation()) all_tests_passed = .false.
+    if (.not. test_mlir_context_destruction()) all_tests_passed = .false.
+    if (.not. test_mlir_module_creation()) all_tests_passed = .false.
+    if (.not. test_mlir_location_creation()) all_tests_passed = .false.
+    if (.not. test_mlir_string_ref_handling()) all_tests_passed = .false.
+
+    print *
+    if (all_tests_passed) then
+        print *, "All MLIR C API core tests passed!"
+        stop 0
+    else
+        print *, "Some MLIR C API core tests failed!"
+        stop 1
+    end if
+
+contains
+
+    function test_mlir_context_creation() result(passed)
+        logical :: passed
+        
+        ! This test will fail initially as we haven't implemented mlir_c_core yet
+        passed = .false.
+        
+        ! Try to use mlir_c_core module (will cause compilation error)
+        ! Uncomment when mlir_c_core module exists:
+        ! use mlir_c_core
+        ! type(mlir_context_t) :: context
+        ! context = create_mlir_context()
+        ! passed = context%is_valid()
+        
+        print *, "FAIL: test_mlir_context_creation - mlir_c_core module not implemented"
+    end function test_mlir_context_creation
+
+    function test_mlir_context_destruction() result(passed)
+        logical :: passed
+        
+        passed = .false.
+        
+        ! Uncomment when mlir_c_core module exists:
+        ! use mlir_c_core
+        ! type(mlir_context_t) :: context
+        ! context = create_mlir_context()
+        ! call destroy_mlir_context(context)
+        ! passed = .not. context%is_valid()
+        
+        print *, "FAIL: test_mlir_context_destruction - mlir_c_core module not implemented"
+    end function test_mlir_context_destruction
+
+    function test_mlir_module_creation() result(passed)
+        logical :: passed
+        
+        passed = .false.
+        
+        ! Uncomment when mlir_c_core module exists:
+        ! use mlir_c_core
+        ! type(mlir_context_t) :: context
+        ! type(mlir_module_t) :: module
+        ! type(mlir_location_t) :: location
+        ! context = create_mlir_context()
+        ! location = create_unknown_location(context)
+        ! module = create_empty_module(location)
+        ! passed = module%is_valid()
+        
+        print *, "FAIL: test_mlir_module_creation - mlir_c_core module not implemented"
+    end function test_mlir_module_creation
+
+    function test_mlir_location_creation() result(passed)
+        logical :: passed
+        
+        passed = .false.
+        
+        ! Uncomment when mlir_c_core module exists:
+        ! use mlir_c_core
+        ! type(mlir_context_t) :: context
+        ! type(mlir_location_t) :: location
+        ! context = create_mlir_context()
+        ! location = create_unknown_location(context)
+        ! passed = location%is_valid()
+        
+        print *, "FAIL: test_mlir_location_creation - mlir_c_core module not implemented"
+    end function test_mlir_location_creation
+
+    function test_mlir_string_ref_handling() result(passed)
+        logical :: passed
+        
+        passed = .false.
+        
+        ! Uncomment when mlir_c_core module exists:
+        ! use mlir_c_core
+        ! type(mlir_string_ref_t) :: str_ref
+        ! character(len=*), parameter :: test_string = "test_string_value"
+        ! str_ref = create_string_ref(test_string)
+        ! passed = (get_string_from_ref(str_ref) == test_string)
+        
+        print *, "FAIL: test_mlir_string_ref_handling - mlir_c_core module not implemented"
+    end function test_mlir_string_ref_handling
+
+end program test_mlir_c_core
