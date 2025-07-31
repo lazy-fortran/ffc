@@ -6,6 +6,7 @@ module mlir_c_core
     ! Public types
     public :: mlir_context_t, mlir_module_t, mlir_location_t, mlir_string_ref_t
     public :: mlir_region_t, mlir_block_t
+    public :: mlir_pass_manager_t, mlir_pass_pipeline_t
     
     ! Public functions
     public :: create_mlir_context, destroy_mlir_context
@@ -50,6 +51,18 @@ module mlir_c_core
         procedure :: equals => block_equals
     end type mlir_block_t
 
+    type :: mlir_pass_manager_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => pass_manager_is_valid
+    end type mlir_pass_manager_t
+
+    type :: mlir_pass_pipeline_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => pass_pipeline_is_valid
+    end type mlir_pass_pipeline_t
+
     ! C interface declarations
     interface
         ! Context management
@@ -76,6 +89,24 @@ module mlir_c_core
             type(c_ptr), value :: context
             type(c_ptr) :: location
         end function mlirLocationUnknownGet
+
+        ! Pass manager operations
+        function mlirPassManagerCreate(context) bind(c, name="mlirPassManagerCreate") result(pm)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: pm
+        end function mlirPassManagerCreate
+
+        subroutine mlirPassManagerDestroy(pm) bind(c, name="mlirPassManagerDestroy")
+            import :: c_ptr
+            type(c_ptr), value :: pm
+        end subroutine mlirPassManagerDestroy
+
+        function mlirPassManagerRun(pm, module) bind(c, name="mlirPassManagerRun") result(success)
+            import :: c_ptr, c_bool
+            type(c_ptr), value :: pm, module
+            logical(c_bool) :: success
+        end function mlirPassManagerRun
     end interface
 
 contains
@@ -184,5 +215,17 @@ contains
         logical :: equal
         equal = c_associated(this%ptr, other%ptr)
     end function block_equals
+
+    function pass_manager_is_valid(this) result(valid)
+        class(mlir_pass_manager_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function pass_manager_is_valid
+
+    function pass_pipeline_is_valid(this) result(valid)
+        class(mlir_pass_pipeline_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function pass_pipeline_is_valid
 
 end module mlir_c_core

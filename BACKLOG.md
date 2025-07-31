@@ -315,22 +315,22 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 
 ## Epic 5: Pass Management and Optimization
 
-### 5.1 Pass Manager Integration [8 story points]
+### 5.1 Pass Manager Integration [8 story points] ✓
 **RED Tests:**
-- [ ] Test pass manager creation
-- [ ] Test pass pipeline configuration
-- [ ] Test pass execution
-- [ ] Test pass verification
+- [x] Test pass manager creation
+- [x] Test pass pipeline configuration
+- [x] Test pass execution
+- [x] Test pass verification
 
 **GREEN Implementation:**
-- [ ] Create `src/passes/pass_manager.f90`
-- [ ] Integrate MLIR pass infrastructure
-- [ ] Add pass pipeline builder
-- [ ] Create verification wrapper
+- [x] Create `src/passes/pass_manager.f90`
+- [x] Integrate MLIR pass infrastructure using C API
+- [x] Add pass pipeline builder with state management
+- [x] Create verification wrapper with diagnostics
 
 **REFACTOR:**
-- [ ] Add pass caching
-- [ ] Optimize pass ordering
+- [x] Add improved state tracking and memory management
+- [x] Optimize pass manager slot allocation and cleanup
 
 ### 5.2 Lowering Pipeline [13 story points]
 **RED Tests:**
