@@ -274,25 +274,25 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 - [x] Unify function/subroutine handling
 - [x] Optimize calling conventions
 
-### 4.3 Statement Generation [21 story points]
+### 4.3 Statement Generation [21 story points] ✓
 **RED Tests:**
-- [ ] Test assignment statements
-- [ ] Test if-then-else statements
-- [ ] Test do loop statements
-- [ ] Test while loops
-- [ ] Test select case statements
-- [ ] Test print statements
-- [ ] Test read statements
+- [x] Test assignment statements
+- [x] Test if-then-else statements
+- [x] Test do loop statements
+- [x] Test while loops
+- [x] Test select case statements
+- [x] Test print statements
+- [x] Test read statements
 
 **GREEN Implementation:**
-- [ ] Create `src/codegen/statement_gen.f90`
-- [ ] Implement each statement type
-- [ ] Add control flow handling
-- [ ] Create I/O operation builders
+- [x] Create `src/codegen/statement_gen.f90`
+- [x] Implement each statement type
+- [x] Add control flow handling
+- [x] Create I/O operation builders
 
 **REFACTOR:**
-- [ ] Extract common patterns
-- [ ] Optimize control flow generation
+- [x] Extract common patterns
+- [x] Optimize control flow generation
 
 ### 4.4 Expression Generation [13 story points]
 **RED Tests:**
