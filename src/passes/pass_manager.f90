@@ -8,6 +8,26 @@ module pass_manager
     implicit none
     private
 
+    ! Pass manager C interface declarations
+    interface
+        function ffc_mlirPassManagerCreate(context) bind(c, name="ffc_mlirPassManagerCreate") result(pm)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: pm
+        end function ffc_mlirPassManagerCreate
+
+        subroutine ffc_mlirPassManagerDestroy(pm) bind(c, name="ffc_mlirPassManagerDestroy")
+            import :: c_ptr
+            type(c_ptr), value :: pm
+        end subroutine ffc_mlirPassManagerDestroy
+
+        function ffc_mlirPassManagerRun(pm, module) bind(c, name="ffc_mlirPassManagerRun") result(success)
+            import :: c_ptr, c_int
+            type(c_ptr), value :: pm, module
+            integer(c_int) :: success
+        end function ffc_mlirPassManagerRun
+    end interface
+
     ! Public API for pass manager integration
     public :: create_pass_manager, destroy_pass_manager
     public :: pass_manager_has_context, pass_manager_is_empty
@@ -73,7 +93,7 @@ contains
         call initialize_pm_state(pm_states(pm_id), pm_id, context)
 
         ! Use MLIR C API to create pass manager
-        pass_manager%ptr = mlirPassManagerCreate(context%ptr)
+        pass_manager%ptr = ffc_mlirPassManagerCreate(context%ptr)
         
         ! Store association between pass manager pointer and state
         pm_states(pm_id)%state_id = transfer(pass_manager%ptr, 0)
@@ -122,7 +142,7 @@ contains
                 call cleanup_pm_state(pm_states(pm_id))
             end if
             
-            call mlirPassManagerDestroy(pass_manager%ptr)
+            call ffc_mlirPassManagerDestroy(pass_manager%ptr)
             pass_manager%ptr = c_null_ptr
         end if
     end subroutine destroy_pass_manager
@@ -439,7 +459,7 @@ contains
         if (.not. c_associated(module%ptr)) return
 
         ! Use MLIR C API to run passes
-        success = mlirPassManagerRun(pass_manager%ptr, module%ptr)
+        success = (ffc_mlirPassManagerRun(pass_manager%ptr, module%ptr) /= 0)
 
         ! Update state
         do pm_id = 1, next_pm_id - 1

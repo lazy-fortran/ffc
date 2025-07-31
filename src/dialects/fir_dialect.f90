@@ -113,7 +113,7 @@ contains
         
         call builder%init(context, "fir.alloca")
         call builder%result(result_type)
-        call builder%attr("in_type", create_type_attribute(context, in_type))
+        call builder%attr("in_type", create_fir_type_attribute(context, in_type))
         
         op = builder%build()
     end function create_fir_alloca
@@ -152,14 +152,14 @@ contains
         op = builder%build()
     end function create_fir_if
 
-    ! Helper to create type attribute (needed for fir.alloca)
-    function create_type_attribute(context, type) result(attr)
+    ! Helper to create FIR type attribute (needed for fir.alloca)
+    function create_fir_type_attribute(context, type) result(attr)
         type(mlir_context_t), intent(in) :: context
         type(mlir_type_t), intent(in) :: type
         type(mlir_attribute_t) :: attr
         
-        ! For stub, create a string attribute
-        attr = create_string_attribute(context, "type_attr")
-    end function create_type_attribute
+        ! Use the real type attribute creation from mlir_c_attributes
+        attr = create_type_attribute(context, type)
+    end function create_fir_type_attribute
 
 end module fir_dialect

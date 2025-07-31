@@ -29,12 +29,12 @@ module mlir_c_attributes
     ! C interface declarations
     interface
         ! Integer attribute creation
-        function mlirIntegerAttrGet(type, value) bind(c, name="mlirIntegerAttrGet") result(attr)
+        function ffc_mlirIntegerAttrGet(type, value) bind(c, name="ffc_mlirIntegerAttrGet") result(attr)
             import :: c_ptr, c_int64_t
             type(c_ptr), value :: type
             integer(c_int64_t), value :: value
             type(c_ptr) :: attr
-        end function mlirIntegerAttrGet
+        end function ffc_mlirIntegerAttrGet
 
         ! Float attribute creation
         function mlirFloatAttrDoubleGet(context, type, value) bind(c, name="mlirFloatAttrDoubleGet") result(attr)
@@ -121,7 +121,7 @@ contains
         integer(c_int64_t), intent(in) :: value
         type(mlir_attribute_t) :: attr
         
-        attr%ptr = mlirIntegerAttrGet(type%ptr, value)
+        attr%ptr = ffc_mlirIntegerAttrGet(type%ptr, value)
     end function create_integer_attribute
 
     ! Create float attribute
@@ -176,7 +176,7 @@ contains
         character(len=*), dimension(:), intent(in) :: strings
         type(mlir_attribute_t) :: attr
         type(mlir_attribute_t), dimension(:), allocatable :: string_attrs
-        type(c_ptr), dimension(:), allocatable :: element_ptrs
+        type(c_ptr), dimension(:), allocatable, target :: element_ptrs
         integer :: i
         
         ! Create individual string attributes

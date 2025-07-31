@@ -5,7 +5,6 @@ module standard_dialects
     use mlir_c_attributes
     use mlir_c_operations
     use mlir_c_operation_builder
-    use dialect_base
     implicit none
     private
 
@@ -55,6 +54,25 @@ module standard_dialects
     end interface
 
 contains
+
+    ! Helper function to create simple operations 
+    function create_memory_operation(context, name, operands) result(op)
+        type(mlir_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        type(mlir_value_t), dimension(:), intent(in) :: operands
+        type(mlir_operation_t) :: op
+        type(operation_builder_t) :: builder
+        integer :: i
+        
+        call builder%init(context, name)
+        
+        ! Add operands
+        do i = 1, size(operands)
+            call builder%operand(operands(i))
+        end do
+        
+        op = builder%build()
+    end function create_memory_operation
 
     ! Register func dialect
     subroutine register_func_dialect(context)

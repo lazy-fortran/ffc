@@ -73,29 +73,29 @@ module mlir_c_core
     ! C interface declarations
     interface
         ! Context management
-        function mlirContextCreate() bind(c, name="mlirContextCreate") result(ctx)
+        function ffc_mlirContextCreate() bind(c, name="ffc_mlirContextCreate") result(ctx)
             import :: c_ptr
             type(c_ptr) :: ctx
-        end function mlirContextCreate
+        end function ffc_mlirContextCreate
 
-        subroutine mlirContextDestroy(context) bind(c, name="mlirContextDestroy")
+        subroutine ffc_mlirContextDestroy(context) bind(c, name="ffc_mlirContextDestroy")
             import :: c_ptr
             type(c_ptr), value :: context
-        end subroutine mlirContextDestroy
+        end subroutine ffc_mlirContextDestroy
 
         ! Module operations
-        function mlirModuleCreateEmpty(location) bind(c, name="mlirModuleCreateEmpty") result(module)
+        function ffc_mlirModuleCreateEmpty(location) bind(c, name="ffc_mlirModuleCreateEmpty") result(module)
             import :: c_ptr
             type(c_ptr), value :: location
             type(c_ptr) :: module
-        end function mlirModuleCreateEmpty
+        end function ffc_mlirModuleCreateEmpty
 
         ! Location operations
-        function mlirLocationUnknownGet(context) bind(c, name="mlirLocationUnknownGet") result(location)
+        function ffc_mlirLocationUnknownGet(context) bind(c, name="ffc_mlirLocationUnknownGet") result(location)
             import :: c_ptr
             type(c_ptr), value :: context
             type(c_ptr) :: location
-        end function mlirLocationUnknownGet
+        end function ffc_mlirLocationUnknownGet
 
         function mlirLocationFileLineColGet(context, filename, line, col) &
             bind(c, name="mlirLocationFileLineColGet") result(location)
@@ -107,22 +107,22 @@ module mlir_c_core
         end function mlirLocationFileLineColGet
 
         ! Pass manager operations
-        function mlirPassManagerCreate(context) bind(c, name="mlirPassManagerCreate") result(pm)
+        function ffc_mlirPassManagerCreate(context) bind(c, name="ffc_mlirPassManagerCreate") result(pm)
             import :: c_ptr
             type(c_ptr), value :: context
             type(c_ptr) :: pm
-        end function mlirPassManagerCreate
+        end function ffc_mlirPassManagerCreate
 
-        subroutine mlirPassManagerDestroy(pm) bind(c, name="mlirPassManagerDestroy")
+        subroutine ffc_mlirPassManagerDestroy(pm) bind(c, name="ffc_mlirPassManagerDestroy")
             import :: c_ptr
             type(c_ptr), value :: pm
-        end subroutine mlirPassManagerDestroy
+        end subroutine ffc_mlirPassManagerDestroy
 
-        function mlirPassManagerRun(pm, module) bind(c, name="mlirPassManagerRun") result(success)
-            import :: c_ptr, c_bool
+        function ffc_mlirPassManagerRun(pm, module) bind(c, name="ffc_mlirPassManagerRun") result(success)
+            import :: c_ptr, c_int
             type(c_ptr), value :: pm, module
-            logical(c_bool) :: success
-        end function mlirPassManagerRun
+            integer(c_int) :: success
+        end function ffc_mlirPassManagerRun
     end interface
 
 contains
@@ -130,14 +130,14 @@ contains
     ! Create a new MLIR context
     function create_mlir_context() result(context)
         type(mlir_context_t) :: context
-        context%ptr = mlirContextCreate()
+        context%ptr = ffc_mlirContextCreate()
     end function create_mlir_context
 
     ! Destroy an MLIR context
     subroutine destroy_mlir_context(context)
         type(mlir_context_t), intent(inout) :: context
         if (c_associated(context%ptr)) then
-            call mlirContextDestroy(context%ptr)
+            call ffc_mlirContextDestroy(context%ptr)
             context%ptr = c_null_ptr
         end if
     end subroutine destroy_mlir_context
@@ -146,14 +146,14 @@ contains
     function create_empty_module(location) result(module)
         type(mlir_location_t), intent(in) :: location
         type(mlir_module_t) :: module
-        module%ptr = mlirModuleCreateEmpty(location%ptr)
+        module%ptr = ffc_mlirModuleCreateEmpty(location%ptr)
     end function create_empty_module
 
     ! Create an unknown location
     function create_unknown_location(context) result(location)
         type(mlir_context_t), intent(in) :: context
         type(mlir_location_t) :: location
-        location%ptr = mlirLocationUnknownGet(context%ptr)
+        location%ptr = ffc_mlirLocationUnknownGet(context%ptr)
     end function create_unknown_location
 
     ! Create a string reference
