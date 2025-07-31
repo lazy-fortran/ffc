@@ -82,6 +82,19 @@ void* ffc_mlirModuleCreateEmpty(void* location_ptr) {
 // Type System API - REAL IMPLEMENTATION
 //===----------------------------------------------------------------------===//
 
+void* ffc_mlirNoneTypeGet(void* context_ptr) {
+    if (!context_ptr) return NULL;
+    
+    MlirContext* ctx_ptr = (MlirContext*)context_ptr;
+    MlirType type = mlirNoneTypeGet(*ctx_ptr);
+    
+    MlirType* type_ptr = malloc(sizeof(MlirType));
+    if (!type_ptr) return NULL;
+    
+    *type_ptr = type;
+    return type_ptr;
+}
+
 void* ffc_mlirIntegerTypeGet(void* context_ptr, int width) {
     if (!context_ptr) return NULL;
     

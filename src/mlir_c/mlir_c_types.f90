@@ -32,43 +32,50 @@ module mlir_c_types
     ! C interface declarations
     interface
         ! Integer type creation
-        function mlirIntegerTypeGet(context, width) bind(c, name="mlirIntegerTypeGet") result(type)
+        function ffc_mlirIntegerTypeGet(context, width) bind(c, name="ffc_mlirIntegerTypeGet") result(type)
             import :: c_ptr, c_int
             type(c_ptr), value :: context
             integer(c_int), value :: width
             type(c_ptr) :: type
-        end function mlirIntegerTypeGet
+        end function ffc_mlirIntegerTypeGet
 
-        function mlirIntegerTypeSignedGet(context, width) bind(c, name="mlirIntegerTypeSignedGet") result(type)
+        function ffc_mlirIntegerTypeSignedGet(context, width) bind(c, name="ffc_mlirIntegerTypeSignedGet") result(type)
             import :: c_ptr, c_int
             type(c_ptr), value :: context
             integer(c_int), value :: width
             type(c_ptr) :: type
-        end function mlirIntegerTypeSignedGet
+        end function ffc_mlirIntegerTypeSignedGet
 
-        function mlirIntegerTypeUnsignedGet(context, width) bind(c, name="mlirIntegerTypeUnsignedGet") result(type)
+        function ffc_mlirIntegerTypeUnsignedGet(context, width) bind(c, name="ffc_mlirIntegerTypeUnsignedGet") result(type)
             import :: c_ptr, c_int
             type(c_ptr), value :: context
             integer(c_int), value :: width
             type(c_ptr) :: type
-        end function mlirIntegerTypeUnsignedGet
+        end function ffc_mlirIntegerTypeUnsignedGet
 
         ! Float type creation
-        function mlirF32TypeGet(context) bind(c, name="mlirF32TypeGet") result(type)
+        function ffc_mlirF32TypeGet(context) bind(c, name="ffc_mlirF32TypeGet") result(type)
             import :: c_ptr
             type(c_ptr), value :: context
             type(c_ptr) :: type
-        end function mlirF32TypeGet
+        end function ffc_mlirF32TypeGet
 
-        function mlirF64TypeGet(context) bind(c, name="mlirF64TypeGet") result(type)
+        function ffc_mlirF64TypeGet(context) bind(c, name="ffc_mlirF64TypeGet") result(type)
             import :: c_ptr
             type(c_ptr), value :: context
             type(c_ptr) :: type
-        end function mlirF64TypeGet
+        end function ffc_mlirF64TypeGet
+
+        ! Void type creation
+        function ffc_mlirNoneTypeGet(context) bind(c, name="ffc_mlirNoneTypeGet") result(type)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function ffc_mlirNoneTypeGet
 
         ! Array type creation - using MemRef for now
-        function mlirMemRefTypeGet(element_type, rank, shape, layout, memspace) &
-            bind(c, name="mlirMemRefTypeGet") result(type)
+        function ffc_mlirMemRefTypeGet(element_type, rank, shape, layout, memspace) &
+            bind(c, name="ffc_mlirMemRefTypeGet") result(type)
             import :: c_ptr, c_int64_t
             type(c_ptr), value :: element_type
             integer(c_int64_t), value :: rank
@@ -76,7 +83,7 @@ module mlir_c_types
             type(c_ptr), value :: layout
             type(c_ptr), value :: memspace
             type(c_ptr) :: type
-        end function mlirMemRefTypeGet
+        end function ffc_mlirMemRefTypeGet
 
         ! Type queries
         function mlirTypeIsAInteger(type) bind(c, name="mlirTypeIsAInteger") result(is_int)
@@ -123,9 +130,12 @@ contains
         is_signed = .true.  ! Default to signed
         if (present(signed)) is_signed = signed
         
-        ! For testing without MLIR, encode type info in pointer
-        ! Use a simple encoding: 0x10000000 + width for integer types
-        type%ptr = transfer(int(z'10000000', c_intptr_t) + int(width, c_intptr_t), c_null_ptr)
+        ! Use real MLIR C API to create integer types
+        if (is_signed) then
+            type%ptr = ffc_mlirIntegerTypeSignedGet(context%ptr, int(width, c_int))
+        else
+            type%ptr = ffc_mlirIntegerTypeUnsignedGet(context%ptr, int(width, c_int))
+        end if
     end function create_integer_type
 
     ! Create float type
@@ -136,9 +146,9 @@ contains
         
         select case(width)
         case(32)
-            type%ptr = mlirF32TypeGet(context%ptr)
+            type%ptr = ffc_mlirF32TypeGet(context%ptr)
         case(64)
-            type%ptr = mlirF64TypeGet(context%ptr)
+            type%ptr = ffc_mlirF64TypeGet(context%ptr)
         case default
             type%ptr = c_null_ptr  ! Invalid width
         end select
@@ -157,11 +167,11 @@ contains
         shape_copy = shape
         
         ! Create memref type (simpler than full array type)
-        type%ptr = mlirMemRefTypeGet(element_type%ptr, &
-                                      int(size(shape), c_int64_t), &
-                                      c_loc(shape_copy), &
-                                      c_null_ptr, &
-                                      c_null_ptr)
+        type%ptr = ffc_mlirMemRefTypeGet(element_type%ptr, &
+                                         int(size(shape), c_int64_t), &
+                                         c_loc(shape_copy), &
+                                         c_null_ptr, &
+                                         c_null_ptr)
         
         deallocate(shape_copy)
     end function create_array_type
@@ -174,11 +184,11 @@ contains
         integer(c_int64_t), dimension(0) :: empty_shape
         
         ! Create rank-0 memref as reference
-        type%ptr = mlirMemRefTypeGet(element_type%ptr, &
-                                      0_c_int64_t, &
-                                      c_null_ptr, &
-                                      c_null_ptr, &
-                                      c_null_ptr)
+        type%ptr = ffc_mlirMemRefTypeGet(element_type%ptr, &
+                                         0_c_int64_t, &
+                                         c_null_ptr, &
+                                         c_null_ptr, &
+                                         c_null_ptr)
     end function create_reference_type
 
     ! Create void type (MLIR NoneType)
@@ -186,7 +196,7 @@ contains
         type(mlir_context_t), intent(in) :: context
         type(mlir_type_t) :: type
         
-        type%ptr = mlirNoneTypeGet(context%ptr)
+        type%ptr = ffc_mlirNoneTypeGet(context%ptr)
     end function create_void_type
 
     ! Get type kind
