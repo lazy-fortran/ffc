@@ -150,22 +150,22 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [x] Add builder validation
 - [x] Optimize state transitions
 
-### 3.2 SSA Value Management [8 story points]
+### 3.2 SSA Value Management [8 story points] ✓
 **RED Tests:**
-- [ ] Test SSA value generation
-- [ ] Test value naming
-- [ ] Test value type tracking
-- [ ] Test use-def chains
+- [x] Test SSA value generation
+- [x] Test value naming
+- [x] Test value type tracking
+- [x] Test use-def chains
 
 **GREEN Implementation:**
-- [ ] Create `src/builder/ssa_manager.f90`
-- [ ] Implement value table
-- [ ] Add type tracking
-- [ ] Create value naming scheme
+- [x] Create `src/builder/ssa_manager.f90`
+- [x] Implement value table
+- [x] Add type tracking
+- [x] Create value naming scheme
 
 **REFACTOR:**
-- [ ] Optimize value lookups
-- [ ] Add debug helpers
+- [x] Optimize value lookups (O(1) hash table)
+- [x] Add debug helpers (dump, memory usage, validation)
 
 ### 3.3 Type Conversion System [13 story points]
 **RED Tests:**
