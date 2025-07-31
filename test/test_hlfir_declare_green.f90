@@ -1,193 +1,124 @@
 program test_hlfir_declare_green
-    ! GREEN Phase Test for hlfir.declare implementation
-    ! This test should PASS after implementing the functionality
-    
-    use mlir_c_core
-    use mlir_c_types
-    use mlir_c_operations, only: mlir_operation_t, mlir_value_t, get_operation_result, get_operation_num_results
-    use mlir_c_operation_builder
+    ! GREEN Test: Verify hlfir.declare generation works correctly
     implicit none
     
-    logical :: all_tests_passed
+    character(len=:), allocatable :: test_program, output_file, compile_cmd
+    integer :: exit_code, unit, ios
+    character(len=1024) :: line
+    logical :: test_passed = .true.
+    logical :: found_func = .false.
+    logical :: found_x_alloca = .false., found_x_declare = .false.
+    logical :: found_y_alloca = .false., found_y_declare = .false.
+    logical :: found_arr_alloca = .false., found_arr_declare = .false.
     
-    print *, "=== GREEN Test: hlfir.declare implementation ==="
-    print *, "Expected: This test should PASS after implementation"
+    print *, "=== GREEN Test: hlfir.declare generation ==="
+    print *, "Expected: This test MUST PASS"
     print *
     
-    all_tests_passed = .true.
+    ! Create a simple Fortran program with variable declarations
+    test_program = "test_declare.f90"
+    open(newunit=unit, file=test_program, status='replace')
+    write(unit, '(A)') 'program test_declare'
+    write(unit, '(A)') '    integer :: x'
+    write(unit, '(A)') '    real :: y'
+    write(unit, '(A)') '    integer, dimension(10) :: arr'
+    write(unit, '(A)') '    x = 42'
+    write(unit, '(A)') '    y = 3.14'
+    write(unit, '(A)') '    arr(1) = 100'
+    write(unit, '(A)') 'end program test_declare'
+    close(unit)
     
-    ! Test individual components
-    if (.not. test_fir_alloca_creation()) all_tests_passed = .false.
-    if (.not. test_hlfir_declare_creation()) all_tests_passed = .false.
-    if (.not. test_dual_ssa_results()) all_tests_passed = .false.
+    ! Compile with HLFIR output
+    output_file = "test_declare_hlfir.mlir"
+    compile_cmd = "./ffc " // test_program // " --emit-hlfir -o " // output_file
+    
+    print *, "Compiling: ", trim(compile_cmd)
+    call execute_command_line(compile_cmd, exitstat=exit_code)
+    
+    if (exit_code /= 0) then
+        print *, "FAIL: Compilation failed with exit code:", exit_code
+        test_passed = .false.
+    else
+        ! Check the generated HLFIR
+        open(newunit=unit, file=output_file, status='old', iostat=ios)
+        if (ios /= 0) then
+            print *, "FAIL: Could not open output file"
+            test_passed = .false.
+        else
+            do
+                read(unit, '(A)', iostat=ios) line
+                if (ios /= 0) exit
+                
+                ! Check for function
+                if (index(line, 'func.func @_QQmain()') > 0) found_func = .true.
+                
+                ! Check for x variable
+                if (index(line, 'fir.alloca') > 0 .and. index(line, 'name = "x"') > 0) then
+                    found_x_alloca = .true.
+                end if
+                if (index(line, 'hlfir.declare') > 0 .and. index(line, 'name = "x"') > 0) then
+                    found_x_declare = .true.
+                end if
+                
+                ! Check for y variable
+                if (index(line, 'fir.alloca') > 0 .and. index(line, 'name = "y"') > 0) then
+                    found_y_alloca = .true.
+                end if
+                if (index(line, 'hlfir.declare') > 0 .and. index(line, 'name = "y"') > 0) then
+                    found_y_declare = .true.
+                end if
+                
+                ! Check for arr array
+                if (index(line, 'fir.alloca') > 0 .and. index(line, 'name = "arr"') > 0) then
+                    found_arr_alloca = .true.
+                end if
+                if (index(line, 'hlfir.declare') > 0 .and. index(line, 'name = "arr"') > 0) then
+                    found_arr_declare = .true.
+                end if
+            end do
+            close(unit)
+            
+            ! Verify all expected elements
+            print *, "Checking generated HLFIR:"
+            
+            if (found_func) then
+                print *, "  PASS: Found func.func @_QQmain()"
+            else
+                print *, "  FAIL: Missing func.func @_QQmain()"
+                test_passed = .false.
+            end if
+            
+            if (found_x_alloca .and. found_x_declare) then
+                print *, "  PASS: Found fir.alloca and hlfir.declare for x"
+            else
+                print *, "  FAIL: Missing alloca/declare for x"
+                test_passed = .false.
+            end if
+            
+            if (found_y_alloca .and. found_y_declare) then
+                print *, "  PASS: Found fir.alloca and hlfir.declare for y"
+            else
+                print *, "  FAIL: Missing alloca/declare for y"
+                test_passed = .false.
+            end if
+            
+            if (found_arr_alloca .and. found_arr_declare) then
+                print *, "  PASS: Found fir.alloca and hlfir.declare for arr"
+            else
+                print *, "  FAIL: Missing alloca/declare for arr"
+                test_passed = .false.
+            end if
+        end if
+    end if
     
     print *
-    if (all_tests_passed) then
-        print *, "SUCCESS: All GREEN phase tests passed!"
-        print *, "hlfir.declare implementation complete"
+    if (test_passed) then
+        print *, "SUCCESS: All GREEN tests passed!"
+        print *, "hlfir.declare generation is working correctly"
         stop 0
     else
-        print *, "FAILURE: GREEN phase tests failed"
-        print *, "Implementation incomplete"
+        print *, "FAILURE: Some tests failed"
         stop 1
     end if
     
-contains
-
-    function test_fir_alloca_creation() result(passed)
-        logical :: passed
-        type(mlir_context_t) :: context
-        type(mlir_location_t) :: location
-        type(mlir_type_t) :: i32_type, ref_type
-        type(operation_builder_t) :: builder
-        type(mlir_operation_t) :: alloca_op
-        
-        print *, "TEST: Creating fir.alloca operation"
-        
-        ! Setup
-        context = create_mlir_context()
-        location = create_unknown_location(context)
-        i32_type = create_integer_type(context, 32)
-        ref_type = create_reference_type(context, i32_type)
-        
-        ! Try to create fir.alloca operation
-        ! %alloca = fir.alloca !fir.ref<!fir.int<32>>
-        call builder%init(context, "fir.alloca")
-        call builder%result(ref_type)
-        alloca_op = builder%build()
-        
-        passed = alloca_op%is_valid()
-        
-        if (passed) then
-            print *, "  PASS: fir.alloca operation created successfully"
-        else
-            print *, "  FAIL: fir.alloca operation creation failed"
-        end if
-        
-        ! Cleanup
-        call destroy_mlir_context(context)
-    end function test_fir_alloca_creation
-    
-    function test_hlfir_declare_creation() result(passed)
-        logical :: passed
-        type(mlir_context_t) :: context
-        type(mlir_location_t) :: location
-        type(mlir_type_t) :: i32_type, ref_type
-        type(operation_builder_t) :: alloca_builder, declare_builder
-        type(mlir_operation_t) :: alloca_op, declare_op
-        type(mlir_value_t) :: alloca_result
-        
-        print *, "TEST: Creating hlfir.declare operation"
-        
-        ! Setup
-        context = create_mlir_context()
-        location = create_unknown_location(context)
-        i32_type = create_integer_type(context, 32)
-        ref_type = create_reference_type(context, i32_type)
-        
-        ! First create fir.alloca to get a memory reference
-        call alloca_builder%init(context, "fir.alloca")
-        call alloca_builder%result(ref_type)
-        alloca_op = alloca_builder%build()
-        
-        if (.not. alloca_op%is_valid()) then
-            print *, "  FAIL: Cannot create alloca for testing hlfir.declare"
-            passed = .false.
-            call destroy_mlir_context(context)
-            return
-        end if
-        
-        ! Get the result from allocas (this is the memory reference we pass to hlfir.declare)
-        alloca_result = get_operation_result(alloca_op, 0)
-        
-        ! Now create hlfir.declare
-        ! %var:2 = hlfir.declare %alloca {var_name="x"} : (!fir.ref<!fir.int<32>>) -> (!hlfir.expr<!fir.int<32>>, !fir.ref<!fir.int<32>>)
-        call declare_builder%init(context, "hlfir.declare")
-        call declare_builder%operand(alloca_result)
-        call declare_builder%result(i32_type)  ! HLFIR entity result
-        call declare_builder%result(ref_type)  ! FIR reference result
-        declare_op = declare_builder%build()
-        
-        passed = declare_op%is_valid()
-        
-        if (passed) then
-            print *, "  PASS: hlfir.declare operation created successfully"
-        else
-            print *, "  FAIL: hlfir.declare operation creation failed"
-        end if
-        
-        ! Cleanup
-        call destroy_mlir_context(context)
-    end function test_hlfir_declare_creation
-    
-    function test_dual_ssa_results() result(passed)
-        logical :: passed
-        type(mlir_context_t) :: context
-        type(mlir_location_t) :: location
-        type(mlir_type_t) :: i32_type, ref_type
-        type(operation_builder_t) :: alloca_builder, declare_builder
-        type(mlir_operation_t) :: alloca_op, declare_op
-        type(mlir_value_t) :: alloca_result, hlfir_entity, fir_ref
-        integer :: num_results
-        
-        print *, "TEST: hlfir.declare dual SSA results"
-        
-        ! Setup (same as previous test)
-        context = create_mlir_context()
-        location = create_unknown_location(context)
-        i32_type = create_integer_type(context, 32)
-        ref_type = create_reference_type(context, i32_type)
-        
-        ! Create alloca
-        call alloca_builder%init(context, "fir.alloca")
-        call alloca_builder%result(ref_type)
-        alloca_op = alloca_builder%build()
-        
-        if (.not. alloca_op%is_valid()) then
-            passed = .false.
-            call destroy_mlir_context(context)
-            return
-        end if
-        
-        alloca_result = get_operation_result(alloca_op, 0)
-        
-        ! Create hlfir.declare with dual results
-        call declare_builder%init(context, "hlfir.declare")
-        call declare_builder%operand(alloca_result)
-        call declare_builder%result(i32_type)  ! HLFIR entity
-        call declare_builder%result(ref_type)  ! FIR reference
-        declare_op = declare_builder%build()
-        
-        if (.not. declare_op%is_valid()) then
-            print *, "  FAIL: hlfir.declare creation failed"
-            passed = .false.
-            call destroy_mlir_context(context)
-            return
-        end if
-        
-        ! Check that we have exactly 2 results
-        num_results = get_operation_num_results(declare_op)
-        if (num_results /= 2) then
-            print *, "  FAIL: Expected 2 results, got ", num_results
-            passed = .false.
-            call destroy_mlir_context(context)
-            return
-        end if
-        
-        ! Extract both results
-        hlfir_entity = get_operation_result(declare_op, 0)  ! HLFIR entity
-        fir_ref = get_operation_result(declare_op, 1)       ! FIR reference
-        
-        passed = hlfir_entity%is_valid() .and. fir_ref%is_valid()
-        
-        if (passed) then
-            print *, "  PASS: hlfir.declare returns dual SSA values correctly"
-        else
-            print *, "  FAIL: hlfir.declare dual SSA values invalid"
-        end if
-        
-        ! Cleanup
-        call destroy_mlir_context(context)
-    end function test_dual_ssa_results
-
 end program test_hlfir_declare_green

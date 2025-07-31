@@ -1,6 +1,11 @@
 # Build directories
 build/
 /build/
+CMakeFiles/
+CMakeCache.txt
+CTestTestfile.cmake
+Makefile
+cmake_install.cmake
 
 # FPM build artifacts
 *.mod

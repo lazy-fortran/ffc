@@ -97,14 +97,14 @@ add_library(ffc_fortran STATIC
 target_link_libraries(ffc_fortran mlir_c_api)
 
 # Main executable (temporarily disabled while testing core MLIR)
-# add_executable(ffc
-#     app/ffc.f90
-# )
-# 
-# target_link_libraries(ffc
-#     ffc_fortran
-#     mlir_c_api
-# )
+add_executable(ffc
+    app/ffc_green.f90
+)
+
+target_link_libraries(ffc
+    ffc_fortran
+    mlir_c_api
+)
 
 # Install targets
 install(TARGETS mlir_c_api ffc_fortran

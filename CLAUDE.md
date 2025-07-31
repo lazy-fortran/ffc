@@ -113,3 +113,7 @@
 
 ### 🎯 Next Critical Step
 Replace `mlir_c_stubs.c` with real MLIR C API implementations to enable actual Fortran compilation.
+
+## Development Workflow
+
+- Run ffc with fpm run. Run tests wirh fpm test
