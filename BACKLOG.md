@@ -294,24 +294,24 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 - [x] Extract common patterns
 - [x] Optimize control flow generation
 
-### 4.4 Expression Generation [13 story points]
+### 4.4 Expression Generation [13 story points] ✓
 **RED Tests:**
-- [ ] Test literal expressions
-- [ ] Test variable references
-- [ ] Test binary operations
-- [ ] Test unary operations
-- [ ] Test function calls
-- [ ] Test array subscripts
+- [x] Test literal expressions
+- [x] Test variable references
+- [x] Test binary operations
+- [x] Test unary operations
+- [x] Test function calls
+- [x] Test array subscripts
 
 **GREEN Implementation:**
-- [ ] Create `src/codegen/expression_gen.f90`
-- [ ] Implement expression evaluation
-- [ ] Add type coercion
-- [ ] Handle intrinsic functions
+- [x] Create `src/codegen/expression_gen.f90`
+- [x] Implement expression evaluation
+- [x] Add type coercion
+- [x] Handle intrinsic functions
 
 **REFACTOR:**
-- [ ] Optimize expression trees
-- [ ] Add constant folding
+- [x] Optimize expression trees
+- [x] Add constant folding
 
 ## Epic 5: Pass Management and Optimization
 
