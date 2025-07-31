@@ -8,7 +8,7 @@ module mlir_c_types
     public :: mlir_type_t
     
     ! Public functions
-    public :: create_integer_type, create_float_type
+    public :: create_integer_type, create_float_type, create_void_type
     public :: create_array_type, create_reference_type
     public :: get_type_kind, get_integer_width
     public :: is_integer_type, is_float_type, is_array_type
@@ -102,6 +102,12 @@ module mlir_c_types
             type(c_ptr), value :: type
             integer(c_int) :: width
         end function mlirIntegerTypeGetWidth
+
+        function mlirNoneTypeGet(context) bind(c, name="mlirNoneTypeGet") result(type)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function mlirNoneTypeGet
     end interface
 
 contains
@@ -174,6 +180,14 @@ contains
                                       c_null_ptr, &
                                       c_null_ptr)
     end function create_reference_type
+
+    ! Create void type (MLIR NoneType)
+    function create_void_type(context) result(type)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_type_t) :: type
+        
+        type%ptr = mlirNoneTypeGet(context%ptr)
+    end function create_void_type
 
     ! Get type kind
     function get_type_kind(type) result(kind)

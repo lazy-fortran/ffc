@@ -11,6 +11,8 @@ module mlir_c_attributes
     ! Public functions
     public :: create_integer_attribute, create_float_attribute
     public :: create_string_attribute, create_array_attribute
+    public :: create_string_array_attribute, create_empty_array_attribute
+    public :: create_type_attribute
     public :: get_integer_from_attribute, get_float_from_attribute
     public :: get_string_from_attribute, get_array_size
     public :: is_integer_attribute, is_float_attribute
@@ -102,6 +104,12 @@ module mlir_c_attributes
             type(c_ptr), value :: attr
             integer(c_intptr_t) :: num
         end function mlirArrayAttrGetNumElements
+
+        function mlirTypeAttrGet(type) bind(c, name="mlirTypeAttrGet") result(attr)
+            import :: c_ptr
+            type(c_ptr), value :: type
+            type(c_ptr) :: attr
+        end function mlirTypeAttrGet
     end interface
 
 contains
@@ -161,6 +169,52 @@ contains
         
         deallocate(element_ptrs)
     end function create_array_attribute
+
+    ! Create string array attribute
+    function create_string_array_attribute(context, strings) result(attr)
+        type(mlir_context_t), intent(in) :: context
+        character(len=*), dimension(:), intent(in) :: strings
+        type(mlir_attribute_t) :: attr
+        type(mlir_attribute_t), dimension(:), allocatable :: string_attrs
+        type(c_ptr), dimension(:), allocatable :: element_ptrs
+        integer :: i
+        
+        ! Create individual string attributes
+        allocate(string_attrs(size(strings)))
+        allocate(element_ptrs(size(strings)))
+        
+        do i = 1, size(strings)
+            string_attrs(i) = create_string_attribute(context, strings(i))
+            element_ptrs(i) = string_attrs(i)%ptr
+        end do
+        
+        ! Create array attribute from string attributes
+        attr%ptr = mlirArrayAttrGet(context%ptr, &
+                                    int(size(strings), c_intptr_t), &
+                                    c_loc(element_ptrs))
+        
+        deallocate(element_ptrs)
+        deallocate(string_attrs)
+    end function create_string_array_attribute
+
+    ! Create empty array attribute
+    function create_empty_array_attribute(context) result(attr)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_attribute_t) :: attr
+        
+        ! Create empty array attribute
+        attr%ptr = mlirArrayAttrGet(context%ptr, 0_c_intptr_t, c_null_ptr)
+    end function create_empty_array_attribute
+
+    ! Create type attribute
+    function create_type_attribute(context, type) result(attr)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_type_t), intent(in) :: type
+        type(mlir_attribute_t) :: attr
+        
+        ! Create type attribute
+        attr%ptr = mlirTypeAttrGet(type%ptr)
+    end function create_type_attribute
 
     ! Get integer value from attribute
     function get_integer_from_attribute(attr) result(value)

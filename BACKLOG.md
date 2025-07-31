@@ -2,7 +2,22 @@
 
 ## Overview
 
-This backlog details the tasks required to transition fortfc from text-based MLIR generation to using ISO C bindings. Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven development approach.
+**CRITICAL: This project uses MLIR C API exclusively for in-memory HLFIR generation.**
+
+### Current Status (as of cleanup review)
+- **Total test files**: 64 active + 24 disabled = 88 total
+- **Completed epics**: Epics 1-3 (Foundation, Dialects, IR Builder) - ✅ COMPLETE
+- **Active development**: Epic 4 (AST to MLIR Conversion) - 🟡 IN PROGRESS  
+- **Architecture**: All C API bindings and infrastructure complete
+
+This backlog details the tasks required to implement fortfc using ISO C bindings to the MLIR C API. 
+ALL code generation creates HLFIR operations in-memory using our C API bindings - NEVER generate text strings.
+Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven development approach.
+
+**Architecture:**
+- Fortran AST → HLFIR (in-memory via C API) → FIR → LLVM IR → Object code
+- Use src/mlir_c/, src/dialects/, src/builder/ modules exclusively
+- Text output only for final debugging/verification
 
 ## Epic 1: MLIR C API Foundation
 
@@ -225,22 +240,22 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 ## Epic 4: AST to MLIR Conversion
 
-### 4.1 Program and Module Generation [8 story points]
+### 4.1 Program and Module Generation [8 story points] ✓
 **RED Tests:**
-- [ ] Test empty program generation
-- [ ] Test module with functions
-- [ ] Test module variables
-- [ ] Test use statements
+- [x] Test empty program generation using MLIR C API
+- [x] Test module with functions using HLFIR operations  
+- [x] Test module variables using HLFIR declarations
+- [x] Test use statements using dependency tracking
 
 **GREEN Implementation:**
-- [ ] Create `src/codegen/program_gen.f90`
-- [ ] Implement module structure generation
-- [ ] Add function prototypes
-- [ ] Handle module dependencies
+- [x] Create `src/codegen/program_gen.f90` using MLIR C API exclusively
+- [x] Implement module structure generation with mlir_builder operations
+- [x] Add function prototypes using HLFIR hlfir.declare operations
+- [x] Handle module dependencies with in-memory operation tracking
 
 **REFACTOR:**
-- [ ] Optimize module ordering
-- [ ] Add dependency analysis
+- [x] Optimize module ordering using C API operation analysis
+- [x] Add dependency analysis using MLIR operation introspection
 
 ### 4.2 Function and Subroutine Generation [13 story points]
 **RED Tests:**
