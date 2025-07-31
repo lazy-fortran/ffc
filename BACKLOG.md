@@ -4,11 +4,13 @@
 
 **CRITICAL: This project uses MLIR C API exclusively for in-memory HLFIR generation.**
 
-### Current Status (as of cleanup review)
-- **Total test files**: 64 active + 24 disabled = 88 total
-- **Completed epics**: Epics 1-3 (Foundation, Dialects, IR Builder) - ✅ COMPLETE
-- **Active development**: Epic 4 (AST to MLIR Conversion) - 🟡 IN PROGRESS  
-- **Architecture**: All C API bindings and infrastructure complete
+### Current Status (Updated Analysis)
+- **Total test files**: 82 active + 24 disabled = 106 total  
+- **Source files**: 51 Fortran modules + 1 C stub file
+- **Completed epics**: Epics 1-7 (Full Infrastructure) - ✅ COMPLETE
+- **Critical blocker**: `src/mlir_c/mlir_c_stubs.c` - all C functions return dummy pointers
+- **Dependencies**: stdlib ✅, json-fortran ✅, fortfront ❌ (missing)
+- **Build status**: CMake ✅, FPM 🟡 (fortfront dependency missing)
 
 This backlog details the tasks required to implement fortfc using ISO C bindings to the MLIR C API. 
 ALL code generation creates HLFIR operations in-memory using our C API bindings - NEVER generate text strings.
@@ -22,14 +24,19 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 ## Current Status Summary
 
 ### ✅ COMPLETED (Infrastructure Ready):
-- **Epic 1-3**: Complete MLIR C API Foundation, Dialects, IR Builder (using stubs)
-- **Epic 4**: Complete AST to MLIR Conversion Pipeline (using stubs)
-- **Epic 5**: Complete Pass Management and Optimization (using stubs)
-- **Epic 6**: Complete Backend Integration and Memory Management
-- **Epic 7**: Complete Testing, Documentation, and CI/CD
+- **Epic 1-7**: Complete MLIR C API Foundation, Dialects, IR Builder, AST Conversion, Pass Management, Backend, Testing/Docs
+- **Implementation**: All Fortran wrappers and infrastructure complete (51 modules)
+- **Tests**: 82 active tests passing (infrastructure only)
+- **Build System**: CMake with LLVM/MLIR detection, FPM configuration  
+- **Documentation**: Full API docs, developer guides, CI/CD ready
+
+### 🔴 CRITICAL BLOCKER:
+- **`src/mlir_c/mlir_c_stubs.c`**: All C functions return dummy pointers instead of real MLIR operations
+- **24 disabled tests**: Core compiler functionality tests disabled because real implementation missing
+- **Available dependency**: `fortfront` in `../fortfront/` (needs integration)
 
 ### 🎯 NEXT PHASE (Make it a Real Compiler):
-- **Epic 8**: Replace ALL stubs with real MLIR C API calls
+- **Epic 8**: Replace ALL stubs with real MLIR C API calls following Flang patterns
 - **Epic 9**: Implement complete Fortran language support
 - **Epic 10**: Production-ready CLI and distribution
 
@@ -41,8 +48,16 @@ $ ./hello
 Hello, World!
 ```
 
-**Current Reality**: All infrastructure exists but uses stubs - cannot compile real Fortran yet
-**After Epic 8-10**: Full working Fortran compiler with MLIR backend
+**Current Reality**: Excellent infrastructure, stub implementations - cannot compile real Fortran yet
+**After Epic 8-10**: Full working Fortran compiler with HLFIR/MLIR backend
+
+### 📊 Current Implementation Status:
+- **Infrastructure**: ✅ Complete (51 modules, all patterns implemented)
+- **MLIR Integration**: 🔴 Stubs only (`mlir_c_stubs.c` needs real implementation)
+- **Active Tests**: ✅ 82 passing (infrastructure validation)
+- **Disabled Tests**: ❌ 24 (real compiler functionality blocked)
+- **Dependencies**: stdlib/json-fortran ✅, fortfront ✅ (in `../fortfront/`, needs integration)
+- **Build**: CMake ✅, FPM 🟡 (fortfront path needs configuration)
 
 ## Epic 1: MLIR C API Foundation
 
@@ -468,160 +483,295 @@ Hello, World!
 - Integrated existing memory leak detection from Epic 6.2 into CI pipeline
 - Added build configuration script with requirement checking and automated setup
 
-## Epic 8: Real MLIR C API Implementation
+## Epic 8: Real FLANG-based HLFIR Implementation
 
-### 8.1 Replace MLIR C API Stubs [21 story points]
+**Based on detailed analysis of Flang's HLFIR architecture in ../llvm-project**
+
+## CURRENT IMPLEMENTATION STATUS
+
+### What's Complete ✅
+- **51 Fortran modules**: Complete MLIR C API wrapper infrastructure
+- **82 active tests**: All infrastructure tests passing  
+- **Build system**: CMake with LLVM/MLIR detection, FPM configuration
+- **Dependencies**: stdlib, json-fortran available; fortfront available in `../fortfront/`
+- **Documentation**: Complete API docs, developer guides
+
+### What's Missing 🔴  
+- **`src/mlir_c/mlir_c_stubs.c`**: All C functions return dummy pointers (`(void*)0x12345678`)
+- **24 disabled tests**: Real compiler functionality tests disabled
+- **fortfront integration**: Available but not connected to compilation pipeline
+- **Real MLIR operations**: No actual HLFIR generation happening
+
+### Immediate Next Steps 🎯
+1. **Replace mlir_c_stubs.c** with real MLIR C API implementations
+2. **Enable disabled tests** one by one as functionality comes online
+3. **Integrate fortfront** for AST parsing in compilation pipeline
+4. **Implement real HLFIR operations** following Flang patterns
+
+---
+
+### 8.1 HLFIR Operation Implementation [34 story points]
+**Following Flang's HLFIR Design Patterns:**
+
 **RED Tests:**
-- [x] Test MLIR context creation and destruction (currently using stubs)
-- [x] Test MLIR module creation (currently using stubs)
-- [x] Test MLIR type creation (currently using stubs)
-- [x] Test MLIR operation creation (currently using stubs)
-- [ ] Test real MLIR context with actual LLVM libraries
-- [ ] Test real MLIR module with verifiable IR
-- [ ] Test real MLIR type system integration
-- [ ] Test real MLIR operation verification
+- [ ] Test hlfir.declare with complete Fortran variable semantics (shape, type parameters, attributes)
+- [ ] Test hlfir.designate for array sections, components, substrings
+- [ ] Test hlfir.assign with aliasing analysis and semantic validation
+- [ ] Test hlfir.elemental with index-based array expression representation
+- [ ] Test hlfir.associate for temporary association management
+- [ ] Test hlfir.expr<T> type system with deferred materialization
+- [ ] Test transformational intrinsics (hlfir.sum, hlfir.matmul, hlfir.transpose)
+- [ ] Test character operations (hlfir.concat, hlfir.set_length)
+- [ ] Test WHERE/FORALL constructs with region-based representation
+- [ ] Test expression fusion and temporary elimination
 
 **GREEN Implementation:**
-- [ ] Link against actual LLVM/MLIR development libraries
-- [ ] Replace `mlir_c_stubs.c` with real MLIR C API calls
-- [ ] Update `mlir_c_core.f90` to use real MLIR context functions
-- [ ] Update `mlir_c_types.f90` to use real MLIR type system
-- [ ] Update `mlir_c_operations.f90` to use real MLIR operation builders
-- [ ] Update CMakeLists.txt to require and link MLIR libraries
-- [ ] Test with actual MLIR IR generation and verification
+- [ ] Implement hlfir.declare with dual SSA results (HLFIR + FIR base)
+- [ ] Create hlfir.designate for part-reference operations
+- [ ] Build hlfir.assign with semantic assignment handling
+- [ ] Implement hlfir.elemental as index-function representation
+- [ ] Add hlfir.associate/hlfir.end_associate for temporaries
+- [ ] Create hlfir.expr<T> type with shape/type encoding
+- [ ] Implement transformational intrinsic operations
+- [ ] Add character manipulation operations
+- [ ] Build structured regions for WHERE/FORALL
+- [ ] Implement expression value lifecycle management
 
 **REFACTOR:**
-- [ ] Optimize MLIR C API usage patterns
-- [ ] Add comprehensive error handling for real MLIR operations
-- [ ] Implement MLIR diagnostic handling
-- [ ] Add MLIR pass registration and execution
+- [ ] Optimize elemental operation patterns for fusion
+- [ ] Add comprehensive shape analysis and propagation
+- [ ] Implement advanced aliasing analysis algorithms
+- [ ] Create expression optimization pipeline
 
-### 8.2 Real Frontend Integration [13 story points]
+### 8.2 HLFIR Type System Integration [21 story points]
+**Following Flang's Type Encoding Strategy:**
+
 **RED Tests:**
-- [ ] Test fortfront AST parsing integration
-- [ ] Test AST to HLFIR conversion with real data
-- [ ] Test Fortran type system mapping to MLIR types
-- [ ] Test function signature generation from AST
+- [ ] Test fir.ref<T> for variable memory anchoring
+- [ ] Test fir.box<T> for descriptor-based arrays
+- [ ] Test fir.array<NxT> for fixed-size arrays
+- [ ] Test !fir.char<KIND,LEN> for character types
+- [ ] Test derived type encoding with component information
+- [ ] Test type parameter propagation through operations
+- [ ] Test shape information encoding in types
+- [ ] Test contiguity tracking in array types
 
 **GREEN Implementation:**
-- [ ] Integrate with fortfront for real Fortran AST parsing
-- [ ] Implement AST traversal for HLFIR generation
-- [ ] Create real type mapping from Fortran to MLIR
-- [ ] Generate actual HLFIR operations from AST nodes
+- [ ] Create HLFIR-aware type conversion using Flang patterns
+- [ ] Implement variable type anchoring with fir.ref<T>
+- [ ] Build descriptor type system with fir.box<T>
+- [ ] Add character type handling with length parameters
+- [ ] Implement derived type encoding with component metadata
+- [ ] Create shape-aware array type construction
+- [ ] Add type parameter tracking system
+- [ ] Build contiguity analysis infrastructure
+
+**REFACTOR:**
+- [ ] Optimize type parameter propagation
+- [ ] Add type compatibility checking
+- [ ] Implement type canonicalization passes
+- [ ] Create type debugging utilities
+
+### 8.3 HLFIR Lowering Pipeline [21 story points]
+**Following Flang's Progressive Lowering Strategy:**
+
+**RED Tests:**
+- [ ] Test ordered assignment lowering (FORALL/WHERE handling)
+- [ ] Test array assignment lowering with aliasing analysis
+- [ ] Test expression bufferization with memory materialization
+- [ ] Test association lowering for argument passing
+- [ ] Test variable operations lowering to FIR memory ops
+- [ ] Test elemental inlining optimization
+- [ ] Test intrinsic simplification passes
+- [ ] Test temporary cleanup and finalization
+
+**GREEN Implementation:**
+- [ ] Build ordered assignment pass for FORALL/WHERE
+- [ ] Implement array assignment lowering with loop generation
+- [ ] Create bufferization pass for hlfir.expr materialization
+- [ ] Add association lowering for temporaries and arguments  
+- [ ] Build variable operations to FIR memory conversion
+- [ ] Implement elemental inlining optimization
+- [ ] Create intrinsic simplification transformations
+- [ ] Add automatic cleanup and finalization
+
+**REFACTOR:**
+- [ ] Optimize lowering pass ordering and efficiency
+- [ ] Add comprehensive diagnostic reporting
+- [ ] Implement debug information preservation
+- [ ] Create lowering verification passes
+
+### 8.4 Memory Management and SSA Integration [13 story points]
+**Following Flang's Memory Management Strategy:**
+
+**RED Tests:**
+- [ ] Test SSA value lifecycle management
+- [ ] Test hlfir.destroy for expression cleanup
+- [ ] Test stack vs heap allocation decisions
+- [ ] Test derived type finalization handling
+- [ ] Test memory effect modeling and analysis
+- [ ] Test resource tracking through transformations
+- [ ] Test contiguity analysis for optimization
+
+**GREEN Implementation:**
+- [ ] Build SSA value lifecycle tracking
+- [ ] Implement automatic expression cleanup
+- [ ] Create allocation strategy analysis
+- [ ] Add derived type finalization support
+- [ ] Build memory effect modeling system
+- [ ] Implement resource tracking infrastructure
+- [ ] Add contiguity analysis for arrays
+
+**REFACTOR:**
+- [ ] Optimize memory allocation decisions
+- [ ] Add memory profiling and analysis
+- [ ] Implement advanced cleanup strategies
+- [ ] Create memory debugging utilities
+
+### 8.5 Fortran Language Construct Mapping [21 story points]
+**Following Flang's Construct-to-HLFIR Mapping:**
+
+**RED Tests:**
+- [ ] Test array assignment A = B + C using hlfir.elemental
+- [ ] Test WHERE constructs with hlfir.where regions  
+- [ ] Test FORALL constructs with hlfir.forall regions
+- [ ] Test character concatenation with hlfir.concat
+- [ ] Test derived type component access with hlfir.designate
+- [ ] Test array sections A(1:10:2) with hlfir.designate
+- [ ] Test intrinsic function calls (SUM, MATMUL, etc.)
+- [ ] Test user-defined function calls with HLFIR arguments
+
+**GREEN Implementation:**
+- [ ] Map array expressions to hlfir.elemental with index functions
+- [ ] Implement WHERE/ELSEWHERE as structured regions
+- [ ] Build FORALL as indexed assignment regions
+- [ ] Create character operations using hlfir.concat/hlfir.set_length
+- [ ] Handle component access through hlfir.designate
+- [ ] Implement array sectioning with hlfir.designate
+- [ ] Map transformational intrinsics to dedicated HLFIR operations
+- [ ] Handle function calls with proper argument associations
+
+**REFACTOR:**
+- [ ] Optimize expression fusion across construct boundaries
+- [ ] Add semantic validation for Fortran constructs
+- [ ] Implement advanced array expression patterns
+- [ ] Create construct-specific optimization passes
+
+### 8.6 Expression Optimization and Fusion [13 story points]
+**Following Flang's Expression Optimization Strategy:**
+
+**RED Tests:**
+- [ ] Test elemental expression fusion (A+B)*C -> single elemental
+- [ ] Test temporary elimination in expression chains
+- [ ] Test loop fusion for compatible operations
+- [ ] Test constant folding in HLFIR expressions
+- [ ] Test shape propagation through operations
+- [ ] Test contiguity analysis for arrays
+- [ ] Test dead code elimination in expressions
+
+**GREEN Implementation:**
+- [ ] Build elemental inlining pass following Flang patterns
+- [ ] Implement temporary elimination optimization
+- [ ] Create loop fusion analysis and transformation
+- [ ] Add constant folding for HLFIR operations
+- [ ] Build shape analysis and propagation
+- [ ] Implement contiguity tracking and optimization
+- [ ] Create dead code elimination for HLFIR
+
+**REFACTOR:**
+- [ ] Optimize fusion heuristics for performance
+- [ ] Add cost models for optimization decisions
+- [ ] Implement advanced expression pattern matching
+- [ ] Create optimization debugging utilities
+
+## Epic 9: Complete HLFIR-based Compiler Implementation
+
+### 9.1 Real MLIR/LLVM Integration [21 story points]
+**Integration with Actual MLIR/LLVM Libraries:**
+
+**RED Tests:**
+- [ ] Test linking against LLVM/MLIR development libraries
+- [ ] Test real MLIR context creation and management
+- [ ] Test real MLIR module generation and verification  
+- [ ] Test MLIR pass manager with actual passes
+- [ ] Test HLFIR to FIR lowering with real transformations
+- [ ] Test FIR to LLVM IR lowering
+- [ ] Test LLVM optimization pipeline integration
+- [ ] Test object code generation from LLVM IR
+
+**GREEN Implementation:**
+- [ ] Replace mlir_c_stubs.c with real MLIR C API implementations
+- [ ] Link CMake build against LLVM/MLIR libraries
+- [ ] Update all MLIR C API modules to use real functions
+- [ ] Integrate MLIR pass registration and execution
+- [ ] Implement real HLFIR dialect operations
+- [ ] Configure HLFIR->FIR->LLVM lowering pipeline
+- [ ] Set up LLVM optimization and code generation
+- [ ] Generate actual object files from LLVM backend
+
+**REFACTOR:**
+- [ ] Optimize MLIR operation construction performance
+- [ ] Add comprehensive error handling for MLIR operations
+- [ ] Implement MLIR diagnostic integration
+- [ ] Create performance profiling for compilation pipeline
+
+### 9.2 Complete Fortran Frontend Integration [21 story points]
+**Real AST to HLFIR Translation Following Flang Patterns:**
+
+**RED Tests:**
+- [ ] Test complete Fortran program parsing to AST
+- [ ] Test AST traversal for HLFIR generation
+- [ ] Test variable declarations to hlfir.declare
+- [ ] Test assignment statements to hlfir.assign
+- [ ] Test array expressions to hlfir.elemental
+- [ ] Test function calls with proper argument handling
+- [ ] Test control flow constructs (if/do/select)
+- [ ] Test module and procedure handling
+
+**GREEN Implementation:**
+- [ ] Integrate fortfront for complete AST parsing
+- [ ] Build AST visitor pattern for HLFIR generation
+- [ ] Map Fortran variables to hlfir.declare operations
+- [ ] Translate assignments using HLFIR assignment semantics
+- [ ] Convert array expressions to hlfir.elemental operations
+- [ ] Handle function calls with hlfir.associate
+- [ ] Generate control flow using structured HLFIR regions
+- [ ] Process modules and procedures with proper scoping
 
 **REFACTOR:**
 - [ ] Optimize AST traversal performance
 - [ ] Add comprehensive Fortran language feature support
-- [ ] Implement advanced type conversion edge cases
+- [ ] Implement semantic analysis during translation
+- [ ] Create source location tracking for debugging
 
-### 8.3 Real HLFIR/FIR Generation [21 story points]
+### 9.3 End-to-End Executable Generation [13 story points]
+**Complete Compilation Pipeline:**
+
 **RED Tests:**
-- [ ] Test real HLFIR.declare operation generation
-- [ ] Test real HLFIR.assign operation generation
-- [ ] Test real HLFIR.elemental operation generation
-- [ ] Test FIR.alloca operation generation
-- [ ] Test FIR.load/store operation generation
-- [ ] Test function call generation
-- [ ] Test control flow generation (if/do/select)
-
-**GREEN Implementation:**
-- [ ] Generate real HLFIR operations using MLIR C API
-- [ ] Implement HLFIR to FIR lowering with real passes
-- [ ] Create actual FIR operations for memory management
-- [ ] Generate proper function signatures and calls
-- [ ] Implement control flow structures in HLFIR/FIR
-
-**REFACTOR:**
-- [ ] Optimize HLFIR operation patterns
-- [ ] Add comprehensive Fortran intrinsic support
-- [ ] Implement array operations and elemental functions
-
-### 8.4 Real Lowering Pipeline [13 story points]
-**RED Tests:**
-- [ ] Test HLFIR to FIR lowering with verification
-- [ ] Test FIR to LLVM IR lowering
-- [ ] Test LLVM optimization passes
-- [ ] Test object code generation
-
-**GREEN Implementation:**
-- [ ] Implement real HLFIR to FIR lowering passes
-- [ ] Configure FIR to LLVM IR lowering
-- [ ] Set up LLVM optimization pipeline
-- [ ] Generate actual object files (.o)
-
-**REFACTOR:**
-- [ ] Optimize compilation pipeline performance
-- [ ] Add configurable optimization levels (-O0, -O1, -O2, -O3)
-- [ ] Implement debug information generation
-
-## Epic 9: Complete Compiler Implementation
-
-### 9.1 Executable Generation [8 story points]
-**RED Tests:**
-- [ ] Test object file to executable linking
-- [ ] Test runtime library integration
-- [ ] Test main program generation
-- [ ] Test executable execution
-
-**GREEN Implementation:**
-- [ ] Implement linking stage for executables
-- [ ] Integrate Fortran runtime libraries
-- [ ] Generate proper main program wrapper
-- [ ] Create working executable files
-
-**REFACTOR:**
-- [ ] Optimize linking performance
-- [ ] Add static/dynamic linking options
-- [ ] Implement cross-compilation support
-
-### 9.2 Complete Fortran Language Support [21 story points]
-**RED Tests:**
-- [ ] Test basic arithmetic operations
-- [ ] Test variable declarations and assignments
-- [ ] Test function/subroutine definitions and calls
-- [ ] Test array operations and allocations
-- [ ] Test derived types and modules
-- [ ] Test I/O operations (print, read, write)
-- [ ] Test control flow (if, do, select case)
-- [ ] Test intrinsic functions
-- [ ] Test character string operations
-
-**GREEN Implementation:**
-- [ ] Implement complete expression evaluation
-- [ ] Add full variable and type system
-- [ ] Create function/subroutine call infrastructure
-- [ ] Implement array operations and memory management
-- [ ] Add derived type and module support
-- [ ] Create I/O operation infrastructure
-- [ ] Implement all control flow constructs
-- [ ] Add intrinsic function library
-- [ ] Implement character operations
-
-**REFACTOR:**
-- [ ] Optimize code generation patterns
-- [ ] Add advanced Fortran features (parameterized types, etc.)
-- [ ] Implement Fortran 2018+ features
-
-### 9.3 End-to-End Integration Testing [13 story points]
-**RED Tests:**
-- [ ] Test Hello World program compilation and execution
-- [ ] Test scientific computation programs
-- [ ] Test array manipulation programs
+- [ ] Test Hello World program: source -> AST -> HLFIR -> FIR -> LLVM -> executable
+- [ ] Test array computation programs with optimization
+- [ ] Test function and subroutine programs
+- [ ] Test character string manipulation programs
+- [ ] Test derived type programs
 - [ ] Test modular programs with multiple files
-- [ ] Test I/O intensive programs
-- [ ] Test numerical computation accuracy
-- [ ] Test performance against gfortran
+- [ ] Test I/O operations with runtime library
+- [ ] Test performance vs gfortran on benchmarks
 
 **GREEN Implementation:**
-- [ ] Create comprehensive integration test suite
-- [ ] Validate against reference Fortran programs
-- [ ] Test compilation of real-world Fortran code
-- [ ] Benchmark performance vs other compilers
+- [ ] Complete full compilation pipeline from source to executable
+- [ ] Integrate Fortran runtime library for I/O and intrinsics
+- [ ] Implement proper executable linking
+- [ ] Add optimization level controls (-O0, -O1, -O2, -O3)
+- [ ] Create debugging information generation
+- [ ] Handle multiple source file compilation
+- [ ] Generate working executables for test programs
+- [ ] Validate numerical accuracy and performance
 
 **REFACTOR:**
 - [ ] Optimize overall compilation performance
-- [ ] Add comprehensive error reporting
-- [ ] Implement debugging support
+- [ ] Add comprehensive error reporting throughout pipeline
+- [ ] Implement advanced debugging support
+- [ ] Create benchmark suite for performance validation
 
 ## Epic 10: Production Readiness
 
@@ -707,18 +857,20 @@ Hello, World!
 3. Epic 7.2: Documentation
 4. Epic 7.3: CI/CD Integration
 
-### Phase 7 (Weeks 12-16): Real Compiler Implementation
-1. Epic 8.1: Replace MLIR C API Stubs
-2. Epic 8.2: Real Frontend Integration
-3. Epic 8.3: Real HLFIR/FIR Generation
-4. Epic 8.4: Real Lowering Pipeline
+### Phase 7 (Weeks 12-18): HLFIR Implementation Following Flang Architecture
+1. Epic 8.1: HLFIR Operation Implementation (34 story points)
+2. Epic 8.2: HLFIR Type System Integration (21 story points)
+3. Epic 8.3: HLFIR Lowering Pipeline (21 story points)
+4. Epic 8.4: Memory Management and SSA Integration (13 story points)
+5. Epic 8.5: Fortran Language Construct Mapping (21 story points)
+6. Epic 8.6: Expression Optimization and Fusion (13 story points)
 
-### Phase 8 (Weeks 17-20): Complete Compiler
-1. Epic 9.1: Executable Generation
-2. Epic 9.2: Complete Fortran Language Support
-3. Epic 9.3: End-to-End Integration Testing
+### Phase 8 (Weeks 19-22): Complete HLFIR-based Compiler
+1. Epic 9.1: Real MLIR/LLVM Integration (21 story points)
+2. Epic 9.2: Complete Fortran Frontend Integration (21 story points)
+3. Epic 9.3: End-to-End Executable Generation (13 story points)
 
-### Phase 9 (Weeks 21-22): Production Readiness
+### Phase 9 (Weeks 23-24): Production Readiness
 1. Epic 10.1: Command Line Interface
 2. Epic 10.2: Error Handling and Diagnostics
 3. Epic 10.3: Documentation and Distribution
