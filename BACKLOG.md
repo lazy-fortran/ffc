@@ -332,22 +332,22 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 - [x] Add improved state tracking and memory management
 - [x] Optimize pass manager slot allocation and cleanup
 
-### 5.2 Lowering Pipeline [13 story points]
+### 5.2 Lowering Pipeline [13 story points] ✓
 **RED Tests:**
-- [ ] Test HLFIR to FIR lowering
-- [ ] Test FIR to LLVM lowering
-- [ ] Test optimization passes
-- [ ] Test debug info preservation
+- [x] Test HLFIR to FIR lowering
+- [x] Test FIR to LLVM lowering
+- [x] Test optimization passes
+- [x] Test debug info preservation
 
 **GREEN Implementation:**
-- [ ] Create `src/passes/lowering_pipeline.f90`
-- [ ] Configure standard passes
-- [ ] Add custom passes
-- [ ] Integrate with backend
+- [x] Create `src/passes/lowering_pipeline.f90`
+- [x] Configure standard passes (HLFIR->FIR, FIR->LLVM)
+- [x] Add optimization pipeline with multiple passes
+- [x] Integrate with pass manager backend
 
 **REFACTOR:**
-- [ ] Optimize pass configuration
-- [ ] Add pass profiling
+- [x] Optimize pass configuration with better state management
+- [x] Add helper functions and error handling improvements
 
 ## Epic 6: Backend Integration
 

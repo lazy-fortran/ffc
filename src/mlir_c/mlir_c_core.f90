@@ -7,6 +7,7 @@ module mlir_c_core
     public :: mlir_context_t, mlir_module_t, mlir_location_t, mlir_string_ref_t
     public :: mlir_region_t, mlir_block_t
     public :: mlir_pass_manager_t, mlir_pass_pipeline_t
+    public :: mlir_lowering_pipeline_t
     
     ! Public functions
     public :: create_mlir_context, destroy_mlir_context
@@ -63,6 +64,12 @@ module mlir_c_core
         procedure :: is_valid => pass_pipeline_is_valid
     end type mlir_pass_pipeline_t
 
+    type :: mlir_lowering_pipeline_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => lowering_pipeline_is_valid
+    end type mlir_lowering_pipeline_t
+
     ! C interface declarations
     interface
         ! Context management
@@ -89,6 +96,15 @@ module mlir_c_core
             type(c_ptr), value :: context
             type(c_ptr) :: location
         end function mlirLocationUnknownGet
+
+        function mlirLocationFileLineColGet(context, filename, line, col) &
+            bind(c, name="mlirLocationFileLineColGet") result(location)
+            import :: c_ptr, c_char, c_int
+            type(c_ptr), value :: context
+            character(kind=c_char), intent(in) :: filename(*)
+            integer(c_int), value :: line, col
+            type(c_ptr) :: location
+        end function mlirLocationFileLineColGet
 
         ! Pass manager operations
         function mlirPassManagerCreate(context) bind(c, name="mlirPassManagerCreate") result(pm)
@@ -227,5 +243,11 @@ contains
         logical :: valid
         valid = c_associated(this%ptr)
     end function pass_pipeline_is_valid
+
+    function lowering_pipeline_is_valid(this) result(valid)
+        class(mlir_lowering_pipeline_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function lowering_pipeline_is_valid
 
 end module mlir_c_core
