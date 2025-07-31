@@ -3,6 +3,7 @@ module ssa_manager
     use mlir_c_core
     use mlir_c_types
     use mlir_c_operations
+    use logger, only: log_debug, log_error
     implicit none
     private
 
@@ -492,21 +493,33 @@ contains
         class(ssa_manager_t), intent(in) :: this
         integer :: i
         
-        print *, "=== SSA Manager Value Dump ==="
-        print *, "Total values:", this%num_values
-        print *, "Next ID:", this%next_id
-        print *
+        call log_debug("=== SSA Manager Value Dump ===")
+        block
+            character(len=32) :: num_str, id_str
+            write(num_str, '(I0)') this%num_values
+            write(id_str, '(I0)') this%next_id
+            call log_debug("Total values: " // trim(num_str))
+            call log_debug("Next ID: " // trim(id_str))
+        end block
         
         do i = 1, this%num_values
-            print *, "Value", i, ":"
-            print *, "  ID:", this%values(i)%id
-            if (allocated(this%values(i)%name)) then
-                print *, "  Name:", this%values(i)%name
-            end if
-            print *, "  Uses:", this%values(i)%use_count
-            print *, "  Defining op valid:", this%values(i)%defining_op%is_valid()
+            block
+                character(len=32) :: val_str, id_str, use_str
+                character(len=:), allocatable :: msg
+                write(val_str, '(I0)') i
+                write(id_str, '(I0)') this%values(i)%id
+                write(use_str, '(I0)') this%values(i)%use_count
+                
+                msg = "Value " // trim(val_str) // ": ID=" // trim(id_str)
+                if (allocated(this%values(i)%name)) then
+                    msg = msg // ", Name=" // this%values(i)%name
+                end if
+                msg = msg // ", Uses=" // trim(use_str)
+                msg = msg // ", DefOp=" // merge("valid  ", "invalid", this%values(i)%defining_op%is_valid())
+                call log_debug(msg)
+            end block
         end do
-        print *, "=============================="
+        call log_debug("==============================")
     end subroutine manager_dump_values
 
     ! Debug helper: get memory usage
@@ -549,7 +562,11 @@ contains
             if (allocated(this%values(i)%name)) then
                 found_index = find_in_hash_table(this, this%values(i)%name)
                 if (found_index /= i) then
-                    print *, "ERROR: Value", i, "name hash lookup failed"
+                    block
+                        character(len=32) :: val_str
+                        write(val_str, '(I0)') i
+                        call log_error("Value " // trim(val_str) // " name hash lookup failed")
+                    end block
                     valid = .false.
                 end if
             end if
@@ -558,7 +575,12 @@ contains
         ! Check for reasonable ID sequence
         do i = 1, this%num_values
             if (this%values(i)%id <= 0 .or. this%values(i)%id >= this%next_id) then
-                print *, "ERROR: Value", i, "has invalid ID", this%values(i)%id
+                block
+                    character(len=32) :: val_str, id_str
+                    write(val_str, '(I0)') i
+                    write(id_str, '(I0)') this%values(i)%id
+                    call log_error("Value " // trim(val_str) // " has invalid ID " // trim(id_str))
+                end block
                 valid = .false.
             end if
         end do

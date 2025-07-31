@@ -6,6 +6,7 @@ module mlir_backend_impl
     use mlir_backend_types
     use mlir_backend, only: generate_mlir_module
     use mlir_compile, only: compile_mlir_to_output, apply_mlir_lowering_passes
+    use logger, only: log_debug, log_info
     implicit none
     private
 
@@ -34,13 +35,17 @@ contains
         error_msg = ""
         output = ""
 
-        print *, "DEBUG: MLIR backend generate_code called"
-        print *, "DEBUG: compile_mode =", options%compile_mode
+        call log_debug("MLIR backend generate_code called")
+        call log_debug("compile_mode = " // merge("true ", "false", options%compile_mode))
 
         ! Generate the MLIR module
-        print *, "DEBUG: MLIR backend about to generate MLIR module"
+        call log_debug("MLIR backend about to generate MLIR module")
         mlir_code = generate_mlir_module(this, arena, prog_index, options)
-        print *, "DEBUG: Generated MLIR length:", len_trim(mlir_code)
+        block
+            character(len=32) :: length_str
+            write(length_str, '(I0)') len_trim(mlir_code)
+            call log_debug("Generated MLIR length: " // trim(length_str))
+        end block
 
         if (allocated(this%error_messages)) then
             error_msg = this%error_messages

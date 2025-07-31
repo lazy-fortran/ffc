@@ -113,10 +113,8 @@ contains
                 mlir = mlir//generate_mlir_expression(backend, arena, node%arg_indices(i), indent_str)
                 arg_ssa = backend%last_ssa_value
                 
-                ! TODO: Determine type from expression and use appropriate output function
-                ! For now, using character output as default
-                mlir = mlir//indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
-                       ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
+                ! Determine type from expression and use appropriate output function
+                mlir = mlir//generate_typed_output_call(backend, arena, node%arg_indices(i), cookie_ssa, arg_ssa, indent_str)
             end do
         end if
 
@@ -446,5 +444,42 @@ contains
         
         mlir = "! generate_mlir_expression placeholder"//new_line('a')
     end function generate_mlir_expression
+
+    ! Generate type-specific output call based on expression type
+    function generate_typed_output_call(backend, arena, expr_index, cookie_ssa, arg_ssa, indent_str) result(mlir)
+        class(mlir_backend_t), intent(inout) :: backend
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        character(len=*), intent(in) :: cookie_ssa, arg_ssa, indent_str
+        character(len=:), allocatable :: mlir
+        
+        ! Simple type detection based on expression node type
+        ! This is a basic implementation - full type analysis would require semantic information
+        if (expr_index > 0 .and. expr_index <= arena%num_nodes) then
+            select case (arena%nodes(expr_index)%node_type)
+            case (LITERAL_INTEGER)
+                ! Integer literal - use integer output
+                mlir = indent_str//"fir.call @_FortranAioOutputInteger32("//cookie_ssa//", "//arg_ssa// &
+                       ") : (!fir.llvm_ptr, i32) -> i1"//new_line('a')
+            case (LITERAL_REAL)
+                ! Real literal - use real output (assuming f64 for now)
+                mlir = indent_str//"fir.call @_FortranAioOutputReal64("//cookie_ssa//", "//arg_ssa// &
+                       ") : (!fir.llvm_ptr, f64) -> i1"//new_line('a')
+            case (LITERAL_STRING)
+                ! String literal - use character output
+                mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
+                       ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
+            case default
+                ! Default to character output for unknown types
+                ! In a complete implementation, this would query the type system
+                mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
+                       ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
+            end select
+        else
+            ! Invalid expression index - use character output as fallback
+            mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
+                   ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
+        end if
+    end function generate_typed_output_call
 
 end module mlir_io_operations

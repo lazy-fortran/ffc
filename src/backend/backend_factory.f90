@@ -3,6 +3,7 @@ module backend_factory
     use backend_constants
     use fortran_backend
     use mlir_backend_impl
+    use logger, only: log_debug
     implicit none
     private
 
@@ -39,7 +40,7 @@ contains
 
         case ("mlir")
             allocate (mlir_backend_impl_t :: backend_instance)
-            print *, "DEBUG: Created MLIR backend"
+            call log_debug("Created MLIR backend")
 
         case ("c")
             error_msg = "C backend not yet implemented"

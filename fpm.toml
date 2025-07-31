@@ -18,5 +18,14 @@ implicit-external = false
 implicit-typing = false
 source-form = "free"
 
+[profiles.release]
+flags = "-O3 -march=native"
+
+[profiles.debug]
+flags = "-g -O0 -fcheck=all -Wall -Wextra"
+
+[profiles.test]
+flags = "-g -O1 -fcheck=bounds"
+
 [[library]]
 source-dir = "src"
