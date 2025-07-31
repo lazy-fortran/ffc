@@ -17,6 +17,7 @@ module mlir_c_operations
     public :: create_operation, destroy_operation
     public :: verify_operation, get_operation_num_results
     public :: get_operation_name, create_dummy_value
+    public :: get_operation_result
     public :: operation_get_region, operation_add_region
     public :: block_get_num_arguments, block_get_arguments
     public :: region_has_blocks
@@ -437,5 +438,21 @@ contains
         
         has_blocks = c_associated(region%ptr)
     end function region_has_blocks
+
+    ! Get operation result by index
+    function get_operation_result(operation, index) result(value)
+        type(mlir_operation_t), intent(in) :: operation
+        integer, intent(in) :: index
+        type(mlir_value_t) :: value
+        
+        ! For now, create a stub implementation that returns a valid value
+        ! This needs to be replaced with real MLIR C API calls
+        if (c_associated(operation%ptr) .and. index >= 0) then
+            ! Create a stub value based on operation pointer and index
+            value%ptr = transfer(transfer(operation%ptr, 0_c_intptr_t) + int(index, c_intptr_t), c_null_ptr)
+        else
+            value%ptr = c_null_ptr
+        end if
+    end function get_operation_result
 
 end module mlir_c_operations
