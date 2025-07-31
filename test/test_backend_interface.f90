@@ -134,7 +134,7 @@ contains
         allocate (backend, source=test_backend)
 
         ! Test polymorphic dispatch
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         call backend%generate_code(arena, 1, options, output, error_msg)
 
         if (output == "test output") then
@@ -159,7 +159,7 @@ contains
         ! Create a test backend that returns an error
         allocate (backend, source=test_backend)
 
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         call backend%generate_code(arena, 1, options, output, error_msg)
 
         if (len_trim(error_msg) > 0) then

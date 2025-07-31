@@ -1,5 +1,5 @@
 program test_assignment_overload_red
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     use backend_interface
     use backend_factory
@@ -17,7 +17,7 @@ program test_assignment_overload_red
     print *, "=== RED phase: Assignment Operator Overloading Test ==="
 
     passed = .false.
-    arena = create_ast_stack()
+    arena = create_ast_arena()
 
     ! Create AST for:
     ! interface assignment(=)

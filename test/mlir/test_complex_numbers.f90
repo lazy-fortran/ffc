@@ -3,7 +3,7 @@ program test_complex_numbers
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_REAL, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_REAL, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -56,7 +56,7 @@ contains
         error_msg = ""
 
         ! Test: complex :: z
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex declaration
         decl_idx = push_declaration(arena, "complex", "z")
@@ -110,7 +110,7 @@ contains
 
         ! Test: complex :: z
         !       z = (3.0, 4.0)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex declaration
         decl_idx = push_declaration(arena, "complex", "z")
@@ -173,7 +173,7 @@ contains
 
         ! Test: complex :: z1, z2, result
         !       result = z1 + z2
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex variables
         z1_idx = push_identifier(arena, "z1")
@@ -238,7 +238,7 @@ contains
         !       real :: r, i
         !       r = real(z)
         !       i = aimag(z)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex variable
         z_idx = push_identifier(arena, "z")
@@ -303,7 +303,7 @@ contains
         error_msg = ""
 
         ! Test: complex literal (1.5, -2.3)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex literal
         real_idx = push_literal(arena, "1.5", LITERAL_REAL)

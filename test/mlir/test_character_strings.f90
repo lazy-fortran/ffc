@@ -3,7 +3,7 @@ program test_character_strings
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_STRING, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -56,7 +56,7 @@ contains
         error_msg = ""
 
         ! Test: character(len=20) :: name
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create character declaration
         decl_idx = push_declaration(arena, "character", "name", kind_value=20)
@@ -109,7 +109,7 @@ contains
 
         ! Test: character(len=20) :: name
         !       name = "Hello World"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create character declaration
         decl_idx = push_declaration(arena, "character", "name", kind_value=20)
@@ -170,7 +170,7 @@ contains
 
         ! Test: character(len=20) :: result
         !       result = "Hello" // " World"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create string literals
         str1_idx = push_literal(arena, '"Hello"', LITERAL_STRING)
@@ -234,7 +234,7 @@ contains
         ! Test: character(len=20) :: str, result
         !       str = "Hello World"
         !       result = str(1:5)  ! substring
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create string variable
         str_idx = push_identifier(arena, "str")
@@ -300,7 +300,7 @@ contains
         ! Test: character(len=20) :: str
         !       integer :: length
         !       length = len(str)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create string variable
         str_idx = push_identifier(arena, "str")

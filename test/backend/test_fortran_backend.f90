@@ -2,7 +2,7 @@ program test_fortran_backend
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_constants
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING
     use ast_factory
     use fortran_backend
     implicit none
@@ -61,7 +61,7 @@ contains
         passed = .false.
 
         ! Create a simple program AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         ! Create program with print statement in body
         lit_idx = push_literal(arena, '"Hello, World!"', LITERAL_STRING)
         print_idx = push_print_statement(arena, "*", [lit_idx])

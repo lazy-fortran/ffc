@@ -1,5 +1,5 @@
 program test_operator_overloading
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL
     use ast_factory
     use backend_interface
     use backend_factory
@@ -42,7 +42,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create AST for:
         ! interface operator(+)
@@ -122,7 +122,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create AST for:
         ! interface operator(==)
@@ -198,7 +198,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create AST for:
         ! interface assignment(=)

@@ -3,7 +3,7 @@ program test_llvm_lowering
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create simple program
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         prog_idx = push_program(arena, "simple", [decl_idx])
 
@@ -99,7 +99,7 @@ contains
         end if
 
         ! Create program with assignment: x = 42
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         x_id = push_identifier(arena, "x")
         val_idx = push_literal(arena, "42", LITERAL_INTEGER)
@@ -152,7 +152,7 @@ contains
         end if
 
         ! Create minimal executable program
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         prog_idx = push_program(arena, "main", [integer ::])
 
         ! Generate MLIR for executable
@@ -197,7 +197,7 @@ contains
         end if
 
         ! Create program with runtime library call (print)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         print_idx = push_subroutine_call(arena, "print", [integer ::])
         prog_idx = push_program(arena, "test", [print_idx])
 

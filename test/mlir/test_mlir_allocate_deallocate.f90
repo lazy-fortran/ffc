@@ -53,7 +53,7 @@ contains
         end if
 
         ! Test that simple allocate uses fir.allocmem (not malloc)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create: integer, pointer :: p
         ptr_idx = push_declaration(arena, "integer", "p", is_pointer=.true.)
@@ -102,7 +102,7 @@ contains
         error_msg = ""
 
         ! Test that array allocate uses fir.allocmem with proper shape
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create: real, allocatable :: arr(:)
         arr_idx = push_declaration(arena, "real", "arr", is_allocatable=.true.)
@@ -154,7 +154,7 @@ contains
         error_msg = ""
 
         ! Test that allocate with stat parameter generates proper error handling
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create: integer, pointer :: p
         ptr_idx = push_declaration(arena, "integer", "p", is_pointer=.true.)
@@ -203,7 +203,7 @@ contains
         error_msg = ""
 
         ! Test that deallocate uses fir.freemem (not free)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create: integer, pointer :: p
         ptr_idx = push_declaration(arena, "integer", "p", is_pointer=.true.)
@@ -253,7 +253,7 @@ contains
         error_msg = ""
 
         ! Test that deallocate with stat parameter generates proper error handling
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create: integer, pointer :: p
         ptr_idx = push_declaration(arena, "integer", "p", is_pointer=.true.)

@@ -3,7 +3,7 @@ program test_types
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
     use ast_factory
     implicit none
 
@@ -54,7 +54,7 @@ contains
         end if
 
         ! Test integer(kind=4) :: x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         prog_idx = push_program(arena, "test", [decl_idx])
 
@@ -97,7 +97,7 @@ contains
         end if
 
         ! Test real :: x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "real", "x")
         prog_idx = push_program(arena, "test", [decl_idx])
 
@@ -140,7 +140,7 @@ contains
         end if
 
         ! Test real, dimension(10) :: arr
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         dim_idx = push_literal(arena, "10", LITERAL_INTEGER)
         decl_idx = push_declaration(arena, "real", "arr", dimension_indices=[dim_idx])
         prog_idx = push_program(arena, "test", [decl_idx])
@@ -186,7 +186,7 @@ contains
         end if
 
         ! Test character :: str
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "character", "str")
         prog_idx = push_program(arena, "test", [decl_idx])
 
@@ -229,7 +229,7 @@ contains
         end if
 
         ! Test mixed arithmetic: 42 + 3.14 (requires type conversion)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         int_lit = push_literal(arena, "42", LITERAL_INTEGER)
         real_lit = push_literal(arena, "3.14", LITERAL_REAL)
         add_idx = push_binary_op(arena, int_lit, real_lit, "+")
@@ -275,7 +275,7 @@ contains
         end if
 
         ! Test mixed type variable arithmetic
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         x_decl = push_declaration(arena, "integer", "x", kind_value=4)
         y_decl = push_declaration(arena, "real", "y")
         x_id = push_identifier(arena, "x")

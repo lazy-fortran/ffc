@@ -3,7 +3,7 @@ program test_ast_mapping
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
     use ast_factory
     implicit none
 
@@ -54,7 +54,7 @@ contains
         end if
 
         ! Create variable declaration AST: integer :: x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         prog_idx = push_program(arena, "test", [decl_idx])
 
@@ -99,7 +99,7 @@ contains
         end if
 
         ! Create AST: z = x + y
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         x_idx = push_identifier(arena, "x")
         y_idx = push_identifier(arena, "y")
         add_idx = push_binary_op(arena, x_idx, y_idx, "+")
@@ -149,7 +149,7 @@ contains
         end if
 
         ! Create AST: do i=1,10; end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         start_idx = push_literal(arena, "1", LITERAL_INTEGER)
         end_idx = push_literal(arena, "10", LITERAL_INTEGER)
       loop_idx = push_do_loop(arena, "i", start_idx, end_idx, body_indices=[integer ::])
@@ -194,7 +194,7 @@ contains
         end if
 
         ! Create AST: if (condition) then; end if
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         true_idx = push_literal(arena, "true", LITERAL_INTEGER)
         if_idx = push_if(arena, true_idx, then_body_indices=[integer ::])
         prog_idx = push_program(arena, "test", [if_idx])
@@ -239,7 +239,7 @@ contains
         end if
 
         ! Create AST: call subroutine()
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         call_idx = push_subroutine_call(arena, "test_sub", [integer ::])
         prog_idx = push_program(arena, "test", [call_idx])
 
@@ -282,7 +282,7 @@ contains
         end if
 
         ! Create complete program: program test; integer :: x; x = 42; end program
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         x_idx = push_identifier(arena, "x")
         val_idx = push_literal(arena, "42", LITERAL_INTEGER)

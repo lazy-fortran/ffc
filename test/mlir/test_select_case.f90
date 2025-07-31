@@ -3,7 +3,7 @@ program test_select_case
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_STRING
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -62,7 +62,7 @@ contains
         !         case (2)
         !           x = a
         !       end select
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create selector variable
         var_idx = push_identifier(arena, "i")
@@ -137,7 +137,7 @@ contains
         !         case ('b')
         !           x = result
         !       end select
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create selector variable
         var_idx = push_identifier(arena, "char_var")
@@ -213,7 +213,7 @@ contains
         !         case (10:20)
         !           x = val
         !       end select
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create selector variable
         var_idx = push_identifier(arena, "i")
@@ -289,7 +289,7 @@ contains
         !         case default
         !           x = default_val
         !       end select
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create selector variable
         var_idx = push_identifier(arena, "i")
@@ -362,7 +362,7 @@ contains
         !         case (1, 3, 5)
         !           x = val
         !       end select
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create selector variable
         var_idx = push_identifier(arena, "i")

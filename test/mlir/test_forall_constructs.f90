@@ -3,7 +3,7 @@ program test_forall_constructs
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -55,7 +55,7 @@ contains
         error_msg = ""
 
         ! Test: forall (i = 1:10) a(i) = i
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -117,7 +117,7 @@ contains
         error_msg = ""
 
         ! Test: forall (i = 1:10, i > 5) a(i) = i
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -185,7 +185,7 @@ contains
         ! Test: forall (i = 1:10)
         !         forall (j = 1:5) a(i,j) = i + j
         !       end forall
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -253,7 +253,7 @@ contains
         error_msg = ""
 
         ! Test: forall (i = 1:n) a(i) = b(i) * 2
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)

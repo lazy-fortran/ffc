@@ -3,7 +3,7 @@ program test_named_do_loops
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -56,7 +56,7 @@ contains
 
         ! Test: outer: do i = 1, 10
         !       end do outer
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create loop bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -117,7 +117,7 @@ contains
         !         inner: do j = 1, 5
         !         end do inner
         !       end do outer
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create loop bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -184,7 +184,7 @@ contains
         !           exit outer
         !         end do inner
         !       end do outer
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create loop bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -254,7 +254,7 @@ contains
         !           cycle outer
         !         end do inner
         !       end do outer
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create loop bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)

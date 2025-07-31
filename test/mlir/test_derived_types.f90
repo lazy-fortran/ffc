@@ -3,7 +3,7 @@ program test_derived_types
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -60,7 +60,7 @@ contains
         !         integer :: x
         !         integer :: y
         !       end type point_t
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create component declarations
         x_decl_idx = push_declaration(arena, "integer", "x")
@@ -120,7 +120,7 @@ contains
         !         integer :: x, y, z
         !         character(len=20) :: name
         !       end type person_t
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create component declarations
         x_decl_idx = push_declaration(arena, "integer", "x")
@@ -184,7 +184,7 @@ contains
         !       end type
         !       type(point_t) :: p
         !       p = point_t(10, 20)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create type definition
         x_decl_idx = push_declaration(arena, "integer", "x")
@@ -255,7 +255,7 @@ contains
         !       end type
         !       type(point_t) :: p
         !       x = p%x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create type definition
         x_decl_idx = push_declaration(arena, "integer", "x")
@@ -326,7 +326,7 @@ contains
         !         type(point_t) :: center
         !         real :: radius
         !       end type
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create point type
         x_decl_idx = push_declaration(arena, "integer", "x")

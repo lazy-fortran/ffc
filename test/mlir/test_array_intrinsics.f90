@@ -3,7 +3,7 @@ program test_array_intrinsics
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -57,7 +57,7 @@ contains
         error_msg = ""
 
         ! Test: n = size(arr)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers
         arr_id = push_identifier(arena, "arr")
@@ -115,7 +115,7 @@ contains
         error_msg = ""
 
         ! Test: s = shape(matrix)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers
         arr_id = push_identifier(arena, "matrix")
@@ -174,7 +174,7 @@ contains
         error_msg = ""
 
         ! Test: lb = lbound(arr, 1); ub = ubound(arr, 1)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers and literals
         arr_id = push_identifier(arena, "arr")
@@ -237,7 +237,7 @@ contains
         error_msg = ""
 
         ! Test: total = sum(arr)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers
         arr_id = push_identifier(arena, "arr")
@@ -296,7 +296,7 @@ contains
         error_msg = ""
 
         ! Test: result = product(arr)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers
         arr_id = push_identifier(arena, "arr")
@@ -356,7 +356,7 @@ contains
         error_msg = ""
 
         ! Test: max_val = maxval(arr); min_val = minval(arr)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create identifiers
         arr_id = push_identifier(arena, "arr")

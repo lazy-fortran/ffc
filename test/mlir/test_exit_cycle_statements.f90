@@ -3,7 +3,7 @@ program test_exit_cycle_statements
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -55,7 +55,7 @@ contains
         error_msg = ""
 
         ! Test: exit
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create exit statement
         exit_idx = push_exit(arena)
@@ -105,7 +105,7 @@ contains
         error_msg = ""
 
         ! Test: cycle
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create cycle statement
         cycle_idx = push_cycle(arena)
@@ -158,7 +158,7 @@ contains
         ! Test: do i = 1, 10
         !         exit
         !       end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create loop bounds
         one_id = push_literal(arena, "1", LITERAL_INTEGER)
@@ -220,7 +220,7 @@ contains
         ! Test: do while (i < 10)
         !         cycle
         !       end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create condition: i < 10
         i_id = push_identifier(arena, "i")

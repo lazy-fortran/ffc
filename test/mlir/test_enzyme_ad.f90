@@ -3,7 +3,7 @@ program test_enzyme_ad
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_REAL, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_REAL, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create simple function: real function f(x); f = x * x; end function
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         param_idx = push_declaration(arena, "real", "x", kind_value=4)
         body_idx = push_binary_op(arena, &
                                   push_identifier(arena, "x"), &
@@ -103,7 +103,7 @@ contains
         end if
 
         ! Create function with mathematical operations: f(x) = x^2 + 2*x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         param_idx = push_declaration(arena, "real", "x", kind_value=4)
         mult_idx = push_binary_op(arena, &
                                   push_identifier(arena, "x"), &
@@ -158,7 +158,7 @@ contains
         end if
 
         ! Create function with AD annotations
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         param_idx = push_declaration(arena, "real", "x", kind_value=4)
         body_idx = push_binary_op(arena, &
                                   push_identifier(arena, "x"), &
@@ -207,7 +207,7 @@ contains
         end if
 
         ! Create simple quadratic function: f(x) = x^2 (derivative should be 2*x)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         param_idx = push_declaration(arena, "real", "x", kind_value=4)
         body_idx = push_binary_op(arena, &
                                   push_identifier(arena, "x"), &

@@ -1,5 +1,5 @@
 program test_generic_procedures
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL
     use ast_factory
     use backend_interface
     use backend_factory
@@ -41,7 +41,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create AST for:
         ! interface add
@@ -123,7 +123,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create interface with two different specific procedures
         func1_idx = push_function_def(arena, "sqrt_int", &
@@ -188,7 +188,7 @@ contains
         passed = .false.
 
         ! Initialize arena
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create interface with procedures for different ranks
         ! For now, create simple interface without actual rank information

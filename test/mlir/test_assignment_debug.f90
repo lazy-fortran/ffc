@@ -1,5 +1,5 @@
 program test_assignment_debug
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     use backend_interface
     use backend_factory
@@ -17,7 +17,7 @@ program test_assignment_debug
     print *, "=== DEBUG: Assignment Operator Overloading ==="
 
     passed = .false.
-    arena = create_ast_stack()
+    arena = create_ast_arena()
 
     ! Create subroutine for assignment operator overload
     func_idx = push_subroutine_def(arena, "vector_assign", &

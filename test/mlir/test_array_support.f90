@@ -3,7 +3,7 @@ program test_array_support
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -56,7 +56,7 @@ contains
         error_msg = ""
 
         ! Create array literal: [1, 2, 3]
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! For now, just test that we can create a simple array declaration
         ! Array literals are not yet supported by AST factory
@@ -107,7 +107,7 @@ contains
         error_msg = ""
 
         ! Create array declarations
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! real :: matrix(10, 20)
         decl1_idx = push_declaration(arena, "real", "matrix", &
@@ -166,7 +166,7 @@ contains
         error_msg = ""
 
         ! Create array indexing: x = arr(5); arr(3) = 42
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         decl1_idx = push_declaration(arena, "integer", "arr", &
                          dimension_indices=[push_literal(arena, "10", LITERAL_INTEGER)])
@@ -252,7 +252,7 @@ prog_idx = push_program(arena, "test", [decl1_idx, decl2_idx, assign1_idx, assig
         error_msg = ""
 
         ! Create 2D array access: element = matrix(2, 2)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         decl1_idx = push_declaration(arena, "real", "matrix", &
                          dimension_indices=[push_literal(arena, "3", LITERAL_INTEGER), &

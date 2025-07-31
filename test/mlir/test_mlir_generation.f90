@@ -2,7 +2,7 @@ program test_mlir_generation
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_factory
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Test that variable declarations use memref.alloca (standard MLIR)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         decl_idx = push_declaration(arena, "x", "integer", 4)
         prog_idx = push_program(arena, "test", [decl_idx])
@@ -95,7 +95,7 @@ contains
         end if
 
         ! Test that array operations use hlfir.elemental
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create simple declaration for now
         arr_idx = push_declaration(arena, "arr", "real", 4)
@@ -141,7 +141,7 @@ contains
         end if
 
         ! Test that assignments use hlfir.assign
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         x_idx = push_declaration(arena, "x", "integer", 4)
         y_idx = push_identifier(arena, "y")
@@ -190,7 +190,7 @@ contains
         end if
 
         ! Test that expressions use standard MLIR types
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         arr_idx = push_declaration(arena, "arr", "real", 4)
         prog_idx = push_program(arena, "test", [arr_idx])
@@ -232,7 +232,7 @@ contains
         end if
 
         ! Test that we don't generate direct FIR operations
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         decl_idx = push_declaration(arena, "x", "real", 4)
         call_idx = push_subroutine_call(arena, "foo", [integer ::])

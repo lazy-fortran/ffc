@@ -35,7 +35,7 @@ contains
         passed = .false.
 
         ! Create AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         mod_idx = push_module(arena, "test_module")
 
         ! Create backend
@@ -83,7 +83,7 @@ contains
         passed = .false.
 
         ! Create AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Add a function to the module
         ! First create parameter declaration
@@ -146,7 +146,7 @@ contains
         passed = .false.
 
         ! Create AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Add use statement
         use_idx = push_use_statement(arena, "math_module")

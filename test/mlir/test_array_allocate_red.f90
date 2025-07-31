@@ -1,5 +1,5 @@
 program test_array_allocate_red
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     use backend_interface
     use backend_factory
@@ -17,7 +17,7 @@ program test_array_allocate_red
     print *, "=== RED phase: Array Allocate with Dimensions Test ==="
 
     passed = .false.
-    arena = create_ast_stack()
+    arena = create_ast_arena()
 
     ! Create AST for:
     ! program test

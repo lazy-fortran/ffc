@@ -41,7 +41,7 @@ contains
         passed = .false.
 
         ! Create AST for: print *, "Hello, World!"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create string literal
         lit_idx = push_literal(arena, "Hello, World!", LITERAL_STRING)
@@ -109,7 +109,7 @@ if (index(mlir_code, "func.func private @_FortranAioBeginExternalListOutput") ==
         passed = .false.
 
         ! Create AST for: write(6,*) "Output"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create literals
         unit_idx = push_literal(arena, "6", LITERAL_INTEGER)
@@ -165,7 +165,7 @@ if (index(mlir_code, "func.func private @_FortranAioBeginExternalListOutput") ==
         ! Create AST for:
         ! integer :: x
         ! read *, x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create variable declaration
         decl_idx = push_declaration(arena, "integer", "x")
@@ -226,7 +226,7 @@ if (index(mlir_code, "func.func private @_FortranAioBeginExternalListOutput") ==
         passed = .false.
 
         ! Create AST for: write(6,'(A,I5)') "Value: ", 42
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create literals
         lit_idx = push_literal(arena, "Value: ", LITERAL_STRING)
@@ -283,7 +283,7 @@ if (index(mlir_code, "func.func private @_FortranAioBeginExternalListOutput") ==
         ! Create AST for:
         ! integer :: stat, x
         ! read(*, *, iostat=stat) x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create variable declarations
         decl_idx = push_declaration(arena, "integer", "stat")
@@ -358,7 +358,7 @@ if (index(mlir_code, "func.func private @_FortranAioBeginExternalListOutput") ==
         call temp_mgr%create("test_io_link")
 
         ! Create simple print program
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         lit_idx = push_literal(arena, "Hello from runtime!", LITERAL_STRING)
         print_idx = push_print_statement(arena, "*", [lit_idx])
         prog_idx = push_program(arena, "test_runtime", [print_idx])

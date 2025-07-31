@@ -1,10 +1,10 @@
-# fortfc
+# ffc
 
 **Fortran Fortran Compiler** - MLIR backend for compilation via HLFIR/LLVM.
 
 ## Overview
 
-fortfc is the compilation backend for the lazy-fortran ecosystem that provides:
+ffc is the compilation backend for the lazy-fortran ecosystem that provides:
 - MLIR code generation with HLFIR targeting
 - LLVM IR emission and optimization
 - Object code and executable generation
@@ -29,22 +29,22 @@ fpm build
 
 Compile a Fortran program:
 ```bash
-fortfc program.f90 -o program
+ffc program.f90 -o program
 ```
 
 Emit HLFIR code:
 ```bash
-fortfc program.f90 --emit-hlfir
+ffc program.f90 --emit-hlfir
 ```
 
 Emit LLVM IR:
 ```bash  
-fortfc program.f90 --emit-llvm -o program.ll
+ffc program.f90 --emit-llvm -o program.ll
 ```
 
 Generate object file:
 ```bash
-fortfc program.f90 -o program.o
+ffc program.f90 -o program.o
 ```
 
 ## Dependencies
@@ -55,7 +55,7 @@ fortfc program.f90 -o program.o
 
 ## Architecture
 
-fortfc uses a modular backend architecture:
+ffc uses a modular backend architecture:
 - `backend_interface` - Abstract backend interface
 - `mlir_backend` - MLIR/HLFIR code generation
 - `fortran_backend` - Standard Fortran emission

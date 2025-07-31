@@ -2,7 +2,7 @@ program test_format_descriptor_parsing
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_factory
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_STRING, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create AST arena for: write(*,'(I5,F10.2,A20)') n, x, name
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create variables to write
         int_idx = push_identifier(arena, "n", 1, 1)
@@ -116,7 +116,7 @@ write_idx = push_write_statement_with_format(arena, "*", [int_idx, real_idx, str
         end if
 
         ! Create AST arena for: write(*,'(3(I5,1X))') arr(1:3)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create array subscript expression
         arr_idx = push_array_section(arena, "arr", 1, 3, 1, 1)
@@ -175,7 +175,7 @@ write_idx = push_write_statement_with_format(arena, "*", [int_idx, real_idx, str
         end if
 
         ! Create AST arena for: write(*,'(E15.7E3)') scientific_val
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create variable
         val_idx = push_identifier(arena, "scientific_val", 1, 1)
@@ -234,7 +234,7 @@ write_idx = push_write_statement_with_format(arena, "*", [int_idx, real_idx, str
         end if
 
         ! Create AST arena for: write(*,fmt) value
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create variables
         val_idx = push_identifier(arena, "value", 1, 1)

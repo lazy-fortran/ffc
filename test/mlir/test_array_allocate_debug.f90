@@ -1,5 +1,5 @@
 program test_array_allocate_debug
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     use backend_interface
     use backend_factory
@@ -16,7 +16,7 @@ program test_array_allocate_debug
 
     print *, "=== DEBUG: Array Allocate with Dimensions ==="
 
-    arena = create_ast_stack()
+    arena = create_ast_arena()
 
     ! Create variable declarations
     decl_idx = push_declaration(arena, "integer", "arr")

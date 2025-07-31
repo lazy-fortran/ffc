@@ -1,7 +1,7 @@
 program ffc_main
     use backend_factory, only: create_backend
     use backend_interface, only: backend_t, backend_options_t
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use frontend, only: lex_source, parse_tokens, analyze_semantics
     implicit none
 
@@ -54,7 +54,7 @@ program ffc_main
     end if
 
     ! Compile source file through frontend
-    arena = create_ast_stack()
+    arena = create_ast_arena()
     call compile_source_file(input_file, arena, prog_index, error_msg)
     if (len_trim(error_msg) > 0) then
         print *, "Error: ", trim(error_msg)

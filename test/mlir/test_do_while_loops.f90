@@ -3,7 +3,7 @@ program test_do_while_loops
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -55,7 +55,7 @@ contains
 
         ! Test: do while (i < 10)
         !       end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create condition: i < 10
         i_id = push_identifier(arena, "i")
@@ -114,7 +114,7 @@ contains
         ! Test: do while (i > 5)
         !         i = i + 1
         !       end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create condition: i > 5
         i_id = push_identifier(arena, "i")
@@ -180,7 +180,7 @@ contains
         !       do while (i < 100)
         !         i = i + 1
         !       end do
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create declaration: integer :: i = 0
         zero_id = push_literal(arena, "0", LITERAL_INTEGER)

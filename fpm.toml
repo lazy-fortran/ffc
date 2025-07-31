@@ -6,17 +6,12 @@ license = "MIT"
 
 [dependencies]
 stdlib = "*"
-fortfront = { git = "https://github.com/lazy-fortran/fortfront.git" }
+fortfront = { path = "../fortfront" }
 
 [build]
 auto-executables = true
 auto-tests = true
 auto-examples = false
-
-[[executable]]
-name = "ffc"
-source-dir = "app"
-main = "main.f90"
 
 [fortran]
 implicit-external = false

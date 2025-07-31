@@ -44,10 +44,10 @@ contains
                "fir.constant 0 : i32) : (i32, !fir.ref<!fir.char<1,0>>, i32) -> !fir.llvm_ptr"//new_line('a')
 
         ! Step 2: Output each argument using appropriate FIR runtime call
-        if (allocated(node%arg_indices)) then
-            do i = 1, size(node%arg_indices)
+        if (allocated(node%expression_indices)) then
+            do i = 1, size(node%expression_indices)
                 ! Generate expression for each argument
-                mlir = mlir//generate_mlir_expression(backend, arena, node%arg_indices(i), indent_str)
+                mlir = mlir//generate_mlir_expression(backend, arena, node%expression_indices(i), indent_str)
                 arg_ssa = backend%last_ssa_value
                 
                 ! Output the argument using FIR runtime call (assuming string for now)
@@ -206,10 +206,10 @@ contains
         mlir = ""
 
         ! HLFIR: Use hlfir.print for compile mode
-        if (allocated(node%arg_indices)) then
-            do i = 1, size(node%arg_indices)
+        if (allocated(node%expression_indices)) then
+            do i = 1, size(node%expression_indices)
                 ! Generate expression for argument
-                arg_expr = generate_mlir_expression(backend, arena, node%arg_indices(i), indent_str)
+                arg_expr = generate_mlir_expression(backend, arena, node%expression_indices(i), indent_str)
                 mlir = mlir//arg_expr
                 
                 ! Generate HLFIR print operation

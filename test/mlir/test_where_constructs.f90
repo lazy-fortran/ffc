@@ -3,7 +3,7 @@ program test_where_constructs
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -59,7 +59,7 @@ contains
         ! Test: where (a > 0)
         !         b = a
         !       end where
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create mask expression: a > 0
         a_idx = push_identifier(arena, "a")
@@ -126,7 +126,7 @@ contains
         !       elsewhere
         !         b = c
         !       end where
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create mask expression: a > 0
         a_idx = push_identifier(arena, "a")
@@ -196,7 +196,7 @@ contains
         !           b = a
         !         end where
         !       end where
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create mask expressions
         a_idx = push_identifier(arena, "a")
@@ -264,7 +264,7 @@ contains
         ! Test: where (a(i) > 0)
         !         b(i) = c(i)
         !       end where
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create array references
         i_idx = push_identifier(arena, "i")
@@ -333,7 +333,7 @@ contains
         ! Test: where (a > 0 .and. a < 10)
         !         b = c
         !       end where
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create complex mask expression: a > 0 .and. a < 10
         a_idx = push_identifier(arena, "a")

@@ -3,7 +3,7 @@ program test_io_proper_implementation
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_STRING
     use ast_factory
     implicit none
 
@@ -59,7 +59,7 @@ contains
         ! open(unit=10, file="test.txt", status="new")
         ! write(10, *) "Hello"
         ! close(10)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! TODO: Need AST factory support for open/close statements
         ! For now, test that file units are properly managed in MLIR
@@ -113,7 +113,7 @@ contains
         error_msg = ""
 
         ! Test memory management for I/O operations
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
       str_idx = push_literal(arena, "Test string for memory management", LITERAL_STRING)
         write_idx = push_write_statement(arena, "10", [str_idx])
@@ -165,7 +165,7 @@ contains
         error_msg = ""
 
         ! Test type-safe I/O with proper type conversion
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         int_idx = push_literal(arena, "42", LITERAL_INTEGER)
         write_idx = push_write_statement(arena, "10", [int_idx])
@@ -217,7 +217,7 @@ contains
         error_msg = ""
 
         ! Test error handling and status checking
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         str_idx = push_literal(arena, "Test", LITERAL_STRING)
         write_idx = push_write_statement(arena, "10", [str_idx])
@@ -268,7 +268,7 @@ contains
         error_msg = ""
 
         ! Test format descriptor parsing: write(10, '(I5)') 42
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         int_idx = push_literal(arena, "42", LITERAL_INTEGER)
         write_idx = push_write_statement(arena, "10", [int_idx], "(I5)")
@@ -319,7 +319,7 @@ contains
         error_msg = ""
 
         ! Test I/O status variable support (iostat, err, end)
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         str_idx = push_literal(arena, "Test", LITERAL_STRING)
         write_idx = push_write_statement(arena, "10", [str_idx])

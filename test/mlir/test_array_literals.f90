@@ -3,7 +3,7 @@ program test_array_literals
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_REAL
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_REAL
     use ast_factory
     use mlir_utils, only: int_to_str
     implicit none
@@ -54,7 +54,7 @@ contains
         error_msg = ""
 
         ! Test: [1, 2, 3, 4, 5]
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Create element nodes first
         do i = 1, 5
@@ -118,7 +118,7 @@ contains
 
         ! Test: integer :: arr(5)
         !       arr = [10, 20, 30, 40, 50]
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! Declare array - need to push dimension as literal nodes
         dim_idx = push_literal(arena, "5", LITERAL_INTEGER)

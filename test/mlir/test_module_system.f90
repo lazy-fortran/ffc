@@ -3,7 +3,7 @@ program test_module_system
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_STRING
     use ast_factory
     implicit none
 
@@ -57,7 +57,7 @@ contains
         ! Test module definition
         ! module my_module
         ! end module my_module
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         module_idx = push_module(arena, "my_module")
         prog_idx = push_program(arena, "test", [module_idx])
@@ -106,7 +106,7 @@ contains
 
         ! Test use statement
         ! use iso_fortran_env
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         use_idx = push_use_statement(arena, "iso_fortran_env")
         prog_idx = push_program(arena, "test", [use_idx])
@@ -158,7 +158,7 @@ contains
         !   private
         !   integer, public :: x
         ! end module my_module
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         decl_idx = push_declaration(arena, "integer", "x")
         module_idx = push_module(arena, "my_module", [decl_idx])
@@ -213,7 +213,7 @@ contains
         !     z = x + y
         !   end function add
         ! end module my_module
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
        func_idx = push_function_def(arena, "add", [integer ::], "integer", [integer ::])
         module_idx = push_module(arena, "my_module", [func_idx])

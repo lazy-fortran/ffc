@@ -3,7 +3,7 @@ program test_basic_generation
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack
+    use ast_core, only: ast_arena_t, create_ast_arena
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create empty program AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         prog_idx = push_program(arena, "empty_prog", [integer ::])
 
         ! Generate MLIR
@@ -95,7 +95,7 @@ contains
         end if
 
         ! Create simple function AST
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         func_idx = push_function_def(arena, "simple_func", &
                                      param_indices=[integer ::], &
                                      return_type="integer", &
@@ -165,7 +165,7 @@ contains
         end if
 
         ! Create program with declaration
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         prog_idx = push_program(arena, "test_prog", [decl_idx])
 

@@ -1009,9 +1009,9 @@ function generate_mlir_pointer_assignment(backend, arena, node, indent_str) resu
         ! by the enclosing loop construct. For now, generate a comment
         ! and a branch that the loop context can handle.
 
-        if (allocated(node%loop_label)) then
-  mlir = indent_str//"// Exit from labeled loop: "//trim(node%loop_label)//new_line('a')
-        mlir = mlir//indent_str//"fir.br ^"//trim(node%loop_label)//"_end"//new_line('a')
+        if (allocated(node%label)) then
+  mlir = indent_str//"// Exit from labeled loop: "//trim(node%label)//new_line('a')
+        mlir = mlir//indent_str//"fir.br ^"//trim(node%label)//"_end"//new_line('a')
         else
             mlir = indent_str//"// Exit statement"//new_line('a')
             mlir = mlir//indent_str//"fir.br ^loop_end"//new_line('a')
@@ -1033,9 +1033,9 @@ function generate_mlir_pointer_assignment(backend, arena, node, indent_str) resu
         ! by the enclosing loop construct. For now, generate a comment
         ! and a branch that the loop context can handle.
 
-        if (allocated(node%loop_label)) then
-   mlir = indent_str//"// Cycle to labeled loop: "//trim(node%loop_label)//new_line('a')
-      mlir = mlir//indent_str//"fir.br ^"//trim(node%loop_label)//"_start"//new_line('a')
+        if (allocated(node%label)) then
+   mlir = indent_str//"// Cycle to labeled loop: "//trim(node%label)//new_line('a')
+      mlir = mlir//indent_str//"fir.br ^"//trim(node%label)//"_start"//new_line('a')
         else
             mlir = indent_str//"// Cycle statement"//new_line('a')
             mlir = mlir//indent_str//"fir.br ^loop_start"//new_line('a')

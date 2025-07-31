@@ -2,7 +2,7 @@ program test_io_statement_options
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_factory
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_STRING, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create AST arena for: write(*,'(A)', advance='NO') "prompt: "
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create string to write
         str_idx = push_literal(arena, "prompt: ", LITERAL_STRING, 1, 1)
@@ -110,7 +110,7 @@ contains
         end if
 
         ! Create AST arena for: read(10, rec=5) data
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create variable to read into
         var_idx = push_identifier(arena, "data", 1, 1)
@@ -171,7 +171,7 @@ contains
         end if
 
         ! Create AST arena for: write(20, pos=100) data
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create data to write
         data_idx = push_identifier(arena, "data", 1, 1)
@@ -231,7 +231,7 @@ contains
         end if
 
         ! Create AST arena for: write(*, '(A)', advance='NO', iostat=ios) data
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create data and iostat variable
         data_idx = push_identifier(arena, "data", 1, 1)

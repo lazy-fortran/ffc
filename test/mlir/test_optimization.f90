@@ -3,7 +3,7 @@ program test_optimization
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -53,7 +53,7 @@ contains
         end if
 
         ! Create simple program with optimization enabled
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         prog_idx = push_program(arena, "test", [decl_idx])
 
@@ -100,7 +100,7 @@ contains
         end if
 
         ! Create program with redundant operations: x = 1 + 1
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         val_idx = push_binary_op(arena, &
                                  push_literal(arena, "1", LITERAL_INTEGER), &
@@ -152,7 +152,7 @@ contains
         end if
 
         ! Create constant expression: 2 * 3 + 1
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         const_expr = push_binary_op(arena, &
                                     push_binary_op(arena, &
                                             push_literal(arena, "2", LITERAL_INTEGER), &
@@ -202,7 +202,7 @@ contains
         end if
 
         ! Create program with unused expression
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         decl_idx = push_declaration(arena, "integer", "x", kind_value=4)
         unused_expr = push_binary_op(arena, &
                                      push_literal(arena, "42", LITERAL_INTEGER), &
@@ -251,7 +251,7 @@ contains
         end if
 
         ! Create simple loop
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         start_idx = push_literal(arena, "1", LITERAL_INTEGER)
         end_idx = push_literal(arena, "10", LITERAL_INTEGER)
       loop_idx = push_do_loop(arena, "i", start_idx, end_idx, body_indices=[integer ::])

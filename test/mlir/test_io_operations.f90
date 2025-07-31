@@ -2,7 +2,7 @@ program test_io_operations
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_factory
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER, LITERAL_STRING
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER, LITERAL_STRING
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Test print statement: print *, "Hello World"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         str_idx = push_literal(arena, "Hello World", LITERAL_STRING)
         print_idx = push_print_statement(arena, "*", [str_idx])
@@ -103,7 +103,7 @@ contains
         end if
 
         ! Test write statement: write(10, *) "Hello World"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         str_idx = push_literal(arena, "Hello World", LITERAL_STRING)
         write_idx = push_write_statement(arena, "10", [str_idx])
@@ -154,7 +154,7 @@ contains
         end if
 
         ! Test read statement: read(5, *) x
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         var_idx = push_identifier(arena, "x")
         read_idx = push_read_statement(arena, "5", [var_idx])
@@ -205,7 +205,7 @@ contains
         end if
 
         ! Test formatted print: print '(I0)', 42
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         fmt_idx = push_literal(arena, "(I0)", LITERAL_STRING)
         var_idx = push_literal(arena, "42", LITERAL_INTEGER)
@@ -257,7 +257,7 @@ contains
         end if
 
         ! Test file write: write(20, *) "File output"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         str_idx = push_literal(arena, "File output", LITERAL_STRING)
         write_idx = push_write_statement(arena, "20", [str_idx])

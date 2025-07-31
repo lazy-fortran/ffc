@@ -3,7 +3,7 @@ program test_subroutines_functions
     use mlir_backend
     use backend_factory
     use backend_interface
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -58,7 +58,7 @@ contains
         error_msg = ""
 
         ! Test subroutine definition
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! subroutine hello()
         !   print *, 'Hello from subroutine!'
@@ -108,7 +108,7 @@ contains
         error_msg = ""
 
         ! Test subroutine call
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! subroutine hello()
         ! end subroutine hello
@@ -162,7 +162,7 @@ contains
         error_msg = ""
 
         ! Test function definition
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! integer function add_one(x)
         !   integer :: x
@@ -215,7 +215,7 @@ contains
         error_msg = ""
 
         ! Test function call
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! integer function get_five()
         !   get_five = 5
@@ -272,7 +272,7 @@ contains
         error_msg = ""
 
         ! Test parameter passing
-        arena = create_ast_stack()
+        arena = create_ast_arena()
 
         ! integer function double_value(x)
         !   integer :: x

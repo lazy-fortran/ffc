@@ -2,7 +2,7 @@ program test_iostat_err_end_specifiers
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_factory
-    use ast_core, only: ast_arena_t, create_ast_stack, LITERAL_STRING, LITERAL_INTEGER
+    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING, LITERAL_INTEGER
     use ast_factory
     implicit none
 
@@ -52,7 +52,7 @@ contains
         end if
 
         ! Create AST arena for: write(*,*,iostat=stat) "test"
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create string literal and iostat variable
         str_idx = push_literal(arena, "test", LITERAL_STRING, 1, 1)
@@ -112,7 +112,7 @@ contains
         end if
 
         ! Create AST arena for: read(*,*,err=100) var
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create variable and error label
         var_idx = push_identifier(arena, "var", 1, 1)
@@ -171,7 +171,7 @@ contains
         end if
 
         ! Create AST arena for: read(*,*,end=200) var
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create variable and end label
         var_idx = push_identifier(arena, "var", 1, 1)
@@ -231,7 +231,7 @@ contains
         end if
 
         ! Create AST arena for: read(*,*,iostat=stat,err=100,end=200) var
-        arena = create_ast_stack()
+        arena = create_ast_arena()
         
         ! Create variable and specifiers
         var_idx = push_identifier(arena, "var", 1, 1)
