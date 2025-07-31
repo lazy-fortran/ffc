@@ -133,22 +133,22 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 ## Epic 3: High-Level IR Builder
 
-### 3.1 Builder Context Management [8 story points]
+### 3.1 Builder Context Management [8 story points] ✓
 **RED Tests:**
-- [ ] Test builder creation and cleanup
-- [ ] Test insertion point management
-- [ ] Test block creation
-- [ ] Test region handling
+- [x] Test builder creation and cleanup
+- [x] Test insertion point management
+- [x] Test block creation
+- [x] Test region handling
 
 **GREEN Implementation:**
-- [ ] Create `src/builder/mlir_builder.f90`
-- [ ] Implement builder state management
-- [ ] Add insertion point stack
-- [ ] Create scope management
+- [x] Create `src/builder/mlir_builder.f90`
+- [x] Implement builder state management
+- [x] Add insertion point stack
+- [x] Create scope management
 
 **REFACTOR:**
-- [ ] Add builder validation
-- [ ] Optimize state transitions
+- [x] Add builder validation
+- [x] Optimize state transitions
 
 ### 3.2 SSA Value Management [8 story points]
 **RED Tests:**

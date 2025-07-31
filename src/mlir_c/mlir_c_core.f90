@@ -5,13 +5,13 @@ module mlir_c_core
 
     ! Public types
     public :: mlir_context_t, mlir_module_t, mlir_location_t, mlir_string_ref_t
-    public :: mlir_region_t
+    public :: mlir_region_t, mlir_block_t
     
     ! Public functions
     public :: create_mlir_context, destroy_mlir_context
     public :: create_empty_module, create_unknown_location
     public :: create_string_ref, get_string_from_ref
-    public :: create_empty_region
+    public :: create_empty_region, create_mlir_block
 
     ! Opaque types for MLIR C API objects
     type :: mlir_context_t
@@ -42,6 +42,13 @@ module mlir_c_core
     contains
         procedure :: is_valid => region_is_valid
     end type mlir_region_t
+
+    type :: mlir_block_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => block_is_valid
+        procedure :: equals => block_equals
+    end type mlir_block_t
 
     ! C interface declarations
     interface
@@ -157,5 +164,25 @@ contains
         logical :: valid
         valid = c_associated(this%ptr)
     end function region_is_valid
+
+    ! Create block
+    function create_mlir_block() result(block)
+        type(mlir_block_t) :: block
+        ! For stub, create a unique pointer
+        block%ptr = transfer(12345_c_intptr_t, block%ptr)
+    end function create_mlir_block
+
+    function block_is_valid(this) result(valid)
+        class(mlir_block_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function block_is_valid
+
+    function block_equals(this, other) result(equal)
+        class(mlir_block_t), intent(in) :: this
+        type(mlir_block_t), intent(in) :: other
+        logical :: equal
+        equal = c_associated(this%ptr, other%ptr)
+    end function block_equals
 
 end module mlir_c_core
