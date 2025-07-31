@@ -4,7 +4,7 @@ program test_hlfir_declare_green
     
     use mlir_c_core
     use mlir_c_types
-    use mlir_c_operations
+    use mlir_c_operations, only: mlir_operation_t, mlir_value_t, get_operation_result, get_operation_num_results
     use mlir_c_operation_builder
     implicit none
     

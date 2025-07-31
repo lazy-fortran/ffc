@@ -54,73 +54,81 @@ module mlir_c_operations
         procedure :: is_valid => value_is_valid
     end type mlir_value_t
 
-    ! C interface declarations
+    ! C interface declarations - using ffc_* wrapper functions
     interface
         ! Operation state creation
-        function mlirOperationStateCreate(name, location) bind(c, name="mlirOperationStateCreate") result(state)
+        function ffc_mlirOperationStateCreate(name, location) bind(c, name="ffc_mlirOperationStateCreate") result(state)
             import :: c_ptr
-            type(c_ptr), value :: name  ! MlirStringRef
+            type(c_ptr), value :: name  ! C string
             type(c_ptr), value :: location
             type(c_ptr) :: state
-        end function mlirOperationStateCreate
+        end function ffc_mlirOperationStateCreate
 
         ! Operation state destruction
-        subroutine mlirOperationStateDestroy(state) bind(c, name="mlirOperationStateDestroy")
+        subroutine ffc_mlirOperationStateDestroy(state) bind(c, name="ffc_mlirOperationStateDestroy")
             import :: c_ptr
             type(c_ptr), value :: state
-        end subroutine mlirOperationStateDestroy
+        end subroutine ffc_mlirOperationStateDestroy
 
         ! Add operands
-        subroutine mlirOperationStateAddOperands(state, n, operands) bind(c, name="mlirOperationStateAddOperands")
+        subroutine ffc_mlirOperationStateAddOperands(state, n, operands) bind(c, name="ffc_mlirOperationStateAddOperands")
             import :: c_ptr, c_intptr_t
             type(c_ptr), value :: state
             integer(c_intptr_t), value :: n
             type(c_ptr), value :: operands  ! pointer to array of MlirValue
-        end subroutine mlirOperationStateAddOperands
+        end subroutine ffc_mlirOperationStateAddOperands
 
         ! Add results
-        subroutine mlirOperationStateAddResults(state, n, results) bind(c, name="mlirOperationStateAddResults")
+        subroutine ffc_mlirOperationStateAddResults(state, n, results) bind(c, name="ffc_mlirOperationStateAddResults")
             import :: c_ptr, c_intptr_t
             type(c_ptr), value :: state
             integer(c_intptr_t), value :: n
             type(c_ptr), value :: results  ! pointer to array of MlirType
-        end subroutine mlirOperationStateAddResults
+        end subroutine ffc_mlirOperationStateAddResults
 
         ! Add attribute
-        subroutine mlirOperationStateAddNamedAttribute(state, name, attribute) &
-            bind(c, name="mlirOperationStateAddNamedAttribute")
+        subroutine ffc_mlirOperationStateAddNamedAttribute(state, name, attribute) &
+            bind(c, name="ffc_mlirOperationStateAddNamedAttribute")
             import :: c_ptr
             type(c_ptr), value :: state
-            type(c_ptr), value :: name  ! MlirStringRef
+            type(c_ptr), value :: name  ! C string
             type(c_ptr), value :: attribute
-        end subroutine mlirOperationStateAddNamedAttribute
+        end subroutine ffc_mlirOperationStateAddNamedAttribute
 
         ! Create operation
-        function mlirOperationCreate(state) bind(c, name="mlirOperationCreate") result(op)
+        function ffc_mlirOperationCreate(state) bind(c, name="ffc_mlirOperationCreate") result(op)
             import :: c_ptr
             type(c_ptr), value :: state
             type(c_ptr) :: op
-        end function mlirOperationCreate
+        end function ffc_mlirOperationCreate
 
         ! Destroy operation
-        subroutine mlirOperationDestroy(op) bind(c, name="mlirOperationDestroy")
+        subroutine ffc_mlirOperationDestroy(op) bind(c, name="ffc_mlirOperationDestroy")
             import :: c_ptr
             type(c_ptr), value :: op
-        end subroutine mlirOperationDestroy
+        end subroutine ffc_mlirOperationDestroy
 
         ! Verify operation
-        function mlirOperationVerify(op) bind(c, name="mlirOperationVerify") result(valid)
-            import :: c_ptr, c_bool
+        function ffc_mlirOperationVerify(op) bind(c, name="ffc_mlirOperationVerify") result(valid)
+            import :: c_ptr, c_int
             type(c_ptr), value :: op
-            logical(c_bool) :: valid
-        end function mlirOperationVerify
+            integer(c_int) :: valid
+        end function ffc_mlirOperationVerify
 
         ! Get number of results
-        function mlirOperationGetNumResults(op) bind(c, name="mlirOperationGetNumResults") result(n)
+        function ffc_mlirOperationGetNumResults(op) bind(c, name="ffc_mlirOperationGetNumResults") result(n)
             import :: c_ptr, c_intptr_t
             type(c_ptr), value :: op
             integer(c_intptr_t) :: n
-        end function mlirOperationGetNumResults
+        end function ffc_mlirOperationGetNumResults
+
+        ! Get operation result
+        function ffc_mlirOperationGetResult(op, index) bind(c, name="ffc_mlirOperationGetResult") result(value)
+            import :: c_ptr, c_intptr_t
+            type(c_ptr), value :: op
+            integer(c_intptr_t), value :: index
+            type(c_ptr) :: value
+        end function ffc_mlirOperationGetResult
     end interface
 
 contains
@@ -131,7 +139,8 @@ contains
         type(mlir_location_t), intent(in) :: location
         type(mlir_operation_state_t) :: state
         
-        state%ptr = mlirOperationStateCreate(c_loc(name), location%ptr)
+        ! Convert string_ref to C string
+        state%ptr = ffc_mlirOperationStateCreate(name%data, location%ptr)
         state%num_operands = 0
         state%num_results = 0
         state%num_attributes = 0
@@ -148,7 +157,7 @@ contains
         type(mlir_operation_state_t), intent(inout) :: state
         
         if (c_associated(state%ptr)) then
-            call mlirOperationStateDestroy(state%ptr)
+            call ffc_mlirOperationStateDestroy(state%ptr)
             state%ptr = c_null_ptr
         end if
         
@@ -240,7 +249,7 @@ contains
         type(mlir_string_ref_t), intent(in), target :: name
         type(mlir_attribute_t), intent(in) :: attribute
         
-        call mlirOperationStateAddNamedAttribute(state%ptr, c_loc(name), attribute%ptr)
+        call ffc_mlirOperationStateAddNamedAttribute(state%ptr, name%data, attribute%ptr)
         state%num_attributes = state%num_attributes + 1
     end subroutine add_attribute
 
@@ -262,7 +271,7 @@ contains
         if (state%num_operands > 0) then
             allocate(temp_operands(state%num_operands))
             temp_operands(1:state%num_operands) = state%operand_ptrs(1:state%num_operands)
-            call mlirOperationStateAddOperands(state%ptr, &
+            call ffc_mlirOperationStateAddOperands(state%ptr, &
                 int(state%num_operands, c_intptr_t), &
                 c_loc(temp_operands))
             deallocate(temp_operands)
@@ -271,14 +280,14 @@ contains
         if (state%num_results > 0) then
             allocate(temp_results(state%num_results))
             temp_results(1:state%num_results) = state%result_ptrs(1:state%num_results)
-            call mlirOperationStateAddResults(state%ptr, &
+            call ffc_mlirOperationStateAddResults(state%ptr, &
                 int(state%num_results, c_intptr_t), &
                 c_loc(temp_results))
             deallocate(temp_results)
         end if
         
         ! Create the operation
-        op%ptr = mlirOperationCreate(state%ptr)
+        op%ptr = ffc_mlirOperationCreate(state%ptr)
     end function create_operation
 
     ! Destroy operation
@@ -286,7 +295,7 @@ contains
         type(mlir_operation_t), intent(inout) :: op
         
         if (c_associated(op%ptr)) then
-            call mlirOperationDestroy(op%ptr)
+            call ffc_mlirOperationDestroy(op%ptr)
             op%ptr = c_null_ptr
         end if
     end subroutine destroy_operation
@@ -297,7 +306,7 @@ contains
         logical :: valid
         
         if (c_associated(op%ptr)) then
-            valid = mlirOperationVerify(op%ptr)
+            valid = (ffc_mlirOperationVerify(op%ptr) /= 0)
         else
             valid = .false.
         end if
@@ -309,7 +318,7 @@ contains
         integer :: n
         
         if (c_associated(op%ptr)) then
-            n = int(mlirOperationGetNumResults(op%ptr))
+            n = int(ffc_mlirOperationGetNumResults(op%ptr))
         else
             n = 0
         end if
@@ -448,8 +457,8 @@ contains
         ! For now, create a stub implementation that returns a valid value
         ! This needs to be replaced with real MLIR C API calls
         if (c_associated(operation%ptr) .and. index >= 0) then
-            ! Create a stub value based on operation pointer and index
-            value%ptr = transfer(transfer(operation%ptr, 0_c_intptr_t) + int(index, c_intptr_t), c_null_ptr)
+            ! Use real MLIR C API to get operation result
+            value%ptr = ffc_mlirOperationGetResult(operation%ptr, int(index, c_intptr_t))
         else
             value%ptr = c_null_ptr
         end if

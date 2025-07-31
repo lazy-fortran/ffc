@@ -515,7 +515,7 @@ Hello, World!
 **Following Flang's HLFIR Design Patterns:**
 
 **RED Tests:**
-- [ ] Test hlfir.declare with complete Fortran variable semantics (shape, type parameters, attributes)
+- [x] Test hlfir.declare with complete Fortran variable semantics (shape, type parameters, attributes)
 - [ ] Test hlfir.designate for array sections, components, substrings
 - [ ] Test hlfir.assign with aliasing analysis and semantic validation
 - [ ] Test hlfir.elemental with index-based array expression representation
@@ -527,7 +527,7 @@ Hello, World!
 - [ ] Test expression fusion and temporary elimination
 
 **GREEN Implementation:**
-- [ ] Implement hlfir.declare with dual SSA results (HLFIR + FIR base)
+- [x] Implement hlfir.declare with dual SSA results (HLFIR + FIR base)
 - [ ] Create hlfir.designate for part-reference operations
 - [ ] Build hlfir.assign with semantic assignment handling
 - [ ] Implement hlfir.elemental as index-function representation

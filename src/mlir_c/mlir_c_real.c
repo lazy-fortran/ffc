@@ -502,6 +502,19 @@ long ffc_mlirOperationGetNumResults(void* op) {
     return mlirOperationGetNumResults(*op_ptr);
 }
 
+void* ffc_mlirOperationGetResult(void* op, long index) {
+    if (!op || index < 0) return NULL;
+    
+    MlirOperation* op_ptr = (MlirOperation*)op;
+    MlirValue result = mlirOperationGetResult(*op_ptr, index);
+    
+    MlirValue* result_ptr = malloc(sizeof(MlirValue));
+    if (!result_ptr) return NULL;
+    
+    *result_ptr = result;
+    return result_ptr;
+}
+
 //===----------------------------------------------------------------------===//
 // Pass Manager API - REAL IMPLEMENTATION
 //===----------------------------------------------------------------------===//
