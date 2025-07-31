@@ -455,25 +455,31 @@ contains
         
         ! Simple type detection based on expression node type
         ! This is a basic implementation - full type analysis would require semantic information
-        if (expr_index > 0 .and. expr_index <= arena%num_nodes) then
-            select case (arena%nodes(expr_index)%node_type)
-            case (LITERAL_INTEGER)
-                ! Integer literal - use integer output
+        if (expr_index > 0 .and. expr_index <= arena%size) then
+            ! Check the actual node type using polymorphism
+            select type (node => arena%entries(expr_index)%node)
+            type is (literal_node)
+                ! Check the literal type
+                select case (node%literal_type)
+                case ("integer")
+                    mlir = indent_str//"fir.call @_FortranAioOutputInteger32("//cookie_ssa//", "//arg_ssa// &
+                           ") : (!fir.llvm_ptr, i32) -> i1"//new_line('a')
+                case ("real")
+                    mlir = indent_str//"fir.call @_FortranAioOutputReal64("//cookie_ssa//", "//arg_ssa// &
+                           ") : (!fir.llvm_ptr, f64) -> i1"//new_line('a')
+                case ("character")
+                    mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
+                           ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
+                case default
+                    ! Default to integer output for unknown literal types
+                    mlir = indent_str//"fir.call @_FortranAioOutputInteger32("//cookie_ssa//", "//arg_ssa// &
+                           ") : (!fir.llvm_ptr, i32) -> i1"//new_line('a')
+                end select
+            class default
+                ! For non-literal nodes, default to integer output
+                ! In a complete implementation, this would query the type system
                 mlir = indent_str//"fir.call @_FortranAioOutputInteger32("//cookie_ssa//", "//arg_ssa// &
                        ") : (!fir.llvm_ptr, i32) -> i1"//new_line('a')
-            case (LITERAL_REAL)
-                ! Real literal - use real output (assuming f64 for now)
-                mlir = indent_str//"fir.call @_FortranAioOutputReal64("//cookie_ssa//", "//arg_ssa// &
-                       ") : (!fir.llvm_ptr, f64) -> i1"//new_line('a')
-            case (LITERAL_STRING)
-                ! String literal - use character output
-                mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
-                       ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
-            case default
-                ! Default to character output for unknown types
-                ! In a complete implementation, this would query the type system
-                mlir = indent_str//"fir.call @_FortranAioOutputCharacter("//cookie_ssa//", "//arg_ssa// &
-                       ", fir.constant 1 : i64) : (!fir.llvm_ptr, !fir.ref<!fir.char<1,?>>, i64) -> i1"//new_line('a')
             end select
         else
             ! Invalid expression index - use character output as fallback

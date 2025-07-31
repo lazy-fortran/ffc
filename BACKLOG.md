@@ -525,10 +525,10 @@ Hello, World!
 
 **RED Tests:**
 - [x] Test hlfir.declare with complete Fortran variable semantics (shape, type parameters, attributes)
-- [ ] Test hlfir.designate for array sections, components, substrings
-- [ ] Test hlfir.assign with aliasing analysis and semantic validation
-- [ ] Test hlfir.elemental with index-based array expression representation
-- [ ] Test hlfir.associate for temporary association management
+- [x] Test hlfir.designate for array sections, components, substrings
+- [x] Test hlfir.assign with aliasing analysis and semantic validation
+- [x] Test hlfir.elemental with index-based array expression representation
+- [x] Test hlfir.associate for temporary association management
 - [ ] Test hlfir.expr<T> type system with deferred materialization
 - [ ] Test transformational intrinsics (hlfir.sum, hlfir.matmul, hlfir.transpose)
 - [ ] Test character operations (hlfir.concat, hlfir.set_length)

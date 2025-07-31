@@ -194,10 +194,15 @@ contains
 
     function benchmark_ssa_generation() result(passed)
         use ssa_manager
+        use mlir_c_core
+        use mlir_c_types
         logical :: passed
         integer :: i, iterations
         real :: start_time, end_time, elapsed
         type(ssa_manager_t) :: ssa_mgr
+        type(mlir_context_t) :: context
+        type(mlir_value_t) :: value
+        type(mlir_type_t) :: i32_type
         character(len=:), allocatable :: value_name
         
         iterations = 100000
@@ -206,12 +211,17 @@ contains
         print *
         print *, "  Benchmarking SSA value generation..."
         
-        call ssa_mgr%init()
+        ! Create context and SSA manager
+        context = create_mlir_context()
+        ssa_mgr = create_ssa_manager(context)
+        
+        ! Create a dummy type for values
+        i32_type = mlir_integer_type_get(context, 32)
         
         call cpu_time(start_time)
         
         do i = 1, iterations
-            value_name = ssa_mgr%next_value()
+            value = ssa_mgr%generate_value(i32_type)
         end do
         
         call cpu_time(end_time)
@@ -221,7 +231,8 @@ contains
               " SSA values in ", elapsed, " seconds"
         print '(A,F8.3,A)', "  Rate: ", real(iterations)/elapsed, " values/second"
         
-        call ssa_mgr%cleanup()
+        call destroy_ssa_manager(ssa_mgr)
+        call destroy_mlir_context(context)
         
         passed = elapsed < 5.0  ! Should complete in under 5 seconds
     end function benchmark_ssa_generation
@@ -240,7 +251,7 @@ contains
         print *
         print *, "  Benchmarking memory allocation patterns..."
         
-        call tracker%init()
+        tracker = create_memory_tracker()
         call tracker%enable_peak_tracking()
         
         call cpu_time(start_time)
@@ -266,7 +277,7 @@ contains
         print '(A,F8.3,A)', "  Rate: ", real(iterations)/elapsed, " operations/second"
         print '(A,I0)', "  Peak tracked allocations: ", tracker%get_peak_usage()
         
-        call tracker%cleanup()
+        call destroy_memory_tracker(tracker)
         
         passed = elapsed < 10.0  ! Should complete in under 10 seconds
     end function benchmark_memory_patterns

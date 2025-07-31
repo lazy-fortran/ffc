@@ -15,7 +15,7 @@ program test_real_mlir_integration
     
     ! Test 1: Context creation and destruction
     print *, "Testing context creation..."
-    context = mlir_context_create()
+    context = create_mlir_context()
     if (.not. context%is_valid()) then
         print *, "FAIL: Context creation failed"
         success = .false.
@@ -25,7 +25,7 @@ program test_real_mlir_integration
     
     ! Test 2: Location creation
     print *, "Testing location creation..."
-    location = mlir_location_unknown_get(context)
+    location = create_unknown_location(context)
     if (.not. location%is_valid()) then
         print *, "FAIL: Location creation failed"
         success = .false.
@@ -35,7 +35,7 @@ program test_real_mlir_integration
     
     ! Test 3: Module creation
     print *, "Testing module creation..."
-    module = mlir_module_create_empty(location)
+    module = create_empty_module(location)
     if (.not. module%is_valid()) then
         print *, "FAIL: Module creation failed"
         success = .false.
@@ -49,7 +49,7 @@ program test_real_mlir_integration
     ! This is our "canary" test to ensure we're not using stubs
     
     ! Cleanup
-    call context%destroy()
+    call destroy_mlir_context(context)
     
     if (success) then
         print *, "=== ALL TESTS PASSED: Real MLIR Integration Working ==="

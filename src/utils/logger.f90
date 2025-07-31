@@ -4,17 +4,17 @@ module logger
     private
 
     public :: log_level_t, logger_t, global_logger
-    public :: LOG_ERROR, LOG_WARN, LOG_INFO, LOG_DEBUG
+    public :: LOG_LEVEL_ERROR, LOG_LEVEL_WARN, LOG_LEVEL_INFO, LOG_LEVEL_DEBUG
     public :: log_error, log_warn, log_info, log_debug
 
     ! Log levels
-    integer, parameter :: LOG_ERROR = 1
-    integer, parameter :: LOG_WARN  = 2
-    integer, parameter :: LOG_INFO  = 3
-    integer, parameter :: LOG_DEBUG = 4
+    integer, parameter :: LOG_LEVEL_ERROR = 1
+    integer, parameter :: LOG_LEVEL_WARN  = 2
+    integer, parameter :: LOG_LEVEL_INFO  = 3
+    integer, parameter :: LOG_LEVEL_DEBUG = 4
 
     type :: log_level_t
-        integer :: level = LOG_INFO
+        integer :: level = LOG_LEVEL_INFO
         character(len=:), allocatable :: prefix
     contains
         procedure :: set_level => log_level_set
@@ -47,13 +47,13 @@ contains
         integer, intent(in) :: level
         this%level = level
         select case(level)
-        case(LOG_ERROR)
+        case(LOG_LEVEL_ERROR)
             this%prefix = "ERROR"
-        case(LOG_WARN)
+        case(LOG_LEVEL_WARN)
             this%prefix = "WARN"
-        case(LOG_INFO)
+        case(LOG_LEVEL_INFO)
             this%prefix = "INFO"
-        case(LOG_DEBUG)
+        case(LOG_LEVEL_DEBUG)
             this%prefix = "DEBUG"
         case default
             this%prefix = "UNKNOWN"
@@ -87,7 +87,7 @@ contains
         if (.not. this%enabled .or. .not. this%level%should_log(level)) return
 
         unit_to_use = this%output_unit
-        if (level == LOG_ERROR .or. level == LOG_WARN) unit_to_use = this%error_unit_val
+        if (level == LOG_LEVEL_ERROR .or. level == LOG_LEVEL_WARN) unit_to_use = this%error_unit_val
 
         write(unit_to_use, '("[", A, "] ", A)') this%level%prefix, message
     end subroutine logger_log
@@ -95,25 +95,25 @@ contains
     subroutine logger_error(this, message)
         class(logger_t), intent(in) :: this
         character(len=*), intent(in) :: message
-        call this%log(LOG_ERROR, message)
+        call this%log(LOG_LEVEL_ERROR, message)
     end subroutine logger_error
 
     subroutine logger_warn(this, message)
         class(logger_t), intent(in) :: this
         character(len=*), intent(in) :: message
-        call this%log(LOG_WARN, message)
+        call this%log(LOG_LEVEL_WARN, message)
     end subroutine logger_warn
 
     subroutine logger_info(this, message)
         class(logger_t), intent(in) :: this
         character(len=*), intent(in) :: message
-        call this%log(LOG_INFO, message)
+        call this%log(LOG_LEVEL_INFO, message)
     end subroutine logger_info
 
     subroutine logger_debug(this, message)
         class(logger_t), intent(in) :: this
         character(len=*), intent(in) :: message
-        call this%log(LOG_DEBUG, message)
+        call this%log(LOG_LEVEL_DEBUG, message)
     end subroutine logger_debug
 
     ! Convenience functions for global logger

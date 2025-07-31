@@ -14,14 +14,14 @@ module lowering_pipeline
 
     ! Public API for lowering pipeline
     public :: create_lowering_pipeline, destroy_lowering_pipeline
-    public :: pipeline_has_pass, apply_lowering_pipeline
+    public :: apply_lowering_pipeline
     public :: create_test_hlfir_operation, is_hlfir_operation
     public :: get_lowered_operation, is_fir_operation
     public :: has_hlfir_operations, has_fir_operations
     public :: create_test_fir_operation, is_llvm_operation
     public :: configure_target_info, pipeline_has_target_info
-    public :: create_optimization_pipeline, pipeline_has_passes
-    public :: pipeline_pass_count, create_optimizable_test_module
+    public :: create_optimization_pipeline
+    public :: create_optimizable_test_module
     public :: count_operations, set_optimization_level
     public :: pipeline_has_optimization_level, module_is_optimized
     public :: has_dead_code, has_redundant_operations
@@ -292,27 +292,6 @@ contains
         state%is_active = .false.
     end subroutine cleanup_pipeline_state
 
-    ! Check if pipeline has specific pass
-    function pipeline_has_pass(pipeline, pass_name) result(has_pass)
-        type(mlir_lowering_pipeline_t), intent(in) :: pipeline
-        character(len=*), intent(in) :: pass_name
-        logical :: has_pass
-        integer :: pipeline_id, i
-
-        has_pass = .false.
-        pipeline_id = get_pipeline_id(pipeline)
-        if (pipeline_id == 0) return
-
-        if (allocated(pipeline_states(pipeline_id)%pass_names)) then
-            do i = 1, pipeline_states(pipeline_id)%pass_count
-                if (trim(pipeline_states(pipeline_id)%pass_names(i)) == trim(pass_name)) then
-                    has_pass = .true.
-                    exit
-                end if
-            end do
-        end if
-    end function pipeline_has_pass
-
     ! Apply lowering pipeline to module
     function apply_lowering_pipeline(pipeline, module) result(success)
         type(mlir_lowering_pipeline_t), intent(in) :: pipeline
@@ -340,9 +319,12 @@ contains
 
         ! Create simple HLFIR declare operation
         int_type = create_integer_type(builder%context, 32)
-        dummy_value = create_dummy_value(int_type)
+        dummy_value = create_dummy_value(builder%context)
         
-        operation = create_hlfir_declare(builder%context, dummy_value, "test_var")
+        operation = create_hlfir_declare(builder%context, dummy_value, &
+            create_string_attribute(builder%context, "test_var"), &
+            int_type, &
+            create_empty_array_attribute(builder%context))
     end function create_test_hlfir_operation
 
     ! Check if operation is HLFIR
@@ -401,7 +383,8 @@ contains
 
         ! Create simple FIR alloca operation
         int_type = create_integer_type(builder%context, 32)
-        operation = create_fir_alloca(builder%context, int_type)
+        operation = create_fir_alloca(builder%context, int_type, &
+            create_reference_type(builder%context, int_type))
     end function create_test_fir_operation
 
     ! Configure target information
@@ -524,41 +507,6 @@ contains
         pipeline_str = trim(pipeline_str) // ")"
     end function build_pipeline_string
 
-    ! Check if pipeline has all passes
-    function pipeline_has_passes(pipeline, passes) result(has_passes)
-        type(mlir_lowering_pipeline_t), intent(in) :: pipeline
-        character(len=*), dimension(:), intent(in) :: passes
-        logical :: has_passes
-        integer :: pipeline_id, i
-
-        has_passes = .true.
-        pipeline_id = get_pipeline_id(pipeline)
-        if (pipeline_id == 0) then
-            has_passes = .false.
-            return
-        end if
-
-        do i = 1, size(passes)
-            if (.not. pipeline_has_pass(pipeline, passes(i))) then
-                has_passes = .false.
-                exit
-            end if
-        end do
-    end function pipeline_has_passes
-
-    ! Get pipeline pass count
-    function pipeline_pass_count(pipeline) result(count)
-        type(mlir_lowering_pipeline_t), intent(in) :: pipeline
-        integer :: count
-        integer :: pipeline_id
-
-        count = 0
-        pipeline_id = get_pipeline_id(pipeline)
-        if (pipeline_id > 0) then
-            count = pipeline_states(pipeline_id)%pass_count
-        end if
-    end function pipeline_pass_count
-
     ! Create optimizable test module
     subroutine create_optimizable_test_module(builder, module)
         type(mlir_builder_t), intent(in) :: builder
@@ -572,13 +520,16 @@ contains
         
         ! Dead code: unused constant
         unused_op = create_arith_constant(builder%context, &
-            create_integer_attribute(builder%context, int_type, 42_c_int64_t))
+            create_integer_attribute(builder%context, int_type, 42_c_int64_t), &
+            int_type)
         
         ! Redundant computation: 2 + 3 (can be constant folded)
         const_op1 = create_arith_constant(builder%context, &
-            create_integer_attribute(builder%context, int_type, 2_c_int64_t))
+            create_integer_attribute(builder%context, int_type, 2_c_int64_t), &
+            int_type)
         const_op2 = create_arith_constant(builder%context, &
-            create_integer_attribute(builder%context, int_type, 3_c_int64_t))
+            create_integer_attribute(builder%context, int_type, 3_c_int64_t), &
+            int_type)
         
         ! Store operations in module (simplified)
     end subroutine create_optimizable_test_module
@@ -673,7 +624,7 @@ contains
         ! Configure complete lowering: HLFIR -> FIR -> LLVM
         allocate(pipeline_states(pipeline_id)%pass_names(3))
         pipeline_states(pipeline_id)%pass_names = &
-            ["convert-hlfir-to-fir", "canonicalize       ", "convert-fir-to-llvm"]
+            ["convert-hlfir-to-fir", "canonicalize        ", "convert-fir-to-llvm "]
         pipeline_states(pipeline_id)%pass_count = 3
 
         ! Configure pass manager
@@ -724,9 +675,9 @@ contains
         end do
         c_filename(len_trim(filename) + 1) = c_null_char
 
-        ! Create file location using C API
-        location%ptr = mlirLocationFileLineColGet(context%ptr, c_filename, &
-            int(line, c_int), int(column, c_int))
+        ! For now, just return unknown location
+        ! TODO: Add proper file location support when C API wrapper is available
+        location = create_unknown_location(context)
 
         deallocate(c_filename)
     end function create_file_location
@@ -741,7 +692,8 @@ contains
         ! Create simple operation with location info
         int_type = create_integer_type(builder%context, 32)
         operation = create_arith_constant(builder%context, &
-            create_integer_attribute(builder%context, int_type, 1_c_int64_t))
+            create_integer_attribute(builder%context, int_type, 1_c_int64_t), &
+            int_type)
         
         ! Mark as having debug info
         operation%ptr = transfer(77777_c_intptr_t, operation%ptr)
