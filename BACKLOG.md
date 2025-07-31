@@ -117,19 +117,19 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [x] Share code with FIR bindings
 - [x] Create dialect-agnostic helpers
 
-### 2.3 Standard Dialects Integration [5 story points]
+### 2.3 Standard Dialects Integration [5 story points] ✓
 **RED Tests:**
-- [ ] Test func dialect operations
-- [ ] Test arith dialect operations
-- [ ] Test scf dialect operations
+- [x] Test func dialect operations
+- [x] Test arith dialect operations
+- [x] Test scf dialect operations
 
 **GREEN Implementation:**
-- [ ] Create interfaces for standard dialects
-- [ ] Add operation builders
-- [ ] Test with simple examples
+- [x] Create interfaces for standard dialects
+- [x] Add operation builders
+- [x] Test with simple examples
 
 **REFACTOR:**
-- [ ] Unify dialect registration
+- [x] Unify dialect registration
 
 ## Epic 3: High-Level IR Builder
 

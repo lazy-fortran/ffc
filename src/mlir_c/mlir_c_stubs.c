@@ -215,3 +215,19 @@ void* mlirGetDialectHandle__hlfir__() {
     static int hlfir_handle_dummy = 0;
     return &hlfir_handle_dummy;
 }
+
+// Standard Dialect stubs
+void* mlirGetDialectHandle__func__() {
+    static int func_handle_dummy = 0;
+    return &func_handle_dummy;
+}
+
+void* mlirGetDialectHandle__arith__() {
+    static int arith_handle_dummy = 0;
+    return &arith_handle_dummy;
+}
+
+void* mlirGetDialectHandle__scf__() {
+    static int scf_handle_dummy = 0;
+    return &scf_handle_dummy;
+}
