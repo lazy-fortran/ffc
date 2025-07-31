@@ -351,23 +351,23 @@ Tasks are organized by epic and follow a strict RED/GREEN/REFACTOR test-driven d
 
 ## Epic 6: Backend Integration
 
-### 6.1 Refactor MLIR Backend [13 story points]
+### 6.1 Refactor MLIR Backend [13 story points] ✓
 **RED Tests:**
-- [ ] Test C API backend against existing tests
-- [ ] Test compilation to object files
-- [ ] Test executable generation
-- [ ] Test optimization levels
+- [x] Test C API backend against existing tests
+- [x] Test compilation to object files
+- [x] Test executable generation
+- [x] Test optimization levels
 
 **GREEN Implementation:**
-- [ ] Create `src/backend/mlir_c_backend.f90`
-- [ ] Replace text generation with C API calls
-- [ ] Update compilation pipeline
-- [ ] Maintain backward compatibility
+- [x] Create `src/backend/mlir_c_backend.f90`
+- [x] Replace text generation with C API calls
+- [x] Update compilation pipeline with lowering support
+- [x] Maintain backward compatibility with backend interface
 
 **REFACTOR:**
-- [ ] Remove text generation code
-- [ ] Optimize compilation pipeline
-- [ ] Clean up interfaces
+- [x] Remove all text generation code
+- [x] Optimize compilation pipeline with proper error handling
+- [x] Clean up interfaces with better organization
 
 ### 6.2 Memory Management [8 story points]
 **RED Tests:**
