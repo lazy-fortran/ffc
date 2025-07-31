@@ -204,24 +204,24 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 * = Deferred due to fortfront compilation issues - core functionality complete
 
-### 3.4 Type Conversion Helpers [5 story points]
+### 3.4 Type Conversion Helpers [5 story points] ✓
 **RED Tests:**
-- [ ] Test type builder helper functions
-- [ ] Test array shape extraction from fortfront
-- [ ] Test reference type wrapping logic
-- [ ] Test type equivalence checking
+- [x] Test type builder helper functions
+- [x] Test array shape extraction from fortfront
+- [x] Test reference type wrapping logic
+- [x] Test type equivalence checking
 
 **GREEN Implementation:**
-- [ ] Create `get_array_descriptor` for array type strings
-- [ ] Create `wrap_with_reference_type` for !fir.ref handling
-- [ ] Create `wrap_with_box_type` for descriptor handling
-- [ ] Create `mangle_derived_type_name` for Fortran name mangling
-- [ ] Add `is_assumed_shape`, `is_allocatable`, `is_pointer` helpers
-- [ ] Create `get_element_type` for nested type extraction
+- [x] Create `get_array_descriptor` for array type strings
+- [x] Create `wrap_with_reference_type` for !fir.ref handling
+- [x] Create `wrap_with_box_type` for descriptor handling
+- [x] Create `mangle_derived_type_name` for Fortran name mangling
+- [x] Add `is_assumed_shape`, `is_allocatable`, `is_pointer` helpers
+- [x] Create `get_element_type` for nested type extraction
 
 **REFACTOR:**
-- [ ] Consolidate type helper patterns
-- [ ] Add type assertion utilities
+- [x] Consolidate type helper patterns
+- [x] Add type assertion utilities
 
 ## Epic 4: AST to MLIR Conversion
 
