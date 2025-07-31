@@ -136,3 +136,66 @@ double mlirFloatAttrGetValueDouble(void* attr) {
 long mlirArrayAttrGetNumElements(void* attr) {
     return 3;  // Stub value
 }
+
+// Operation system stubs
+typedef struct {
+    char* name;
+    void* location;
+    int num_operands;
+    int num_results;
+    int num_attributes;
+} MlirOperationState;
+
+void* mlirOperationStateCreate(void* name, void* location) {
+    MlirOperationState* state = malloc(sizeof(MlirOperationState));
+    state->name = "test.op";  // Simplified
+    state->location = location;
+    state->num_operands = 0;
+    state->num_results = 0;
+    state->num_attributes = 0;
+    return state;
+}
+
+void mlirOperationStateDestroy(void* state) {
+    if (state) {
+        free(state);
+    }
+}
+
+void mlirOperationStateAddOperands(void* state, long n, void* operands) {
+    if (state) {
+        ((MlirOperationState*)state)->num_operands += n;
+    }
+}
+
+void mlirOperationStateAddResults(void* state, long n, void* results) {
+    if (state) {
+        ((MlirOperationState*)state)->num_results += n;
+    }
+}
+
+void mlirOperationStateAddNamedAttribute(void* state, void* name, void* attribute) {
+    if (state) {
+        ((MlirOperationState*)state)->num_attributes++;
+    }
+}
+
+void* mlirOperationCreate(void* state) {
+    // Return the state as a dummy operation
+    return state;
+}
+
+void mlirOperationDestroy(void* op) {
+    // Don't free here as it's already freed by state destroy
+}
+
+int mlirOperationVerify(void* op) {
+    return 1;  // Always valid for stub
+}
+
+long mlirOperationGetNumResults(void* op) {
+    if (op) {
+        return ((MlirOperationState*)op)->num_results;
+    }
+    return 0;
+}

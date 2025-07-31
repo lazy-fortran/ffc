@@ -56,23 +56,23 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [x] Unify attribute creation API
 - [x] Add attribute validation
 
-### 1.4 Operation Builder Infrastructure [8 story points]
+### 1.4 Operation Builder Infrastructure [8 story points] ✓
 **RED Tests:**
-- [ ] Test operation state creation
-- [ ] Test operand addition
-- [ ] Test result type specification
-- [ ] Test attribute attachment
-- [ ] Test operation creation and verification
+- [x] Test operation state creation
+- [x] Test operand addition
+- [x] Test result type specification
+- [x] Test attribute attachment
+- [x] Test operation creation and verification
 
 **GREEN Implementation:**
-- [ ] Create `src/mlir_c/mlir_c_operations.f90`
-- [ ] Implement operation state management
-- [ ] Add operation builder helpers
-- [ ] Create operation verification wrapper
+- [x] Create `src/mlir_c/mlir_c_operations.f90`
+- [x] Implement operation state management
+- [x] Add operation builder helpers
+- [x] Create operation verification wrapper
 
 **REFACTOR:**
-- [ ] Create fluent API for operation building
-- [ ] Add operation templates
+- [x] Create fluent API for operation building
+- [x] Add operation templates
 
 ## Epic 2: Dialect C Bindings
 
