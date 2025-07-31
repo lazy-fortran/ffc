@@ -76,26 +76,26 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 
 ## Epic 2: Dialect C Bindings
 
-### 2.1 Generate FIR Dialect C Bindings [13 story points]
+### 2.1 Generate FIR Dialect C Bindings [13 story points] ✓
 **RED Tests:**
-- [ ] Test FIR dialect registration
-- [ ] Test fir.declare operation
-- [ ] Test fir.load operation
-- [ ] Test fir.store operation
-- [ ] Test fir.alloca operation
-- [ ] Test fir.do_loop operation
-- [ ] Test fir.if operation
+- [x] Test FIR dialect registration
+- [x] Test fir.declare operation
+- [x] Test fir.load operation
+- [x] Test fir.store operation
+- [x] Test fir.alloca operation
+- [x] Test fir.do_loop operation
+- [x] Test fir.if operation
 
 **GREEN Implementation:**
-- [ ] Create C++ binding generator for FIR
-- [ ] Generate `src/dialects/fir_c_api.h`
-- [ ] Generate `src/dialects/fir_c_api.cpp`
-- [ ] Create Fortran interface `src/dialects/fir_dialect.f90`
-- [ ] Implement operation builders for each FIR op
+- [x] Create C++ binding generator for FIR
+- [x] Generate `src/dialects/fir_c_api.h`
+- [x] Generate `src/dialects/fir_c_api.cpp`
+- [x] Create Fortran interface `src/dialects/fir_dialect.f90`
+- [x] Implement operation builders for each FIR op
 
 **REFACTOR:**
-- [ ] Create operation builder templates
-- [ ] Optimize common patterns
+- [x] Create operation builder templates
+- [x] Optimize common patterns
 
 ### 2.2 Generate HLFIR Dialect C Bindings [13 story points]
 **RED Tests:**

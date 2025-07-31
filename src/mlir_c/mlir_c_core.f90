@@ -5,11 +5,13 @@ module mlir_c_core
 
     ! Public types
     public :: mlir_context_t, mlir_module_t, mlir_location_t, mlir_string_ref_t
+    public :: mlir_region_t
     
     ! Public functions
     public :: create_mlir_context, destroy_mlir_context
     public :: create_empty_module, create_unknown_location
     public :: create_string_ref, get_string_from_ref
+    public :: create_empty_region
 
     ! Opaque types for MLIR C API objects
     type :: mlir_context_t
@@ -34,6 +36,12 @@ module mlir_c_core
         type(c_ptr) :: data = c_null_ptr
         integer(c_size_t) :: length = 0
     end type mlir_string_ref_t
+
+    type :: mlir_region_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => region_is_valid
+    end type mlir_region_t
 
     ! C interface declarations
     interface
@@ -134,5 +142,20 @@ contains
         logical :: valid
         valid = c_associated(this%ptr)
     end function location_is_valid
+
+    ! Create empty region
+    function create_empty_region(context) result(region)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_region_t) :: region
+        
+        ! For stub, just create a non-null pointer
+        region%ptr = context%ptr
+    end function create_empty_region
+
+    function region_is_valid(this) result(valid)
+        class(mlir_region_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function region_is_valid
 
 end module mlir_c_core

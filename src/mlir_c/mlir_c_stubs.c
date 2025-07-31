@@ -199,3 +199,13 @@ long mlirOperationGetNumResults(void* op) {
     }
     return 0;
 }
+
+// FIR Dialect stubs
+void* mlirGetDialectHandle__fir__() {
+    static int fir_handle_dummy = 0;
+    return &fir_handle_dummy;
+}
+
+void mlirDialectHandleRegisterDialect(void* handle, void* context) {
+    // No-op for stub
+}
