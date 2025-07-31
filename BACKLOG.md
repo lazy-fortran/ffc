@@ -97,25 +97,25 @@ This backlog details the tasks required to transition fortfc from text-based MLI
 - [x] Create operation builder templates
 - [x] Optimize common patterns
 
-### 2.2 Generate HLFIR Dialect C Bindings [13 story points]
+### 2.2 Generate HLFIR Dialect C Bindings [13 story points] ✓
 **RED Tests:**
-- [ ] Test HLFIR dialect registration
-- [ ] Test hlfir.declare operation
-- [ ] Test hlfir.designate operation
-- [ ] Test hlfir.elemental operation
-- [ ] Test hlfir.associate operation
-- [ ] Test hlfir.end_associate operation
+- [x] Test HLFIR dialect registration
+- [x] Test hlfir.declare operation
+- [x] Test hlfir.designate operation
+- [x] Test hlfir.elemental operation
+- [x] Test hlfir.associate operation
+- [x] Test hlfir.end_associate operation
 
 **GREEN Implementation:**
-- [ ] Create C++ binding generator for HLFIR
-- [ ] Generate `src/dialects/hlfir_c_api.h`
-- [ ] Generate `src/dialects/hlfir_c_api.cpp`
-- [ ] Create Fortran interface `src/dialects/hlfir_dialect.f90`
-- [ ] Implement operation builders
+- [x] Create C++ binding generator for HLFIR
+- [x] Generate `src/dialects/hlfir_c_api.h`
+- [x] Generate `src/dialects/hlfir_c_api.cpp`
+- [x] Create Fortran interface `src/dialects/hlfir_dialect.f90`
+- [x] Implement operation builders
 
 **REFACTOR:**
-- [ ] Share code with FIR bindings
-- [ ] Create dialect-agnostic helpers
+- [x] Share code with FIR bindings
+- [x] Create dialect-agnostic helpers
 
 ### 2.3 Standard Dialects Integration [5 story points]
 **RED Tests:**

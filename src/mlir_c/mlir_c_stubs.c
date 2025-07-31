@@ -209,3 +209,9 @@ void* mlirGetDialectHandle__fir__() {
 void mlirDialectHandleRegisterDialect(void* handle, void* context) {
     // No-op for stub
 }
+
+// HLFIR Dialect stubs
+void* mlirGetDialectHandle__hlfir__() {
+    static int hlfir_handle_dummy = 0;
+    return &hlfir_handle_dummy;
+}
