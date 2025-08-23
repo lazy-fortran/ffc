@@ -467,7 +467,7 @@ end type resource_manager_t
 
 ## Pass Management API
 
-### pass_manager Module
+### ffc_pass_manager Module
 
 MLIR pass pipeline management.
 

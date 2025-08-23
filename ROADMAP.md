@@ -2,7 +2,7 @@
 
 **HLFIR-FIRST PRINCIPLE**: Always use HLFIR operations, FIR only as fallback, let LLVM handle lowering
 
-## Current Status: Infrastructure Ready, Blocked on fortfront
+## Current Status: Infrastructure Ready, fortfront Integration Simplified
 
 ### ✅ Complete
 - MLIR C API wrapper infrastructure (51 modules)
@@ -10,10 +10,12 @@
 - Build system with LLVM/MLIR detection
 - Test harness (82 infrastructure tests)
 - Real MLIR integration validated
+- **fpm automatic static linking to fortfront** (configured in fpm.toml)
 
 ### 🚧 Blocked
 - **fortfront Issue #32**: Need node accessor functions for AST traversal
 - Cannot proceed with compilation until AST access restored
+- **NOTE**: fmp handles fortfront dependency automatically - no manual linking needed
 
 ### 🎯 Immediate Goal
 Compile `program hello; end program` to working executable
@@ -24,21 +26,25 @@ Compile `program hello; end program` to working executable
 
 ### Issue #1: Create fortfront stub bridge [3 points]
 **Goal**: Mock fortfront interface for development while waiting for real API
+**Architecture**: fmp automatically handles static linking to fortfront dependency
 **Tasks**:
 - Create `src/frontend/fortfront_mock.f90` with hardcoded AST
 - Mock parsing `program hello; end program`
 - Define AST node interface we need from fortfront
 - Document required fortfront API for Issue #32
-**Verification**: Can traverse mock AST structure
+- Leverage fpm's automatic dependency management (already configured)
+**Verification**: Can traverse mock AST structure with automatic fortfront linking
 
 ### Issue #2: Design fortfront integration API [2 points]
 **Goal**: Define exact interface needed from fortfront
+**Architecture**: Integration simplified by fpm's automatic static linking
 **Tasks**:
 - Document all AST node types we need to access
 - Define traversal pattern requirements
 - Create interface specification for fortfront team
 - Submit as comment on fortfront Issue #32
-**Verification**: Clear specification ready for fortfront
+- Confirm fpm dependency resolution works correctly
+**Verification**: Clear specification ready for fortfront with confirmed build integration
 
 ---
 
@@ -590,10 +596,11 @@ Compile `program hello; end program` to working executable
 ## Risk Mitigation
 
 ### Technical Risks
-1. **fortfront blocking**: Use mock bridge initially
+1. **fortfront blocking**: Use mock bridge initially; fpm handles linking automatically
 2. **MLIR API changes**: Pin LLVM version
 3. **Runtime issues**: Test with multiple runtimes
 4. **Performance problems**: Profile early
+5. **Integration complexity**: **MITIGATED** - fpm automatic dependency management simplifies fortfront integration
 
 ### Process Risks
 1. **Scope creep**: Strict phase adherence

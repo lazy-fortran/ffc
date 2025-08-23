@@ -7,7 +7,7 @@ program test_lowering_pipeline
     use hlfir_dialect
     use fir_dialect
     use standard_dialects
-    use pass_manager
+    use ffc_pass_manager
     use lowering_pipeline
     implicit none
 

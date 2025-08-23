@@ -6,7 +6,7 @@ program test_mlir_pass_manager
     use mlir_builder
     use hlfir_dialect
     use standard_dialects
-    use pass_manager
+    use ffc_pass_manager
     implicit none
 
     logical :: all_tests_passed

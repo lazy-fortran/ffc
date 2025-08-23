@@ -1,4 +1,4 @@
-module pass_manager
+module ffc_pass_manager
     use iso_c_binding
     use mlir_c_core
     use mlir_c_types
@@ -600,4 +600,4 @@ contains
         end do
     end function pass_manager_has_diagnostics
 
-end module pass_manager
+end module ffc_pass_manager

@@ -165,15 +165,23 @@ contains
 
         mlir = ""
 
-        ! Generate start value
-        start_mlir = generate_mlir_expression(backend, arena, node%start_index, indent_str)
-        mlir = mlir//start_mlir
-        start_ssa = backend%last_ssa_value
+        ! Generate start value (use first lower bound if available)
+        if (allocated(node%lower_bound_indices) .and. size(node%lower_bound_indices) > 0) then
+            start_mlir = generate_mlir_expression(backend, arena, node%lower_bound_indices(1), indent_str)
+            mlir = mlir//start_mlir
+            start_ssa = backend%last_ssa_value
+        else
+            start_ssa = "c1"
+        end if
 
-        ! Generate end value
-        end_mlir = generate_mlir_expression(backend, arena, node%end_index, indent_str)
-        mlir = mlir//end_mlir
-        end_ssa = backend%last_ssa_value
+        ! Generate end value (use first upper bound if available)
+        if (allocated(node%upper_bound_indices) .and. size(node%upper_bound_indices) > 0) then
+            end_mlir = generate_mlir_expression(backend, arena, node%upper_bound_indices(1), indent_str)
+            mlir = mlir//end_mlir
+            end_ssa = backend%last_ssa_value
+        else
+            end_ssa = "c10"
+        end if
 
         ! HLFIR: Generate hlfir.elemental for parallel execution
         loop_var_ssa = backend%next_ssa_value()
@@ -182,8 +190,12 @@ contains
         mlir = mlir//indent_str//result_ssa//" = hlfir.elemental ("//loop_var_ssa//") = "//start_ssa// &
                " to "//end_ssa//" : !hlfir.expr<?xi32> {"//new_line('a')
 
-        ! Store current loop context
-        backend%current_loop_var = node%index_var
+        ! Store current loop context (use first index name if available)
+        if (allocated(node%index_names) .and. size(node%index_names) > 0) then
+            backend%current_loop_var = node%index_names(1)
+        else
+            backend%current_loop_var = "i"
+        end if
         backend%current_loop_ssa = loop_var_ssa
 
         ! Generate forall body

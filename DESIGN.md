@@ -54,7 +54,7 @@ Source Files (.f90, .lf)
 **Goal**: Compile `program hello; end program` to executable
 
 **Capabilities Added**:
-- fortfront AST integration
+- fortfront AST integration (**simplified by fpm automatic linking**)
 - Basic HLFIR module structure generation
 - MLIR → LLVM → executable pipeline
 - .ll file emission for debugging
@@ -233,10 +233,11 @@ print *, x + y
 
 ### Core Modules
 
-#### AST Integration (`src/frontend/`)
+#### AST Integration (`src/frontend/`) - **fmp automatic linking**
 - `fortfront_bridge.f90` - AST traversal and node access
 - `ast_to_hlfir.f90` - AST → HLFIR conversion
 - `type_mapper.f90` - Fortran → MLIR type mapping
+- **Integration architecture**: Static linking via fmp path dependency
 
 #### HLFIR Generation (`src/codegen/`)
 - `hlfir_builder.f90` - High-level HLFIR construction
@@ -292,7 +293,7 @@ print *, x + y
 - Test harness (82 tests passing)
 
 ### 🔴 What's Missing
-- fortfront AST integration
+- fortfront AST integration (**build system ready via fpm**)
 - Actual HLFIR operation generation
 - Runtime library integration
 - Executable generation

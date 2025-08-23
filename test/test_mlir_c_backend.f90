@@ -6,7 +6,7 @@ program test_mlir_c_backend
     use mlir_builder
     use backend_interface
     use ast_core
-    use pass_manager
+    use ffc_pass_manager
     use lowering_pipeline
     use mlir_c_backend
     implicit none

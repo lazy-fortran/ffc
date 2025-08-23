@@ -194,7 +194,7 @@ contains
         character(len=64) :: attr_str
         
         ! Create a string representation of attributes
-        write(attr_str, '(A,L1,A,L1,A,L1,A)') &
+        write(attr_str, '(A,L1,A,L1,A,L1)') &
             'contiguous=', contiguous, &
             ',target=', target, &
             ',optional=', optional
