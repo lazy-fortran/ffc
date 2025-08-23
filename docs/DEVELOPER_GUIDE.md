@@ -25,6 +25,36 @@ FortFC is a Fortran compiler that generates HLFIR (High-Level FIR) using the MLI
 4. **Memory Safety**: RAII patterns and automatic resource management
 5. **Performance**: Efficient C API usage with minimal overhead
 
+## Fortfront Integration
+
+With the resolution of module naming conflicts, ffc can now be compiled and tested alongside fortfront:
+
+```bash
+# Build both projects together
+cd /path/to/ffc && fpm build
+cd /path/to/fortfront && fpm build
+
+# Test ffc with fortfront available
+cd /path/to/ffc && fmp test
+```
+
+**Key Integration Points:**
+- **AST Parsing**: fortfront provides the Fortran AST that ffc consumes
+- **Module Separation**: ffc uses `ffc_` prefixed modules, fortfront uses unprefixed names
+- **Build Independence**: Both projects maintain separate build systems
+- **Shared Development**: Can be developed simultaneously without conflicts
+
+**Import Pattern:**
+```fortran
+! In ffc modules - use our own prefixed modules
+use ffc_error_handling, only: make_error
+use ffc_pass_manager, only: create_lowering_pipeline
+
+! Import from fortfront when available
+use ast_node, only: ast_program_node_t  ! From fortfront
+use semantic_analyzer, only: analyze_program  ! From fortfront
+```
+
 ## Directory Structure
 
 ```
@@ -48,7 +78,7 @@ src/
 │   ├── statement_gen.f90     # Statement generation
 │   └── expression_gen.f90    # Expression generation
 ├── passes/              # Pass management
-│   ├── pass_manager.f90      # Pass manager integration
+│   ├── ffc_pass_manager.f90  # Pass manager integration
 │   └── lowering_pipeline.f90 # HLFIR→FIR→LLVM lowering
 ├── backend/             # Backend integration
 │   ├── mlir_c_backend.f90    # C API backend implementation
@@ -200,7 +230,28 @@ type(mlir_context_t) :: main_context
 integer :: ssa_counter
 ```
 
-### 2. Documentation
+### 2. FFC Module Naming Convention
+
+All ffc modules use the `ffc_` prefix to prevent naming conflicts with external dependencies:
+
+```fortran
+! Module names: ffc_<descriptive_name>
+module ffc_error_handling
+module ffc_pass_manager
+module ffc_type_converter
+
+! Import without conflicts
+use ffc_error_handling, only: make_error
+use fortfront_pass_manager, only: semantic_pass  ! External dependency
+```
+
+**Why ffc_ prefix:**
+- Prevents module name conflicts with fortfront and other dependencies
+- Clearly identifies ffc-owned modules in import statements
+- Enables compilation with external Fortran projects
+- Follows namespace best practices for library development
+
+### 3. Documentation
 
 ```fortran
 ! REFACTOR: Enhanced function with comprehensive documentation
@@ -225,7 +276,7 @@ function create_hlfir_declare(builder, memref, var_name) result(declare_op)
     type(mlir_operation_t) :: declare_op
 ```
 
-### 3. Error Handling
+### 4. Error Handling
 
 ```fortran
 ! Always validate inputs

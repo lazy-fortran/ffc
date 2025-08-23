@@ -79,7 +79,7 @@ Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module
 - **`expression_gen.f90`** - Expression evaluation and generation
 
 ### 🔄 Pass Management (`src/passes/`)
-- **`pass_manager.f90`** - MLIR pass manager integration
+- **`ffc_pass_manager.f90`** - MLIR pass manager integration
 - **`lowering_pipeline.f90`** - HLFIR→FIR→LLVM lowering pipeline
 
 ### 💾 Backend Integration (`src/backend/`)
@@ -91,7 +91,7 @@ Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module
 - **`memory_guard.f90`** - RAII-style resource management
 - **`resource_manager.f90`** - Resource cleanup coordination
 - **`performance_tracker.f90`** - Performance measurement and profiling
-- **`error_handling.f90`** - Error reporting and diagnostics
+- **`ffc_error_handling.f90`** - Error reporting and diagnostics
 
 ### 📊 Test Infrastructure (`test/`)
 - **`comprehensive_test_runner.f90`** - Main test harness
