@@ -43,7 +43,7 @@
 Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module] → [LLVM] → Executable
 ```
 
-**Current Status**: Infrastructure complete (51 modules, 82 tests), blocked on fortfront AST access
+**Current Status**: Infrastructure complete (51 modules, 82 tests), fortfront integration via fpm automatic linking
 
 ## Project Structure
 
@@ -130,6 +130,9 @@ Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module
 - **stdlib** ✅ - Available in `build/dependencies/stdlib/`
 - **json-fortran** ✅ - Available in `build/dependencies/json-fortran/`
 - **fortfront** ✅ - Available in `../fortfront/` (AST parser)
+  - **fpm automatic linking** - Static linking handled by Fortran Package Manager
+  - **No manual build configuration required** - Dependency resolution automatic
+  - **Simplified integration** - Path dependency configured in fpm.toml
 
 ## Documentation (`docs/`)
 - **`C_API_USAGE.md`** - MLIR C API usage patterns
@@ -153,11 +156,19 @@ Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module
 - **`src/mlir_c/mlir_c_stubs.c`**: All C functions return dummy pointers
 - Real HLFIR operation generation
 - Actual LLVM code generation
-- AST parsing integration (fortfront available but not integrated)
+- AST parsing integration (fortfront available via fpm automatic linking)
 - Object file and executable generation
 
 ### 🎯 Next Critical Step
 Replace `mlir_c_stubs.c` with real MLIR C API implementations to enable actual Fortran compilation.
+
+### 🔗 AST Integration Architecture
+**Simplified by fmp**: Fortran Package Manager automatically handles static linking to fortfront:
+- **Path dependency** configured in fpm.toml: `fortfront = { path = "../fortfront" }`
+- **Automatic linking** - No manual build system configuration needed
+- **Dependency resolution** - fpm manages fortfront build and integration
+- **Static linking** - Final executable includes fortfront functionality
+- **Development workflow** - Standard fmp commands work seamlessly
 
 ## Development Workflow
 

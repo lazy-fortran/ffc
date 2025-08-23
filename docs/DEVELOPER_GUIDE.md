@@ -27,22 +27,22 @@ FortFC is a Fortran compiler that generates HLFIR (High-Level FIR) using the MLI
 
 ## Fortfront Integration
 
-With the resolution of module naming conflicts, ffc can now be compiled and tested alongside fortfront:
+**fpm Automatic Linking**: Fortran Package Manager automatically handles static linking to fortfront via the path dependency configured in fpm.toml. This greatly simplifies the integration process.
 
 ```bash
-# Build both projects together
-cd /path/to/ffc && fpm build
-cd /path/to/fortfront && fpm build
+# Build ffc with automatic fortfront linking
+cd /path/to/ffc && fmp build
 
-# Test ffc with fortfront available
-cd /path/to/ffc && fmp test
+# Test ffc with fortfront automatically linked
+cd /path/to/ffc && fpm test
 ```
 
 **Key Integration Points:**
 - **AST Parsing**: fortfront provides the Fortran AST that ffc consumes
 - **Module Separation**: ffc uses `ffc_` prefixed modules, fortfront uses unprefixed names
-- **Build Independence**: Both projects maintain separate build systems
-- **Shared Development**: Can be developed simultaneously without conflicts
+- **Automatic Dependency**: fpm handles fortfront build and linking automatically
+- **Static Linking**: No runtime dependencies - fortfront linked into ffc executable
+- **Simplified Workflow**: Standard fpm commands handle complex integration automatically
 
 **Import Pattern:**
 ```fortran
