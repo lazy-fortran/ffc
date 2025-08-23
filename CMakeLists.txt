@@ -98,7 +98,7 @@ target_link_libraries(ffc_fortran mlir_c_api)
 
 # Main executable (temporarily disabled while testing core MLIR)
 add_executable(ffc
-    app/ffc_hlfir_complete.f90
+    app/ffc.f90
 )
 
 target_link_libraries(ffc
