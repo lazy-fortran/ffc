@@ -7,7 +7,7 @@ module mlir_c_backend
     use mlir_c_attributes
     use mlir_c_operations
     use mlir_builder
-    use pass_manager
+    use ffc_pass_manager
     use lowering_pipeline
     use program_gen, only: generate_empty_main_function
     use standard_dialects

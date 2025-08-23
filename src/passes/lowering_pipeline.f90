@@ -8,7 +8,7 @@ module lowering_pipeline
     use hlfir_dialect
     use fir_dialect
     use standard_dialects
-    use pass_manager
+    use ffc_pass_manager
     implicit none
     private
 

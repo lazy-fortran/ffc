@@ -1,4 +1,4 @@
-module error_handling
+module ffc_error_handling
     use logger, only: log_error, log_warn
     implicit none
     private
@@ -89,4 +89,4 @@ contains
         if (allocated(this%message)) deallocate(this%message)
     end subroutine error_result_clear
 
-end module error_handling
+end module ffc_error_handling
