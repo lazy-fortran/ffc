@@ -1802,7 +1802,12 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        if (resolved_proc_idx > 0 .and. resolved_proc_idx <= arena%size .and. &
+            allocated(arena%entries(resolved_proc_idx)%node)) then
+            resolved_name = get_procedure_name(arena%entries(resolved_proc_idx)%node)
+        else
+            resolved_name = "unknown_procedure"
+        end if
 
         ! Generate call to the resolved specific procedure
         backend%ssa_counter = backend%ssa_counter + 1
@@ -1870,29 +1875,6 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end select
     end function resolve_generic_procedure
 
-    ! Get procedure name from AST node
-    function get_procedure_name(arena, proc_idx) result(name)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: proc_idx
-        character(len=:), allocatable :: name
-
-        name = "unknown"
-
-        if (proc_idx > 0 .and. proc_idx <= arena%size) then
-            if (allocated(arena%entries(proc_idx)%node)) then
-                select type (proc_node => arena%entries(proc_idx)%node)
-                type is (function_def_node)
-                    if (allocated(proc_node%name)) then
-                        name = trim(proc_node%name)
-                    end if
-                type is (subroutine_def_node)
-                    if (allocated(proc_node%name)) then
-                        name = trim(proc_node%name)
-                    end if
-                end select
-            end if
-        end if
-    end function get_procedure_name
 
     ! Check if an operator is overloaded
     function is_operator_overloaded(backend, arena, operator_name) result(is_overloaded)
@@ -1956,7 +1938,12 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        if (resolved_proc_idx > 0 .and. resolved_proc_idx <= arena%size .and. &
+            allocated(arena%entries(resolved_proc_idx)%node)) then
+            resolved_name = get_procedure_name(arena%entries(resolved_proc_idx)%node)
+        else
+            resolved_name = "unknown_procedure"
+        end if
 
         ! Generate the operator arguments and function call
       mlir = mlir//generate_mlir_expression(backend, arena, node%left_index, indent_str)
@@ -1999,7 +1986,12 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        if (resolved_proc_idx > 0 .and. resolved_proc_idx <= arena%size .and. &
+            allocated(arena%entries(resolved_proc_idx)%node)) then
+            resolved_name = get_procedure_name(arena%entries(resolved_proc_idx)%node)
+        else
+            resolved_name = "unknown_procedure"
+        end if
 
         ! Generate target expression (lhs) and capture SSA value
     target_ref = generate_mlir_expression(backend, arena, node%target_index, indent_str)
