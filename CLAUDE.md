@@ -1,9 +1,54 @@
-# fortfc Codebase Map
+# ffc Project Guide
 
-## Project Structure Overview
+## Mission Statement
 
-**fortfc** is a Fortran compiler with MLIR backend using HLFIR (High-Level Fortran IR).
-- **51 Fortran modules** + **1 C stub file** = Complete infrastructure
+**ffc** is a production Fortran compiler that directly translates Fortran AST to HLFIR (High-Level Fortran IR) using MLIR's C API, producing optimized native executables through LLVM's backend.
+
+## Core Principles
+
+### HLFIR-First Compilation Strategy
+- **ALWAYS use HLFIR** operations wherever possible
+- **FIR only as fallback** when HLFIR lacks specific operation
+- **Let LLVM handle lowering** - trust the optimization pipeline
+- **Progressive capability** - start simple, add complexity incrementally
+
+## Project Goals
+
+### Immediate (Week 1)
+- ✅ Compile empty program to executable
+- ✅ Generate readable LLVM IR (.ll files)
+- ✅ Establish complete compilation pipeline
+
+### Short Term (Month 1)
+- ✅ Compile "Hello, World!" program
+- ✅ Support basic variables and arithmetic
+- ✅ Handle simple control flow (if/do)
+- ✅ Arrays and basic operations
+
+### Medium Term (Month 3)
+- ✅ Full procedure support (subroutines/functions)
+- ✅ Intrinsic functions
+- ✅ Dynamic memory (allocatable arrays)
+- ✅ Derived types
+
+### Long Term (Month 6)
+- ✅ Module system
+- ✅ Lazy Fortran (.lf) support
+- ✅ Optimization passes (-O1/-O2)
+- ✅ Production-ready compiler
+
+## Architecture Overview
+
+```
+Source Files (.f90/.lf) → [fortfront AST] → [HLFIR Builder] → [MLIR Module] → [LLVM] → Executable
+```
+
+**Current Status**: Infrastructure complete (51 modules, 82 tests), blocked on fortfront AST access
+
+## Project Structure
+
+**ffc** is a Fortran compiler with MLIR backend using HLFIR (High-Level Fortran IR).
+- **51 Fortran modules** + **1 C file** = Complete infrastructure
 - **82 active tests** (infrastructure) + **24 disabled tests** (real functionality)
 - **Architecture**: Fortran AST → HLFIR → FIR → LLVM IR → Object code
 
