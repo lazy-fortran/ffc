@@ -31,7 +31,7 @@ contains
 
     function benchmark_context_creation() result(passed)
         logical :: passed
-        integer :: i, iterations
+        integer :: i, j, iterations
         real :: start_time, end_time, elapsed
         type(mlir_context_t) :: contexts(100)
         
@@ -251,7 +251,7 @@ contains
         print *
         print *, "  Benchmarking memory allocation patterns..."
         
-        tracker = create_memory_tracker()
+        call tracker%init()
         call tracker%enable_peak_tracking()
         
         call cpu_time(start_time)
