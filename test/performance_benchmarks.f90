@@ -277,7 +277,7 @@ contains
         print '(A,F8.3,A)', "  Rate: ", real(iterations)/elapsed, " operations/second"
         print '(A,I0)', "  Peak tracked allocations: ", tracker%get_peak_usage()
         
-        call destroy_memory_tracker(tracker)
+        call tracker%cleanup()
         
         passed = elapsed < 10.0  ! Should complete in under 10 seconds
     end function benchmark_memory_patterns
