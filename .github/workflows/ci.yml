@@ -2,86 +2,15 @@ name: FortFC CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        compiler: [gfortran]
-      fail-fast: false
-    
+    name: test
+    runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Build Environment
-      run: |
-        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-          sudo apt-get update
-          sudo apt-get install -y gfortran build-essential cmake
-        elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-          brew install gcc cmake
-        fi
-    
-    - name: Setup LLVM/MLIR (optional)
-      run: |
-        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-          sudo apt-get install -y llvm-dev || echo "MLIR not available, using stubs"
-        elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-          brew install llvm || echo "MLIR not available, using stubs"
-        fi
-    
-    - name: Check Build Requirements
-      run: |
-        ./configure_build.sh check
-    
-    - name: Configure Build
-      run: |
-        ./configure_build.sh configure Release
-    
-    - name: Build Project
-      run: |
-        ./configure_build.sh build
-    
-    - name: Run C API Tests
-      run: |
-        echo "=== Running Comprehensive Test Suite ==="
-        ./test/comprehensive_test_runner || echo "Comprehensive tests completed with status $?"
-        
-        echo "=== Running Memory Management Tests ==="
-        ./test/test_memory_management || echo "Memory tests completed with status $?"
-        
-        echo "=== Running Integration Tests ==="
-        ./test/test_integration_hello_world || echo "Integration tests completed with status $?"
-        
-        echo "=== Running Build System Tests ==="
-        ./test/test_build_system_integration || echo "Build system tests completed with status $?"
-        
-        echo "=== Running CI Integration Tests ==="
-        ./test/test_ci_integration || echo "CI tests completed with status $?"
-    
-    - name: Upload Test Results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results-${{ matrix.os }}-${{ matrix.compiler }}
-        path: |
-          test/*.log
-          build/Testing/
-        retention-days: 30
-    
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      if: success()
-      with:
-        name: build-artifacts-${{ matrix.os }}-${{ matrix.compiler }}
-        path: |
-          build/ffc
-          build/lib*.so
-          build/lib*.a
-          build/lib*.dylib
-        retention-days: 7
+      - uses: actions/checkout@v4
+      - name: Placeholder test
+        run: echo "ffc is retired in favor of LFortran - tests disabled"

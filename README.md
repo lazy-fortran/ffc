@@ -1,5 +1,7 @@
 # FortFC - Fortran Compiler with MLIR C API
 
+> **Note**: This project will be retired in favor of [LFortran](https://lfortran.org/). LFortran already provides a complete Fortran compiler with MLIR/LLVM backend, LSP support, and active development. We recommend using LFortran for all Fortran compilation needs.
+
 **FortFC** is a modern Fortran compiler that generates HLFIR (High-Level FIR) using the MLIR C API exclusively for optimal performance and memory safety.
 
 ## Overview
