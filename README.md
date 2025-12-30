@@ -1,5 +1,7 @@
 # FortFC - Fortran Compiler with MLIR C API
 
+> **Note**: This project is experimental and subject to major changes. APIs may change without notice.
+
 **FortFC** is a modern Fortran compiler that generates HLFIR (High-Level FIR) using the MLIR C API exclusively for optimal performance and memory safety.
 
 ## Overview
