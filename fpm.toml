@@ -1,6 +1,6 @@
 name = "ffc"
 version = "0.1.0"
-description = "Fortran Fortran Compiler - retired in favor of LFortran"
+description = "Fortran Fortran Compiler - MLIR backend for compilation via HLFIR/LLVM"
 author = "krystophny"
 license = "MIT"
 
@@ -8,8 +8,35 @@ license = "MIT"
 auto-executables = true
 auto-tests = true
 auto-examples = false
+link = [
+    "MLIRCAPIRegisterEverything",
+    "MLIRCAPIIR",
+    "MLIRCAPIFunc",
+    "MLIRCAPIArith",
+    "MLIRCAPISCF",
+    "MLIRCAPILLVM",
+    "MLIRCAPIControlFlow",
+    "MLIRCAPIMath",
+    "MLIRCAPIMemRef",
+    "MLIRCAPIIndex",
+    "MLIRCAPITensor",
+    "MLIRCAPIVector",
+    "MLIRCAPIAsync",
+    "MLIRCAPIShape",
+    "MLIRCAPIGPU",
+    "MLIRCAPILinalg",
+    "MLIRCAPIQuant",
+    "MLIRCAPIInterfaces",
+    "MLIRCAPIConversion",
+    "MLIR",
+    "LLVM",
+    "stdc++"
+]
 
 [fortran]
 implicit-external = false
 implicit-typing = false
 source-form = "free"
+
+[library]
+source-dir = "src"

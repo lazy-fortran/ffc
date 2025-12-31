@@ -1,5 +1,5 @@
 program ffc_main
+    use ffc, only: ffc_version
     implicit none
-    print *, "ffc is retired in favor of LFortran"
-    print *, "See: https://lfortran.org/"
+    print "(A,A)", "ffc version: ", ffc_version
 end program ffc_main
