@@ -16,7 +16,15 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran llvm-dev
+          sudo apt-get install -y gfortran git build-essential cmake ninja-build
+
+      - name: Download and install LLVM/MLIR
+        run: |
+          cd /tmp
+          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.0/clang+llvm-18.1.0-x86_64-linux-gnu.tar.xz
+          tar xf clang+llvm-18.1.0-x86_64-linux-gnu.tar.xz
+          sudo mkdir -p /usr/local/llvm18
+          sudo cp -r clang+llvm-18.1.0-x86_64-linux-gnu/* /usr/local/llvm18/
 
       - name: Install fpm
         run: |
@@ -26,15 +34,11 @@ jobs:
           ~/.fpm/bin/fpm --version
           echo "$HOME/.fpm/bin" >> $GITHUB_PATH
 
-      - name: Set up library paths and build
+      - name: Configure library paths
         run: |
-          # Discover LLVM installation
-          llvm_version=$(llvm-config --version | cut -d. -f1)
-          llvm_lib_dir=$(llvm-config --libdir)
-          echo "LLVM version: $llvm_version"
-          echo "LLVM lib dir: $llvm_lib_dir"
-          echo "LD_LIBRARY_PATH=$llvm_lib_dir:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=$llvm_lib_dir:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=/usr/local/llvm18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=/usr/local/llvm18/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=/usr/local/llvm18/bin:$PATH" >> $GITHUB_PATH
 
       - name: Run tests
         run: |
