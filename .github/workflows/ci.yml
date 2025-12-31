@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran llvm-dev libmlir-dev libmlir-tools
+          sudo apt-get install -y gfortran
 
       - name: Install fpm
         run: |
@@ -26,4 +26,5 @@ jobs:
           echo "$HOME/.fpm/bin" >> $GITHUB_PATH
 
       - name: Run tests
-        run: fpm test
+        run: |
+          fpm test
