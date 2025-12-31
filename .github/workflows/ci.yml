@@ -1,4 +1,4 @@
-name: FortFC CI
+name: test
 
 on:
   push:
