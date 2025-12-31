@@ -13,26 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies and build LLVM/MLIR
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran git build-essential cmake ninja-build python3
+          sudo apt-get install -y gfortran git build-essential cmake ninja-build python3 pkg-config
 
-          # Build minimal LLVM with MLIR C API support
-          cd /tmp
-          git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git
-          mkdir -p llvm-project/build
-          cd llvm-project/build
-          cmake -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local/llvm18 \
-            -DLLVM_ENABLE_PROJECTS="mlir" \
-            -DLLVM_TARGETS_TO_BUILD="X86" \
-            -DLLVM_ENABLE_ASSERTIONS=OFF \
-            -DLLVM_OPTIMIZED_TABLEGEN=ON \
-            -DLLVM_BUILD_TOOLS=OFF \
-            ../llvm
-          ninja install -j2
+      - name: Install LLVM/MLIR from apt.llvm.org
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          sudo ln -sf /usr/lib/llvm-18 /usr/local/llvm18
 
       - name: Install fpm
         run: |
@@ -47,6 +38,7 @@ jobs:
           echo "LD_LIBRARY_PATH=/usr/local/llvm18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "LIBRARY_PATH=/usr/local/llvm18/lib:$LIBRARY_PATH" >> $GITHUB_ENV
           echo "PATH=/usr/local/llvm18/bin:$PATH" >> $GITHUB_PATH
+          echo "PKG_CONFIG_PATH=/usr/local/llvm18/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
 
       - name: Run tests
         run: |
