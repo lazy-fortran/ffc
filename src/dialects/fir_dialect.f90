@@ -24,13 +24,13 @@ module fir_dialect
     ! C interface declarations
     interface
         ! Dialect registration
-        function mlirGetDialectHandle__fir__() bind(c, name="mlirGetDialectHandle__fir__") result(handle)
+        function mlirGetDialectHandle__fir__() bind(c, name="ffc_mlirGetDialectHandle__fir__") result(handle)
             import :: c_ptr
             type(c_ptr) :: handle
         end function mlirGetDialectHandle__fir__
 
         subroutine mlirDialectHandleRegisterDialect(handle, context) &
-            bind(c, name="mlirDialectHandleRegisterDialect")
+            bind(c, name="ffc_mlirDialectHandleRegisterDialect")
             import :: c_ptr
             type(c_ptr), value :: handle
             type(c_ptr), value :: context

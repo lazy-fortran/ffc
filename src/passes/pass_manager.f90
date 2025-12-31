@@ -94,9 +94,12 @@ contains
 
         ! Use MLIR C API to create pass manager
         pass_manager%ptr = ffc_mlirPassManagerCreate(context%ptr)
-        
+
         ! Store association between pass manager pointer and state
         pm_states(pm_id)%state_id = transfer(pass_manager%ptr, 0)
+
+        ! Increment next_pm_id to track active pass managers
+        if (pm_id >= next_pm_id) next_pm_id = pm_id + 1
     end function create_pass_manager
 
     ! REFACTOR: Helper function to find available pass manager slot
@@ -439,13 +442,19 @@ contains
         type(mlir_operation_t) :: func_op
         type(mlir_type_t) :: void_type
         type(mlir_location_t) :: location
+        type(mlir_operation_state_t) :: state
+        type(mlir_string_ref_t) :: op_name
 
         ! Create a simple test function using func dialect
         location = create_unknown_location(builder%context)
         void_type = create_void_type(builder%context)
-        
-        ! Create a dummy function operation
-        func_op%ptr = transfer(54321_c_intptr_t, func_op%ptr)
+
+        ! Create actual operation using operation state API
+        op_name = create_string_ref("func.func")
+        state = create_operation_state(op_name, location)
+        call add_result(state, void_type)
+        func_op = create_operation(state)
+        call destroy_operation_state(state)
     end function create_test_function
 
     function run_passes(pass_manager, module) result(success)

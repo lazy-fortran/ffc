@@ -32,7 +32,8 @@ program test_hlfir_assign_green
     ! Create module and builder
     loc = create_unknown_location(context)
     module = create_empty_module(loc)
-    call builder%init(context, module)
+    builder = create_mlir_builder(context)
+    call builder%set_module(module)
     ssa_mgr = create_ssa_manager(context)
     
     ! Create types
@@ -90,7 +91,7 @@ program test_hlfir_assign_green
     
     ! Clean up
     call destroy_ssa_manager(ssa_mgr)
-    call builder%cleanup()
+    call destroy_mlir_builder(builder)
     call destroy_mlir_context(context)
     
     ! Report results

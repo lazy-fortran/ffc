@@ -1,8 +1,8 @@
 program ffc_main
     use backend_factory, only: create_backend
     use backend_interface, only: backend_t, backend_options_t
-    use ast_core, only: ast_arena_t, create_ast_arena
-    use frontend, only: lex_source, parse_tokens, analyze_semantics
+    use fortfront, only: ast_arena_t, create_ast_arena
+    use fortfront, only: lex_source, parse_tokens, analyze_semantics
     implicit none
 
     character(len=256) :: input_file, output_file, error_msg

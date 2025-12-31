@@ -1,6 +1,6 @@
 module test_backend_interface_impl
     use backend_interface
-    use ast_core
+    use fortfront
     implicit none
     private
 
@@ -80,7 +80,7 @@ program test_backend_interface
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_constants
-    use ast_core
+    use fortfront
     use test_backend_interface_impl
     implicit none
 

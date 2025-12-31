@@ -169,14 +169,30 @@ contains
         class(mlir_type_converter_t), intent(in) :: this
         integer, intent(in) :: element_width  ! Width of each component (32 or 64)
         type(mlir_type_t) :: mlir_type
-        
+        type(mlir_type_t) :: element_type
+
+        interface
+            function ffc_mlirComplexTypeGet(elem_type) bind(c, name="ffc_mlirComplexTypeGet") result(ctype)
+                import :: c_ptr
+                type(c_ptr), value :: elem_type
+                type(c_ptr) :: ctype
+            end function ffc_mlirComplexTypeGet
+        end interface
+
         if (.not. this%is_valid()) then
             mlir_type%ptr = c_null_ptr
             return
         end if
-        
-        ! For now, create as opaque type - in real implementation would use FIR complex type
-        mlir_type = create_float_type(this%context, element_width * 2)  ! Stub: use double-width float
+
+        ! Create element type (float32 or float64)
+        element_type = create_float_type(this%context, element_width)
+        if (.not. element_type%is_valid()) then
+            mlir_type%ptr = c_null_ptr
+            return
+        end if
+
+        ! Create complex type from element type
+        mlir_type%ptr = ffc_mlirComplexTypeGet(element_type%ptr)
     end function converter_create_complex_type
 
     ! Create array type (FIR array type)

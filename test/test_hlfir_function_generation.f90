@@ -97,7 +97,8 @@ contains
         param_types = [int_type, ref_type]
         
         ! Test: Generate function with parameter handling
-        func_op = generate_function_with_parameters(builder, "process", param_types, ["value", "result"])
+        func_op = generate_function_with_parameters(builder, "process", &
+            param_types, ["value ", "result"])
         passed = passed .and. func_op%is_valid()
         
         ! Test: Extract function parameters
@@ -139,7 +140,8 @@ contains
         passed = passed .and. real_type%is_valid()
         
         ! Test: Generate function with local variable declarations
-        func_op = create_function_with_locals(builder, "compute", [], real_type)
+        func_op = create_function_with_locals(builder, "compute", &
+            [mlir_type_t ::], real_type)
         passed = passed .and. func_op%is_valid()
         
         ! Test: Add local variable declaration within function
@@ -182,7 +184,8 @@ contains
         passed = passed .and. int_type%is_valid()
         
         ! Test: Generate function with return value
-        func_op = create_function_with_return(builder, "get_value", [], int_type)
+        func_op = create_function_with_return(builder, "get_value", &
+            [mlir_type_t ::], int_type)
         passed = passed .and. func_op%is_valid()
         
         ! Test: Create return value

@@ -1,7 +1,7 @@
 ! MLIR I/O Operations Module - Pure HLFIR Implementation
 ! This module contains all I/O statement handlers for MLIR code generation using HLFIR
 module mlir_io_operations
-    use ast_core
+    use fortfront
     use mlir_backend_types
     implicit none
 

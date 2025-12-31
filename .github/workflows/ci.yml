@@ -1,4 +1,4 @@
-name: FortFC CI
+name: test
 
 on:
   push:
@@ -12,5 +12,58 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder test
-        run: echo "ffc is retired in favor of LFortran - tests disabled"
+
+      - name: Cache LLVM/MLIR build
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: |
+            /usr/local/llvm18
+          key: llvm18-mlir-${{ runner.os }}-18.1.0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran git build-essential cmake ninja-build python3 pkg-config ccache
+
+      - name: Build and install LLVM/MLIR with MLIR C API
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
+        run: |
+          cd /tmp
+          git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git
+          mkdir -p llvm-project/build
+          cd llvm-project/build
+          ccache -z
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local/llvm18 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DLLVM_ENABLE_PROJECTS="mlir" \
+            -DLLVM_TARGETS_TO_BUILD="X86" \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_OPTIMIZED_TABLEGEN=ON \
+            -DLLVM_BUILD_TOOLS=OFF \
+            -DLLVM_ENABLE_MLIR_C_API=ON \
+            ../llvm
+          ninja install -j4
+          ccache -s
+
+      - name: Install fpm
+        run: |
+          mkdir -p ~/.fpm/bin
+          curl -L https://github.com/fortran-lang/fpm/releases/download/v0.12.0/fpm-0.12.0-linux-x86_64-gcc-12 -o ~/.fpm/bin/fpm
+          chmod +x ~/.fpm/bin/fpm
+          ~/.fpm/bin/fpm --version
+          echo "$HOME/.fpm/bin" >> $GITHUB_PATH
+
+      - name: Configure library paths
+        run: |
+          echo "LD_LIBRARY_PATH=/usr/local/llvm18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=/usr/local/llvm18/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PATH=/usr/local/llvm18/bin:$PATH" >> $GITHUB_PATH
+          echo "PKG_CONFIG_PATH=/usr/local/llvm18/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: |
+          fpm test

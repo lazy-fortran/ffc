@@ -3,7 +3,7 @@
 module mlir_core_functions
     use mlir_backend_types
     use mlir_hlfir_helpers
-    use ast_core
+    use fortfront
     use stdlib_strings, only: to_string
     implicit none
 

@@ -12,7 +12,7 @@ fortfront = { path = "../fortfront" }
 auto-executables = true
 auto-tests = true
 auto-examples = false
-link = ["MLIRCAPIIR", "MLIRCAPIRegisterEverything", "MLIR", "LLVM", "stdc++"]
+link = ["MLIR", "LLVM", "stdc++"]
 
 [fortran]
 implicit-external = false

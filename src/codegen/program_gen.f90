@@ -45,7 +45,8 @@ contains
         
         ! Create function type: () -> ()
         void_type = create_void_type(builder%context)
-        func_type = create_function_type(builder%context, [], [])
+        func_type = create_function_type(builder%context, [mlir_type_t ::], &
+            [mlir_type_t ::])
         
         ! Create function name attribute
         name_attr = create_string_attribute(builder%context, "main")
@@ -133,7 +134,7 @@ contains
         call register_hlfir_dialect(builder%context)
         
         ! Create dummy memref value (in real implementation, this would come from allocation)
-        memref_value = create_dummy_value(var_type)
+        memref_value = create_dummy_value(builder%context)
         
         ! Create attributes
         name_attr = create_string_attribute(builder%context, name)
@@ -180,7 +181,7 @@ contains
         call register_hlfir_dialect(builder%context)
         
         ! Create global reference value (in real implementation, this would reference the global)
-        global_ref = create_dummy_value(var_type)
+        global_ref = create_dummy_value(builder%context)
         
         ! Create attributes
         name_attr = create_string_attribute(builder%context, name)
@@ -205,7 +206,8 @@ contains
         call register_func_dialect(builder%context)
         
         ! Create function type: () -> ()
-        func_type = create_function_type(builder%context, [], [])
+        func_type = create_function_type(builder%context, [mlir_type_t ::], &
+            [mlir_type_t ::])
         
         ! Create function name attribute
         name_attr = create_string_attribute(builder%context, "main")

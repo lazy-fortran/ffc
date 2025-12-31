@@ -2,7 +2,7 @@ program test_fortran_backend
     use iso_fortran_env, only: error_unit
     use backend_interface
     use backend_constants
-    use ast_core, only: ast_arena_t, create_ast_arena, LITERAL_STRING
+    use fortfront, only: ast_arena_t, create_ast_arena, LITERAL_STRING
     use ast_factory
     use fortran_backend
     implicit none

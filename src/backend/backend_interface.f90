@@ -1,5 +1,5 @@
 module backend_interface
-    use ast_core, only: ast_arena_t
+    use fortfront, only: ast_arena_t
     implicit none
     private
 

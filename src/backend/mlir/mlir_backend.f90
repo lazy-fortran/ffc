@@ -1,7 +1,7 @@
 module mlir_backend
     use backend_interface
-    use ast_core
-    use ast_core, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
+    use fortfront
+    use fortfront, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
     use mlir_utils, mlir_int_to_str => int_to_str
     use mlir_types
     use mlir_compile, only: compile_mlir_to_output, apply_mlir_lowering_passes
@@ -1802,7 +1802,7 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        resolved_name = mlir_extract_proc_name(arena, resolved_proc_idx)
 
         ! Generate call to the resolved specific procedure
         backend%ssa_counter = backend%ssa_counter + 1
@@ -1871,7 +1871,7 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
     end function resolve_generic_procedure
 
     ! Get procedure name from AST node
-    function get_procedure_name(arena, proc_idx) result(name)
+    function mlir_extract_proc_name(arena, proc_idx) result(name)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: proc_idx
         character(len=:), allocatable :: name
@@ -1892,7 +1892,7 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
                 end select
             end if
         end if
-    end function get_procedure_name
+    end function mlir_extract_proc_name
 
     ! Check if an operator is overloaded
     function is_operator_overloaded(backend, arena, operator_name) result(is_overloaded)
@@ -1956,7 +1956,7 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        resolved_name = mlir_extract_proc_name(arena, resolved_proc_idx)
 
         ! Generate the operator arguments and function call
       mlir = mlir//generate_mlir_expression(backend, arena, node%left_index, indent_str)
@@ -1999,7 +1999,7 @@ subroutine generate_logical_runtime_output(backend, value, cookie_var, mlir, ind
         end if
 
         ! Get the resolved procedure name
-        resolved_name = get_procedure_name(arena, resolved_proc_idx)
+        resolved_name = mlir_extract_proc_name(arena, resolved_proc_idx)
 
         ! Generate target expression (lhs) and capture SSA value
     target_ref = generate_mlir_expression(backend, arena, node%target_index, indent_str)

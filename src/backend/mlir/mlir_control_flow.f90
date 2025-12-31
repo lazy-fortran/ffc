@@ -1,8 +1,8 @@
 ! MLIR Control Flow Functions Module
 ! This module contains all control flow statement handlers for MLIR code generation
 module mlir_control_flow
-    use ast_core
-    use ast_core, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
+    use fortfront
+    use fortfront, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
     use stdlib_strings, only: to_string
     use mlir_backend_types
     use mlir_hlfir_helpers
@@ -165,25 +165,38 @@ contains
 
         mlir = ""
 
-        ! Generate start value
-        start_mlir = generate_mlir_expression(backend, arena, node%start_index, indent_str)
+        ! Validate we have at least one index specification
+        if (node%num_indices < 1 .or. .not. allocated(node%lower_bound_indices) .or. &
+            .not. allocated(node%upper_bound_indices)) then
+            mlir = indent_str//"! Error: FORALL has no index specifications"//new_line('a')
+            return
+        end if
+
+        ! Generate start value (use first index)
+        start_mlir = generate_mlir_expression(backend, arena, &
+            node%lower_bound_indices(1), indent_str)
         mlir = mlir//start_mlir
         start_ssa = backend%last_ssa_value
 
-        ! Generate end value
-        end_mlir = generate_mlir_expression(backend, arena, node%end_index, indent_str)
+        ! Generate end value (use first index)
+        end_mlir = generate_mlir_expression(backend, arena, &
+            node%upper_bound_indices(1), indent_str)
         mlir = mlir//end_mlir
         end_ssa = backend%last_ssa_value
 
         ! HLFIR: Generate hlfir.elemental for parallel execution
         loop_var_ssa = backend%next_ssa_value()
         result_ssa = backend%next_ssa_value()
-        
+
         mlir = mlir//indent_str//result_ssa//" = hlfir.elemental ("//loop_var_ssa//") = "//start_ssa// &
                " to "//end_ssa//" : !hlfir.expr<?xi32> {"//new_line('a')
 
-        ! Store current loop context
-        backend%current_loop_var = node%index_var
+        ! Store current loop context (use first index name)
+        if (allocated(node%index_names) .and. size(node%index_names) > 0) then
+            backend%current_loop_var = node%index_names(1)
+        else
+            backend%current_loop_var = "i"
+        end if
         backend%current_loop_ssa = loop_var_ssa
 
         ! Generate forall body

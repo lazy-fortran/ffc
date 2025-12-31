@@ -30,23 +30,23 @@ module standard_dialects
     ! C interface declarations
     interface
         ! Dialect registration
-        function mlirGetDialectHandle__func__() bind(c, name="mlirGetDialectHandle__func__") result(handle)
+        function mlirGetDialectHandle__func__() bind(c, name="ffc_mlirGetDialectHandle__func__") result(handle)
             import :: c_ptr
             type(c_ptr) :: handle
         end function mlirGetDialectHandle__func__
 
-        function mlirGetDialectHandle__arith__() bind(c, name="mlirGetDialectHandle__arith__") result(handle)
+        function mlirGetDialectHandle__arith__() bind(c, name="ffc_mlirGetDialectHandle__arith__") result(handle)
             import :: c_ptr
             type(c_ptr) :: handle
         end function mlirGetDialectHandle__arith__
 
-        function mlirGetDialectHandle__scf__() bind(c, name="mlirGetDialectHandle__scf__") result(handle)
+        function mlirGetDialectHandle__scf__() bind(c, name="ffc_mlirGetDialectHandle__scf__") result(handle)
             import :: c_ptr
             type(c_ptr) :: handle
         end function mlirGetDialectHandle__scf__
 
         subroutine mlirDialectHandleRegisterDialect(handle, context) &
-            bind(c, name="mlirDialectHandleRegisterDialect")
+            bind(c, name="ffc_mlirDialectHandleRegisterDialect")
             import :: c_ptr
             type(c_ptr), value :: handle
             type(c_ptr), value :: context
@@ -110,12 +110,17 @@ contains
         type(mlir_type_t), dimension(:), intent(in) :: input_types
         type(mlir_type_t), dimension(:), intent(in) :: result_types
         type(mlir_type_t) :: func_type
-        
+        type(mlir_type_t) :: void_type
+
         ! For stub, create a reference type as approximation
         if (size(result_types) > 0) then
             func_type = create_reference_type(context, result_types(1))
-        else
+        else if (size(input_types) > 0) then
             func_type = create_reference_type(context, input_types(1))
+        else
+            ! No inputs or results - create a void function type
+            void_type = create_void_type(context)
+            func_type = create_reference_type(context, void_type)
         end if
     end function create_function_type
 

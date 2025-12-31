@@ -1,7 +1,7 @@
 module mlir_c_backend
     use iso_c_binding
     use backend_interface
-    use ast_core
+    use fortfront
     use mlir_c_core
     use mlir_c_types
     use mlir_c_attributes

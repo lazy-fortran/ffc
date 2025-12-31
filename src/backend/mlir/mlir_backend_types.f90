@@ -2,7 +2,7 @@
 ! This module defines the core types used by the MLIR backend
 module mlir_backend_types
     use backend_interface
-    use ast_core, only: ast_arena_t
+    use fortfront, only: ast_arena_t
     implicit none
 
     public :: mlir_backend_t

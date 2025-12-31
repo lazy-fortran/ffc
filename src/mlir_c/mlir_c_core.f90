@@ -5,7 +5,7 @@ module mlir_c_core
 
     ! Public types
     public :: mlir_context_t, mlir_module_t, mlir_location_t, mlir_string_ref_t
-    public :: mlir_region_t, mlir_block_t
+    public :: mlir_region_t, mlir_block_t, mlir_dialect_t, mlir_dialect_registry_t
     public :: mlir_pass_manager_t, mlir_pass_pipeline_t
     public :: mlir_lowering_pipeline_t
     
@@ -69,6 +69,18 @@ module mlir_c_core
     contains
         procedure :: is_valid => lowering_pipeline_is_valid
     end type mlir_lowering_pipeline_t
+
+    type :: mlir_dialect_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => dialect_is_valid
+    end type mlir_dialect_t
+
+    type :: mlir_dialect_registry_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => dialect_registry_is_valid
+    end type mlir_dialect_registry_t
 
     ! C interface declarations
     interface
@@ -249,5 +261,17 @@ contains
         logical :: valid
         valid = c_associated(this%ptr)
     end function lowering_pipeline_is_valid
+
+    function dialect_is_valid(this) result(valid)
+        class(mlir_dialect_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function dialect_is_valid
+
+    function dialect_registry_is_valid(this) result(valid)
+        class(mlir_dialect_registry_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function dialect_registry_is_valid
 
 end module mlir_c_core

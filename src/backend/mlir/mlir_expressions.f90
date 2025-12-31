@@ -1,8 +1,8 @@
 ! MLIR Expression Functions Module
 ! This module contains all expression handlers for MLIR code generation
 module mlir_expressions
-    use ast_core
-    use ast_core, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
+    use fortfront
+    use fortfront, only: LITERAL_INTEGER, LITERAL_REAL, LITERAL_STRING, LITERAL_COMPLEX
     use stdlib_strings, only: to_string
     use mlir_backend_types
     use mlir_hlfir_helpers

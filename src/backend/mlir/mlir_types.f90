@@ -1,6 +1,6 @@
 module mlir_types
     use backend_interface
-    use ast_core
+    use fortfront
     use mlir_utils
     implicit none
     private

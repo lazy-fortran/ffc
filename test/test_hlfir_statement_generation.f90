@@ -52,8 +52,8 @@ contains
         
         ! Create integer type and values
         int_type = create_integer_type(context, 32)
-        lhs = create_dummy_value(int_type)
-        rhs = create_dummy_value(int_type)
+        lhs = create_dummy_value(context)
+        rhs = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. lhs%is_valid()
@@ -95,7 +95,7 @@ contains
         
         ! Create boolean condition
         bool_type = create_integer_type(context, 1)  ! i1 for boolean
-        condition = create_dummy_value(bool_type)
+        condition = create_dummy_value(context)
         
         passed = passed .and. bool_type%is_valid()
         passed = passed .and. condition%is_valid()
@@ -144,9 +144,9 @@ contains
         
         ! Create loop bounds
         int_type = create_integer_type(context, 32)
-        lower_bound = create_dummy_value(int_type)
-        upper_bound = create_dummy_value(int_type)
-        step = create_dummy_value(int_type)
+        lower_bound = create_dummy_value(context)
+        upper_bound = create_dummy_value(context)
+        step = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. lower_bound%is_valid()
@@ -194,7 +194,7 @@ contains
         
         ! Create while condition
         bool_type = create_integer_type(context, 1)  ! i1 for boolean
-        condition = create_dummy_value(bool_type)
+        condition = create_dummy_value(context)
         
         passed = passed .and. bool_type%is_valid()
         passed = passed .and. condition%is_valid()
@@ -241,7 +241,7 @@ contains
         
         ! Create selector and case values
         int_type = create_integer_type(context, 32)
-        selector = create_dummy_value(int_type)
+        selector = create_dummy_value(context)
         case_values = [1, 2, 3]
         
         passed = passed .and. int_type%is_valid()
@@ -284,7 +284,7 @@ contains
         
         ! Create print value
         int_type = create_integer_type(context, 32)
-        print_value = create_dummy_value(int_type)
+        print_value = create_dummy_value(context)
         format_string = "*, i0"
         
         passed = passed .and. int_type%is_valid()
@@ -327,7 +327,7 @@ contains
         
         ! Create read target
         real_type = create_float_type(context, 64)
-        read_target = create_dummy_value(real_type)
+        read_target = create_dummy_value(context)
         format_string = "*, f0.0"
         
         passed = passed .and. real_type%is_valid()

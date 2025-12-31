@@ -111,7 +111,8 @@ contains
         call register_func_dialect(builder%context)
         
         ! Create function type (no return type for simplicity)
-        func_type = create_function_type(builder%context, param_types, [])
+        func_type = create_function_type(builder%context, param_types, &
+            [mlir_type_t ::])
         
         ! Create function name attribute
         name_attr = create_string_attribute(builder%context, name)
@@ -207,7 +208,7 @@ contains
         call register_hlfir_dialect(builder%context)
         
         ! Create alloca for local variable (simplified - would use fir.alloca)
-        alloca_value = create_dummy_value(var_type)
+        alloca_value = create_dummy_value(builder%context)
         
         ! Create attributes
         name_attr = create_string_attribute(builder%context, name)
@@ -284,10 +285,10 @@ contains
         value_attr = create_integer_attribute(builder%context, value_type, int(value, c_int64_t))
         
         ! Create arith.constant operation
-        const_op = create_arith_constant(builder%context, value_attr)
+        const_op = create_arith_constant(builder%context, value_attr, value_type)
         
         ! Get result value from constant operation
-        mlir_value = create_dummy_value(value_type)  ! Simplified for GREEN phase
+        mlir_value = create_dummy_value(builder%context)  ! Simplified for GREEN phase
     end function create_constant_value
 
     ! Generate return operation with value
@@ -360,12 +361,14 @@ contains
             func_type = create_function_type(builder%context, param_types, return_types)
         else
             ! Subroutine - no return type
-            func_type = create_function_type(builder%context, param_types, [])
+            func_type = create_function_type(builder%context, param_types, &
+            [mlir_type_t ::])
         end if
         
         ! Create attributes
         name_attr = create_string_attribute(builder%context, name)
-        callable_attr = create_string_attribute(builder%context, merge("function", "subroutine", is_function))
+        callable_attr = create_string_attribute(builder%context, &
+            merge("function  ", "subroutine", is_function))
         
         ! Build unified func.func operation
         call op_builder%init(builder%context, "func.func")

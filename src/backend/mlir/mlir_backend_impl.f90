@@ -2,7 +2,7 @@
 ! This module provides the actual implementation of the MLIR backend
 module mlir_backend_impl
     use backend_interface
-    use ast_core
+    use fortfront
     use mlir_backend_types
     use mlir_backend, only: generate_mlir_module
     use mlir_compile, only: compile_mlir_to_output, apply_mlir_lowering_passes

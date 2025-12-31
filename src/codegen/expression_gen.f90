@@ -69,7 +69,7 @@ contains
         value_attr = create_integer_attribute(builder%context, type, int(value, c_int64_t))
         
         ! Create arith.constant operation
-        operation = create_arith_constant(builder%context, value_attr)
+        operation = create_arith_constant(builder%context, value_attr, type)
     end function generate_integer_literal
 
     ! Generate real literal using ARITH dialect
@@ -87,7 +87,7 @@ contains
         value_attr = create_float_attribute(builder%context, type, value)
         
         ! Create arith.constant operation
-        operation = create_arith_constant(builder%context, value_attr)
+        operation = create_arith_constant(builder%context, value_attr, type)
     end function generate_real_literal
 
     ! Generate boolean literal using ARITH dialect
@@ -109,7 +109,7 @@ contains
         value_attr = create_integer_attribute(builder%context, type, bool_value)
         
         ! Create arith.constant operation
-        operation = create_arith_constant(builder%context, value_attr)
+        operation = create_arith_constant(builder%context, value_attr, type)
     end function generate_boolean_literal
 
     ! Generate character literal using ARITH dialect
@@ -135,7 +135,7 @@ contains
         value_attr = create_integer_attribute(builder%context, type, char_value)
         
         ! Create arith.constant operation
-        operation = create_arith_constant(builder%context, value_attr)
+        operation = create_arith_constant(builder%context, value_attr, type)
     end function generate_character_literal
 
     ! Check if operation is literal
@@ -385,7 +385,7 @@ contains
         select case (trim(operator))
         case ("neg")
             ! Implement negation as 0 - operand
-            zero_value = create_dummy_value(operand_type)
+            zero_value = create_dummy_value(builder%context)
             call op_builder%init(builder%context, "arith.subi")
             call op_builder%operand(zero_value)
             call op_builder%operand(operand)
@@ -397,7 +397,7 @@ contains
         case default
             ! Default to identity (no-op)
             call op_builder%init(builder%context, "arith.addi")
-            zero_value = create_dummy_value(operand_type)
+            zero_value = create_dummy_value(builder%context)
             call op_builder%operand(operand)
             call op_builder%operand(zero_value)
         end select
@@ -433,10 +433,15 @@ contains
         type(mlir_operation_t), intent(in) :: operation
         logical :: is_unary
         character(len=256) :: op_name
-        
+
         op_name = get_operation_name(operation)
-        is_unary = ((index(op_name, "arith.") == 1 .and. index(op_name, "xori") > 0) .or. &
-                    (index(op_name, "func.call") == 1))
+        ! Unary operations include negation (subi), not (xori), abs, and call
+        is_unary = (index(op_name, "arith.") == 1 .and. &
+                   (index(op_name, "subi") > 0 .or. &
+                    index(op_name, "xori") > 0 .or. &
+                    index(op_name, "addi") > 0)) .or. &
+                   (index(op_name, "func.call") == 1) .or. &
+                   (index(op_name, "math.") == 1)
     end function is_unary_operation
 
     ! Check if unary has operand (simplified)

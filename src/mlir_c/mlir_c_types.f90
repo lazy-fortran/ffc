@@ -219,16 +219,18 @@ contains
     function get_integer_width(type) result(width)
         type(mlir_type_t), intent(in) :: type
         integer :: width
-        integer(c_intptr_t) :: ptr_val
-        
+
+        interface
+            function ffc_mlirIntegerTypeGetWidth_local(type_ptr) &
+                bind(c, name="ffc_mlirIntegerTypeGetWidth") result(w)
+                import :: c_ptr, c_int
+                type(c_ptr), value :: type_ptr
+                integer(c_int) :: w
+            end function ffc_mlirIntegerTypeGetWidth_local
+        end interface
+
         if (c_associated(type%ptr)) then
-            ! Decode width from our test encoding
-            ptr_val = transfer(type%ptr, ptr_val)
-            if (ptr_val >= int(z'10000000', c_intptr_t) .and. ptr_val < int(z'20000000', c_intptr_t)) then
-                width = int(ptr_val - int(z'10000000', c_intptr_t))
-            else
-                width = 0
-            end if
+            width = ffc_mlirIntegerTypeGetWidth_local(type%ptr)
         else
             width = 0
         end if
@@ -238,11 +240,17 @@ contains
     function is_integer_type(type) result(is_int)
         type(mlir_type_t), intent(in) :: type
         logical :: is_int
-        integer(c_intptr_t) :: ptr_val
-        
+
+        interface
+            function ffc_mlirTypeIsAInteger(type_ptr) bind(c, name="ffc_mlirTypeIsAInteger") result(is_int)
+                import :: c_ptr, c_int
+                type(c_ptr), value :: type_ptr
+                integer(c_int) :: is_int
+            end function ffc_mlirTypeIsAInteger
+        end interface
+
         if (c_associated(type%ptr)) then
-            ptr_val = transfer(type%ptr, ptr_val)
-            is_int = (ptr_val >= int(z'10000000', c_intptr_t) .and. ptr_val < int(z'20000000', c_intptr_t))
+            is_int = ffc_mlirTypeIsAInteger(type%ptr) /= 0
         else
             is_int = .false.
         end if

@@ -1,7 +1,5 @@
 # FortFC - Fortran Compiler with MLIR C API
 
-> **Note**: This project will be retired in favor of [LFortran](https://lfortran.org/). LFortran already provides a complete Fortran compiler with MLIR/LLVM backend, LSP support, and active development. We recommend using LFortran for all Fortran compilation needs.
-
 **FortFC** is a modern Fortran compiler that generates HLFIR (High-Level FIR) using the MLIR C API exclusively for optimal performance and memory safety.
 
 ## Overview
@@ -146,21 +144,15 @@ call guard%register_resource(context, "context")
 ## Status
 
 ### Completed (✅)
-- **Epic 1-3**: MLIR C API Foundation, Dialects, IR Builder
-- **Epic 4**: AST to MLIR Conversion (Program, Function, Statement, Expression)
-- **Epic 5**: Pass Management and Optimization (HLFIR→FIR→LLVM)
-- **Epic 6**: Backend Integration and Memory Management
-- **Epic 7.1**: Comprehensive Test Suite (64 active tests)
-- **Epic 7.2**: Documentation (C API Usage, Developer Guide, API Reference, Migration Guide)
+- **MLIR C API Foundation**: Standalone implementation with full type/attribute/operation support
+- **Dialect Support**: HLFIR, FIR, and standard dialects (func, arith, scf, memref)
+- **IR Builder**: High-level MLIR construction with type conversion
+- **Pass Management**: HLFIR→FIR→LLVM lowering pipelines
+- **Backend Integration**: Complete backend with memory management
 
 ### In Progress (🟡)
-- **Epic 7.3**: CI/CD Integration
-
-### Performance Metrics
-- **Memory Safe**: Zero memory leaks detected in test suite
-- **Performance**: Efficient C API usage with minimal overhead
-- **Coverage**: 100% test coverage for core components
-- **Architecture**: 100% MLIR C API usage (zero text generation)
+- **Full HLFIR Code Generation**: AST→HLFIR transformation pipeline
+- **CI/CD Integration**: Automated testing and deployment
 
 ## Contributing
 

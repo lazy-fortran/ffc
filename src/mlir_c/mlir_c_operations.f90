@@ -57,9 +57,11 @@ module mlir_c_operations
     ! C interface declarations - using ffc_* wrapper functions
     interface
         ! Operation state creation
-        function ffc_mlirOperationStateCreate(name, location) bind(c, name="ffc_mlirOperationStateCreate") result(state)
-            import :: c_ptr
+        function ffc_mlirOperationStateCreate(name, name_len, location) &
+            bind(c, name="ffc_mlirOperationStateCreate") result(state)
+            import :: c_ptr, c_long
             type(c_ptr), value :: name  ! C string
+            integer(c_long), value :: name_len
             type(c_ptr), value :: location
             type(c_ptr) :: state
         end function ffc_mlirOperationStateCreate
@@ -138,9 +140,10 @@ contains
         type(mlir_string_ref_t), intent(in), target :: name
         type(mlir_location_t), intent(in) :: location
         type(mlir_operation_state_t) :: state
-        
-        ! Convert string_ref to C string
-        state%ptr = ffc_mlirOperationStateCreate(name%data, location%ptr)
+
+        ! Pass name data and length to C
+        state%ptr = ffc_mlirOperationStateCreate(name%data, int(name%length, c_long), &
+            location%ptr)
         state%num_operands = 0
         state%num_results = 0
         state%num_attributes = 0
@@ -324,16 +327,49 @@ contains
         end if
     end function get_operation_num_results
 
-    ! Get operation name (simplified - returns fixed string for stub)
+    ! Get operation name from C API
     function get_operation_name(op) result(name)
         type(mlir_operation_t), intent(in) :: op
         character(len=:), allocatable :: name
-        
-        if (c_associated(op%ptr)) then
-            name = "test.complete_op"  ! Simplified for stub
-        else
+        type(c_ptr) :: name_ptr
+        integer(c_long) :: name_len
+        character(len=256) :: buffer
+        integer :: i
+
+        interface
+            function ffc_mlirOperationGetName(op_ptr, length) &
+                bind(c, name="ffc_mlirOperationGetName") result(name_ptr)
+                import :: c_ptr, c_long
+                type(c_ptr), value :: op_ptr
+                integer(c_long), intent(out) :: length
+                type(c_ptr) :: name_ptr
+            end function ffc_mlirOperationGetName
+        end interface
+
+        if (.not. c_associated(op%ptr)) then
             name = "<invalid>"
+            return
         end if
+
+        name_ptr = ffc_mlirOperationGetName(op%ptr, name_len)
+
+        if (.not. c_associated(name_ptr) .or. name_len <= 0) then
+            name = "<unknown>"
+            return
+        end if
+
+        ! Convert C string to Fortran
+        if (name_len > 256) name_len = 256
+        block
+            character(kind=c_char), dimension(:), pointer :: fptr
+            call c_f_pointer(name_ptr, fptr, [name_len])
+            buffer = ""
+            do i = 1, int(name_len)
+                buffer(i:i) = fptr(i)
+            end do
+        end block
+
+        name = trim(buffer(1:name_len))
     end function get_operation_name
 
     ! Create dummy value for testing

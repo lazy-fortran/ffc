@@ -1,7 +1,7 @@
 ! MLIR Intrinsic Functions Module - Pure HLFIR Implementation
 ! This module contains all intrinsic function handlers for MLIR code generation using HLFIR
 module mlir_intrinsics
-    use ast_core
+    use fortfront
     use mlir_backend_types
     use mlir_hlfir_helpers
     implicit none

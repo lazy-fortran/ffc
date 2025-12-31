@@ -106,7 +106,7 @@ contains
         
         ! Create variable type
         int_type = create_integer_type(context, 32)
-        var_value = create_dummy_value(int_type)
+        var_value = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. var_value%is_valid()
@@ -152,8 +152,8 @@ contains
         
         ! Create operands
         int_type = create_integer_type(context, 32)
-        lhs = create_dummy_value(int_type)
-        rhs = create_dummy_value(int_type)
+        lhs = create_dummy_value(context)
+        rhs = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. lhs%is_valid()
@@ -209,7 +209,7 @@ contains
         
         ! Create operand
         int_type = create_integer_type(context, 32)
-        operand = create_dummy_value(int_type)
+        operand = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. operand%is_valid()
@@ -259,8 +259,8 @@ contains
         ! Create function arguments
         int_type = create_integer_type(context, 32)
         return_type = int_type
-        args(1) = create_dummy_value(int_type)
-        args(2) = create_dummy_value(int_type)
+        args(1) = create_dummy_value(context)
+        args(2) = create_dummy_value(context)
         
         passed = passed .and. int_type%is_valid()
         passed = passed .and. return_type%is_valid()
@@ -307,10 +307,10 @@ contains
         ! Create array and index types
         int_type = create_integer_type(context, 32)
         element_type = int_type
-        array_type = create_array_type(context, element_type, [10, 20])
-        array_base = create_dummy_value(array_type)
-        index1 = create_dummy_value(int_type)
-        index2 = create_dummy_value(int_type)
+        array_type = create_array_type(context, element_type, [10_c_int64_t, 20_c_int64_t])
+        array_base = create_dummy_value(context)
+        index1 = create_dummy_value(context)
+        index2 = create_dummy_value(context)
         indices = [index1, index2]
         
         passed = passed .and. int_type%is_valid()

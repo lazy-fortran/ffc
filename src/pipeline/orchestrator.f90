@@ -2,7 +2,7 @@ module pipeline_orchestrator
     use backend_constants
     use backend_interface
     use backend_factory
-    use ast_core
+    use fortfront
     implicit none
     private
 

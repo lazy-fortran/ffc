@@ -9,7 +9,7 @@ module test_integration_hello_world
     use program_gen
     use mlir_c_backend
     use backend_interface
-    use ast_core
+    use fortfront
     implicit none
     private
     
