@@ -16,7 +16,19 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran llvm-dev mlir-tools libmlir-dev libllvm-dev libstdc++-dev
+          sudo apt-get install -y gfortran git build-essential cmake ninja-build
+
+      - name: Install LLVM/MLIR from GitHub releases
+        run: |
+          cd /tmp
+          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-21.0.0/LLVM-21.0.0-Linux.tar.gz
+          tar xzf LLVM-21.0.0-Linux.tar.gz
+          sudo mkdir -p /usr/local/llvm
+          sudo cp -r LLVM-21.0.0-Linux/* /usr/local/llvm/
+          echo "/usr/local/llvm/lib" | sudo tee /etc/ld.so.conf.d/llvm.conf
+          sudo ldconfig
+          echo "/usr/local/llvm/lib" >> $GITHUB_ENV
+          export LD_LIBRARY_PATH=/usr/local/llvm/lib:$LD_LIBRARY_PATH
 
       - name: Install fpm
         run: |
@@ -25,10 +37,7 @@ jobs:
           chmod +x ~/.fpm/bin/fpm
           echo "$HOME/.fpm/bin" >> $GITHUB_PATH
 
-      - name: Set library paths
-        run: |
-          echo "LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-
       - name: Run tests
+        env:
+          LD_LIBRARY_PATH: /usr/local/llvm/lib:${{ env.LD_LIBRARY_PATH }}
         run: fpm test
