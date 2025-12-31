@@ -13,17 +13,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache LLVM/MLIR build
+        uses: actions/cache@v4
+        id: cache-llvm
+        with:
+          path: |
+            /usr/local/llvm18
+          key: llvm18-mlir-${{ runner.os }}-18.1.0
+
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran git build-essential cmake ninja-build python3 pkg-config
+          sudo apt-get install -y gfortran git build-essential cmake ninja-build python3 pkg-config ccache
 
-      - name: Install LLVM/MLIR from apt.llvm.org
+      - name: Build and install LLVM/MLIR with MLIR C API
+        if: steps.cache-llvm.outputs.cache-hit != 'true'
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 18
-          sudo ln -sf /usr/lib/llvm-18 /usr/local/llvm18
+          cd /tmp
+          git clone --depth 1 --branch llvmorg-18.1.0 https://github.com/llvm/llvm-project.git
+          mkdir -p llvm-project/build
+          cd llvm-project/build
+          ccache -z
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local/llvm18 \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DLLVM_ENABLE_PROJECTS="mlir" \
+            -DLLVM_TARGETS_TO_BUILD="X86" \
+            -DLLVM_ENABLE_ASSERTIONS=OFF \
+            -DLLVM_OPTIMIZED_TABLEGEN=ON \
+            -DLLVM_BUILD_TOOLS=OFF \
+            -DLLVM_ENABLE_MLIR_C_API=ON \
+            ../llvm
+          ninja install -j4
+          ccache -s
 
       - name: Install fpm
         run: |
