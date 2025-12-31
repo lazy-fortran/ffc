@@ -13,15 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Add LLVM repository
-        run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-21 main"
-          sudo apt-get update
-
       - name: Install dependencies
         run: |
-          sudo apt-get install -y gfortran llvm-21 llvm-21-dev libllvm-21 libmlir-21 libmlir-21-dev
+          sudo apt-get update
+          sudo apt-get install -y gfortran llvm-dev
 
       - name: Install fpm
         run: |
@@ -31,11 +26,15 @@ jobs:
           ~/.fpm/bin/fpm --version
           echo "$HOME/.fpm/bin" >> $GITHUB_PATH
 
-      - name: Set up LLVM library path
+      - name: Set up library paths and build
         run: |
-          echo "PKG_CONFIG_PATH=/usr/lib/llvm-21/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=/usr/lib/llvm-21/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=/usr/lib/llvm-21/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          # Discover LLVM installation
+          llvm_version=$(llvm-config --version | cut -d. -f1)
+          llvm_lib_dir=$(llvm-config --libdir)
+          echo "LLVM version: $llvm_version"
+          echo "LLVM lib dir: $llvm_lib_dir"
+          echo "LD_LIBRARY_PATH=$llvm_lib_dir:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$llvm_lib_dir:$LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Run tests
         run: |
