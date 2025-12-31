@@ -16,14 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran
-
-      - name: Install fpm
-        run: |
-          mkdir -p ~/.fpm/bin
-          curl -L https://github.com/fortran-lang/fpm/releases/download/v0.10.2/fpm-v0.10.2.linux.x86_64 -o ~/.fpm/bin/fpm
-          chmod +x ~/.fpm/bin/fpm
-          echo "$HOME/.fpm/bin" >> $GITHUB_PATH
+          sudo apt-get install -y gfortran fpm
 
       - name: Run tests
         run: |
