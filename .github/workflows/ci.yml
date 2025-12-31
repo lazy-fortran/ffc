@@ -12,5 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder test
-        run: echo "ffc is retired in favor of LFortran - tests disabled"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran llvm-dev mlir-tools libmlir-dev libllvm-dev libstdc++-dev
+
+      - name: Install fpm
+        run: |
+          mkdir -p ~/.fpm/bin
+          curl -L https://github.com/fortran-lang/fpm/releases/download/v0.10.2/fpm-v0.10.2.linux.x86_64 -o ~/.fpm/bin/fpm
+          chmod +x ~/.fpm/bin/fpm
+          echo "$HOME/.fpm/bin" >> $GITHUB_PATH
+
+      - name: Set library paths
+        run: |
+          echo "LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+
+      - name: Run tests
+        run: fpm test
