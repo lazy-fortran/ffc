@@ -1,504 +1,313 @@
 module mlir_c_types
-    use, intrinsic :: iso_c_binding, only: c_ptr, c_null_ptr, c_bool, c_int, &
-        c_int64_t, c_intptr_t, c_associated, c_loc
-    use mlir_c_core, only: mlir_context_t, mlir_type_t, mlir_location_t, &
-        mlir_attribute_t
+    use iso_c_binding
+    use mlir_c_core
     implicit none
     private
 
-    public :: mlir_integer_type_get
-    public :: mlir_integer_type_signed_get
-    public :: mlir_integer_type_unsigned_get
-    public :: mlir_integer_type_get_width
-    public :: mlir_type_is_a_integer
+    ! Public types
+    public :: mlir_type_t
+    
+    ! Public functions
+    public :: create_integer_type, create_float_type, create_void_type
+    public :: create_array_type, create_reference_type
+    public :: get_type_kind, get_integer_width
+    public :: is_integer_type, is_float_type, is_array_type
+    public :: validate_integer_width, validate_float_width
+    public :: types_are_equal
 
-    public :: mlir_index_type_get
-    public :: mlir_type_is_a_index
+    ! Type wrapper
+    type :: mlir_type_t
+        type(c_ptr) :: ptr = c_null_ptr
+    contains
+        procedure :: is_valid => type_is_valid
+    end type mlir_type_t
 
-    public :: mlir_f16_type_get
-    public :: mlir_f32_type_get
-    public :: mlir_f64_type_get
-    public :: mlir_bf16_type_get
-    public :: mlir_type_is_a_float
-    public :: mlir_float_type_get_width
+    ! Type kind enumeration
+    integer, parameter, public :: TYPE_INTEGER = 1
+    integer, parameter, public :: TYPE_FLOAT = 2
+    integer, parameter, public :: TYPE_ARRAY = 3
+    integer, parameter, public :: TYPE_REFERENCE = 4
+    integer, parameter, public :: TYPE_UNKNOWN = 0
 
-    public :: mlir_none_type_get
-    public :: mlir_type_is_a_none
-
-    public :: mlir_complex_type_get
-    public :: mlir_type_is_a_complex
-    public :: mlir_complex_type_get_element_type
-
-    public :: mlir_function_type_get
-    public :: mlir_type_is_a_function
-    public :: mlir_function_type_get_num_inputs
-    public :: mlir_function_type_get_num_results
-    public :: mlir_function_type_get_input
-    public :: mlir_function_type_get_result
-
-    public :: mlir_ranked_tensor_type_get
-    public :: mlir_type_is_a_ranked_tensor
-
-    public :: mlir_memref_type_contiguous_get
-    public :: mlir_type_is_a_memref
-
-    public :: mlir_type_is_null
-    public :: mlir_type_equal
-    public :: mlir_type_dump
-
+    ! C interface declarations
     interface
-        function mlirIntegerTypeGet(ctx, bitwidth) &
-                bind(C, name="mlirIntegerTypeGet")
+        ! Integer type creation
+        function ffc_mlirIntegerTypeGet(context, width) bind(c, name="ffc_mlirIntegerTypeGet") result(type)
             import :: c_ptr, c_int
-            type(c_ptr), value :: ctx
-            integer(c_int), value :: bitwidth
-            type(c_ptr) :: mlirIntegerTypeGet
-        end function mlirIntegerTypeGet
+            type(c_ptr), value :: context
+            integer(c_int), value :: width
+            type(c_ptr) :: type
+        end function ffc_mlirIntegerTypeGet
 
-        function mlirIntegerTypeSignedGet(ctx, bitwidth) &
-                bind(C, name="mlirIntegerTypeSignedGet")
+        function ffc_mlirIntegerTypeSignedGet(context, width) bind(c, name="ffc_mlirIntegerTypeSignedGet") result(type)
             import :: c_ptr, c_int
-            type(c_ptr), value :: ctx
-            integer(c_int), value :: bitwidth
-            type(c_ptr) :: mlirIntegerTypeSignedGet
-        end function mlirIntegerTypeSignedGet
+            type(c_ptr), value :: context
+            integer(c_int), value :: width
+            type(c_ptr) :: type
+        end function ffc_mlirIntegerTypeSignedGet
 
-        function mlirIntegerTypeUnsignedGet(ctx, bitwidth) &
-                bind(C, name="mlirIntegerTypeUnsignedGet")
+        function ffc_mlirIntegerTypeUnsignedGet(context, width) bind(c, name="ffc_mlirIntegerTypeUnsignedGet") result(type)
             import :: c_ptr, c_int
-            type(c_ptr), value :: ctx
-            integer(c_int), value :: bitwidth
-            type(c_ptr) :: mlirIntegerTypeUnsignedGet
-        end function mlirIntegerTypeUnsignedGet
+            type(c_ptr), value :: context
+            integer(c_int), value :: width
+            type(c_ptr) :: type
+        end function ffc_mlirIntegerTypeUnsignedGet
 
-        function mlirIntegerTypeGetWidth(ty) &
-                bind(C, name="mlirIntegerTypeGetWidth")
-            import :: c_ptr, c_int
-            type(c_ptr), value :: ty
-            integer(c_int) :: mlirIntegerTypeGetWidth
-        end function mlirIntegerTypeGetWidth
+        ! Float type creation
+        function ffc_mlirF32TypeGet(context) bind(c, name="ffc_mlirF32TypeGet") result(type)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function ffc_mlirF32TypeGet
 
-        function mlirTypeIsAInteger(ty) bind(C, name="mlirTypeIsAInteger")
+        function ffc_mlirF64TypeGet(context) bind(c, name="ffc_mlirF64TypeGet") result(type)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function ffc_mlirF64TypeGet
+
+        ! Void type creation
+        function ffc_mlirNoneTypeGet(context) bind(c, name="ffc_mlirNoneTypeGet") result(type)
+            import :: c_ptr
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function ffc_mlirNoneTypeGet
+
+        ! Array type creation - using MemRef for now
+        function ffc_mlirMemRefTypeGet(element_type, rank, shape, layout, memspace) &
+            bind(c, name="ffc_mlirMemRefTypeGet") result(type)
+            import :: c_ptr, c_int64_t
+            type(c_ptr), value :: element_type
+            integer(c_int64_t), value :: rank
+            type(c_ptr), value :: shape  ! pointer to array of int64_t
+            type(c_ptr), value :: layout
+            type(c_ptr), value :: memspace
+            type(c_ptr) :: type
+        end function ffc_mlirMemRefTypeGet
+
+        ! Type queries
+        function mlirTypeIsAInteger(type) bind(c, name="mlirTypeIsAInteger") result(is_int)
             import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAInteger
+            type(c_ptr), value :: type
+            logical(c_bool) :: is_int
         end function mlirTypeIsAInteger
 
-        function mlirIndexTypeGet(ctx) bind(C, name="mlirIndexTypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirIndexTypeGet
-        end function mlirIndexTypeGet
-
-        function mlirTypeIsAIndex(ty) bind(C, name="mlirTypeIsAIndex")
+        function mlirTypeIsAFloat(type) bind(c, name="mlirTypeIsAFloat") result(is_float)
             import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAIndex
-        end function mlirTypeIsAIndex
-
-        function mlirF16TypeGet(ctx) bind(C, name="mlirF16TypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirF16TypeGet
-        end function mlirF16TypeGet
-
-        function mlirF32TypeGet(ctx) bind(C, name="mlirF32TypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirF32TypeGet
-        end function mlirF32TypeGet
-
-        function mlirF64TypeGet(ctx) bind(C, name="mlirF64TypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirF64TypeGet
-        end function mlirF64TypeGet
-
-        function mlirBF16TypeGet(ctx) bind(C, name="mlirBF16TypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirBF16TypeGet
-        end function mlirBF16TypeGet
-
-        function mlirTypeIsAFloat(ty) bind(C, name="mlirTypeIsAFloat")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAFloat
+            type(c_ptr), value :: type
+            logical(c_bool) :: is_float
         end function mlirTypeIsAFloat
 
-        function mlirFloatTypeGetWidth(ty) bind(C, name="mlirFloatTypeGetWidth")
-            import :: c_ptr, c_int
-            type(c_ptr), value :: ty
-            integer(c_int) :: mlirFloatTypeGetWidth
-        end function mlirFloatTypeGetWidth
-
-        function mlirNoneTypeGet(ctx) bind(C, name="mlirNoneTypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: ctx
-            type(c_ptr) :: mlirNoneTypeGet
-        end function mlirNoneTypeGet
-
-        function mlirTypeIsANone(ty) bind(C, name="mlirTypeIsANone")
+        function mlirTypeIsAMemRef(type) bind(c, name="mlirTypeIsAMemRef") result(is_memref)
             import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsANone
-        end function mlirTypeIsANone
-
-        function mlirComplexTypeGet(element_type) &
-                bind(C, name="mlirComplexTypeGet")
-            import :: c_ptr
-            type(c_ptr), value :: element_type
-            type(c_ptr) :: mlirComplexTypeGet
-        end function mlirComplexTypeGet
-
-        function mlirTypeIsAComplex(ty) bind(C, name="mlirTypeIsAComplex")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAComplex
-        end function mlirTypeIsAComplex
-
-        function mlirComplexTypeGetElementType(ty) &
-                bind(C, name="mlirComplexTypeGetElementType")
-            import :: c_ptr
-            type(c_ptr), value :: ty
-            type(c_ptr) :: mlirComplexTypeGetElementType
-        end function mlirComplexTypeGetElementType
-
-        function mlirFunctionTypeGet(ctx, num_inputs, inputs, num_results, &
-                results) bind(C, name="mlirFunctionTypeGet")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: ctx
-            integer(c_intptr_t), value :: num_inputs
-            type(c_ptr), value :: inputs
-            integer(c_intptr_t), value :: num_results
-            type(c_ptr), value :: results
-            type(c_ptr) :: mlirFunctionTypeGet
-        end function mlirFunctionTypeGet
-
-        function mlirTypeIsAFunction(ty) bind(C, name="mlirTypeIsAFunction")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAFunction
-        end function mlirTypeIsAFunction
-
-        function mlirFunctionTypeGetNumInputs(ty) &
-                bind(C, name="mlirFunctionTypeGetNumInputs")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: ty
-            integer(c_intptr_t) :: mlirFunctionTypeGetNumInputs
-        end function mlirFunctionTypeGetNumInputs
-
-        function mlirFunctionTypeGetNumResults(ty) &
-                bind(C, name="mlirFunctionTypeGetNumResults")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: ty
-            integer(c_intptr_t) :: mlirFunctionTypeGetNumResults
-        end function mlirFunctionTypeGetNumResults
-
-        function mlirFunctionTypeGetInput(ty, pos) &
-                bind(C, name="mlirFunctionTypeGetInput")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: ty
-            integer(c_intptr_t), value :: pos
-            type(c_ptr) :: mlirFunctionTypeGetInput
-        end function mlirFunctionTypeGetInput
-
-        function mlirFunctionTypeGetResult(ty, pos) &
-                bind(C, name="mlirFunctionTypeGetResult")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: ty
-            integer(c_intptr_t), value :: pos
-            type(c_ptr) :: mlirFunctionTypeGetResult
-        end function mlirFunctionTypeGetResult
-
-        function mlirRankedTensorTypeGet(rank, shape, element_type, encoding) &
-                bind(C, name="mlirRankedTensorTypeGet")
-            import :: c_ptr, c_intptr_t
-            integer(c_intptr_t), value :: rank
-            type(c_ptr), value :: shape
-            type(c_ptr), value :: element_type
-            type(c_ptr), value :: encoding
-            type(c_ptr) :: mlirRankedTensorTypeGet
-        end function mlirRankedTensorTypeGet
-
-        function mlirTypeIsARankedTensor(ty) &
-                bind(C, name="mlirTypeIsARankedTensor")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsARankedTensor
-        end function mlirTypeIsARankedTensor
-
-        function mlirMemRefTypeContiguousGet(element_type, rank, shape, &
-                memory_space) bind(C, name="mlirMemRefTypeContiguousGet")
-            import :: c_ptr, c_intptr_t
-            type(c_ptr), value :: element_type
-            integer(c_intptr_t), value :: rank
-            type(c_ptr), value :: shape
-            type(c_ptr), value :: memory_space
-            type(c_ptr) :: mlirMemRefTypeContiguousGet
-        end function mlirMemRefTypeContiguousGet
-
-        function mlirTypeIsAMemRef(ty) bind(C, name="mlirTypeIsAMemRef")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: ty
-            logical(c_bool) :: mlirTypeIsAMemRef
+            type(c_ptr), value :: type
+            logical(c_bool) :: is_memref
         end function mlirTypeIsAMemRef
 
-        function mlirTypeEqual(t1, t2) bind(C, name="mlirTypeEqual")
-            import :: c_ptr, c_bool
-            type(c_ptr), value :: t1
-            type(c_ptr), value :: t2
-            logical(c_bool) :: mlirTypeEqual
-        end function mlirTypeEqual
+        function mlirIntegerTypeGetWidth(type) bind(c, name="mlirIntegerTypeGetWidth") result(width)
+            import :: c_ptr, c_int
+            type(c_ptr), value :: type
+            integer(c_int) :: width
+        end function mlirIntegerTypeGetWidth
 
-        subroutine mlirTypeDump(ty) bind(C, name="mlirTypeDump")
+        function mlirNoneTypeGet(context) bind(c, name="mlirNoneTypeGet") result(type)
             import :: c_ptr
-            type(c_ptr), value :: ty
-        end subroutine mlirTypeDump
+            type(c_ptr), value :: context
+            type(c_ptr) :: type
+        end function mlirNoneTypeGet
     end interface
 
 contains
 
-    function mlir_integer_type_get(ctx, bitwidth) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        integer, intent(in) :: bitwidth
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirIntegerTypeGet(ctx%ptr, int(bitwidth, c_int))
-    end function mlir_integer_type_get
+    ! Create integer type
+    function create_integer_type(context, width, signed) result(type)
+        type(mlir_context_t), intent(in) :: context
+        integer, intent(in) :: width
+        logical, intent(in), optional :: signed
+        type(mlir_type_t) :: type
+        logical :: is_signed
+        
+        is_signed = .true.  ! Default to signed
+        if (present(signed)) is_signed = signed
+        
+        ! Use real MLIR C API to create integer types
+        if (is_signed) then
+            type%ptr = ffc_mlirIntegerTypeSignedGet(context%ptr, int(width, c_int))
+        else
+            type%ptr = ffc_mlirIntegerTypeUnsignedGet(context%ptr, int(width, c_int))
+        end if
+    end function create_integer_type
 
-    function mlir_integer_type_signed_get(ctx, bitwidth) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        integer, intent(in) :: bitwidth
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirIntegerTypeSignedGet(ctx%ptr, int(bitwidth, c_int))
-    end function mlir_integer_type_signed_get
+    ! Create float type
+    function create_float_type(context, width) result(type)
+        type(mlir_context_t), intent(in) :: context
+        integer, intent(in) :: width
+        type(mlir_type_t) :: type
+        
+        select case(width)
+        case(32)
+            type%ptr = ffc_mlirF32TypeGet(context%ptr)
+        case(64)
+            type%ptr = ffc_mlirF64TypeGet(context%ptr)
+        case default
+            type%ptr = c_null_ptr  ! Invalid width
+        end select
+    end function create_float_type
 
-    function mlir_integer_type_unsigned_get(ctx, bitwidth) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        integer, intent(in) :: bitwidth
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirIntegerTypeUnsignedGet(ctx%ptr, int(bitwidth, c_int))
-    end function mlir_integer_type_unsigned_get
+    ! Create array type (simplified - fixed shape only for now)
+    function create_array_type(context, element_type, shape) result(type)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_type_t), intent(in) :: element_type
+        integer(c_int64_t), dimension(:), intent(in) :: shape
+        type(mlir_type_t) :: type
+        integer(c_int64_t), dimension(:), allocatable, target :: shape_copy
+        
+        ! Make a copy of shape for C interface
+        allocate(shape_copy(size(shape)))
+        shape_copy = shape
+        
+        ! Create memref type (simpler than full array type)
+        type%ptr = ffc_mlirMemRefTypeGet(element_type%ptr, &
+                                         int(size(shape), c_int64_t), &
+                                         c_loc(shape_copy), &
+                                         c_null_ptr, &
+                                         c_null_ptr)
+        
+        deallocate(shape_copy)
+    end function create_array_type
 
-    function mlir_integer_type_get_width(ty) result(width)
-        type(mlir_type_t), intent(in) :: ty
+    ! Create reference type (using memref with rank 0 as approximation)
+    function create_reference_type(context, element_type) result(type)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_type_t), intent(in) :: element_type
+        type(mlir_type_t) :: type
+        integer(c_int64_t), dimension(0) :: empty_shape
+        
+        ! Create rank-0 memref as reference
+        type%ptr = ffc_mlirMemRefTypeGet(element_type%ptr, &
+                                         0_c_int64_t, &
+                                         c_null_ptr, &
+                                         c_null_ptr, &
+                                         c_null_ptr)
+    end function create_reference_type
+
+    ! Create void type (MLIR NoneType)
+    function create_void_type(context) result(type)
+        type(mlir_context_t), intent(in) :: context
+        type(mlir_type_t) :: type
+        
+        type%ptr = ffc_mlirNoneTypeGet(context%ptr)
+    end function create_void_type
+
+    ! Get type kind
+    function get_type_kind(type) result(kind)
+        type(mlir_type_t), intent(in) :: type
+        integer :: kind
+        
+        if (is_integer_type(type)) then
+            kind = TYPE_INTEGER
+        else if (is_float_type(type)) then
+            kind = TYPE_FLOAT
+        else if (is_array_type(type)) then
+            kind = TYPE_ARRAY
+        else
+            kind = TYPE_UNKNOWN
+        end if
+    end function get_type_kind
+
+    ! Get integer width
+    function get_integer_width(type) result(width)
+        type(mlir_type_t), intent(in) :: type
         integer :: width
-        width = int(mlirIntegerTypeGetWidth(ty%ptr))
-    end function mlir_integer_type_get_width
 
-    function mlir_type_is_a_integer(ty) result(is_int)
-        type(mlir_type_t), intent(in) :: ty
+        interface
+            function ffc_mlirIntegerTypeGetWidth_local(type_ptr) &
+                bind(c, name="ffc_mlirIntegerTypeGetWidth") result(w)
+                import :: c_ptr, c_int
+                type(c_ptr), value :: type_ptr
+                integer(c_int) :: w
+            end function ffc_mlirIntegerTypeGetWidth_local
+        end interface
+
+        if (c_associated(type%ptr)) then
+            width = ffc_mlirIntegerTypeGetWidth_local(type%ptr)
+        else
+            width = 0
+        end if
+    end function get_integer_width
+
+    ! Type query functions
+    function is_integer_type(type) result(is_int)
+        type(mlir_type_t), intent(in) :: type
         logical :: is_int
-        is_int = mlirTypeIsAInteger(ty%ptr)
-    end function mlir_type_is_a_integer
 
-    function mlir_index_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirIndexTypeGet(ctx%ptr)
-    end function mlir_index_type_get
+        interface
+            function ffc_mlirTypeIsAInteger(type_ptr) bind(c, name="ffc_mlirTypeIsAInteger") result(is_int)
+                import :: c_ptr, c_int
+                type(c_ptr), value :: type_ptr
+                integer(c_int) :: is_int
+            end function ffc_mlirTypeIsAInteger
+        end interface
 
-    function mlir_type_is_a_index(ty) result(is_idx)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_idx
-        is_idx = mlirTypeIsAIndex(ty%ptr)
-    end function mlir_type_is_a_index
-
-    function mlir_f16_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirF16TypeGet(ctx%ptr)
-    end function mlir_f16_type_get
-
-    function mlir_f32_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirF32TypeGet(ctx%ptr)
-    end function mlir_f32_type_get
-
-    function mlir_f64_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirF64TypeGet(ctx%ptr)
-    end function mlir_f64_type_get
-
-    function mlir_bf16_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirBF16TypeGet(ctx%ptr)
-    end function mlir_bf16_type_get
-
-    function mlir_type_is_a_float(ty) result(is_flt)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_flt
-        is_flt = mlirTypeIsAFloat(ty%ptr)
-    end function mlir_type_is_a_float
-
-    function mlir_float_type_get_width(ty) result(width)
-        type(mlir_type_t), intent(in) :: ty
-        integer :: width
-        width = int(mlirFloatTypeGetWidth(ty%ptr))
-    end function mlir_float_type_get_width
-
-    function mlir_none_type_get(ctx) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirNoneTypeGet(ctx%ptr)
-    end function mlir_none_type_get
-
-    function mlir_type_is_a_none(ty) result(is_none)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_none
-        is_none = mlirTypeIsANone(ty%ptr)
-    end function mlir_type_is_a_none
-
-    function mlir_complex_type_get(element_type) result(ty)
-        type(mlir_type_t), intent(in) :: element_type
-        type(mlir_type_t) :: ty
-        ty%ptr = mlirComplexTypeGet(element_type%ptr)
-    end function mlir_complex_type_get
-
-    function mlir_type_is_a_complex(ty) result(is_complex)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_complex
-        is_complex = mlirTypeIsAComplex(ty%ptr)
-    end function mlir_type_is_a_complex
-
-    function mlir_complex_type_get_element_type(ty) result(elem_ty)
-        type(mlir_type_t), intent(in) :: ty
-        type(mlir_type_t) :: elem_ty
-        elem_ty%ptr = mlirComplexTypeGetElementType(ty%ptr)
-    end function mlir_complex_type_get_element_type
-
-    function mlir_function_type_get(ctx, inputs, results) result(ty)
-        type(mlir_context_t), intent(in) :: ctx
-        type(mlir_type_t), intent(in), target :: inputs(:)
-        type(mlir_type_t), intent(in), target :: results(:)
-        type(mlir_type_t) :: ty
-        integer(c_intptr_t) :: n_inputs, n_results
-        type(c_ptr) :: inputs_ptr, results_ptr
-
-        n_inputs = int(size(inputs), c_intptr_t)
-        n_results = int(size(results), c_intptr_t)
-
-        if (n_inputs > 0) then
-            inputs_ptr = c_loc(inputs(1))
+        if (c_associated(type%ptr)) then
+            is_int = ffc_mlirTypeIsAInteger(type%ptr) /= 0
         else
-            inputs_ptr = c_null_ptr
+            is_int = .false.
         end if
+    end function is_integer_type
 
-        if (n_results > 0) then
-            results_ptr = c_loc(results(1))
-        else
-            results_ptr = c_null_ptr
-        end if
+    function is_float_type(type) result(is_float)
+        type(mlir_type_t), intent(in) :: type
+        logical :: is_float
+        
+        is_float = c_associated(type%ptr) .and. mlirTypeIsAFloat(type%ptr)
+    end function is_float_type
 
-        ty%ptr = mlirFunctionTypeGet(ctx%ptr, n_inputs, inputs_ptr, &
-            n_results, results_ptr)
-    end function mlir_function_type_get
+    function is_array_type(type) result(is_array)
+        type(mlir_type_t), intent(in) :: type
+        logical :: is_array
+        
+        is_array = c_associated(type%ptr) .and. mlirTypeIsAMemRef(type%ptr)
+    end function is_array_type
 
-    function mlir_type_is_a_function(ty) result(is_func)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_func
-        is_func = mlirTypeIsAFunction(ty%ptr)
-    end function mlir_type_is_a_function
+    ! Type validity check
+    function type_is_valid(this) result(valid)
+        class(mlir_type_t), intent(in) :: this
+        logical :: valid
+        valid = c_associated(this%ptr)
+    end function type_is_valid
 
-    function mlir_function_type_get_num_inputs(ty) result(num)
-        type(mlir_type_t), intent(in) :: ty
-        integer :: num
-        num = int(mlirFunctionTypeGetNumInputs(ty%ptr))
-    end function mlir_function_type_get_num_inputs
+    ! Validate integer width
+    function validate_integer_width(width) result(valid)
+        integer, intent(in) :: width
+        logical :: valid
+        
+        ! Common integer widths
+        valid = (width == 1) .or. &    ! i1 (boolean)
+                (width == 8) .or. &    ! i8
+                (width == 16) .or. &   ! i16
+                (width == 32) .or. &   ! i32
+                (width == 64) .or. &   ! i64
+                (width == 128)         ! i128
+    end function validate_integer_width
 
-    function mlir_function_type_get_num_results(ty) result(num)
-        type(mlir_type_t), intent(in) :: ty
-        integer :: num
-        num = int(mlirFunctionTypeGetNumResults(ty%ptr))
-    end function mlir_function_type_get_num_results
+    ! Validate float width
+    function validate_float_width(width) result(valid)
+        integer, intent(in) :: width
+        logical :: valid
+        
+        ! Standard float widths
+        valid = (width == 32) .or. &   ! f32
+                (width == 64)          ! f64
+    end function validate_float_width
 
-    function mlir_function_type_get_input(ty, pos) result(input_ty)
-        type(mlir_type_t), intent(in) :: ty
-        integer, intent(in) :: pos
-        type(mlir_type_t) :: input_ty
-        input_ty%ptr = mlirFunctionTypeGetInput(ty%ptr, &
-            int(pos, c_intptr_t))
-    end function mlir_function_type_get_input
-
-    function mlir_function_type_get_result(ty, pos) result(result_ty)
-        type(mlir_type_t), intent(in) :: ty
-        integer, intent(in) :: pos
-        type(mlir_type_t) :: result_ty
-        result_ty%ptr = mlirFunctionTypeGetResult(ty%ptr, &
-            int(pos, c_intptr_t))
-    end function mlir_function_type_get_result
-
-    function mlir_ranked_tensor_type_get(dims, element_type, encoding) &
-            result(ty)
-        integer(c_int64_t), intent(in), target :: dims(:)
-        type(mlir_type_t), intent(in) :: element_type
-        type(mlir_attribute_t), intent(in), optional :: encoding
-        type(mlir_type_t) :: ty
-        integer(c_intptr_t) :: rank
-        type(c_ptr) :: encoding_ptr
-
-        rank = int(size(dims), c_intptr_t)
-        if (present(encoding)) then
-            encoding_ptr = encoding%ptr
-        else
-            encoding_ptr = c_null_ptr
-        end if
-
-        ty%ptr = mlirRankedTensorTypeGet(rank, c_loc(dims(1)), &
-            element_type%ptr, encoding_ptr)
-    end function mlir_ranked_tensor_type_get
-
-    function mlir_type_is_a_ranked_tensor(ty) result(is_tensor)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_tensor
-        is_tensor = mlirTypeIsARankedTensor(ty%ptr)
-    end function mlir_type_is_a_ranked_tensor
-
-    function mlir_memref_type_contiguous_get(element_type, dims, &
-            memory_space) result(ty)
-        type(mlir_type_t), intent(in) :: element_type
-        integer(c_int64_t), intent(in), target :: dims(:)
-        type(mlir_attribute_t), intent(in), optional :: memory_space
-        type(mlir_type_t) :: ty
-        integer(c_intptr_t) :: rank
-        type(c_ptr) :: mem_space_ptr
-
-        rank = int(size(dims), c_intptr_t)
-        if (present(memory_space)) then
-            mem_space_ptr = memory_space%ptr
-        else
-            mem_space_ptr = c_null_ptr
-        end if
-
-        ty%ptr = mlirMemRefTypeContiguousGet(element_type%ptr, rank, &
-            c_loc(dims(1)), mem_space_ptr)
-    end function mlir_memref_type_contiguous_get
-
-    function mlir_type_is_a_memref(ty) result(is_memref)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_memref
-        is_memref = mlirTypeIsAMemRef(ty%ptr)
-    end function mlir_type_is_a_memref
-
-    pure function mlir_type_is_null(ty) result(is_null)
-        type(mlir_type_t), intent(in) :: ty
-        logical :: is_null
-        is_null = .not. c_associated(ty%ptr)
-    end function mlir_type_is_null
-
-    function mlir_type_equal(t1, t2) result(eq)
-        type(mlir_type_t), intent(in) :: t1
-        type(mlir_type_t), intent(in) :: t2
-        logical :: eq
-        eq = mlirTypeEqual(t1%ptr, t2%ptr)
-    end function mlir_type_equal
-
-    subroutine mlir_type_dump(ty)
-        type(mlir_type_t), intent(in) :: ty
-        call mlirTypeDump(ty%ptr)
-    end subroutine mlir_type_dump
+    ! Check if two types are equal
+    function types_are_equal(type1, type2) result(equal)
+        type(mlir_type_t), intent(in) :: type1, type2
+        logical :: equal
+        
+        ! Simple pointer comparison for now
+        equal = c_associated(type1%ptr, type2%ptr)
+    end function types_are_equal
 
 end module mlir_c_types

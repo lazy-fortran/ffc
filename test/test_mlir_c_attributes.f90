@@ -1,221 +1,184 @@
 program test_mlir_c_attributes
-    use, intrinsic :: iso_c_binding, only: c_int64_t, c_double
-    use, intrinsic :: iso_fortran_env, only: real64
+    use iso_c_binding, only: c_int64_t, c_double
     use mlir_c_core
     use mlir_c_types
     use mlir_c_attributes
     implicit none
 
-    integer :: n_tests, n_passed
-    n_tests = 0
-    n_passed = 0
+    logical :: all_tests_passed
 
-    call test_string_attr()
-    call test_integer_attr()
-    call test_float_attr()
-    call test_bool_attr()
-    call test_type_attr()
-    call test_unit_attr()
-    call test_array_attr()
-    call test_flat_symbol_ref_attr()
-    call test_attribute_equality()
+    print *, "=== MLIR C API Attribute System Tests ==="
+    print *
 
-    print "(A)", ""
-    print "(A,I0,A,I0,A)", "Results: ", n_passed, "/", n_tests, " tests passed"
-    if (n_passed == n_tests) then
-        print "(A)", "PASS: test_mlir_c_attributes"
+    all_tests_passed = .true.
+
+    ! Run all tests - these will fail initially (RED phase)
+    if (.not. test_integer_attribute_creation()) all_tests_passed = .false.
+    if (.not. test_float_attribute_creation()) all_tests_passed = .false.
+    if (.not. test_string_attribute_creation()) all_tests_passed = .false.
+    if (.not. test_array_attribute_creation()) all_tests_passed = .false.
+
+    print *
+    if (all_tests_passed) then
+        print *, "All MLIR C API attribute system tests passed!"
+        stop 0
     else
-        error stop "FAIL: test_mlir_c_attributes"
+        print *, "Some MLIR C API attribute system tests failed!"
+        stop 1
     end if
 
 contains
 
-    subroutine assert(condition, test_name)
-        logical, intent(in) :: condition
-        character(len=*), intent(in) :: test_name
-
-        n_tests = n_tests + 1
-        if (condition) then
-            n_passed = n_passed + 1
-            print "(A,A)", "  PASS: ", test_name
+    function test_integer_attribute_creation() result(passed)
+        logical :: passed
+        type(mlir_context_t) :: context
+        type(mlir_type_t) :: i32_type, i64_type
+        type(mlir_attribute_t) :: attr32, attr64
+        integer(c_int64_t) :: value, retrieved
+        
+        passed = .true.
+        
+        ! Create context
+        context = create_mlir_context()
+        
+        ! Create types
+        i32_type = create_integer_type(context, 32)
+        i64_type = create_integer_type(context, 64)
+        
+        ! Test i32 attribute
+        value = 42_c_int64_t
+        attr32 = create_integer_attribute(context, i32_type, value)
+        passed = passed .and. attr32%is_valid() .and. is_integer_attribute(attr32)
+        
+        ! Test value retrieval
+        retrieved = get_integer_from_attribute(attr32)
+        passed = passed .and. (retrieved == 42_c_int64_t)
+        
+        ! Test i64 attribute
+        value = 1234567890_c_int64_t
+        attr64 = create_integer_attribute(context, i64_type, value)
+        passed = passed .and. attr64%is_valid() .and. is_integer_attribute(attr64)
+        
+        if (passed) then
+            print *, "PASS: test_integer_attribute_creation"
         else
-            print "(A,A)", "  FAIL: ", test_name
+            print *, "FAIL: test_integer_attribute_creation"
         end if
-    end subroutine assert
+        
+        ! Cleanup
+        call destroy_mlir_context(context)
+    end function test_integer_attribute_creation
 
-    subroutine test_string_attr()
-        type(mlir_context_t) :: ctx
+    function test_float_attribute_creation() result(passed)
+        logical :: passed
+        type(mlir_context_t) :: context
+        type(mlir_type_t) :: f32_type, f64_type
+        type(mlir_attribute_t) :: attr32, attr64
+        real(c_double) :: value, retrieved
+        
+        passed = .true.
+        
+        ! Create context
+        context = create_mlir_context()
+        
+        ! Create types
+        f32_type = create_float_type(context, 32)
+        f64_type = create_float_type(context, 64)
+        
+        ! Test f32 attribute
+        value = 3.14_c_double
+        attr32 = create_float_attribute(context, f32_type, value)
+        passed = passed .and. attr32%is_valid() .and. is_float_attribute(attr32)
+        
+        ! Test value retrieval
+        retrieved = get_float_from_attribute(attr32)
+        passed = passed .and. (abs(retrieved - 3.14_c_double) < 0.001_c_double)
+        
+        ! Test f64 attribute
+        value = 2.71828_c_double
+        attr64 = create_float_attribute(context, f64_type, value)
+        passed = passed .and. attr64%is_valid() .and. is_float_attribute(attr64)
+        
+        if (passed) then
+            print *, "PASS: test_float_attribute_creation"
+        else
+            print *, "FAIL: test_float_attribute_creation"
+        end if
+        
+        ! Cleanup
+        call destroy_mlir_context(context)
+    end function test_float_attribute_creation
+
+    function test_string_attribute_creation() result(passed)
+        logical :: passed
+        type(mlir_context_t) :: context
         type(mlir_attribute_t) :: attr
-        character(len=*), parameter :: test_str = "hello"
+        character(len=:), allocatable :: retrieved
+        
+        passed = .true.
+        
+        ! Create context
+        context = create_mlir_context()
+        
+        ! Test string attribute
+        attr = create_string_attribute(context, "test_string")
+        passed = passed .and. attr%is_valid() .and. is_string_attribute(attr)
+        
+        ! Test value retrieval
+        retrieved = get_string_from_attribute(attr)
+        passed = passed .and. (retrieved == "test_string")
+        
+        ! Test empty string
+        attr = create_string_attribute(context, "")
+        passed = passed .and. attr%is_valid() .and. is_string_attribute(attr)
+        
+        if (passed) then
+            print *, "PASS: test_string_attribute_creation"
+        else
+            print *, "FAIL: test_string_attribute_creation"
+        end if
+        
+        ! Cleanup
+        call destroy_mlir_context(context)
+    end function test_string_attribute_creation
 
-        print "(A)", "test_string_attr:"
-        ctx = mlir_context_create()
-
-        attr = mlir_string_attr_get(ctx, test_str)
-        call assert(.not. mlir_attribute_is_null(attr), "string attr is not null")
-        call assert(mlir_attribute_is_a_string(attr), "attr is a string attr")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_string_attr
-
-    subroutine test_integer_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_type_t) :: i64_ty
-        type(mlir_attribute_t) :: attr
-        integer(c_int64_t) :: value
-
-        print "(A)", "test_integer_attr:"
-        ctx = mlir_context_create()
-
-        i64_ty = mlir_integer_type_get(ctx, 64)
-        attr = mlir_integer_attr_get(i64_ty, 42_c_int64_t)
-        call assert(.not. mlir_attribute_is_null(attr), "integer attr is not null")
-        call assert(mlir_attribute_is_a_integer(attr), "attr is an integer attr")
-
-        value = mlir_integer_attr_get_value_int(attr)
-        call assert(value == 42, "integer attr value is 42")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_integer_attr
-
-    subroutine test_float_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_type_t) :: f64_ty
-        type(mlir_attribute_t) :: attr
-        real(c_double) :: value
-
-        print "(A)", "test_float_attr:"
-        ctx = mlir_context_create()
-
-        f64_ty = mlir_f64_type_get(ctx)
-        attr = mlir_float_attr_double_get(ctx, f64_ty, 3.14_real64)
-        call assert(.not. mlir_attribute_is_null(attr), "float attr is not null")
-        call assert(mlir_attribute_is_a_float(attr), "attr is a float attr")
-
-        value = mlir_float_attr_get_value_double(attr)
-        call assert(abs(value - 3.14_real64) < 1.0e-10_real64, &
-            "float attr value is 3.14")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_float_attr
-
-    subroutine test_bool_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_attribute_t) :: true_attr, false_attr
-
-        print "(A)", "test_bool_attr:"
-        ctx = mlir_context_create()
-
-        true_attr = mlir_bool_attr_get(ctx, .true.)
-        call assert(.not. mlir_attribute_is_null(true_attr), &
-            "bool true attr is not null")
-        call assert(mlir_attribute_is_a_bool(true_attr), "attr is a bool attr")
-        call assert(mlir_bool_attr_get_value(true_attr), "bool true attr is true")
-
-        false_attr = mlir_bool_attr_get(ctx, .false.)
-        call assert(.not. mlir_bool_attr_get_value(false_attr), &
-            "bool false attr is false")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_bool_attr
-
-    subroutine test_type_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_type_t) :: i32_ty, extracted_ty
-        type(mlir_attribute_t) :: attr
-
-        print "(A)", "test_type_attr:"
-        ctx = mlir_context_create()
-
-        i32_ty = mlir_integer_type_get(ctx, 32)
-        attr = mlir_type_attr_get(i32_ty)
-        call assert(.not. mlir_attribute_is_null(attr), "type attr is not null")
-        call assert(mlir_attribute_is_a_type(attr), "attr is a type attr")
-
-        extracted_ty = mlir_type_attr_get_value(attr)
-        call assert(mlir_type_equal(extracted_ty, i32_ty), &
-            "type attr value is i32")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_type_attr
-
-    subroutine test_unit_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_attribute_t) :: attr
-
-        print "(A)", "test_unit_attr:"
-        ctx = mlir_context_create()
-
-        attr = mlir_unit_attr_get(ctx)
-        call assert(.not. mlir_attribute_is_null(attr), "unit attr is not null")
-        call assert(mlir_attribute_is_a_unit(attr), "attr is a unit attr")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_unit_attr
-
-    subroutine test_array_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_type_t) :: i32_ty
-        type(mlir_attribute_t) :: attr, elem
-        type(mlir_attribute_t) :: elements(3)
-        integer :: i
-
-        print "(A)", "test_array_attr:"
-        ctx = mlir_context_create()
-
-        i32_ty = mlir_integer_type_get(ctx, 32)
+    function test_array_attribute_creation() result(passed)
+        logical :: passed
+        type(mlir_context_t) :: context
+        type(mlir_type_t) :: i32_type
+        type(mlir_attribute_t) :: array_attr
+        type(mlir_attribute_t), dimension(3) :: elements
+        integer :: i, array_size
+        
+        passed = .true.
+        
+        ! Create context
+        context = create_mlir_context()
+        
+        ! Create type
+        i32_type = create_integer_type(context, 32)
+        
+        ! Create element attributes
         do i = 1, 3
-            elements(i) = mlir_integer_attr_get(i32_ty, int(i, c_int64_t))
+            elements(i) = create_integer_attribute(context, i32_type, int(i*10, c_int64_t))
         end do
-
-        attr = mlir_array_attr_get(ctx, elements)
-        call assert(.not. mlir_attribute_is_null(attr), "array attr is not null")
-        call assert(mlir_attribute_is_a_array(attr), "attr is an array attr")
-        call assert(mlir_array_attr_get_num_elements(attr) == 3, &
-            "array has 3 elements")
-
-        elem = mlir_array_attr_get_element(attr, 0)
-        call assert(mlir_integer_attr_get_value_int(elem) == 1, &
-            "first element is 1")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_array_attr
-
-    subroutine test_flat_symbol_ref_attr()
-        type(mlir_context_t) :: ctx
-        type(mlir_attribute_t) :: attr
-        character(len=*), parameter :: sym_name = "my_symbol"
-
-        print "(A)", "test_flat_symbol_ref_attr:"
-        ctx = mlir_context_create()
-
-        attr = mlir_flat_symbol_ref_attr_get(ctx, sym_name)
-        call assert(.not. mlir_attribute_is_null(attr), &
-            "flat symbol ref attr is not null")
-        call assert(mlir_attribute_is_a_flat_symbol_ref(attr), &
-            "attr is a flat symbol ref attr")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_flat_symbol_ref_attr
-
-    subroutine test_attribute_equality()
-        type(mlir_context_t) :: ctx
-        type(mlir_type_t) :: i32_ty
-        type(mlir_attribute_t) :: a1, a2, a3
-
-        print "(A)", "test_attribute_equality:"
-        ctx = mlir_context_create()
-
-        i32_ty = mlir_integer_type_get(ctx, 32)
-        a1 = mlir_integer_attr_get(i32_ty, 42_c_int64_t)
-        a2 = mlir_integer_attr_get(i32_ty, 42_c_int64_t)
-        a3 = mlir_integer_attr_get(i32_ty, 99_c_int64_t)
-
-        call assert(mlir_attribute_equal(a1, a2), "same value attrs are equal")
-        call assert(.not. mlir_attribute_equal(a1, a3), &
-            "different value attrs are not equal")
-
-        call mlir_context_destroy(ctx)
-    end subroutine test_attribute_equality
+        
+        ! Create array attribute
+        array_attr = create_array_attribute(context, elements)
+        passed = passed .and. array_attr%is_valid() .and. is_array_attribute(array_attr)
+        
+        ! Test array size
+        array_size = get_array_size(array_attr)
+        passed = passed .and. (array_size == 3)
+        
+        if (passed) then
+            print *, "PASS: test_array_attribute_creation"
+        else
+            print *, "FAIL: test_array_attribute_creation"
+        end if
+        
+        ! Cleanup
+        call destroy_mlir_context(context)
+    end function test_array_attribute_creation
 
 end program test_mlir_c_attributes

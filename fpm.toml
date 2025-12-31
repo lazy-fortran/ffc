@@ -4,39 +4,20 @@ description = "Fortran Fortran Compiler - MLIR backend for compilation via HLFIR
 author = "krystophny"
 license = "MIT"
 
+[dependencies]
+stdlib = "*"
+fortfront = { path = "../fortfront" }
+
 [build]
 auto-executables = true
 auto-tests = true
 auto-examples = false
-link = [
-    "MLIRCAPIRegisterEverything",
-    "MLIRCAPIIR",
-    "MLIRCAPIFunc",
-    "MLIRCAPIArith",
-    "MLIRCAPISCF",
-    "MLIRCAPILLVM",
-    "MLIRCAPIControlFlow",
-    "MLIRCAPIMath",
-    "MLIRCAPIMemRef",
-    "MLIRCAPIIndex",
-    "MLIRCAPITensor",
-    "MLIRCAPIVector",
-    "MLIRCAPIAsync",
-    "MLIRCAPIShape",
-    "MLIRCAPIGPU",
-    "MLIRCAPILinalg",
-    "MLIRCAPIQuant",
-    "MLIRCAPIInterfaces",
-    "MLIRCAPIConversion",
-    "MLIR",
-    "LLVM",
-    "stdc++"
-]
+link = ["MLIR", "LLVM", "stdc++"]
 
 [fortran]
 implicit-external = false
 implicit-typing = false
 source-form = "free"
 
-[library]
+[[library]]
 source-dir = "src"
