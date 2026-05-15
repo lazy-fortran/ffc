@@ -49,6 +49,7 @@ Use repo-declared fpm targets. Do not invent build commands.
 
 ```bash
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_empty_program_compiler
+LIBRARY_PATH=/path/to/liric/build fpm test test_session_empty_program_object_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_if_merge_compiler
@@ -63,4 +64,5 @@ For CLI checks:
 printf 'program main\nend program main\n' > /tmp/empty.f90
 LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 /tmp/empty
+LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -c -o /tmp/empty.o
 ```

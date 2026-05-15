@@ -28,12 +28,13 @@ calls, LIRIC bindings, object emission, and executable emission.
 
 - Default `fpm` sources are under `src_mvp/`.
 - The CLI parses through FortFront's compiler-facing API.
-- The CLI emits executables through direct LIRIC session lowering for the
-  currently supported subset.
+- The CLI emits executables and object files through direct LIRIC session
+  lowering for the currently supported subset.
 
 ## Supported Direct-Session Slice
 
 - Empty `program main`.
+- Object output for the empty-program direct-session path.
 - Integer literal and arithmetic `stop` codes.
 - Integer declarations and assignments consumed by `stop`.
 - Integer comparison `if` blocks where both branches terminate with `stop`.
@@ -78,6 +79,7 @@ Focused MVP tests:
 ```bash
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler

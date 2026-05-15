@@ -29,8 +29,9 @@ is not part of the default fpm build.
   assignments, `if (flag)` conditions, and printing of logical variables.
 - The direct LIRIC session lowerer can compile simple contained integer
   functions with integer parameters and integer call expressions.
-- `ffc empty.f90 -o empty` emits a native executable for:
-  `program main; end program main`.
+- The direct LIRIC session path emits native executables and object files.
+- `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
+  empty.o` emits an object file.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
   through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
@@ -111,6 +112,7 @@ Run the MVP tests:
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler

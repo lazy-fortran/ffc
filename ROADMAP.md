@@ -39,8 +39,8 @@ Verification:
 - `LIBRARY_PATH=/home/ert/code/liric/build fpm build`
 - CLI parses a file through FortFront and reports diagnostics instead of using a
   hardcoded root index.
-- Done: CLI emits executables through the direct LIRIC session path for the
-  currently supported direct-session subset.
+- Done: CLI emits executables and object files through the direct LIRIC session
+  path for the currently supported direct-session subset.
 
 ## Phase 1: FortFront Compiler Boundary
 
@@ -74,7 +74,8 @@ Use the simple LIRIC compiler API:
 - create compiler/session
 - emit minimal text IR for a tiny subset
 - feed text through LIRIC's compiler API
-- emit object/executable
+- Done: emit executable through direct LIRIC session
+- Done: emit object files through direct LIRIC session
 
 This path is not the CLI default and should not receive broad new features.
 
@@ -136,7 +137,7 @@ Tasks:
 - lower runtime counted `do` loops to LIRIC blocks with backedge PHI values
   after krystophny/liric#519
 - lower subroutines and richer function signatures with an explicit ABI
-- emit objects directly from the session when the LIRIC API surface is ready
+- Done: emit objects directly from the session
 
 Verification:
 

@@ -20,6 +20,7 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: bind function begin/end, block creation, block selection, instruction
   emission, and executable emission.
 - Done: prove direct session executable emission with `main` returning zero.
+- Done: bind direct session object emission and expose `ffc -c`.
 - Done: create a session lowerer for empty `program main`.
 - Done: lower integer literal and binary arithmetic expressions to LIRIC vregs.
 - Done: lower integer declarations and assignments to direct-session values.
@@ -53,6 +54,7 @@ Verification:
 ```bash
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler

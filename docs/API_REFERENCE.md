@@ -36,17 +36,19 @@ The direct session path:
 1. Creates a LIRIC session.
 2. Begins a `main` function.
 3. Lowers FortFront AST nodes into LIRIC instruction descriptors.
-4. Emits a native executable through LIRIC.
+4. Emits a native executable or object file through LIRIC.
 
 `session_program_lowering` is the current lowering entry point:
 
 ```fortran
-use session_program_lowering, only: lower_program_to_liric_exe
+use session_program_lowering, only: lower_program_to_liric_exe, &
+                                    lower_program_to_liric_object
 ```
 
 ## Current Supported Direct-Session Subset
 
 - Empty `program main`.
+- Object and executable emission for the supported direct-session subset.
 - Scalar integer declarations and assignments.
 - Integer literals and arithmetic.
 - Integer comparison `if` blocks with terminating branches or mergeable

@@ -23,6 +23,7 @@ if (len_trim(error_msg) > 0) return
 if (.not. session%begin_i32_main(error_msg)) return
 ! emit instructions
 if (.not. session%finish_and_emit_exe(output_path, error_msg)) return
+! or: if (.not. session%finish_and_emit_object(output_path, error_msg)) return
 
 call session%destroy()
 ```

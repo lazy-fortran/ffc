@@ -73,6 +73,7 @@ module liric_session_bindings
         procedure :: emit_ret_i32_main_exe
         procedure :: emit_ret_i32_operand
         procedure :: finish_function
+        procedure :: finish_and_emit_object
         procedure :: finish_and_emit_exe
         procedure :: i32_param
         procedure :: i32_immediate
@@ -168,6 +169,15 @@ module liric_session_bindings
             type(lr_error_t), intent(inout) :: err
             integer(c_int) :: status
         end function lr_session_emit_exe
+
+        function lr_session_emit_object(handle, path, err) result(status) &
+            bind(c)
+            import :: c_char, c_int, c_ptr, lr_error_t
+            type(c_ptr), value :: handle
+            character(kind=c_char), intent(in) :: path(*)
+            type(lr_error_t), intent(inout) :: err
+            integer(c_int) :: status
+        end function lr_session_emit_object
     end interface
 
 contains
@@ -342,6 +352,31 @@ contains
         call set_empty(error_msg)
         finish_and_emit_exe = .true.
     end function finish_and_emit_exe
+
+    logical function finish_and_emit_object(this, path, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        character(len=*), intent(in) :: path
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_path(:)
+        type(c_ptr) :: out_addr
+        type(lr_error_t) :: error
+        integer(c_int) :: status
+
+        finish_and_emit_object = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        call clear_liric_error(error)
+        out_addr = c_null_ptr
+        status = lr_session_func_end(this%handle, out_addr, error)
+        if (.not. status_ok(status, error, error_msg)) return
+
+        call to_c_chars(path, c_path)
+        status = lr_session_emit_object(this%handle, c_path, error)
+        if (.not. status_ok(status, error, error_msg)) return
+
+        call set_empty(error_msg)
+        finish_and_emit_object = .true.
+    end function finish_and_emit_object
 
     logical function finish_function(this, error_msg)
         class(liric_session_t), intent(inout) :: this

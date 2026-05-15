@@ -27,6 +27,7 @@ module session_program_lowering
     private
 
     public :: lower_program_to_liric_exe
+    public :: lower_program_to_liric_object
 
     integer, parameter :: MAX_SYMBOLS = 64
     integer, parameter :: VALUE_I32 = 1
@@ -66,6 +67,29 @@ contains
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_program_to_liric_path(arena, root_index, output_path, &
+                                         .true., error_msg)
+    end subroutine lower_program_to_liric_exe
+
+    subroutine lower_program_to_liric_object(arena, root_index, output_path, &
+                                             error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=*), intent(in) :: output_path
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_program_to_liric_path(arena, root_index, output_path, &
+                                         .false., error_msg)
+    end subroutine lower_program_to_liric_object
+
+    subroutine lower_program_to_liric_path(arena, root_index, output_path, &
+                                           emit_executable, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=*), intent(in) :: output_path
+        logical, intent(in) :: emit_executable
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: return_value
@@ -110,14 +134,23 @@ contains
             return
         end if
 
-        if (.not. context%session%finish_and_emit_exe(output_path, error_msg)) then
-            call context%session%destroy()
-            return
+        if (emit_executable) then
+            if (.not. context%session%finish_and_emit_exe(output_path, &
+                                                          error_msg)) then
+                call context%session%destroy()
+                return
+            end if
+        else
+            if (.not. context%session%finish_and_emit_object(output_path, &
+                                                             error_msg)) then
+                call context%session%destroy()
+                return
+            end if
         end if
 
         call context%session%destroy()
         call set_empty(error_msg)
-    end subroutine lower_program_to_liric_exe
+    end subroutine lower_program_to_liric_path
 
     subroutine validate_program(arena, root_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
