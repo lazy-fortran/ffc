@@ -27,8 +27,10 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
   behavior is covered.
 - Next: lower integer comparisons and block `if` to LIRIC blocks.
 - Next: lower counted `do` loops to LIRIC blocks, not unrolled text.
-- Next: move the CLI default from bootstrap `.ll` emission to direct session
-  lowering once it reaches current bootstrap feature parity.
+- Done: move the CLI default from bootstrap `.ll` emission to direct session
+  lowering for the currently supported direct-session subset.
+- Next: close direct-session feature gaps until the old bootstrap path can be
+  removed.
 
 Verification:
 

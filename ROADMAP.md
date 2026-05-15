@@ -39,6 +39,8 @@ Verification:
 - `LIBRARY_PATH=/home/ert/code/liric/build fpm build`
 - CLI parses a file through FortFront and reports diagnostics instead of using a
   hardcoded root index.
+- Done: CLI emits executables through the direct LIRIC session path for the
+  currently supported direct-session subset.
 
 ## Phase 1: FortFront Compiler Boundary
 
@@ -62,9 +64,10 @@ Verification:
 - Pending: add narrower compiler query APIs so `ffc` does not depend on arena
   representation details for real scalar lowering.
 
-## Phase 2: LIRIC Bootstrap Backend
+## Phase 2: LIRIC Bootstrap Reference Backend
 
-Goal: produce the first executable without LLVM bindings.
+Goal: preserve the first executable reference path while direct LIRIC session
+lowering catches up.
 
 Use the simple LIRIC compiler API:
 
@@ -72,6 +75,8 @@ Use the simple LIRIC compiler API:
 - emit minimal LLVM IR text for a tiny subset
 - feed text through `lr_compiler_feed_ll()`
 - emit object/executable
+
+This path is not the CLI default and should not receive broad new features.
 
 Initial language subset:
 
@@ -114,6 +119,7 @@ Tasks:
 - Done: lower integer literal/binary arithmetic stop codes to direct LIRIC
   vregs and return values
 - Done: lower integer declarations and assignments to direct-session values
+- Done: use direct session lowering from the CLI for the supported subset
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
 - lower blocks/control flow to LIRIC blocks

@@ -2,33 +2,26 @@
 
 `ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style source.
 
-The active build is the FortFront + LIRIC bootstrap compiler path. The older
-MLIR/HLFIR experiment remains in `src/` and `test/` as legacy reference code,
-but it is not part of the default fpm build.
+The active build is the FortFront + direct LIRIC session compiler path. The
+older MLIR/HLFIR experiment remains in `src/` and `test/` as legacy reference
+code, but it is not part of the default fpm build.
 
 ## Current Status
 
 - The package builds the MVP sources in `src_mvp/`.
 - The CLI parses files through FortFront's compiler-facing frontend API.
-- The bootstrap backend lowers a small scalar subset to LLVM IR text and feeds
-  it to LIRIC through ISO C bindings.
-- The direct LIRIC session binding is present and can emit a runnable
+- The CLI lowers through the direct LIRIC session API and emits a runnable
   executable without `.ll` text.
-- The direct LIRIC session lowerer can compile empty `program main`.
-- The direct LIRIC session lowerer can compile integer arithmetic `stop` codes.
-- The direct LIRIC session lowerer can compile integer declarations and
-  assignments when the assigned value is consumed by `stop`.
+- The direct LIRIC session lowerer can compile empty `program main`, integer
+  arithmetic `stop` codes, and integer declarations/assignments when the
+  assigned value is consumed by `stop`.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
-- Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
-  are implemented for straight-line programs.
-- One-line and block integer comparison `if` statements are implemented.
-- Constant-bound counted `do` loops are implemented by MVP unrolling.
-- Real literal printing is implemented.
-- Character literal printing is implemented.
-- Logical literal printing is implemented.
-- Dynamic loops, procedures, direct-session feature parity, and richer I/O are
-  still pending.
+- The bootstrap LIRIC compiler API path still has broader scalar coverage
+  through generated `.ll` text. It is kept as temporary executable reference
+  coverage while the direct session path catches up.
+- Direct-session control flow, print/runtime calls, procedures, and richer I/O
+  are still pending.
 
 ## Target Architecture
 
@@ -57,11 +50,11 @@ The preferred backend path is LIRIC through ISO C bindings to its C API.
 
 Two implementation levels are expected:
 
-1. **Bootstrap path**: lower a small typed-AST subset to LLVM IR text and feed
-   it to `lr_compiler_feed_ll()`. This avoids LLVM bindings while proving
-   executable output quickly.
-2. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls. This is the
-   target architecture; new lowering work should go here.
+1. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls. This is the
+   CLI path and target architecture; new lowering work should go here.
+2. **Bootstrap reference path**: lower a small typed-AST subset to LLVM IR text
+   and feed it to `lr_compiler_feed_ll()`. This avoids LLVM bindings, but it is
+   temporary compatibility coverage, not the target architecture.
 
 The current MLIR/LLVM binding work should not be expanded unless the project
 explicitly changes direction back to a Flang/MLIR backend.
