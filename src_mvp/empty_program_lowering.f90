@@ -1,7 +1,7 @@
 module empty_program_lowering
     use fortfront, only: ast_arena_t, assignment_node, binary_op_node, &
                          declaration_node, identifier_node, literal_node, &
-                         print_statement_node, program_node
+                         if_node, print_statement_node, program_node
     implicit none
     private
 
@@ -15,6 +15,7 @@ module empty_program_lowering
         character(len=128) :: values(MAX_SYMBOLS) = ''
         integer :: symbol_count = 0
         integer :: temp_count = 0
+        integer :: block_count = 0
     end type lowering_context_t
 
 contains
@@ -96,6 +97,8 @@ contains
             call lower_declaration(node, context, error_msg)
         type is (assignment_node)
             call lower_assignment(arena, node, context, error_msg)
+        type is (if_node)
+            call lower_if(arena, node_index, node, context, error_msg)
         type is (print_statement_node)
             if (.not. allocated(node%expression_indices)) return
             do i = 1, size(node%expression_indices)
@@ -111,6 +114,67 @@ contains
                         trim(arena%entries(node_index)%node_type)
         end select
     end subroutine lower_statement
+
+    subroutine lower_if(arena, node_index, node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(if_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: condition
+        character(len=:), allocatable :: label_id
+        integer :: condition_index
+        integer :: i
+
+        condition_index = node%condition_index
+        if (condition_index <= 0) then
+            condition_index = first_child_index(arena, node_index)
+        end if
+        if (condition_index <= 0) then
+            error_msg = 'FortFront if node did not expose a condition index'
+            return
+        end if
+
+        call lower_condition(arena, condition_index, context, condition, &
+                             error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        label_id = next_block_id(context)
+        call append_line(context, 'br i1 '//condition//', label %then'// &
+                         label_id//', label %else'//label_id)
+        call append_label(context, 'then'//label_id)
+        if (allocated(node%then_body_indices)) then
+            do i = 1, size(node%then_body_indices)
+                call lower_statement(arena, node%then_body_indices(i), context, &
+                                     error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
+        call append_line(context, 'br label %endif'//label_id)
+
+        call append_label(context, 'else'//label_id)
+        if (allocated(node%else_body_indices)) then
+            do i = 1, size(node%else_body_indices)
+                call lower_statement(arena, node%else_body_indices(i), context, &
+                                     error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
+        call append_line(context, 'br label %endif'//label_id)
+        call append_label(context, 'endif'//label_id)
+    end subroutine lower_if
+
+    integer function first_child_index(arena, node_index) result(child_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        child_index = 0
+        if (.not. arena%has_node_at(node_index)) return
+        if (.not. allocated(arena%entries(node_index)%child_indices)) return
+        if (arena%entries(node_index)%child_count <= 0) return
+
+        child_index = arena%entries(node_index)%child_indices(1)
+    end function first_child_index
 
     subroutine lower_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
@@ -194,6 +258,42 @@ contains
         end select
     end subroutine lower_expr
 
+    recursive subroutine lower_condition(arena, node_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: left
+        character(len=:), allocatable :: right
+        character(len=:), allocatable :: predicate
+
+        call set_empty(error_msg)
+        call set_empty(value)
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'Invalid condition node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (binary_op_node)
+            call llvm_compare_predicate(node%operator, predicate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_expr(arena, node%left_index, context, left, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_expr(arena, node%right_index, context, right, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = next_temp(context)
+            call append_line(context, value//' = icmp '//predicate//' i32 '// &
+                             left//', '//right)
+        class default
+            call lower_expr(arena, node_index, context, left, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = next_temp(context)
+            call append_line(context, value//' = icmp ne i32 '//left//', 0')
+        end select
+    end subroutine lower_condition
+
     logical function is_integer_literal(text) result(is_integer)
         character(len=*), intent(in) :: text
         integer :: i
@@ -239,6 +339,32 @@ contains
         end select
     end subroutine llvm_binary_op
 
+    subroutine llvm_compare_predicate(source_op, predicate, error_msg)
+        character(len=*), intent(in) :: source_op
+        character(len=:), allocatable, intent(out) :: predicate
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(source_op))
+        case ('==', '.eq.', '.EQ.')
+            predicate = 'eq'
+        case ('/=', '.ne.', '.NE.')
+            predicate = 'ne'
+        case ('>')
+            predicate = 'sgt'
+        case ('>=')
+            predicate = 'sge'
+        case ('<')
+            predicate = 'slt'
+        case ('<=')
+            predicate = 'sle'
+        case default
+            error_msg = 'ffc MVP does not support comparison operator: '// &
+                        trim(source_op)
+            call set_empty(predicate)
+        end select
+    end subroutine llvm_compare_predicate
+
     subroutine identifier_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -280,12 +406,29 @@ contains
         name = trim(buffer)
     end function next_print_temp
 
+    function next_block_id(context) result(name)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable :: name
+        character(len=32) :: buffer
+
+        context%block_count = context%block_count + 1
+        write (buffer, '(I0)') context%block_count
+        name = trim(buffer)
+    end function next_block_id
+
     subroutine append_line(context, line)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: line
 
         context%body = context%body//'  '//trim(line)//new_line('a')
     end subroutine append_line
+
+    subroutine append_label(context, label)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: label
+
+        context%body = context%body//trim(label)//':'//new_line('a')
+    end subroutine append_label
 
     subroutine define_symbol(context, name, value, error_msg)
         type(lowering_context_t), intent(inout) :: context

@@ -91,8 +91,9 @@ Verification:
 - Done: compile and run `program main; end program`
 - Done: compile and run integer declaration, assignment, arithmetic, and
   `print *, x` with known output
+- Done: compile and run one-line `if (x == 5) print *, 1`
 - Remaining: real/logical/character literals
-- Remaining: comparisons, `if`, counted `do`, simple procedures, and a fuller
+- Remaining: block `if`, counted `do`, simple procedures, and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset
 

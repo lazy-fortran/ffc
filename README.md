@@ -16,8 +16,9 @@ but it is not part of the default fpm build.
   `program main; end program main`.
 - Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
   are implemented for straight-line programs.
-- Real/logical/character lowering, comparisons, control flow, procedures, and
-  richer I/O are still pending.
+- One-line integer comparison `if` statements are implemented.
+- Real/logical/character lowering, block control flow, counted loops,
+  procedures, and richer I/O are still pending.
 
 ## Target Architecture
 
@@ -64,9 +65,9 @@ The first useful compiler should support:
 - scalar integer declarations and assignments
 - integer arithmetic
 - minimal `print *, expr`
+- one-line `if` with integer comparisons
 - scalar `real`, `logical`, and simple `character` literals
-- comparisons
-- `if` and counted `do`
+- block `if` and counted `do`
 - simple functions and subroutines
 - object/executable emission through LIRIC
 

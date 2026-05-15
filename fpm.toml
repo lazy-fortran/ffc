@@ -41,3 +41,8 @@ main = "test_empty_program_compiler.f90"
 name = "test_scalar_print_compiler"
 source-dir = "test_mvp"
 main = "test_scalar_print_compiler.f90"
+
+[[test]]
+name = "test_scalar_if_compiler"
+source-dir = "test_mvp"
+main = "test_scalar_if_compiler.f90"
