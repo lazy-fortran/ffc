@@ -93,6 +93,11 @@ source-dir = "test_mvp"
 main = "test_session_real_variable_compiler.f90"
 
 [[test]]
+name = "test_session_integer_function_compiler"
+source-dir = "test_mvp"
+main = "test_session_integer_function_compiler.f90"
+
+[[test]]
 name = "test_scalar_print_compiler"
 source-dir = "test_mvp"
 main = "test_scalar_print_compiler.f90"

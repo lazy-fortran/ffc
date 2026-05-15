@@ -46,6 +46,8 @@ calls, LIRIC bindings, object emission, and executable emission.
   calls.
 - Real declarations, assignments, arithmetic expressions, and printed real
   variables.
+- Simple contained integer functions with integer parameters, assignment to the
+  function result name, and integer call expressions.
 
 ## Immediate Work
 
@@ -57,6 +59,8 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Add runtime counted `do` loops through LIRIC blocks with backedge PHI values
   after krystophny/liric#519.
 - Broaden runtime/ABI calls beyond integer `print`.
+- Split the direct-session lowerer and binding modules before they cross the
+  hard 1000-line module limit.
 
 ## Commands
 
@@ -81,6 +85,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
 ```
 
 ## Documentation
