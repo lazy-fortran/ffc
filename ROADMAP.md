@@ -110,6 +110,7 @@ Tasks:
 
 - Done: add ISO C bindings for the initial `lr_session_*` surface
 - Done: emit and run an executable through direct LIRIC session calls
+- Done: lower empty `program main` to a direct LIRIC session executable
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
 - lower blocks/control flow to LIRIC blocks
