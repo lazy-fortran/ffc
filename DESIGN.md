@@ -74,7 +74,8 @@ supported subset.
 
 ## Runtime And ABI Decisions
 
-Before broadening language coverage, document and test:
+The current MVP ABI is documented in `docs/RUNTIME_ABI.md`. Before broadening
+language coverage, keep documenting and testing:
 
 - program entry and exit status convention
 - name mangling

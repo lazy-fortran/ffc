@@ -138,6 +138,7 @@ Tasks:
   after krystophny/liric#519
 - lower subroutines and richer function signatures with an explicit ABI
 - Done: emit objects directly from the session
+- Done: document the current direct-session MVP ABI in `docs/RUNTIME_ABI.md`
 
 Verification:
 

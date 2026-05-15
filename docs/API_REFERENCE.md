@@ -70,6 +70,11 @@ coverage. They feed textual low-level IR into LIRIC's compiler API. Do not add
 new language coverage there unless it is needed to compare behavior while the
 direct session path catches up.
 
+## Runtime ABI
+
+The current direct-session runtime and scalar ABI is documented in
+`docs/RUNTIME_ABI.md`.
+
 ## Legacy Source Tree
 
 The old MLIR/HLFIR source tree under `src/` is outside the default fpm build.

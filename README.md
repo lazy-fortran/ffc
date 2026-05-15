@@ -148,3 +148,6 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/em
 
 See [ROADMAP.md](ROADMAP.md) for the active plan. The `docs/` directory now
 describes the FortFront-to-LIRIC path.
+
+The current direct-session MVP ABI is documented in
+[docs/RUNTIME_ABI.md](docs/RUNTIME_ABI.md).
