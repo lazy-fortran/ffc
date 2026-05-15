@@ -345,6 +345,11 @@ contains
                             string_label//')'
                 return
             end if
+            if (is_logical_literal(node%value)) then
+                call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 '// &
+                            logical_literal_value(node%value)//')'
+                return
+            end if
         end select
 
         call lower_expr(arena, node_index, context, value, error_msg)
@@ -460,6 +465,24 @@ contains
             unquoted = trim(text)
         end if
     end function strip_quotes
+
+    logical function is_logical_literal(text) result(is_logical)
+        character(len=*), intent(in) :: text
+
+        is_logical = trim(text) == '.true.' .or. trim(text) == '.false.' .or. &
+                     trim(text) == '.TRUE.' .or. trim(text) == '.FALSE.'
+    end function is_logical_literal
+
+    function logical_literal_value(text) result(value)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: value
+
+        if (trim(text) == '.true.' .or. trim(text) == '.TRUE.') then
+            value = '1'
+        else
+            value = '0'
+        end if
+    end function logical_literal_value
 
     subroutine llvm_binary_op(source_op, llvm_op, error_msg)
         character(len=*), intent(in) :: source_op

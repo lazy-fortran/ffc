@@ -61,3 +61,8 @@ main = "test_real_literal_print_compiler.f90"
 name = "test_character_literal_print_compiler"
 source-dir = "test_mvp"
 main = "test_character_literal_print_compiler.f90"
+
+[[test]]
+name = "test_logical_literal_print_compiler"
+source-dir = "test_mvp"
+main = "test_logical_literal_print_compiler.f90"
