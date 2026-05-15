@@ -14,6 +14,7 @@ module empty_program_lowering
         character(len=:), allocatable :: body
         character(len=64) :: names(MAX_SYMBOLS) = ''
         character(len=128) :: values(MAX_SYMBOLS) = ''
+        character(len=16) :: value_types(MAX_SYMBOLS) = ''
         integer :: symbol_count = 0
         integer :: temp_count = 0
         integer :: block_count = 0
@@ -207,7 +208,8 @@ contains
 
         value = start_value
         do while (loop_continues(value, end_value, step_value))
-            call set_symbol(context, node%var_name, int_to_text(value), error_msg)
+            call set_symbol(context, node%var_name, int_to_text(value), &
+                            'integer', error_msg)
             if (len_trim(error_msg) > 0) return
             if (allocated(node%body_indices)) then
                 do i = 1, size(node%body_indices)
@@ -237,24 +239,56 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        character(len=:), allocatable :: symbol_type
 
         call set_empty(error_msg)
-        if (allocated(node%type_name)) then
-            if (trim(node%type_name) /= 'integer') then
-                error_msg = 'ffc MVP only supports integer declarations'
-                return
-            end if
-        end if
+        call declaration_value_type(node, symbol_type, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call define_symbol(context, node%var_names(i), '0', error_msg)
+                call define_symbol(context, node%var_names(i), &
+                                   default_value_for_type(symbol_type), &
+                                   symbol_type, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
-            call define_symbol(context, node%var_name, '0', error_msg)
+            call define_symbol(context, node%var_name, &
+                               default_value_for_type(symbol_type), symbol_type, &
+                               error_msg)
         end if
     end subroutine lower_declaration
+
+    subroutine declaration_value_type(node, symbol_type, error_msg)
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: symbol_type
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        symbol_type = 'integer'
+        if (.not. allocated(node%type_name)) return
+
+        select case (trim(node%type_name))
+        case ('integer')
+            symbol_type = 'integer'
+        case ('real')
+            symbol_type = 'real'
+        case default
+            error_msg = 'ffc MVP only supports integer and real declarations'
+            call set_empty(symbol_type)
+        end select
+    end subroutine declaration_value_type
+
+    function default_value_for_type(symbol_type) result(value)
+        character(len=*), intent(in) :: symbol_type
+        character(len=:), allocatable :: value
+
+        if (symbol_type == 'real') then
+            value = '0.0'
+        else
+            value = '0'
+        end if
+    end function default_value_for_type
 
     subroutine lower_assignment(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -263,14 +297,16 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         character(len=:), allocatable :: value
+        character(len=:), allocatable :: value_type
 
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call lower_expr(arena, node%value_index, context, value, error_msg)
+        call lower_expr_typed(arena, node%value_index, context, value, &
+                              value_type, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call set_symbol(context, name, value, error_msg)
+        call set_symbol(context, name, value, value_type, error_msg)
     end subroutine lower_assignment
 
     recursive subroutine lower_expr(arena, node_index, context, value, error_msg)
@@ -279,12 +315,35 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+
+        character(len=:), allocatable :: value_type
+
+        call lower_expr_typed(arena, node_index, context, value, value_type, &
+                              error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (value_type /= 'integer') then
+            error_msg = 'ffc MVP expected an integer expression'
+            call set_empty(value)
+        end if
+    end subroutine lower_expr
+
+    recursive subroutine lower_expr_typed(arena, node_index, context, value, &
+                                          value_type, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: value
+        character(len=:), allocatable, intent(out) :: value_type
+        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: left
         character(len=:), allocatable :: right
+        character(len=:), allocatable :: left_type
+        character(len=:), allocatable :: right_type
         character(len=:), allocatable :: op
 
         call set_empty(error_msg)
         call set_empty(value)
+        call set_empty(value_type)
         if (.not. arena%has_node_at(node_index)) then
             error_msg = 'Invalid expression node'
             return
@@ -292,27 +351,48 @@ contains
 
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)
-            if (.not. is_integer_literal(node%value)) then
+            if (is_integer_literal(node%value)) then
+                value = trim(node%value)
+                value_type = 'integer'
+            else if (is_real_literal(node%value)) then
+                value = trim(node%value)
+                value_type = 'real'
+            else
                 error_msg = 'ffc MVP only supports integer literals'
                 return
             end if
-            value = trim(node%value)
         type is (identifier_node)
-            call lookup_symbol(context, node%name, value, error_msg)
+            call lookup_symbol(context, node%name, value, value_type, error_msg)
         type is (binary_op_node)
-            call lower_expr(arena, node%left_index, context, left, error_msg)
+            call lower_expr_typed(arena, node%left_index, context, left, &
+                                  left_type, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_expr(arena, node%right_index, context, right, error_msg)
+            call lower_expr_typed(arena, node%right_index, context, right, &
+                                  right_type, error_msg)
             if (len_trim(error_msg) > 0) return
-            call llvm_binary_op(node%operator, op, error_msg)
+            if (left_type == 'real' .or. right_type == 'real') then
+                call promote_to_real(left, left_type, context)
+                call promote_to_real(right, right_type, context)
+                call llvm_real_binary_op(node%operator, op, error_msg)
+                value_type = 'real'
+            else
+                call llvm_binary_op(node%operator, op, error_msg)
+                value_type = 'integer'
+            end if
             if (len_trim(error_msg) > 0) return
             value = next_temp(context)
-            call append_line(context, value//' = '//op//' i32 '//left//', '//right)
+            if (value_type == 'real') then
+                call append_line(context, value//' = '//op//' double '//left// &
+                                 ', '//right)
+            else
+                call append_line(context, value//' = '//op//' i32 '//left//', '// &
+                                 right)
+            end if
         class default
             error_msg = 'ffc MVP does not support expression kind: '// &
                         trim(arena%entries(node_index)%node_type)
         end select
-    end subroutine lower_expr
+    end subroutine lower_expr_typed
 
     subroutine lower_print_expr(arena, node_index, context, call_text, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -321,6 +401,7 @@ contains
         character(len=:), allocatable, intent(out) :: call_text
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: value
+        character(len=:), allocatable :: value_type
         character(len=:), allocatable :: string_label
         character(len=:), allocatable :: string_value
 
@@ -352,9 +433,16 @@ contains
             end if
         end select
 
-        call lower_expr(arena, node_index, context, value, error_msg)
+        call lower_expr_typed(arena, node_index, context, value, value_type, &
+                              error_msg)
         if (len_trim(error_msg) > 0) return
-        call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 '//value//')'
+        if (value_type == 'real') then
+            call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_f64, double '// &
+                        value//')'
+        else
+            call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 '// &
+                        value//')'
+        end if
     end subroutine lower_print_expr
 
     recursive subroutine lower_condition(arena, node_index, context, value, error_msg)
@@ -365,7 +453,10 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: left
         character(len=:), allocatable :: right
+        character(len=:), allocatable :: left_type
+        character(len=:), allocatable :: right_type
         character(len=:), allocatable :: predicate
+        character(len=:), allocatable :: value_type
 
         call set_empty(error_msg)
         call set_empty(value)
@@ -376,20 +467,38 @@ contains
 
         select type (node => arena%entries(node_index)%node)
         type is (binary_op_node)
-            call llvm_compare_predicate(node%operator, predicate, error_msg)
+            call lower_expr_typed(arena, node%left_index, context, left, &
+                                  left_type, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_expr(arena, node%left_index, context, left, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_expr(arena, node%right_index, context, right, error_msg)
+            call lower_expr_typed(arena, node%right_index, context, right, &
+                                  right_type, error_msg)
             if (len_trim(error_msg) > 0) return
             value = next_temp(context)
-            call append_line(context, value//' = icmp '//predicate//' i32 '// &
-                             left//', '//right)
+            if (left_type == 'real' .or. right_type == 'real') then
+                call promote_to_real(left, left_type, context)
+                call promote_to_real(right, right_type, context)
+                call llvm_real_compare_predicate(node%operator, predicate, &
+                                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                call append_line(context, value//' = fcmp '//predicate// &
+                                 ' double '//left//', '//right)
+            else
+                call llvm_compare_predicate(node%operator, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call append_line(context, value//' = icmp '//predicate//' i32 '// &
+                                 left//', '//right)
+            end if
         class default
-            call lower_expr(arena, node_index, context, left, error_msg)
+            call lower_expr_typed(arena, node_index, context, left, value_type, &
+                                  error_msg)
             if (len_trim(error_msg) > 0) return
             value = next_temp(context)
-            call append_line(context, value//' = icmp ne i32 '//left//', 0')
+            if (value_type == 'real') then
+                call append_line(context, value//' = fcmp one double '//left// &
+                                 ', 0.0')
+            else
+                call append_line(context, value//' = icmp ne i32 '//left//', 0')
+            end if
         end select
     end subroutine lower_condition
 
@@ -506,6 +615,42 @@ contains
         end select
     end subroutine llvm_binary_op
 
+    subroutine llvm_real_binary_op(source_op, llvm_op, error_msg)
+        character(len=*), intent(in) :: source_op
+        character(len=:), allocatable, intent(out) :: llvm_op
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(source_op))
+        case ('+')
+            llvm_op = 'fadd'
+        case ('-')
+            llvm_op = 'fsub'
+        case ('*')
+            llvm_op = 'fmul'
+        case ('/')
+            llvm_op = 'fdiv'
+        case default
+            error_msg = 'ffc MVP does not support real binary operator: '// &
+                        trim(source_op)
+            call set_empty(llvm_op)
+        end select
+    end subroutine llvm_real_binary_op
+
+    subroutine promote_to_real(value, value_type, context)
+        character(len=:), allocatable, intent(inout) :: value
+        character(len=:), allocatable, intent(inout) :: value_type
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable :: promoted
+
+        if (value_type == 'real') return
+
+        promoted = next_temp(context)
+        call append_line(context, promoted//' = sitofp i32 '//value//' to double')
+        value = promoted
+        value_type = 'real'
+    end subroutine promote_to_real
+
     subroutine llvm_compare_predicate(source_op, predicate, error_msg)
         character(len=*), intent(in) :: source_op
         character(len=:), allocatable, intent(out) :: predicate
@@ -531,6 +676,32 @@ contains
             call set_empty(predicate)
         end select
     end subroutine llvm_compare_predicate
+
+    subroutine llvm_real_compare_predicate(source_op, predicate, error_msg)
+        character(len=*), intent(in) :: source_op
+        character(len=:), allocatable, intent(out) :: predicate
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(source_op))
+        case ('==', '.eq.', '.EQ.')
+            predicate = 'oeq'
+        case ('/=', '.ne.', '.NE.')
+            predicate = 'one'
+        case ('>')
+            predicate = 'ogt'
+        case ('>=')
+            predicate = 'oge'
+        case ('<')
+            predicate = 'olt'
+        case ('<=')
+            predicate = 'ole'
+        case default
+            error_msg = 'ffc MVP does not support real comparison operator: '// &
+                        trim(source_op)
+            call set_empty(predicate)
+        end select
+    end subroutine llvm_real_compare_predicate
 
     subroutine identifier_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -661,10 +832,11 @@ contains
         context%body = context%body//trim(label)//':'//new_line('a')
     end subroutine append_label
 
-    subroutine define_symbol(context, name, value, error_msg)
+    subroutine define_symbol(context, name, value, value_type, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=*), intent(in) :: value
+        character(len=*), intent(in) :: value_type
         character(len=:), allocatable, intent(out) :: error_msg
 
         call set_empty(error_msg)
@@ -675,28 +847,59 @@ contains
         context%symbol_count = context%symbol_count + 1
         context%names(context%symbol_count) = trim(name)
         context%values(context%symbol_count) = trim(value)
+        context%value_types(context%symbol_count) = trim(value_type)
     end subroutine define_symbol
 
-    subroutine set_symbol(context, name, value, error_msg)
+    subroutine set_symbol(context, name, value, value_type, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=*), intent(in) :: value
+        character(len=*), intent(in) :: value_type
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
+        character(len=:), allocatable :: stored_value
 
         call set_empty(error_msg)
         index = find_symbol(context, name)
         if (index == 0) then
-            call define_symbol(context, name, value, error_msg)
+            call define_symbol(context, name, value, value_type, error_msg)
             return
         end if
-        context%values(index) = trim(value)
+        stored_value = trim(value)
+        call coerce_assignment(context, stored_value, value_type, &
+                               trim(context%value_types(index)), error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%values(index) = trim(stored_value)
     end subroutine set_symbol
 
-    subroutine lookup_symbol(context, name, value, error_msg)
+    subroutine coerce_assignment(context, value, source_type, target_type, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(inout) :: value
+        character(len=*), intent(in) :: source_type
+        character(len=*), intent(in) :: target_type
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: promoted
+
+        call set_empty(error_msg)
+        if (target_type == source_type) return
+
+        if (target_type == 'real' .and. source_type == 'integer') then
+            promoted = next_temp(context)
+            call append_line(context, promoted//' = sitofp i32 '//value// &
+                             ' to double')
+            value = promoted
+            return
+        end if
+
+        error_msg = 'ffc MVP cannot assign '//trim(source_type)//' expression to '// &
+                    trim(target_type)//' variable'
+    end subroutine coerce_assignment
+
+    subroutine lookup_symbol(context, name, value, value_type, error_msg)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: value
+        character(len=:), allocatable, intent(out) :: value_type
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
@@ -705,9 +908,11 @@ contains
         if (index == 0) then
             error_msg = 'Undefined scalar variable in ffc MVP: '//trim(name)
             call set_empty(value)
+            call set_empty(value_type)
             return
         end if
         value = trim(context%values(index))
+        value_type = trim(context%value_types(index))
     end subroutine lookup_symbol
 
     integer function find_symbol(context, name) result(index)
