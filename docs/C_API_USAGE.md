@@ -1,5 +1,11 @@
 # MLIR C API Usage Guide
 
+Status: legacy MLIR guide.
+
+The active backend direction is LIRIC, not MLIR. This document remains as a
+reference for the old experiment and should not be treated as current project
+policy.
+
 ## Overview
 
 This guide documents how FortFC uses the MLIR C API exclusively for HLFIR code generation. **No text-based MLIR generation is used** - all MLIR operations are created in-memory using C API calls.

@@ -1,5 +1,11 @@
 # FortFC API Reference
 
+Status: legacy MLIR experiment.
+
+This document describes the existing MLIR C API wrapper modules. It is not the
+active compiler API plan. The current project direction is FortFront typed AST
+input plus a LIRIC backend in `ffc`; see `../ROADMAP.md`.
+
 ## MLIR C API Bindings
 
 ### mlir_c_core Module

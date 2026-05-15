@@ -1,177 +1,93 @@
-# FortFC - Fortran Compiler with MLIR C API
+# ffc
 
-> **Note**: This project will be retired in favor of [LFortran](https://lfortran.org/). LFortran already provides a complete Fortran compiler with MLIR/LLVM backend, LSP support, and active development. We recommend using LFortran for all Fortran compilation needs.
+`ffc` is the planned compiler driver for Lazy Fortran and LFortran Infer-style
+source. It is not currently a working compiler.
 
-**FortFC** is a modern Fortran compiler that generates HLFIR (High-Level FIR) using the MLIR C API exclusively for optimal performance and memory safety.
+The existing tree contains an unfinished MLIR/HLFIR experiment. That code is
+useful as historical scaffolding, but the command path does not yet parse input
+through FortFront and the object/executable path is not implemented.
 
-## Overview
+## Current Status
 
-FortFC is a complete Fortran compilation pipeline that transforms Fortran source code into optimized executables through the following stages:
+- The package builds against `fortfront` and contains MLIR/LLVM-oriented
+  modules.
+- The CLI still has a source-file compilation stub.
+- MLIR lowering/object/executable emission is explicitly unfinished.
+- Several end-to-end MLIR tests are disabled.
+- The active direction is to make `ffc` a small, real compiler driver using
+  FortFront for the frontend and LIRIC for backend code generation.
+
+## Target Architecture
 
 ```
-Fortran AST → HLFIR (C API) → FIR (C API) → LLVM IR → Object Code
+Fortran / Lazy Fortran source
+        |
+        v
+FortFront typed AST + diagnostics
+        |
+        v
+ffc lowering and runtime ABI
+        |
+        v
+LIRIC C API
+        |
+        v
+object file / executable
 ```
 
-**Key Features:**
-- **MLIR C API Exclusive**: All MLIR operations created in-memory using C API (no text generation)
-- **HLFIR First**: Generate high-level Fortran IR for better optimization
-- **Memory Safe**: RAII patterns with automatic resource management
-- **Test-Driven**: Comprehensive TDD methodology with RED-GREEN-REFACTOR cycles
-- **Performance Focused**: Optimized C API usage with minimal overhead
+FortFront should remain backend-neutral. `ffc` owns lowering, ABI decisions,
+runtime calls, backend selection, object emission, and executable emission.
 
-## Architecture
+## Backend Direction
 
-### Core Components
+The preferred backend path is LIRIC through ISO C bindings to its C API.
 
-- **MLIR C Bindings** (`src/mlir_c/`): Low-level MLIR C API Fortran interfaces
-- **Dialect Support** (`src/dialects/`): HLFIR, FIR, and standard dialect operations
-- **IR Builder** (`src/builder/`): High-level MLIR construction with type conversion
-- **Code Generation** (`src/codegen/`): AST to HLFIR transformation
-- **Pass Management** (`src/passes/`): HLFIR→FIR→LLVM lowering pipelines
-- **Backend Integration** (`src/backend/`): Complete MLIR C API backend
-- **Memory Management** (`src/utils/`): Resource tracking and leak detection
+Two implementation levels are expected:
 
-## Building
+1. **Bootstrap path**: lower a small typed-AST subset to LLVM IR text and feed
+   it to `lr_compiler_feed_ll()`. This avoids LLVM bindings while proving
+   executable output quickly.
+2. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls for better
+   performance and less text generation.
 
-### Prerequisites
+The current MLIR/LLVM binding work should not be expanded unless the project
+explicitly changes direction back to a Flang/MLIR backend.
 
-- Fortran compiler (gfortran 9+ or ifort)
-- LLVM/MLIR development libraries (14+)
-- [fortfront](https://github.com/lazy-fortran/fortfront) frontend
-- CMake 3.15+ (for C++ components)
+## MVP Scope
 
-### Build Process
+The first useful compiler should support:
+
+- `program main`
+- scalar `integer`, `real`, `logical`, and simple `character` literals
+- scalar declarations and assignments
+- arithmetic and comparisons
+- `if` and counted `do`
+- simple functions and subroutines
+- `print` through a tiny runtime shim
+- object/executable emission through LIRIC
+
+Arrays, allocatables, modules, derived types, full I/O, generics, and
+cross-module inference come after that subset is executable and tested.
+
+## Build
 
 ```bash
-# Build FortFC with fpm
 fpm build
-
-# Run comprehensive tests
-fpm test
-
-# Run performance benchmarks
-./test/performance_benchmarks
 ```
 
-## Usage
+The current manifest still links MLIR/LLVM libraries because the old backend is
+present. The LIRIC backend work should remove that requirement from the default
+build path.
 
-### Basic Compilation
+## Related Repositories
 
-```bash
-# Compile Fortran program to executable
-ffc program.f90 -o program
+- [fortfront](https://github.com/lazy-fortran/fortfront): frontend,
+  transformation, typed AST work.
+- [standard](https://github.com/lazy-fortran/standard): intended LFortran
+  Standard and Infer behavior.
+- [liric](https://github.com/lazy-fortran/liric): backend C API target.
 
-# Compile with optimization
-ffc program.f90 -O3 -o program
-```
+## Status Source
 
-### Code Generation Options
-
-```bash
-# Generate HLFIR (High-Level FIR)
-ffc program.f90 --emit-hlfir
-
-# Generate FIR (Fortran IR)
-ffc program.f90 --emit-fir
-
-# Generate LLVM IR
-ffc program.f90 --emit-llvm -o program.ll
-
-# Generate object file
-ffc program.f90 -c -o program.o
-```
-
-### Debug and Analysis
-
-```bash
-# Enable memory tracking
-ffc program.f90 --debug-memory
-
-# Verbose compilation output
-ffc program.f90 --verbose
-
-# Dump MLIR operations
-ffc program.f90 --dump-mlir
-```
-
-## Development
-
-### Test-Driven Development
-
-FortFC follows strict TDD methodology:
-
-1. **RED Phase**: Write failing tests first
-2. **GREEN Phase**: Implement minimal working solution
-3. **REFACTOR Phase**: Improve implementation while keeping tests green
-
-```bash
-# Run all tests with detailed output
-./test/comprehensive_test_runner
-
-# Run specific test categories
-./test/test_memory_management
-./test/test_type_conversion_validation
-./test/performance_benchmarks
-```
-
-### Memory Management
-
-All MLIR resources use RAII patterns:
-
-```fortran
-use memory_guard
-
-type(memory_guard_t) :: guard
-call guard%init()
-
-context = create_mlir_context()
-call guard%register_resource(context, "context")
-
-! Automatic cleanup on scope exit
-```
-
-### API Documentation
-
-- **[C API Usage Guide](docs/C_API_USAGE.md)**: Complete MLIR C API usage patterns
-- **[Developer Guide](docs/DEVELOPER_GUIDE.md)**: Development workflow and architecture
-- **[API Reference](docs/API_REFERENCE.md)**: Complete API documentation
-- **[Migration Guide](docs/MIGRATION_GUIDE.md)**: Migrating from text-based generation
-
-## Dependencies
-
-- **[fortfront](https://github.com/lazy-fortran/fortfront)**: Frontend AST analysis
-- **LLVM/MLIR 14+**: Core MLIR infrastructure and C API
-- **gfortran 9+**: Fortran compiler with modern standards support
-
-## Status
-
-### Completed (✅)
-- **Epic 1-3**: MLIR C API Foundation, Dialects, IR Builder
-- **Epic 4**: AST to MLIR Conversion (Program, Function, Statement, Expression)
-- **Epic 5**: Pass Management and Optimization (HLFIR→FIR→LLVM)
-- **Epic 6**: Backend Integration and Memory Management
-- **Epic 7.1**: Comprehensive Test Suite (64 active tests)
-- **Epic 7.2**: Documentation (C API Usage, Developer Guide, API Reference, Migration Guide)
-
-### In Progress (🟡)
-- **Epic 7.3**: CI/CD Integration
-
-### Performance Metrics
-- **Memory Safe**: Zero memory leaks detected in test suite
-- **Performance**: Efficient C API usage with minimal overhead
-- **Coverage**: 100% test coverage for core components
-- **Architecture**: 100% MLIR C API usage (zero text generation)
-
-## Contributing
-
-1. Follow TDD methodology (RED-GREEN-REFACTOR)
-2. Use MLIR C API exclusively (no text generation)
-3. Implement RAII memory management patterns
-4. Write comprehensive tests with performance benchmarks
-5. Document all public APIs
-
-See [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) for detailed contribution guidelines.
-
-## License
-
-MIT License - see LICENSE file for details.
+See [ROADMAP.md](ROADMAP.md) for the active plan. The MLIR API documents under
+`docs/` are legacy references until the backend direction changes.

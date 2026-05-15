@@ -1,5 +1,10 @@
 # Migration Guide: Text Generation to MLIR C API
 
+Status: legacy MLIR guide.
+
+The active compiler path is FortFront to `ffc` lowering to LIRIC. This document
+is historical and does not describe the current roadmap.
+
 ## Overview
 
 This guide helps developers migrate from text-based MLIR generation to using the MLIR C API exclusively. This migration is essential for performance, memory safety, and maintainability.

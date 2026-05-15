@@ -1,5 +1,12 @@
 # FortFC Developer Guide
 
+Status: legacy MLIR guide.
+
+This guide documents the unfinished MLIR/HLFIR experiment still present in the
+tree. The active direction is described in `../ROADMAP.md`: use FortFront as the
+frontend and LIRIC as the backend through ISO C bindings. Do not expand the
+MLIR/LLVM dependency path unless the backend decision is intentionally reopened.
+
 ## Overview
 
 FortFC is a Fortran compiler that generates HLFIR (High-Level FIR) using the MLIR C API exclusively. This guide covers the development process, architecture, and contribution guidelines.
