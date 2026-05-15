@@ -100,6 +100,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 
