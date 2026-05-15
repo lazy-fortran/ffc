@@ -2,7 +2,8 @@
 
 ## Current Reality
 
-`ffc` now has a minimal working compiler path for the empty-program MVP.
+`ffc` now has a minimal working compiler path for the empty-program MVP and the
+first straight-line integer scalar slice.
 
 The old roadmap assumed an HLFIR/MLIR-first backend. The source tree still
 contains MLIR C API bindings and text-emitting MLIR generators, but that code is
@@ -88,7 +89,11 @@ Initial language subset:
 Verification:
 
 - Done: compile and run `program main; end program`
-- compile and run scalar arithmetic with known exit/output
+- Done: compile and run integer declaration, assignment, arithmetic, and
+  `print *, x` with known output
+- Remaining: real/logical/character literals
+- Remaining: comparisons, `if`, counted `do`, simple procedures, and a fuller
+  print/runtime surface
 - compare output against a reference compiler for the supported subset
 
 ## Phase 3: Direct LIRIC Session Backend

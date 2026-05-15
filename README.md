@@ -10,11 +10,14 @@ but it is not part of the default fpm build.
 
 - The package builds the MVP sources in `src_mvp/`.
 - The CLI parses files through FortFront's compiler-facing frontend API.
-- The bootstrap backend lowers an empty main program to LLVM IR text and feeds
-  it to LIRIC through ISO C bindings.
+- The bootstrap backend lowers a small integer scalar subset to LLVM IR text and
+  feeds it to LIRIC through ISO C bindings.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
-- Scalar Fortran lowering is still pending.
+- Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
+  are implemented for straight-line programs.
+- Real/logical/character lowering, comparisons, control flow, procedures, and
+  richer I/O are still pending.
 
 ## Target Architecture
 
@@ -57,12 +60,14 @@ explicitly changes direction back to a Flang/MLIR backend.
 The first useful compiler should support:
 
 - `program main`
-- scalar `integer`, `real`, `logical`, and simple `character` literals
-- scalar declarations and assignments
-- arithmetic and comparisons
+- scalar `integer` literals
+- scalar integer declarations and assignments
+- integer arithmetic
+- minimal `print *, expr`
+- scalar `real`, `logical`, and simple `character` literals
+- comparisons
 - `if` and counted `do`
 - simple functions and subroutines
-- `print` through a tiny runtime shim
 - object/executable emission through LIRIC
 
 Arrays, allocatables, modules, derived types, full I/O, generics, and
