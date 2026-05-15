@@ -53,7 +53,8 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
 - Integer literals and arithmetic.
 - Integer comparison `if` blocks with terminating branches or mergeable
   assignments.
-- Literal-bound counted `do` loops by scalar expansion.
+- Counted `do` loops with runtime-computed integer bounds and literal integer
+  step.
 - `stop` with integer expression.
 - Minimal scalar `print` for integer expressions, real values, character
   literals, and logical literals.

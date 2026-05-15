@@ -9,12 +9,14 @@ module session_program_lowering
                          subroutine_def_node, get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                      lr_operand_desc_t
+                                      lr_operand_desc_t, LR_OP_ADD
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
+                                              LR_CMP_SGE, &
+                                              LR_CMP_SLE, &
                                               LR_CMP_NE, &
                                               set_liric_block
     use liric_session_io_bindings, only: emit_liric_f64_binary, &

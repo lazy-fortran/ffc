@@ -70,6 +70,8 @@ module liric_session_bindings
         procedure :: begin_i32_function
         procedure :: begin_void_subroutine
         procedure :: emit_i32_binary
+        procedure :: emit_i32_binary_into
+        procedure :: emit_i32_copy_to
         procedure :: emit_i32_call
         procedure :: emit_ret_i32_main_exe
         procedure :: emit_ret_i32_operand
@@ -81,6 +83,7 @@ module liric_session_bindings
         procedure :: i32_param
         procedure :: i32_immediate
         procedure :: i32_vreg
+        procedure :: reserve_i32_vreg
     end type liric_session_t
 
     public :: liric_session_create
@@ -139,6 +142,12 @@ module liric_session_bindings
             integer(c_int32_t), value :: index
             integer(c_int32_t) :: vreg
         end function lr_session_param
+
+        function lr_session_vreg(handle) result(vreg) bind(c)
+            import :: c_int32_t, c_ptr
+            type(c_ptr), value :: handle
+            integer(c_int32_t) :: vreg
+        end function lr_session_vreg
 
         function lr_session_intern(handle, name) result(symbol_id) bind(c)
             import :: c_char, c_int32_t, c_ptr
@@ -504,6 +513,13 @@ contains
         operand = this%i32_vreg(vreg)
     end function i32_param
 
+    function reserve_i32_vreg(this) result(vreg)
+        class(liric_session_t), intent(in) :: this
+        integer(c_int32_t) :: vreg
+
+        vreg = lr_session_vreg(this%handle)
+    end function reserve_i32_vreg
+
     logical function emit_i32_binary(this, opcode, lhs, rhs, result, error_msg)
         class(liric_session_t), intent(inout) :: this
         integer(c_int), intent(in) :: opcode
@@ -524,6 +540,49 @@ contains
         call set_empty(error_msg)
         emit_i32_binary = .true.
     end function emit_i32_binary
+
+    logical function emit_i32_binary_into(this, opcode, lhs, rhs, dest_vreg, &
+                                          result, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        integer(c_int), intent(in) :: opcode
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        integer(c_int32_t), intent(in) :: dest_vreg
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_i32_binary_into = .false.
+        if (.not. require_open_session(this, error_msg)) return
+        if (dest_vreg <= 0_c_int32_t) then
+            error_msg = 'explicit LIRIC destination vreg must be positive'
+            return
+        end if
+
+        vreg = emit_binary(this%handle, opcode, lhs, rhs, error, dest_vreg)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        if (vreg /= dest_vreg) then
+            error_msg = 'LIRIC did not honor explicit binary destination vreg'
+            return
+        end if
+
+        result = this%i32_vreg(vreg)
+        call set_empty(error_msg)
+        emit_i32_binary_into = .true.
+    end function emit_i32_binary_into
+
+    logical function emit_i32_copy_to(this, value, dest_vreg, result, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        type(lr_operand_desc_t), intent(in) :: value
+        integer(c_int32_t), intent(in) :: dest_vreg
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_i32_copy_to = this%emit_i32_binary_into( &
+            LR_OP_ADD, value, this%i32_immediate(0_c_int64_t), &
+            dest_vreg, result, error_msg)
+    end function emit_i32_copy_to
 
     logical function emit_i32_call(this, name, args, result, error_msg)
         class(liric_session_t), intent(inout) :: this
@@ -615,12 +674,13 @@ contains
         vreg = lr_session_emit(handle, inst, error)
     end function emit_ret_void_inst
 
-    function emit_binary(handle, opcode, lhs, rhs, error) result(vreg)
+    function emit_binary(handle, opcode, lhs, rhs, error, dest_vreg) result(vreg)
         type(c_ptr), intent(in) :: handle
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
         type(lr_operand_desc_t), intent(in) :: rhs
         type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t), intent(in), optional :: dest_vreg
         integer(c_int32_t) :: vreg
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
@@ -630,6 +690,7 @@ contains
         inst%op = opcode
         inst%typ = lhs%typ
         inst%dest = 0_c_int32_t
+        if (present(dest_vreg)) inst%dest = dest_vreg
         inst%operands = c_loc(operands)
         inst%num_operands = 2_c_int32_t
         inst%indices = c_null_ptr

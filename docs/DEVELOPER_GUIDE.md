@@ -36,12 +36,11 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 1. Empty programs and integer `stop`.
 2. Scalar integer declarations, assignments, arithmetic, and comparisons.
 3. Minimal `print *, expr`.
-4. Block `if`, fallthrough integer merges, and literal-bound counted loops.
+4. Block `if`, fallthrough integer merges, and counted loops.
 5. Real scalar values, logical variables, and minimal character/logical print.
 6. Simple contained integer functions/subroutines and explicit ABI tests.
-7. Runtime counted loops after krystophny/liric#519.
-8. Character representation and a fuller runtime surface.
-9. Arrays, modules, derived types, allocatables, and generics.
+7. Character representation and a fuller runtime surface.
+8. Arrays, modules, derived types, allocatables, and generics.
 
 ## Verification
 

@@ -27,15 +27,12 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower terminating integer comparison `if` blocks to LIRIC blocks.
 - Done: lower fallthrough integer comparison `if` blocks that merge assigned
   integer values before a later `stop`.
-- Done: lower literal-bound counted `do` loops through direct LIRIC session
-  scalar operations by compile-time expansion.
+- Done: lower counted `do` loops with runtime-computed integer bounds through
+  direct LIRIC session blocks and PHI backedges.
 - Next: lower mutable integer storage once direct executable alloca/load/store
   behavior is covered.
 - Next: generalize non-terminating `if` merges beyond the current integer
   assignment subset.
-- Next: lower runtime counted `do` loops to LIRIC blocks once LIRIC direct
-  session backedge PHI values are reliable in executable output
-  (krystophny/liric#519).
 - Done: move the CLI default from bootstrap `.ll` emission to direct session
   lowering for the currently supported direct-session subset.
 - Done: lower minimal scalar `print` for integers, real values, character
@@ -46,6 +43,8 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower simple contained integer functions and integer call expressions.
 - Done: lower simple contained integer subroutines and explicit `CALL`
   statements.
+- Done: close krystophny/liric#519 with executable PHI-loop regression
+  coverage and consume the validated direct-session loop shape in `ffc`.
 - Done: split contained-procedure lowering out of the main direct-session
   lowerer before it reached the module size limit.
 - Next: close direct-session feature gaps until the old bootstrap path can be

@@ -14,9 +14,11 @@ program test_counted_do_compiler
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
         '  integer :: i'//new_line('a')// &
+        '  integer :: n'//new_line('a')// &
         '  integer :: total'//new_line('a')// &
+        '  n = 1 + 2'//new_line('a')// &
         '  total = 0'//new_line('a')// &
-        '  do i = 1, 3'//new_line('a')// &
+        '  do i = 1, n'//new_line('a')// &
         '    total = total + i'//new_line('a')// &
         '  end do'//new_line('a')// &
         '  stop total'//new_line('a')// &
@@ -55,5 +57,5 @@ program test_counted_do_compiler
         stop 1
     end if
 
-    print *, 'PASS: counted DO loop lowers through direct LIRIC session'
+    print *, 'PASS: runtime counted DO loop lowers through direct LIRIC session'
 end program test_counted_do_compiler

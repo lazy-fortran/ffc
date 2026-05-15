@@ -18,8 +18,8 @@ is not part of the default fpm build.
 - The direct LIRIC session lowerer can compile integer comparison `if` blocks
   when both branches terminate with `stop` or both branches assign integer
   values that merge before a later `stop`.
-- The direct LIRIC session lowerer can compile literal-bound counted `do`
-  loops by expanding their scalar body through direct LIRIC operations.
+- The direct LIRIC session lowerer can compile counted `do` loops with
+  runtime-computed integer bounds through LIRIC blocks and PHI backedges.
 - The direct LIRIC session lowerer can compile minimal integer
   `print *, expr`, real literal `print`, character literal `print`, and
   logical literal `print` through external `printf` calls.
@@ -36,9 +36,8 @@ is not part of the default fpm build.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
   through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
-- Runtime counted `do` blocks with PHI backedges, broader runtime calls,
-  richer procedure signatures, dynamic counted loops, and richer I/O are still
-  pending.
+- Broader runtime calls, richer procedure signatures, arrays, modules, and
+  richer I/O are still pending.
 
 ## Target Architecture
 
@@ -86,13 +85,12 @@ The first useful compiler should support:
 - integer arithmetic
 - minimal `print *, expr`
 - one-line `if` with integer comparisons
-- counted `do` loops with literal integer bounds and step
+- counted `do` loops with integer bounds and literal integer step
 - scalar `real` literals in `print`
 - simple `character` literals in `print`
 - scalar `logical` literals in `print`
 - real variables/arithmetic
 - block `if`
-- dynamic counted `do`
 - simple functions and subroutines
 - object/executable emission through LIRIC
 
