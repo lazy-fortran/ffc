@@ -41,8 +41,9 @@ calls, LIRIC bindings, object emission, and executable emission.
   `stop`.
 - Literal-bound counted `do` loops expanded through direct LIRIC scalar
   operations.
-- Minimal `print *, expr` for integer expressions and real literals through
-  direct-session external `printf` calls.
+- Minimal `print *, expr` for integer expressions, real literals, character
+  literals, and logical literals through direct-session external `printf`
+  calls.
 
 ## Immediate Work
 
@@ -75,6 +76,8 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
 ```
 
 ## Documentation

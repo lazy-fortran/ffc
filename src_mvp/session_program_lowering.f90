@@ -15,6 +15,7 @@ module session_program_lowering
                                               set_liric_block
     use liric_session_io_bindings, only: emit_liric_print_f64, &
                                          emit_liric_print_i32, &
+                                         emit_liric_print_string, &
                                          liric_f64_immediate, &
                                          prepare_liric_print_runtime
     use session_lowering_ops, only: integer_compare_predicate, &
@@ -38,6 +39,8 @@ module session_program_lowering
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
+        integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
+        integer :: string_literal_count = 0
         logical :: current_block_terminated = .false.
     end type lowering_context_t
 
@@ -68,6 +71,7 @@ contains
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
                                               context%f64_print_format_id, &
+                                              context%str_print_format_id, &
                                               error_msg)) then
             call context%session%destroy()
             return
@@ -341,6 +345,8 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        character(len=:), allocatable :: character_value
+        character(len=64) :: string_name
         real(c_double) :: real_value
 
         if (.not. arena%has_node_at(node_index)) then
@@ -350,6 +356,25 @@ contains
 
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)
+            if (is_character_literal(node)) then
+                call strip_literal_quotes(node%value, character_value)
+                context%string_literal_count = context%string_literal_count + 1
+                write (string_name, '(A,I0)') '.ffc.str.', &
+                    context%string_literal_count
+                if (.not. emit_liric_print_string(context%session, &
+                                                  context%str_print_format_id, &
+                                                  trim(string_name), &
+                                                  character_value, &
+                                                  error_msg)) return
+                return
+            end if
+            if (is_logical_literal(node)) then
+                value = context%session%i32_immediate(logical_i32_value(node%value))
+                if (.not. emit_liric_print_i32(context%session, &
+                                               context%i32_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
             if (is_real_literal(node)) then
                 call parse_f64_literal(node%value, real_value, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -379,6 +404,61 @@ contains
                           index(node%value, 'e') > 0 .or. &
                           index(node%value, 'E') > 0
     end function is_real_literal
+
+    logical function is_character_literal(node)
+        type(literal_node), intent(in) :: node
+
+        is_character_literal = .false.
+        if (allocated(node%literal_type)) then
+            is_character_literal = trim(node%literal_type) == 'character'
+        end if
+        is_character_literal = is_character_literal .or. &
+                               starts_with_quote(node%value)
+    end function is_character_literal
+
+    logical function is_logical_literal(node)
+        type(literal_node), intent(in) :: node
+        character(len=:), allocatable :: value
+
+        value = trim(node%value)
+        is_logical_literal = value == '.true.' .or. value == '.false.'
+        if (allocated(node%literal_type)) then
+            is_logical_literal = is_logical_literal .or. &
+                                 trim(node%literal_type) == 'logical'
+        end if
+    end function is_logical_literal
+
+    logical function starts_with_quote(text)
+        character(len=*), intent(in) :: text
+
+        starts_with_quote = len_trim(text) >= 2 .and. &
+                            (text(1:1) == '"' .or. text(1:1) == "'")
+    end function starts_with_quote
+
+    subroutine strip_literal_quotes(text, value)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: value
+        integer :: text_len
+
+        text_len = len_trim(text)
+        if (text_len >= 2 .and. &
+            ((text(1:1) == '"' .and. text(text_len:text_len) == '"') .or. &
+             (text(1:1) == "'" .and. text(text_len:text_len) == "'"))) then
+            value = text(2:text_len - 1)
+        else
+            value = trim(text)
+        end if
+    end subroutine strip_literal_quotes
+
+    integer(c_int64_t) function logical_i32_value(text) result(value)
+        character(len=*), intent(in) :: text
+
+        if (trim(text) == '.true.') then
+            value = 1_c_int64_t
+        else
+            value = 0_c_int64_t
+        end if
+    end function logical_i32_value
 
     subroutine parse_f64_literal(text, value, error_msg)
         character(len=*), intent(in) :: text
