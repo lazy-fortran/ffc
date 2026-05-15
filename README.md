@@ -17,8 +17,9 @@ but it is not part of the default fpm build.
 - Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
   are implemented for straight-line programs.
 - One-line integer comparison `if` statements are implemented.
-- Real/logical/character lowering, block control flow, counted loops,
-  procedures, and richer I/O are still pending.
+- Constant-bound counted `do` loops are implemented by MVP unrolling.
+- Real/logical/character lowering, block `if`, dynamic loops, procedures, and
+  richer I/O are still pending.
 
 ## Target Architecture
 
@@ -66,8 +67,9 @@ The first useful compiler should support:
 - integer arithmetic
 - minimal `print *, expr`
 - one-line `if` with integer comparisons
+- counted `do` loops with literal integer bounds and step
 - scalar `real`, `logical`, and simple `character` literals
-- block `if` and counted `do`
+- block `if` and dynamic counted `do`
 - simple functions and subroutines
 - object/executable emission through LIRIC
 

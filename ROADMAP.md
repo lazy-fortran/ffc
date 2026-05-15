@@ -92,8 +92,9 @@ Verification:
 - Done: compile and run integer declaration, assignment, arithmetic, and
   `print *, x` with known output
 - Done: compile and run one-line `if (x == 5) print *, 1`
+- Done: compile and run counted `do i = 1, 3` with known output
 - Remaining: real/logical/character literals
-- Remaining: block `if`, counted `do`, simple procedures, and a fuller
+- Remaining: block `if`, dynamic counted `do`, simple procedures, and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset
 

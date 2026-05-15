@@ -1,7 +1,7 @@
 module empty_program_lowering
     use fortfront, only: ast_arena_t, assignment_node, binary_op_node, &
-                         declaration_node, identifier_node, literal_node, &
-                         if_node, print_statement_node, program_node
+                         declaration_node, do_loop_node, identifier_node, &
+                         literal_node, if_node, print_statement_node, program_node
     implicit none
     private
 
@@ -99,6 +99,8 @@ contains
             call lower_assignment(arena, node, context, error_msg)
         type is (if_node)
             call lower_if(arena, node_index, node, context, error_msg)
+        type is (do_loop_node)
+            call lower_do_loop(arena, node, context, error_msg)
         type is (print_statement_node)
             if (.not. allocated(node%expression_indices)) return
             do i = 1, size(node%expression_indices)
@@ -163,6 +165,53 @@ contains
         call append_line(context, 'br label %endif'//label_id)
         call append_label(context, 'endif'//label_id)
     end subroutine lower_if
+
+    subroutine lower_do_loop(arena, node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(do_loop_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: start_value
+        integer :: end_value
+        integer :: step_value
+        integer :: value
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%var_name)) then
+            error_msg = 'ffc MVP requires a named do-loop variable'
+            return
+        end if
+
+        call constant_integer(arena, node%start_expr_index, start_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call constant_integer(arena, node%end_expr_index, end_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (node%step_expr_index > 0) then
+            call constant_integer(arena, node%step_expr_index, step_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            step_value = 1
+        end if
+        if (step_value == 0) then
+            error_msg = 'ffc MVP does not support zero do-loop step'
+            return
+        end if
+
+        value = start_value
+        do while (loop_continues(value, end_value, step_value))
+            call set_symbol(context, node%var_name, int_to_text(value), error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (allocated(node%body_indices)) then
+                do i = 1, size(node%body_indices)
+                    call lower_statement(arena, node%body_indices(i), context, &
+                                         error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+            value = value + step_value
+        end do
+    end subroutine lower_do_loop
 
     integer function first_child_index(arena, node_index) result(child_index)
         type(ast_arena_t), intent(in) :: arena
@@ -386,6 +435,35 @@ contains
         end select
     end subroutine identifier_name
 
+    subroutine constant_integer(arena, node_index, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: io_stat
+
+        value = 0
+        call set_empty(error_msg)
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'Invalid integer constant expression'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            if (.not. is_integer_literal(node%value)) then
+                error_msg = 'ffc MVP requires integer do-loop bounds'
+                return
+            end if
+            read (node%value, *, iostat=io_stat) value
+            if (io_stat /= 0) then
+                error_msg = 'Invalid integer literal in do-loop bound'
+            end if
+        class default
+            error_msg = 'ffc MVP only supports literal do-loop bounds'
+        end select
+    end subroutine constant_integer
+
     function next_temp(context) result(name)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable :: name
@@ -415,6 +493,27 @@ contains
         write (buffer, '(I0)') context%block_count
         name = trim(buffer)
     end function next_block_id
+
+    logical function loop_continues(value, end_value, step_value) result(continues)
+        integer, intent(in) :: value
+        integer, intent(in) :: end_value
+        integer, intent(in) :: step_value
+
+        if (step_value > 0) then
+            continues = value <= end_value
+        else
+            continues = value >= end_value
+        end if
+    end function loop_continues
+
+    function int_to_text(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=32) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function int_to_text
 
     subroutine append_line(context, line)
         type(lowering_context_t), intent(inout) :: context
