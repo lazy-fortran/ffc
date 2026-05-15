@@ -65,13 +65,6 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
   and integer call expressions/statements. Integer arguments use LIRIC pointer
   parameters with copy-back for variable actual arguments.
 
-## Bootstrap Reference Path
-
-`liric_bindings` and `empty_program_lowering` are temporary executable reference
-coverage. They feed textual low-level IR into LIRIC's compiler API. Do not add
-new language coverage there unless it is needed to compare behavior while the
-direct session path catches up.
-
 ## Runtime ABI
 
 The current direct-session runtime and scalar ABI is documented in

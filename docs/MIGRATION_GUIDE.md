@@ -19,9 +19,8 @@ native executable
 
 ## What To Move
 
-Move any useful scalar lowering behavior from the bootstrap reference path into
-`session_program_lowering` and its included control, loop, procedure, and
-scalar value files.
+Move any useful scalar lowering behavior into `session_program_lowering` and
+its included control, loop, procedure, and scalar value files.
 
 Use these modules:
 
@@ -36,9 +35,6 @@ Use these modules:
 The old MLIR/HLFIR source tree is not the active backend. Do not expand it.
 Reference it only when extracting behavior that should be reimplemented against
 the LIRIC session API.
-
-The bootstrap text-IR path is temporary. It can stay until the direct session
-path covers the same executable subset.
 
 ## Migration Checklist
 

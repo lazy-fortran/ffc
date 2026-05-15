@@ -64,22 +64,11 @@ Verification:
 - Pending: add narrower compiler query APIs so `ffc` does not depend on arena
   representation details for real scalar lowering.
 
-## Phase 2: LIRIC Bootstrap Reference Backend
+## Phase 2: Direct LIRIC Session Backend
 
-Goal: preserve the first executable reference path while direct LIRIC session
-lowering catches up.
+Goal: keep the compiler path on direct LIRIC session calls.
 
-Use the simple LIRIC compiler API:
-
-- create compiler/session
-- emit minimal text IR for a tiny subset
-- feed text through LIRIC's compiler API
-- Done: emit executable through direct LIRIC session
-- Done: emit object files through direct LIRIC session
-
-This path is not the CLI default and should not receive broad new features.
-
-Initial language subset:
+Initial supported language subset:
 
 - main program
 - scalar integer/real/logical literals
@@ -107,10 +96,6 @@ Verification:
 - Remaining: richer non-integer procedure signatures and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset
-
-## Phase 3: Direct LIRIC Session Backend
-
-Goal: remove text IR from the hot path.
 
 Tasks:
 
@@ -140,15 +125,17 @@ Tasks:
 - generalize non-terminating blocks/control flow with merge values
 - lower richer non-integer function/subroutine signatures
 - Done: emit objects directly from the session
+- Done: remove the bootstrap text-IR reference path from `src_mvp/` and
+  `test_mvp/`
 - Done: document the current direct-session MVP ABI in `docs/RUNTIME_ABI.md`
 
 Verification:
 
 - same executable tests as Phase 2
 - compare generated output and execution behavior
-- measure compile latency against the text bootstrap path
+- measure compile latency for the direct session path
 
-## Phase 4: Fortran Runtime and ABI
+## Phase 3: Fortran Runtime and ABI
 
 Goal: move beyond toy programs without hiding semantics in ad hoc lowering.
 

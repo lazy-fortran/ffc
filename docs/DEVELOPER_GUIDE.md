@@ -27,8 +27,6 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 - Add new executable behavior to the direct LIRIC session path.
 - Keep the CLI on `session_program_lowering`.
 - Add focused executable tests in `test_mvp/`.
-- Keep bootstrap reference tests only where they compare behavior not yet
-  available through the direct session path.
 - Treat a need for private FortFront AST layout as a FortFront API issue.
 
 ## Feature Order

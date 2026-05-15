@@ -7,7 +7,6 @@ The active backend integration uses LIRIC through `iso_c_binding`.
 - `liric_session_bindings`: direct session construction, function/subroutine
   emission, instruction emission, object output, and executable output.
 - `liric_session_control_bindings`: block, branch, comparison, and PHI helpers.
-- `liric_bindings`: temporary compiler API bridge used by reference tests.
 
 New lowering code should target `liric_session_bindings`.
 
@@ -41,7 +40,4 @@ diagnostics, and source mapping.
 
 - New MLIR/HLFIR bindings.
 - Backend code in FortFront.
-- Text IR as the main compiler path.
-
-The only text-IR code left is temporary reference coverage while the direct
-LIRIC session path reaches feature parity for the MVP subset.
+- Text IR as a compiler path.

@@ -34,9 +34,6 @@ is not part of the default fpm build.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
-- The bootstrap LIRIC compiler API path still has broader scalar coverage
-  through generated text IR. It is kept as temporary executable reference
-  coverage while the direct session path catches up.
 - Broader runtime calls, richer non-integer procedure signatures, arrays,
   modules, and richer I/O are still pending.
 
@@ -65,13 +62,8 @@ runtime calls, backend selection, object emission, and executable emission.
 
 The preferred backend path is LIRIC through ISO C bindings to its C API.
 
-Two implementation levels are expected:
-
-1. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls. This is the
-   CLI path and target architecture; new lowering work should go here.
-2. **Bootstrap reference path**: lower a small typed-AST subset to textual
-   low-level IR accepted by LIRIC's compiler API. This is temporary
-   compatibility coverage, not the target architecture.
+Lower typed AST to LIRIC `lr_session_*` calls. This is the CLI path and target
+architecture; new lowering work should go here.
 
 The current MLIR binding work should not be expanded unless the project
 explicitly changes direction back to a Flang-style backend.
@@ -109,7 +101,6 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm build
 Run the MVP tests:
 
 ```bash
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
@@ -126,7 +117,6 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_c
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 
 Compile the smallest supported program:

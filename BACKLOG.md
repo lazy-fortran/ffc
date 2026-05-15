@@ -7,13 +7,11 @@ HLFIR/MLIR backlog is obsolete and must not drive new work.
 
 - Keep `fpm.toml` defaulting to `src_mvp/`.
 - Keep MLIR/HLFIR code outside the default build.
-- Keep docs explicit that `.ll` text emission is a bootstrap path, not the
-  target architecture.
 - Keep executable tests for every claimed compiler feature.
 
 ## P1: Direct LIRIC Session Lowering
 
-Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
+Goal: keep the compiler path on direct `lr_session_*` emission.
 
 - Done: bind `lr_session_create/destroy`.
 - Done: bind scalar `i32` type access.
@@ -33,8 +31,7 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
   behavior is covered.
 - Next: generalize non-terminating `if` merges beyond the current integer
   assignment subset.
-- Done: move the CLI default from bootstrap `.ll` emission to direct session
-  lowering for the currently supported direct-session subset.
+- Done: move the CLI default to direct session lowering.
 - Done: lower minimal scalar `print` for integers, real values, character
   literals, and logical literals through direct-session `printf` calls.
 - Done: lower scalar real declarations, assignments, arithmetic, and printing.
@@ -49,8 +46,8 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
   coverage and consume the validated direct-session loop shape in `ffc`.
 - Done: split contained-procedure lowering out of the main direct-session
   lowerer before it reached the module size limit.
-- Next: close direct-session feature gaps until the old bootstrap path can be
-  removed.
+- Done: remove the old bootstrap `.ll` reference path from the default MVP
+  source and test set.
 
 Verification:
 
@@ -73,22 +70,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_c
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
 ```
 
-## P2: Bootstrap Feature Parity
-
-The bootstrap `.ll` path currently proves these executable slices:
-
-- empty `program main`
-- integer scalar declarations, assignment, arithmetic, and `print`
-- one-line and block integer `if`
-- literal-bound counted `do` by unrolling
-- real literals and real scalar variables/arithmetic
-- character literal printing
-- logical literal printing
-
-Keep this path stable while porting behavior to the direct LIRIC session
-lowerer. Do not add broad new features only to the bootstrap path.
-
-## P3: FortFront API Needs
+## P2: FortFront API Needs
 
 `ffc` still reaches into arena/node representation for much of lowering.
 FortFront now exposes explicit subroutine call queries; more compiler-facing
@@ -104,7 +86,7 @@ Needed API surface:
 - procedure signature and call-site queries
 - source location and diagnostic mapping
 
-## P4: Runtime And ABI
+## P3: Runtime And ABI
 
 Document and test the ABI before implementing procedures and arrays.
 
