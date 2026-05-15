@@ -120,9 +120,10 @@ Tasks:
   vregs and return values
 - Done: lower integer declarations and assignments to direct-session values
 - Done: use direct session lowering from the CLI for the supported subset
+- Done: lower terminating integer comparison `if` blocks to LIRIC blocks
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
-- lower blocks/control flow to LIRIC blocks
+- lower non-terminating blocks/control flow with merge values
 - lower calls with an explicit ABI
 - emit objects/executables directly from the session
 

@@ -1,11 +1,16 @@
 module session_program_lowering
-    use, intrinsic :: iso_c_binding, only: c_int64_t
+    use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
-                         declaration_node, identifier_node, literal_node, &
-                         program_node, stop_node
+                         declaration_node, identifier_node, if_node, &
+                         literal_node, program_node, stop_node
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                      lr_operand_desc_t, LR_OP_ADD, LR_OP_MUL, &
-                                      LR_OP_SDIV, LR_OP_SUB
+                                      lr_operand_desc_t
+    use liric_session_control_bindings, only: create_liric_block, &
+                                              emit_liric_condbr, &
+                                              emit_liric_i32_icmp, &
+                                              set_liric_block
+    use session_lowering_ops, only: integer_compare_predicate, &
+                                    integer_opcode, parse_i32_literal
     implicit none
     private
 
@@ -22,6 +27,7 @@ module session_program_lowering
         type(liric_session_t) :: session
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
+        logical :: current_block_terminated = .false.
     end type lowering_context_t
 
 contains
@@ -53,7 +59,9 @@ contains
             return
         end if
 
-        if (.not. context%session%emit_ret_i32_operand(return_value, error_msg)) then
+        if (.not. context%current_block_terminated .and. &
+            .not. context%session%emit_ret_i32_operand(return_value, &
+                                                       error_msg)) then
             call context%session%destroy()
             return
         end if
@@ -99,11 +107,10 @@ contains
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        logical :: returned
         integer :: i
 
         value = context%session%i32_immediate(0_c_int64_t)
-        returned = .false.
+        context%current_block_terminated = .false.
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
@@ -111,25 +118,24 @@ contains
             if (.not. allocated(program%body_indices)) return
             do i = 1, size(program%body_indices)
                 call lower_statement(arena, program%body_indices(i), context, &
-                                     value, returned, error_msg)
+                                     value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (returned) return
+                if (context%current_block_terminated) return
             end do
         class default
             error_msg = 'direct LIRIC session MVP only supports a program node'
         end select
     end subroutine lower_program_return
 
-    subroutine lower_statement(arena, node_index, context, value, returned, &
-                               error_msg)
+    recursive subroutine lower_statement(arena, node_index, context, value, &
+                                         error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
-        logical, intent(out) :: returned
         character(len=:), allocatable, intent(out) :: error_msg
 
-        returned = .false.
+        context%current_block_terminated = .false.
         value = context%session%i32_immediate(0_c_int64_t)
         if (.not. arena%has_node_at(node_index)) then
             error_msg = 'program body index does not reference an AST node'
@@ -143,11 +149,100 @@ contains
             call lower_assignment(arena, node, context, error_msg)
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
-            returned = len_trim(error_msg) == 0
+            if (len_trim(error_msg) == 0) then
+                if (.not. context%session%emit_ret_i32_operand(value, &
+                                                               error_msg)) return
+                context%current_block_terminated = .true.
+            end if
+        type is (if_node)
+            call lower_if(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP supports declarations, assignments, STOP'
+            error_msg = 'direct LIRIC session MVP supports declarations, assignments, IF, STOP'
         end select
     end subroutine lower_statement
+
+    subroutine lower_if(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(if_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: condition
+        type(symbol_t) :: saved_symbols(MAX_SYMBOLS)
+        integer :: saved_symbol_count
+        integer(c_int32_t) :: then_block
+        integer(c_int32_t) :: else_block
+        logical :: then_terminated
+        logical :: else_terminated
+
+        if (node%condition_index <= 0) then
+            error_msg = 'direct LIRIC session IF requires a condition index'
+            return
+        end if
+        if (.not. allocated(node%then_body_indices) .or. &
+            .not. allocated(node%else_body_indices)) then
+            error_msg = 'direct LIRIC session IF requires THEN and ELSE bodies'
+            return
+        end if
+
+        call lower_i1_condition(arena, node%condition_index, context, &
+                                condition, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        then_block = create_liric_block(context%session)
+        else_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, condition, then_block, &
+                                    else_block, error_msg)) return
+
+        saved_symbols = context%symbols
+        saved_symbol_count = context%symbol_count
+
+        if (.not. set_liric_block(context%session, then_block, error_msg)) return
+        call lower_statement_list(arena, node%then_body_indices, context, &
+                                  value, then_terminated, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols = saved_symbols
+        context%symbol_count = saved_symbol_count
+        if (.not. set_liric_block(context%session, else_block, error_msg)) return
+        call lower_statement_list(arena, node%else_body_indices, context, &
+                                  value, else_terminated, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols = saved_symbols
+        context%symbol_count = saved_symbol_count
+        if (.not. then_terminated .or. .not. else_terminated) then
+            error_msg = 'direct LIRIC session IF branches must terminate with STOP'
+            return
+        end if
+
+        context%current_block_terminated = .true.
+        call set_empty(error_msg)
+    end subroutine lower_if
+
+    subroutine lower_statement_list(arena, node_indices, context, value, &
+                                    terminated, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: terminated
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        terminated = .false.
+        value = context%session%i32_immediate(0_c_int64_t)
+        call set_empty(error_msg)
+
+        do i = 1, size(node_indices)
+            call lower_statement(arena, node_indices(i), context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%current_block_terminated) then
+                terminated = .true.
+                return
+            end if
+        end do
+    end subroutine lower_statement_list
 
     subroutine lower_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
@@ -291,6 +386,39 @@ contains
         end select
     end subroutine lower_i32_expression
 
+    recursive subroutine lower_i1_condition(arena, node_index, context, &
+                                            value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer(c_int) :: pred
+
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'condition index does not reference an AST node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (binary_op_node)
+            call lower_i32_expression(arena, node%left_index, context, lhs, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i32_expression(arena, node%right_index, context, rhs, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_compare_predicate(node%operator, pred, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
+                                          value, error_msg)) return
+        class default
+            error_msg = 'direct LIRIC session IF requires an integer comparison'
+        end select
+    end subroutine lower_i1_condition
+
     subroutine identifier_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -326,43 +454,6 @@ contains
             end if
         end do
     end function find_symbol
-
-    subroutine parse_i32_literal(text, value, error_msg)
-        character(len=*), intent(in) :: text
-        integer(c_int64_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer :: io_status
-
-        read (text, *, iostat=io_status) value
-        if (io_status == 0) then
-            call set_empty(error_msg)
-        else
-            error_msg = 'invalid integer literal for direct LIRIC lowering: '// &
-                        trim(text)
-        end if
-    end subroutine parse_i32_literal
-
-    subroutine integer_opcode(source_op, opcode, error_msg)
-        character(len=*), intent(in) :: source_op
-        integer, intent(out) :: opcode
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        call set_empty(error_msg)
-        select case (trim(source_op))
-        case ('+')
-            opcode = LR_OP_ADD
-        case ('-')
-            opcode = LR_OP_SUB
-        case ('*')
-            opcode = LR_OP_MUL
-        case ('/')
-            opcode = LR_OP_SDIV
-        case default
-            error_msg = 'direct LIRIC session MVP does not support operator: '// &
-                        trim(source_op)
-            opcode = 0
-        end select
-    end subroutine integer_opcode
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value
