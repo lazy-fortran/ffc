@@ -96,8 +96,9 @@ Verification:
 - Done: compile and run `print *, 2.5`
 - Done: compile and run `print *, "hello"`
 - Done: compile and run `print *, .true.`
-- Remaining: real variables/arithmetic
-- Remaining: block `if`, dynamic counted `do`, simple procedures, and a fuller
+- Done: compile and run real variables/arithmetic
+- Done: compile and run block `if`
+- Remaining: dynamic counted `do`, simple procedures, and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset
 
@@ -107,7 +108,8 @@ Goal: remove text IR from the hot path.
 
 Tasks:
 
-- add ISO C bindings for `lr_session_*`
+- Done: add ISO C bindings for the initial `lr_session_*` surface
+- Done: emit and run an executable through direct LIRIC session calls
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
 - lower blocks/control flow to LIRIC blocks

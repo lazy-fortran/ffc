@@ -10,19 +10,21 @@ but it is not part of the default fpm build.
 
 - The package builds the MVP sources in `src_mvp/`.
 - The CLI parses files through FortFront's compiler-facing frontend API.
-- The bootstrap backend lowers a small integer scalar subset to LLVM IR text and
-  feeds it to LIRIC through ISO C bindings.
+- The bootstrap backend lowers a small scalar subset to LLVM IR text and feeds
+  it to LIRIC through ISO C bindings.
+- The direct LIRIC session binding is present and can emit a runnable
+  executable without `.ll` text.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
 - Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
   are implemented for straight-line programs.
-- One-line integer comparison `if` statements are implemented.
+- One-line and block integer comparison `if` statements are implemented.
 - Constant-bound counted `do` loops are implemented by MVP unrolling.
 - Real literal printing is implemented.
 - Character literal printing is implemented.
 - Logical literal printing is implemented.
-- Real variables/arithmetic, block `if`, dynamic loops, procedures, and richer
-  I/O are still pending.
+- Dynamic loops, procedures, direct-session feature parity, and richer I/O are
+  still pending.
 
 ## Target Architecture
 
@@ -54,8 +56,8 @@ Two implementation levels are expected:
 1. **Bootstrap path**: lower a small typed-AST subset to LLVM IR text and feed
    it to `lr_compiler_feed_ll()`. This avoids LLVM bindings while proving
    executable output quickly.
-2. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls for better
-   performance and less text generation.
+2. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls. This is the
+   target architecture; new lowering work should go here.
 
 The current MLIR/LLVM binding work should not be expanded unless the project
 explicitly changes direction back to a Flang/MLIR backend.
@@ -75,7 +77,8 @@ The first useful compiler should support:
 - simple `character` literals in `print`
 - scalar `logical` literals in `print`
 - real variables/arithmetic
-- block `if` and dynamic counted `do`
+- block `if`
+- dynamic counted `do`
 - simple functions and subroutines
 - object/executable emission through LIRIC
 
@@ -94,6 +97,7 @@ Run the MVP tests:
 
 ```bash
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_bindings
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 

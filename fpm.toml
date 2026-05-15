@@ -33,6 +33,11 @@ source-dir = "test_mvp"
 main = "test_liric_bindings.f90"
 
 [[test]]
+name = "test_liric_session_bindings"
+source-dir = "test_mvp"
+main = "test_liric_session_bindings.f90"
+
+[[test]]
 name = "test_empty_program_compiler"
 source-dir = "test_mvp"
 main = "test_empty_program_compiler.f90"
