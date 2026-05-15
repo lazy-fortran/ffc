@@ -48,6 +48,11 @@ source-dir = "test_mvp"
 main = "test_session_empty_program_compiler.f90"
 
 [[test]]
+name = "test_session_stop_code_compiler"
+source-dir = "test_mvp"
+main = "test_session_stop_code_compiler.f90"
+
+[[test]]
 name = "test_scalar_print_compiler"
 source-dir = "test_mvp"
 main = "test_scalar_print_compiler.f90"

@@ -1,4 +1,4 @@
-program test_session_empty_program_compiler
+program test_session_stop_code_compiler
     use fortfront, only: compiler_frontend_options_t, &
                          compiler_frontend_result_t, &
                          compile_frontend_from_string, INPUT_MODE_STANDARD
@@ -8,14 +8,15 @@ program test_session_empty_program_compiler
     type(compiler_frontend_options_t) :: options
     type(compiler_frontend_result_t) :: frontend_result
     character(len=:), allocatable :: error_msg
-    character(len=*), parameter :: exe_path = '/tmp/ffc_session_empty_program_test'
+    character(len=*), parameter :: exe_path = '/tmp/ffc_session_stop_code_test'
     integer :: exit_stat
     integer :: cmd_stat
     character(len=*), parameter :: source = &
                                    'program main'//new_line('a')// &
+                                   'stop 2 + 3 * 4'//new_line('a')// &
                                    'end program main'
 
-    print *, '=== direct session empty program compiler test ==='
+    print *, '=== direct session stop code compiler test ==='
 
     options = compiler_frontend_options_t()
     options%run_semantics = .true.
@@ -43,10 +44,10 @@ program test_session_empty_program_compiler
         print *, 'FAIL: emitted executable did not run'
         stop 1
     end if
-    if (exit_stat /= 0) then
+    if (exit_stat /= 14) then
         print *, 'FAIL: executable exit status ', exit_stat
         stop 1
     end if
 
-    print *, 'PASS: empty program compiles and runs through direct LIRIC session'
-end program test_session_empty_program_compiler
+    print *, 'PASS: integer stop expression lowers through direct LIRIC session'
+end program test_session_stop_code_compiler
