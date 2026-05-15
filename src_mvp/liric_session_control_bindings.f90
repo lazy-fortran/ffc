@@ -17,14 +17,18 @@ module liric_session_control_bindings
     integer(c_int), parameter, public :: LR_CMP_SLT = 4_c_int
     integer(c_int), parameter, public :: LR_CMP_SLE = 5_c_int
 
+    integer(c_int), parameter :: LR_OP_BR = 2_c_int
     integer(c_int), parameter :: LR_OP_CONDBR = 3_c_int
     integer(c_int), parameter :: LR_OP_ICMP = 24_c_int
+    integer(c_int), parameter :: LR_OP_PHI = 31_c_int
     logical(c_bool), parameter :: c_false = .false.
 
     public :: create_liric_block
     public :: set_liric_block
+    public :: emit_liric_br
     public :: emit_liric_i32_icmp
     public :: emit_liric_condbr
+    public :: emit_liric_i32_phi
 
     interface
         function lr_type_i1_s(handle) result(typ) bind(c)
@@ -84,6 +88,24 @@ contains
         set_liric_block = .true.
     end function set_liric_block
 
+    logical function emit_liric_br(session, target_block, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: target_block
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_br = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        unused_vreg = emit_br_inst(session%handle, block_operand(target_block), &
+                                   error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_br = .true.
+    end function emit_liric_br
+
     logical function emit_liric_i32_icmp(session, pred, lhs, rhs, result, &
                                          error_msg)
         type(liric_session_t), intent(inout) :: session
@@ -128,6 +150,30 @@ contains
         emit_liric_condbr = .true.
     end function emit_liric_condbr
 
+    logical function emit_liric_i32_phi(session, lhs, lhs_block, rhs, rhs_block, &
+                                        result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: lhs
+        integer(c_int32_t), intent(in) :: lhs_block
+        type(lr_operand_desc_t), intent(in) :: rhs
+        integer(c_int32_t), intent(in) :: rhs_block
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_i32_phi = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_phi_inst(session%handle, lhs, block_operand(lhs_block), rhs, &
+                             block_operand(rhs_block), error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = session%i32_vreg(vreg)
+        call set_empty(error_msg)
+        emit_liric_i32_phi = .true.
+    end function emit_liric_i32_phi
+
     function i1_vreg(session, vreg) result(operand)
         type(liric_session_t), intent(in) :: session
         integer(c_int32_t), intent(in) :: vreg
@@ -148,6 +194,25 @@ contains
         operand%typ = c_null_ptr
         operand%global_offset = 0_c_int64_t
     end function block_operand
+
+    function emit_br_inst(handle, target, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: target
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+
+        operands(1) = target
+
+        call clear_inst(inst)
+        inst%op = LR_OP_BR
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_br_inst
 
     function emit_icmp(handle, pred, lhs, rhs, error) result(vreg)
         type(c_ptr), intent(in) :: handle
@@ -192,6 +257,30 @@ contains
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_condbr_inst
+
+    function emit_phi_inst(handle, lhs, lhs_block, rhs, rhs_block, error) &
+        result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: lhs_block
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(in) :: rhs_block
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(4)
+        type(lr_inst_desc_t) :: inst
+
+        operands = [lhs, lhs_block, rhs, rhs_block]
+
+        call clear_inst(inst)
+        inst%op = LR_OP_PHI
+        inst%typ = lhs%typ
+        inst%operands = c_loc(operands)
+        inst%num_operands = 4_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_phi_inst
 
     subroutine clear_inst(inst)
         type(lr_inst_desc_t), intent(out) :: inst

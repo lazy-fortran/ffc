@@ -16,14 +16,15 @@ code, but it is not part of the default fpm build.
   arithmetic `stop` codes, and integer declarations/assignments when the
   assigned value is consumed by `stop`.
 - The direct LIRIC session lowerer can compile integer comparison `if` blocks
-  when both branches terminate with `stop`.
+  when both branches terminate with `stop` or both branches assign integer
+  values that merge before a later `stop`.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
   through generated `.ll` text. It is kept as temporary executable reference
   coverage while the direct session path catches up.
-- Direct-session fallthrough/merge blocks, print/runtime calls, procedures, and
-  richer I/O are still pending.
+- General direct-session fallthrough/merge blocks, print/runtime calls,
+  procedures, and richer I/O are still pending.
 
 ## Target Architecture
 
@@ -101,6 +102,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_comp
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 

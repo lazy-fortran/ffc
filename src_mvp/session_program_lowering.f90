@@ -6,8 +6,10 @@ module session_program_lowering
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t
     use liric_session_control_bindings, only: create_liric_block, &
+                                              emit_liric_br, &
                                               emit_liric_condbr, &
                                               emit_liric_i32_icmp, &
+                                              emit_liric_i32_phi, &
                                               set_liric_block
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
@@ -27,8 +29,16 @@ module session_program_lowering
         type(liric_session_t) :: session
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
+        integer(c_int32_t) :: current_block_id = 0_c_int32_t
         logical :: current_block_terminated = .false.
     end type lowering_context_t
+
+    type :: branch_result_t
+        type(symbol_t) :: symbols(MAX_SYMBOLS)
+        integer :: symbol_count = 0
+        integer(c_int32_t) :: predecessor_block_id = 0_c_int32_t
+        logical :: terminated = .false.
+    end type branch_result_t
 
 contains
 
@@ -161,64 +171,7 @@ contains
         end select
     end subroutine lower_statement
 
-    subroutine lower_if(arena, node, context, value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(if_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: condition
-        type(symbol_t) :: saved_symbols(MAX_SYMBOLS)
-        integer :: saved_symbol_count
-        integer(c_int32_t) :: then_block
-        integer(c_int32_t) :: else_block
-        logical :: then_terminated
-        logical :: else_terminated
-
-        if (node%condition_index <= 0) then
-            error_msg = 'direct LIRIC session IF requires a condition index'
-            return
-        end if
-        if (.not. allocated(node%then_body_indices) .or. &
-            .not. allocated(node%else_body_indices)) then
-            error_msg = 'direct LIRIC session IF requires THEN and ELSE bodies'
-            return
-        end if
-
-        call lower_i1_condition(arena, node%condition_index, context, &
-                                condition, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        then_block = create_liric_block(context%session)
-        else_block = create_liric_block(context%session)
-        if (.not. emit_liric_condbr(context%session, condition, then_block, &
-                                    else_block, error_msg)) return
-
-        saved_symbols = context%symbols
-        saved_symbol_count = context%symbol_count
-
-        if (.not. set_liric_block(context%session, then_block, error_msg)) return
-        call lower_statement_list(arena, node%then_body_indices, context, &
-                                  value, then_terminated, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        context%symbols = saved_symbols
-        context%symbol_count = saved_symbol_count
-        if (.not. set_liric_block(context%session, else_block, error_msg)) return
-        call lower_statement_list(arena, node%else_body_indices, context, &
-                                  value, else_terminated, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        context%symbols = saved_symbols
-        context%symbol_count = saved_symbol_count
-        if (.not. then_terminated .or. .not. else_terminated) then
-            error_msg = 'direct LIRIC session IF branches must terminate with STOP'
-            return
-        end if
-
-        context%current_block_terminated = .true.
-        call set_empty(error_msg)
-    end subroutine lower_if
+    include 'session_program_lowering_control.inc'
 
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)

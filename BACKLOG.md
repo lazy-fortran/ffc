@@ -24,9 +24,12 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower integer literal and binary arithmetic expressions to LIRIC vregs.
 - Done: lower integer declarations and assignments to direct-session values.
 - Done: lower terminating integer comparison `if` blocks to LIRIC blocks.
+- Done: lower fallthrough integer comparison `if` blocks that merge assigned
+  integer values before a later `stop`.
 - Next: lower mutable integer storage once direct executable alloca/load/store
   behavior is covered.
-- Next: lower non-terminating `if` with merge values.
+- Next: generalize non-terminating `if` merges beyond the current integer
+  assignment subset.
 - Next: lower counted `do` loops to LIRIC blocks, not unrolled text.
 - Done: move the CLI default from bootstrap `.ll` emission to direct session
   lowering for the currently supported direct-session subset.
@@ -41,6 +44,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_comp
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
 ```
 
 ## P2: Bootstrap Feature Parity

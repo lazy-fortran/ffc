@@ -121,9 +121,11 @@ Tasks:
 - Done: lower integer declarations and assignments to direct-session values
 - Done: use direct session lowering from the CLI for the supported subset
 - Done: lower terminating integer comparison `if` blocks to LIRIC blocks
+- Done: lower fallthrough integer comparison `if` blocks that merge assigned
+  integer values before a later `stop`
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
-- lower non-terminating blocks/control flow with merge values
+- generalize non-terminating blocks/control flow with merge values
 - lower calls with an explicit ABI
 - emit objects/executables directly from the session
 
