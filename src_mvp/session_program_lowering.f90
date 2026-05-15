@@ -1,5 +1,6 @@
 module session_program_lowering
-    use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
+    use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
+                                           c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          declaration_node, do_loop_node, identifier_node, if_node, &
                          literal_node, print_statement_node, program_node, &
@@ -12,8 +13,10 @@ module session_program_lowering
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
                                               set_liric_block
-    use liric_session_io_bindings, only: emit_liric_print_i32, &
-                                         prepare_liric_i32_print
+    use liric_session_io_bindings, only: emit_liric_print_f64, &
+                                         emit_liric_print_i32, &
+                                         liric_f64_immediate, &
+                                         prepare_liric_print_runtime
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
     implicit none
@@ -34,6 +37,7 @@ module session_program_lowering
         integer :: symbol_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
+        integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
         logical :: current_block_terminated = .false.
     end type lowering_context_t
 
@@ -61,9 +65,10 @@ contains
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. prepare_liric_i32_print(context%session, &
-                                          context%i32_print_format_id, &
-                                          error_msg)) then
+        if (.not. prepare_liric_print_runtime(context%session, &
+                                              context%i32_print_format_id, &
+                                              context%f64_print_format_id, &
+                                              error_msg)) then
             call context%session%destroy()
             return
         end if
@@ -322,17 +327,73 @@ contains
         end if
 
         do i = 1, size(node%expression_indices)
-            call lower_i32_expression(arena, node%expression_indices(i), &
-                                      context, value, error_msg)
+            call lower_print_expression(arena, node%expression_indices(i), &
+                                        context, error_msg)
             if (len_trim(error_msg) > 0) return
-
-            if (.not. emit_liric_print_i32(context%session, &
-                                           context%i32_print_format_id, value, &
-                                           error_msg)) return
         end do
 
         call set_empty(error_msg)
     end subroutine lower_print
+
+    subroutine lower_print_expression(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        real(c_double) :: real_value
+
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'print expression index does not reference an AST node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            if (is_real_literal(node)) then
+                call parse_f64_literal(node%value, real_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = liric_f64_immediate(context%session, real_value)
+                if (.not. emit_liric_print_f64(context%session, &
+                                               context%f64_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
+        end select
+
+        call lower_i32_expression(arena, node_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_print_i32(context%session, &
+                                       context%i32_print_format_id, value, &
+                                       error_msg)) return
+    end subroutine lower_print_expression
+
+    logical function is_real_literal(node)
+        type(literal_node), intent(in) :: node
+
+        is_real_literal = .false.
+        if (allocated(node%literal_type)) then
+            is_real_literal = trim(node%literal_type) == 'real'
+        end if
+        is_real_literal = is_real_literal .or. index(node%value, '.') > 0 .or. &
+                          index(node%value, 'e') > 0 .or. &
+                          index(node%value, 'E') > 0
+    end function is_real_literal
+
+    subroutine parse_f64_literal(text, value, error_msg)
+        character(len=*), intent(in) :: text
+        real(c_double), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: io_stat
+
+        read (text, *, iostat=io_stat) value
+        if (io_stat == 0) then
+            call set_empty(error_msg)
+        else
+            error_msg = 'invalid real literal for direct LIRIC session: '// &
+                        trim(text)
+        end if
+    end subroutine parse_f64_literal
 
     recursive subroutine lower_i32_expression(arena, node_index, context, &
                                               value, error_msg)
