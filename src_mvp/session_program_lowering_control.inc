@@ -122,9 +122,18 @@
             end if
 
             context%symbols(i)%name = then_result%symbols(i)%name
+            context%symbols(i)%value_kind = then_result%symbols(i)%value_kind
+            if (then_result%symbols(i)%value_kind /= &
+                else_result%symbols(i)%value_kind) then
+                error_msg = 'direct LIRIC session IF branch symbol types diverged'
+                return
+            end if
             if (same_operand(then_result%symbols(i)%value, &
                              else_result%symbols(i)%value)) then
                 context%symbols(i)%value = then_result%symbols(i)%value
+            else if (then_result%symbols(i)%value_kind /= VALUE_I32) then
+                error_msg = 'direct LIRIC session IF only merges integer symbols'
+                return
             else if (.not. emit_liric_i32_phi(context%session, &
                                               then_result%symbols(i)%value, &
                                               then_result%predecessor_block_id, &

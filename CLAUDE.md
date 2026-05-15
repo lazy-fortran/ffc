@@ -44,6 +44,8 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Minimal `print *, expr` for integer expressions, real literals, character
   literals, and logical literals through direct-session external `printf`
   calls.
+- Real declarations, assignments, arithmetic expressions, and printed real
+  variables.
 
 ## Immediate Work
 
@@ -78,6 +80,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compi
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 ```
 
 ## Documentation

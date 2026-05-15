@@ -13,7 +13,8 @@ module session_program_lowering
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
                                               set_liric_block
-    use liric_session_io_bindings, only: emit_liric_print_f64, &
+    use liric_session_io_bindings, only: emit_liric_f64_binary, &
+                                         emit_liric_print_f64, &
                                          emit_liric_print_i32, &
                                          emit_liric_print_string, &
                                          liric_f64_immediate, &
@@ -26,9 +27,12 @@ module session_program_lowering
     public :: lower_program_to_liric_exe
 
     integer, parameter :: MAX_SYMBOLS = 64
+    integer, parameter :: VALUE_I32 = 1
+    integer, parameter :: VALUE_F64 = 2
 
     type :: symbol_t
         character(len=64) :: name = ''
+        integer :: value_kind = VALUE_I32
         type(lr_operand_desc_t) :: value
     end type symbol_t
 
@@ -228,31 +232,55 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        call require_integer_declaration(node, error_msg)
-        if (len_trim(error_msg) > 0) return
+        integer :: value_kind
 
+        call declaration_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call define_i32_symbol(context, node%var_names(i), error_msg)
+                call define_symbol(context, node%var_names(i), value_kind, &
+                                   error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
-            call define_i32_symbol(context, node%var_name, error_msg)
+            call define_symbol(context, node%var_name, value_kind, error_msg)
         else
-            error_msg = 'integer declaration did not expose a variable name'
+            error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
 
-    subroutine require_integer_declaration(node, error_msg)
+    subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node
+        integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
 
+        value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
-        if (trim(node%type_name) /= 'integer') then
-            error_msg = 'direct LIRIC session MVP only supports integer declarations'
+        select case (trim(node%type_name))
+        case ('integer')
+            value_kind = VALUE_I32
+        case ('real')
+            value_kind = VALUE_F64
+        case default
+            error_msg = 'direct LIRIC session MVP only supports integer and real declarations'
+        end select
+    end subroutine declaration_value_kind
+
+    subroutine define_symbol(context, name, value_kind, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (value_kind == VALUE_I32) then
+            call define_i32_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_F64) then
+            call define_f64_symbol(context, name, error_msg)
+        else
+            error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
-    end subroutine require_integer_declaration
+    end subroutine define_symbol
 
     subroutine define_i32_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -271,10 +299,35 @@ contains
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i32_symbol
+
+    subroutine define_f64_symbol(context, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate real declaration: '//trim(name)
+            return
+        end if
+        if (context%symbol_count >= MAX_SYMBOLS) then
+            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            return
+        end if
+
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_F64
+        context%symbols(index)%value = liric_f64_immediate(context%session, &
+                                                           0.0_c_double)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_f64_symbol
 
     subroutine lower_assignment(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -294,7 +347,13 @@ contains
             return
         end if
 
-        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
+            call lower_f64_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else
+            call lower_i32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         context%symbols(symbol_index)%value = value
@@ -348,6 +407,7 @@ contains
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
+        integer :: symbol_index
 
         if (.not. arena%has_node_at(node_index)) then
             error_msg = 'print expression index does not reference an AST node'
@@ -355,6 +415,28 @@ contains
         end if
 
         select type (node => arena%entries(node_index)%node)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+            if (symbol_index > 0 .and. &
+                context%symbols(symbol_index)%value_kind == VALUE_F64) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64(context%session, &
+                                               context%f64_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
+        type is (binary_op_node)
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64(context%session, &
+                                               context%f64_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
         type is (literal_node)
             if (is_character_literal(node)) then
                 call strip_literal_quotes(node%value, character_value)
@@ -392,6 +474,102 @@ contains
                                        context%i32_print_format_id, value, &
                                        error_msg)) return
     end subroutine lower_print_expression
+
+    recursive subroutine lower_f64_expression(arena, node_index, context, &
+                                              value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        real(c_double) :: literal_value
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer :: opcode
+        integer :: symbol_index
+
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'real expression index does not reference an AST node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            call parse_f64_literal(node%value, literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = liric_f64_immediate(context%session, literal_value)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+            if (symbol_index <= 0) then
+                error_msg = 'real identifier was not declared: '//trim(node%name)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_F64) then
+                error_msg = 'real expression used non-real identifier: '// &
+                            trim(node%name)
+                return
+            end if
+            value = context%symbols(symbol_index)%value
+            call set_empty(error_msg)
+        type is (binary_op_node)
+            call lower_f64_expression(arena, node%left_index, context, lhs, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f64_expression(arena, node%right_index, context, rhs, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call real_opcode(node%operator, opcode, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
+                                            value, error_msg)) return
+        class default
+            error_msg = 'direct LIRIC session MVP only supports real expressions'
+        end select
+    end subroutine lower_f64_expression
+
+    recursive logical function is_f64_expression(arena, node_index, context) &
+        result(is_f64)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+
+        is_f64 = .false.
+        if (.not. arena%has_node_at(node_index)) return
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            is_f64 = is_real_literal(node)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+            is_f64 = symbol_index > 0 .and. &
+                     context%symbols(symbol_index)%value_kind == VALUE_F64
+        type is (binary_op_node)
+            is_f64 = is_f64_expression(arena, node%left_index, context) .or. &
+                     is_f64_expression(arena, node%right_index, context)
+        end select
+    end function is_f64_expression
+
+    subroutine real_opcode(source_op, opcode, error_msg)
+        character(len=*), intent(in) :: source_op
+        integer, intent(out) :: opcode
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(source_op))
+        case ('+')
+            opcode = 18
+        case ('-')
+            opcode = 19
+        case ('*')
+            opcode = 20
+        case ('/')
+            opcode = 21
+        case default
+            error_msg = 'direct LIRIC session MVP does not support real operator: '// &
+                        trim(source_op)
+        end select
+    end subroutine real_opcode
 
     logical function is_real_literal(node)
         type(literal_node), intent(in) :: node
