@@ -3,8 +3,8 @@
 `ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style source.
 
 The active build is the FortFront + direct LIRIC session compiler path. The
-older MLIR/HLFIR experiment remains in `src/` and `test/` as legacy reference
-code, but it is not part of the default fpm build.
+older MLIR/HLFIR experiment remains in `src/` as legacy reference code, but it
+is not part of the default fpm build.
 
 ## Current Status
 
@@ -23,7 +23,7 @@ code, but it is not part of the default fpm build.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
-  through generated `.ll` text. It is kept as temporary executable reference
+  through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
 - Runtime counted `do` blocks with PHI backedges, print/runtime calls,
   procedures, and richer I/O are still pending.
@@ -57,12 +57,12 @@ Two implementation levels are expected:
 
 1. **Direct path**: lower typed AST to LIRIC `lr_session_*` calls. This is the
    CLI path and target architecture; new lowering work should go here.
-2. **Bootstrap reference path**: lower a small typed-AST subset to LLVM IR text
-   and feed it to `lr_compiler_feed_ll()`. This avoids LLVM bindings, but it is
-   temporary compatibility coverage, not the target architecture.
+2. **Bootstrap reference path**: lower a small typed-AST subset to textual
+   low-level IR accepted by LIRIC's compiler API. This is temporary
+   compatibility coverage, not the target architecture.
 
-The current MLIR/LLVM binding work should not be expanded unless the project
-explicitly changes direction back to a Flang/MLIR backend.
+The current MLIR binding work should not be expanded unless the project
+explicitly changes direction back to a Flang-style backend.
 
 ## MVP Scope
 
@@ -126,5 +126,5 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/em
 
 ## Status Source
 
-See [ROADMAP.md](ROADMAP.md) for the active plan. The MLIR API documents under
-`docs/` are legacy references until the backend direction changes.
+See [ROADMAP.md](ROADMAP.md) for the active plan. The `docs/` directory now
+describes the FortFront-to-LIRIC path.

@@ -41,16 +41,16 @@ should not know about LIRIC, object formats, runtime ABI, or executable linking.
 Use LIRIC through ISO C bindings to its C API.
 
 The old MLIR/HLFIR source tree remains as legacy reference material outside the
-default fpm build. Do not expand the MLIR/LLVM binding path unless the backend
-decision is reopened.
+default fpm build. Do not expand that path unless the backend decision is
+reopened.
 
 ## Current Backend State
 
 Two LIRIC paths exist:
 
-- `liric_bindings`: bootstrap compiler API binding. It feeds generated `.ll`
-  text to `lr_compiler_feed_ll()`. This proves end-to-end execution without
-  linking LLVM bindings into `ffc`, but it is not the target architecture.
+- `liric_bindings`: bootstrap compiler API binding. It feeds generated text IR
+  to LIRIC's compiler API. This proves end-to-end execution, but it is not the
+  target architecture.
 - `liric_session_bindings`: direct session API binding. It emits LIRIC
   instruction descriptors through `lr_session_emit()` and can build a runnable
   executable directly.
@@ -88,7 +88,7 @@ Before broadening language coverage, document and test:
 
 Direct LIRIC session lowering should replace text generation on the hot path.
 The expected performance wins are fewer string allocations, no parse-back step
-for generated `.ll`, and a cleaner path to incremental compilation.
+for generated text IR, and a cleaner path to incremental compilation.
 
 Measure compile latency against the bootstrap path once integer variables,
 arithmetic, comparisons, control flow, and print are implemented in the session

@@ -6,8 +6,8 @@
 first straight-line integer scalar slice.
 
 The old roadmap assumed an HLFIR/MLIR-first backend. The source tree still
-contains MLIR C API bindings and text-emitting MLIR generators, but that code is
-legacy and not part of the default fpm build.
+contains that experiment, but it is legacy and not part of the default fpm
+build.
 
 The active plan is FortFront frontend, `ffc` lowering/runtime, and LIRIC
 backend.
@@ -29,7 +29,7 @@ Goal: make the repository honest and buildable for the new backend direction.
 Tasks:
 
 - Done: default fpm build points at `src_mvp/`, not the old MLIR tree.
-- Done: default manifest links LIRIC instead of MLIR/LLVM libraries.
+- Done: default manifest links LIRIC instead of the old backend libraries.
 - Done: CLI source path calls FortFront's compiler API.
 - Pending: decide whether to move legacy MLIR code under an explicit archive
   directory or keep it as reference source outside the default build.
@@ -72,8 +72,8 @@ lowering catches up.
 Use the simple LIRIC compiler API:
 
 - create compiler/session
-- emit minimal LLVM IR text for a tiny subset
-- feed text through `lr_compiler_feed_ll()`
+- emit minimal text IR for a tiny subset
+- feed text through LIRIC's compiler API
 - emit object/executable
 
 This path is not the CLI default and should not receive broad new features.
