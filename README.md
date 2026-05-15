@@ -20,12 +20,14 @@ is not part of the default fpm build.
   values that merge before a later `stop`.
 - The direct LIRIC session lowerer can compile literal-bound counted `do`
   loops by expanding their scalar body through direct LIRIC operations.
+- The direct LIRIC session lowerer can compile minimal integer
+  `print *, expr` through an external `printf` call.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
   through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
-- Runtime counted `do` blocks with PHI backedges, print/runtime calls,
+- Runtime counted `do` blocks with PHI backedges, broader runtime calls,
   procedures, and richer I/O are still pending.
 
 ## Target Architecture
@@ -105,6 +107,8 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 

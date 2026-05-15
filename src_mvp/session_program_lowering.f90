@@ -2,7 +2,8 @@ module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          declaration_node, do_loop_node, identifier_node, if_node, &
-                         literal_node, program_node, stop_node
+                         literal_node, print_statement_node, program_node, &
+                         stop_node
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t
     use liric_session_control_bindings, only: create_liric_block, &
@@ -11,6 +12,8 @@ module session_program_lowering
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
                                               set_liric_block
+    use liric_session_io_bindings, only: emit_liric_print_i32, &
+                                         prepare_liric_i32_print
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
     implicit none
@@ -30,6 +33,7 @@ module session_program_lowering
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
+        integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         logical :: current_block_terminated = .false.
     end type lowering_context_t
 
@@ -56,6 +60,13 @@ contains
 
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (.not. prepare_liric_i32_print(context%session, &
+                                          context%i32_print_format_id, &
+                                          error_msg)) then
+            call context%session%destroy()
+            return
+        end if
 
         if (.not. context%session%begin_i32_main(error_msg)) then
             call context%session%destroy()
@@ -157,6 +168,8 @@ contains
             call lower_declaration(node, context, error_msg)
         type is (assignment_node)
             call lower_assignment(arena, node, context, error_msg)
+        type is (print_statement_node)
+            call lower_print(arena, node, context, error_msg)
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
@@ -169,7 +182,7 @@ contains
         type is (do_loop_node)
             call lower_do_loop(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP supports declarations, assignments, DO, IF, STOP'
+            error_msg = 'direct LIRIC session MVP supports declarations, assignments, PRINT, DO, IF, STOP'
         end select
     end subroutine lower_statement
 
@@ -294,6 +307,32 @@ contains
                                       value, error_msg)
         end if
     end subroutine lower_stop
+
+    subroutine lower_print(arena, node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: i
+
+        if (.not. allocated(node%expression_indices)) then
+            call set_empty(error_msg)
+            return
+        end if
+
+        do i = 1, size(node%expression_indices)
+            call lower_i32_expression(arena, node%expression_indices(i), &
+                                      context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            if (.not. emit_liric_print_i32(context%session, &
+                                           context%i32_print_format_id, value, &
+                                           error_msg)) return
+        end do
+
+        call set_empty(error_msg)
+    end subroutine lower_print
 
     recursive subroutine lower_i32_expression(arena, node_index, context, &
                                               value, error_msg)

@@ -41,6 +41,8 @@ calls, LIRIC bindings, object emission, and executable emission.
   `stop`.
 - Literal-bound counted `do` loops expanded through direct LIRIC scalar
   operations.
+- Minimal `print *, expr` for integer expressions through a direct-session
+  external `printf` call.
 
 ## Immediate Work
 
@@ -51,7 +53,7 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Generalize non-terminating control flow with merge values.
 - Add runtime counted `do` loops through LIRIC blocks with backedge PHI values
   after krystophny/liric#519.
-- Define and test the runtime/ABI surface for calls and `print`.
+- Broaden runtime/ABI calls beyond integer `print`.
 
 ## Commands
 
@@ -71,6 +73,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_c
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
 ```
 
 ## Documentation

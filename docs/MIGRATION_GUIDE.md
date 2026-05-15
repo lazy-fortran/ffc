@@ -26,6 +26,8 @@ Use these modules:
 
 - `liric_session_bindings` for session and instruction emission.
 - `liric_session_control_bindings` for blocks and branches.
+- `liric_session_io_bindings` for the direct-session `printf` ABI used by
+  minimal integer `print`.
 - `session_lowering_ops` for opcode and predicate mapping.
 
 ## What To Leave Alone
