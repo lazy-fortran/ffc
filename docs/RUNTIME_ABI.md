@@ -23,12 +23,13 @@ small and should change only with matching executable tests.
 
 ## Procedures
 
-- The supported procedure slice is contained integer functions with integer
-  parameters.
-- Function parameters are currently lowered as direct LIRIC `i32` parameters.
+- The supported procedure slice is contained integer functions and subroutines
+  with integer parameters.
+- Procedure parameters are currently lowered as direct LIRIC `i32` parameters.
   This is an MVP calling convention, not the final Fortran pass-by-reference
   ABI.
 - Function results are represented by assignment to the function result name.
+- Subroutines return LIRIC `void`; explicit `CALL` statements emit `void` calls.
 - Names are emitted as source names for the current single-file subset. A
   deterministic mangling scheme is still required before broader procedure and
   module support.
@@ -47,7 +48,7 @@ small and should change only with matching executable tests.
 
 ## Pending ABI Work
 
-- Explicit subroutines and pass-by-reference arguments.
+- Pass-by-reference arguments and richer procedure signatures.
 - Character value plus length passing.
 - Arrays and descriptors.
 - Allocatable and pointer representation.

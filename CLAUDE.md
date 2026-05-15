@@ -49,13 +49,14 @@ calls, LIRIC bindings, object emission, and executable emission.
   variables.
 - Logical declarations, assignments, `if (flag)` conditions, and printed
   logical variables.
-- Simple contained integer functions with integer parameters, assignment to the
-  function result name, and integer call expressions.
+- Simple contained integer functions and subroutines with integer parameters,
+  assignment to the function result name, and integer call
+  expressions/statements.
 
 ## Immediate Work
 
-- Add narrow FortFront compiler query APIs so lowering does not depend on raw
-  arena internals.
+- Keep adding narrow FortFront compiler query APIs so lowering depends less on
+  raw arena internals.
 - Lower mutable storage through direct LIRIC once alloca/load/store executable
   behavior is covered.
 - Generalize non-terminating control flow with merge values.
@@ -64,7 +65,8 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Broaden runtime/ABI calls beyond the current scalar `printf` shim.
 - Continue splitting direct-session binding and lowering files before they
   approach the hard 1000-line module limit. The main lowerer already separates
-  control, loop, and contained-function routines into include files.
+  control, loop, contained-procedure, and scalar value routines into include
+  files.
 
 ## Commands
 
@@ -92,6 +94,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_pr
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
 ```
 
 ## Documentation

@@ -28,7 +28,8 @@ is not part of the default fpm build.
 - The direct LIRIC session lowerer can compile scalar `logical` declarations,
   assignments, `if (flag)` conditions, and printing of logical variables.
 - The direct LIRIC session lowerer can compile simple contained integer
-  functions with integer parameters and integer call expressions.
+  functions and subroutines with integer parameters and integer call
+  expressions/statements.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
@@ -36,8 +37,8 @@ is not part of the default fpm build.
   through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
 - Runtime counted `do` blocks with PHI backedges, broader runtime calls,
-  subroutines, richer procedure forms, dynamic counted loops, and richer I/O
-  are still pending.
+  richer procedure signatures, dynamic counted loops, and richer I/O are still
+  pending.
 
 ## Target Architecture
 
@@ -125,6 +126,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_pr
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 

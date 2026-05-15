@@ -44,7 +44,9 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower scalar logical declarations, assignments, `if (flag)`, and
   printed logical variables.
 - Done: lower simple contained integer functions and integer call expressions.
-- Done: split contained-function lowering out of the main direct-session
+- Done: lower simple contained integer subroutines and explicit `CALL`
+  statements.
+- Done: split contained-procedure lowering out of the main direct-session
   lowerer before it reached the module size limit.
 - Next: close direct-session feature gaps until the old bootstrap path can be
   removed.
@@ -67,6 +69,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_pr
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
 ```
 
 ## P2: Bootstrap Feature Parity
@@ -86,9 +89,10 @@ lowerer. Do not add broad new features only to the bootstrap path.
 
 ## P3: FortFront API Needs
 
-`ffc` still reaches into arena/node representation for lowering. FortFront
-should expose narrower compiler-facing queries so `ffc` can lower without
-depending on private layout details.
+`ffc` still reaches into arena/node representation for much of lowering.
+FortFront now exposes explicit subroutine call queries; more compiler-facing
+queries should follow so `ffc` can lower without depending on private layout
+details.
 
 Needed API surface:
 

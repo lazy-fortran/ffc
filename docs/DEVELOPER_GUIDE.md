@@ -38,8 +38,8 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 3. Minimal `print *, expr`.
 4. Block `if`, fallthrough integer merges, and literal-bound counted loops.
 5. Real scalar values, logical variables, and minimal character/logical print.
-6. Simple contained integer functions and explicit ABI tests.
-7. Runtime counted loops after krystophny/liric#519, then subroutines.
+6. Simple contained integer functions/subroutines and explicit ABI tests.
+7. Runtime counted loops after krystophny/liric#519.
 8. Character representation and a fuller runtime surface.
 9. Arrays, modules, derived types, allocatables, and generics.
 
@@ -56,6 +56,7 @@ LIBRARY_PATH=/path/to/liric/build fpm test test_session_if_merge_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_integer_function_compiler
+LIBRARY_PATH=/path/to/liric/build fpm test test_session_integer_subroutine_compiler
 ```
 
 For CLI checks:

@@ -4,8 +4,8 @@ The active backend integration uses LIRIC through `iso_c_binding`.
 
 ## Binding Modules
 
-- `liric_session_bindings`: direct session construction, function emission,
-  instruction emission, and executable output.
+- `liric_session_bindings`: direct session construction, function/subroutine
+  emission, instruction emission, object output, and executable output.
 - `liric_session_control_bindings`: block, branch, comparison, and PHI helpers.
 - `liric_bindings`: temporary compiler API bridge used by reference tests.
 

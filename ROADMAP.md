@@ -104,7 +104,7 @@ Verification:
 - Done: compile and run `print *, .true.`
 - Done: compile and run real variables/arithmetic
 - Done: compile and run block `if`
-- Remaining: dynamic counted `do`, simple procedures, and a fuller
+- Remaining: dynamic counted `do`, richer procedure signatures, and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset
 
@@ -133,10 +133,13 @@ Tasks:
 - Done: lower logical declarations, assignment, printed logical variables, and
   `if (flag)` conditions
 - Done: lower simple contained integer functions and integer call expressions
+- Done: lower simple contained integer subroutines and explicit `CALL`
+  statements
 - generalize non-terminating blocks/control flow with merge values
 - lower runtime counted `do` loops to LIRIC blocks with backedge PHI values
   after krystophny/liric#519
-- lower subroutines and richer function signatures with an explicit ABI
+- lower pass-by-reference procedure ABI and richer function/subroutine
+  signatures
 - Done: emit objects directly from the session
 - Done: document the current direct-session MVP ABI in `docs/RUNTIME_ABI.md`
 

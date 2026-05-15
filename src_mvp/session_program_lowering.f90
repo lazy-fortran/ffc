@@ -5,7 +5,9 @@ module session_program_lowering
                          call_or_subscript_node, declaration_node, do_loop_node, &
                          function_def_node, identifier_node, if_node, &
                          literal_node, parameter_declaration_node, &
-                         print_statement_node, program_node, stop_node
+                         print_statement_node, program_node, stop_node, &
+                         subroutine_def_node, get_subroutine_call_arg_indices, &
+                         get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t
     use liric_session_control_bindings, only: create_liric_block, &
@@ -38,6 +40,7 @@ module session_program_lowering
         character(len=64) :: name = ''
         integer :: value_kind = VALUE_I32
         type(lr_operand_desc_t) :: value
+        logical :: is_parameter = .false.
     end type symbol_t
 
     type :: lowering_context_t
@@ -127,11 +130,12 @@ contains
             return
         end if
 
-        if (.not. context%current_block_terminated .and. &
-            .not. context%session%emit_ret_i32_operand(return_value, &
-                                                       error_msg)) then
-            call context%session%destroy()
-            return
+        if (.not. context%current_block_terminated) then
+            if (.not. context%session%emit_ret_i32_operand(return_value, &
+                                                           error_msg)) then
+                call context%session%destroy()
+                return
+            end if
         end if
 
         if (emit_executable) then
@@ -194,7 +198,7 @@ contains
         type is (program_node)
             if (.not. allocated(program%body_indices)) return
             do i = 1, size(program%body_indices)
-                if (is_function_def(arena, program%body_indices(i))) cycle
+                if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
                 call lower_statement(arena, program%body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -214,6 +218,7 @@ contains
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
 
         context%current_block_terminated = .false.
         value = context%session%i32_immediate(0_c_int64_t)
@@ -222,7 +227,14 @@ contains
             return
         end if
 
+        if (is_subroutine_call_statement(arena, node_index)) then
+            call lower_subroutine_call(arena, node_index, context, error_msg)
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
+        type is (parameter_declaration_node)
+            call lower_parameter_declaration(node, context, error_msg)
         type is (declaration_node)
             call lower_declaration(node, context, error_msg)
         type is (assignment_node)
@@ -241,7 +253,12 @@ contains
         type is (do_loop_node)
             call lower_do_loop(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP supports declarations, assignments, PRINT, DO, IF, STOP'
+            node_type = 'unknown'
+            if (allocated(arena%entries(node_index)%node_type)) then
+                node_type = arena%entries(node_index)%node_type
+            end if
+            error_msg = 'direct LIRIC session MVP does not support statement node: '// &
+                        trim(node_type)
         end select
     end subroutine lower_statement
 
@@ -295,6 +312,38 @@ contains
         end if
     end subroutine lower_declaration
 
+    subroutine lower_parameter_declaration(node, context, error_msg)
+        type(parameter_declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'parameter declaration did not expose a name'
+            return
+        end if
+        if (allocated(node%type_name)) then
+            if (trim(node%type_name) /= 'integer') then
+                error_msg = 'direct LIRIC session MVP only supports integer parameters'
+                return
+            end if
+        end if
+
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'parameter declaration did not match a dummy argument: '// &
+                        trim(node%name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_parameter) then
+            error_msg = 'parameter declaration did not match a dummy argument: '// &
+                        trim(node%name)
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine lower_parameter_declaration
+
     subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: value_kind
@@ -320,6 +369,19 @@ contains
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: existing_index
+
+        existing_index = find_symbol(context, name)
+        if (existing_index > 0) then
+            if (context%symbols(existing_index)%is_parameter) then
+                if (context%symbols(existing_index)%value_kind == value_kind) then
+                    call set_empty(error_msg)
+                else
+                    error_msg = 'parameter declaration type mismatch: '//trim(name)
+                end if
+                return
+            end if
+        end if
 
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)
@@ -535,6 +597,32 @@ contains
         if (.not. context%session%emit_i32_call(node%name, args, value, &
                                                 error_msg)) return
     end subroutine lower_i32_call
+
+    subroutine lower_subroutine_call(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer, allocatable :: arg_indices(:)
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer :: i
+
+        call get_subroutine_call_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        allocate (args(size(arg_indices)))
+        do i = 1, size(arg_indices)
+            call lower_i32_expression(arena, arg_indices(i), context, args(i), &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+
+        if (.not. context%session%emit_void_call(name, args, error_msg)) return
+    end subroutine lower_subroutine_call
 
     recursive subroutine lower_i1_condition(arena, node_index, context, &
                                             value, error_msg)
