@@ -54,6 +54,8 @@ contains
         end select
 
         llvm_ir = '@.fmt_i32 = private constant [4 x i8] c"%d\0A\00"'// &
+                  new_line('a')// &
+                  '@.fmt_f64 = private constant [4 x i8] c"%f\0A\00"'// &
                   new_line('a')//new_line('a')// &
                   'declare i32 @printf(ptr, ...)'//new_line('a')// &
                   new_line('a')// &
@@ -104,12 +106,10 @@ contains
         type is (print_statement_node)
             if (.not. allocated(node%expression_indices)) return
             do i = 1, size(node%expression_indices)
-                call lower_expr(arena, node%expression_indices(i), context, value, &
-                                error_msg)
+                call lower_print_expr(arena, node%expression_indices(i), context, &
+                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                call append_line(context, next_print_temp(context)//' = '// &
-                                 'call i32 (ptr, ...) @printf(ptr @.fmt_i32, '// &
-                                 'i32 '//value//')')
+                call append_line(context, next_print_temp(context)//' = '//value)
             end do
         class default
             error_msg = 'ffc MVP does not support statement kind: '// &
@@ -307,6 +307,35 @@ contains
         end select
     end subroutine lower_expr
 
+    subroutine lower_print_expr(arena, node_index, context, call_text, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: call_text
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: value
+
+        call set_empty(error_msg)
+        call set_empty(call_text)
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'Invalid print expression node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            if (is_real_literal(node%value)) then
+                call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_f64, '// &
+                            'double '//trim(node%value)//')'
+                return
+            end if
+        end select
+
+        call lower_expr(arena, node_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_i32, i32 '//value//')'
+    end subroutine lower_print_expr
+
     recursive subroutine lower_condition(arena, node_index, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -365,6 +394,13 @@ contains
             end if
         end do
     end function is_integer_literal
+
+    logical function is_real_literal(text) result(is_real)
+        character(len=*), intent(in) :: text
+
+        is_real = index(text, '.') > 0 .or. index(text, 'e') > 0 .or. &
+                  index(text, 'E') > 0
+    end function is_real_literal
 
     subroutine llvm_binary_op(source_op, llvm_op, error_msg)
         character(len=*), intent(in) :: source_op

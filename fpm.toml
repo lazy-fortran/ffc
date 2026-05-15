@@ -51,3 +51,8 @@ main = "test_scalar_if_compiler.f90"
 name = "test_counted_do_compiler"
 source-dir = "test_mvp"
 main = "test_counted_do_compiler.f90"
+
+[[test]]
+name = "test_real_literal_print_compiler"
+source-dir = "test_mvp"
+main = "test_real_literal_print_compiler.f90"
