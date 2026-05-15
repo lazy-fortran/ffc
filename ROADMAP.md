@@ -94,7 +94,8 @@ Verification:
 - Done: compile and run one-line `if (x == 5) print *, 1`
 - Done: compile and run counted `do i = 1, 3` with known output
 - Done: compile and run `print *, 2.5`
-- Remaining: logical/character literals and real variables/arithmetic
+- Done: compile and run `print *, "hello"`
+- Remaining: logical literals and real variables/arithmetic
 - Remaining: block `if`, dynamic counted `do`, simple procedures, and a fuller
   print/runtime surface
 - compare output against a reference compiler for the supported subset

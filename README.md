@@ -19,7 +19,8 @@ but it is not part of the default fpm build.
 - One-line integer comparison `if` statements are implemented.
 - Constant-bound counted `do` loops are implemented by MVP unrolling.
 - Real literal printing is implemented.
-- Logical/character lowering, real variables/arithmetic, block `if`, dynamic
+- Character literal printing is implemented.
+- Logical lowering, real variables/arithmetic, block `if`, dynamic
   loops, procedures, and richer I/O are still pending.
 
 ## Target Architecture
@@ -70,7 +71,8 @@ The first useful compiler should support:
 - one-line `if` with integer comparisons
 - counted `do` loops with literal integer bounds and step
 - scalar `real` literals in `print`
-- scalar `logical`, simple `character` literals, and real variables/arithmetic
+- simple `character` literals in `print`
+- scalar `logical` literals and real variables/arithmetic
 - block `if` and dynamic counted `do`
 - simple functions and subroutines
 - object/executable emission through LIRIC

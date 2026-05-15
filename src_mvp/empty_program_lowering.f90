@@ -10,12 +10,14 @@ module empty_program_lowering
     integer, parameter :: MAX_SYMBOLS = 64
 
     type :: lowering_context_t
+        character(len=:), allocatable :: globals
         character(len=:), allocatable :: body
         character(len=64) :: names(MAX_SYMBOLS) = ''
         character(len=128) :: values(MAX_SYMBOLS) = ''
         integer :: symbol_count = 0
         integer :: temp_count = 0
         integer :: block_count = 0
+        integer :: string_count = 0
     end type lowering_context_t
 
 contains
@@ -41,6 +43,7 @@ contains
 
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
+            call set_empty(context%globals)
             call set_empty(context%body)
             call lower_program_body(arena, program, context, error_msg)
             if (len_trim(error_msg) > 0) then
@@ -56,6 +59,10 @@ contains
         llvm_ir = '@.fmt_i32 = private constant [4 x i8] c"%d\0A\00"'// &
                   new_line('a')// &
                   '@.fmt_f64 = private constant [4 x i8] c"%f\0A\00"'// &
+                  new_line('a')// &
+                  '@.fmt_str = private constant [4 x i8] c"%s\0A\00"'// &
+                  new_line('a')// &
+                  context%globals// &
                   new_line('a')//new_line('a')// &
                   'declare i32 @printf(ptr, ...)'//new_line('a')// &
                   new_line('a')// &
@@ -314,6 +321,8 @@ contains
         character(len=:), allocatable, intent(out) :: call_text
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: value
+        character(len=:), allocatable :: string_label
+        character(len=:), allocatable :: string_value
 
         call set_empty(error_msg)
         call set_empty(call_text)
@@ -327,6 +336,13 @@ contains
             if (is_real_literal(node%value)) then
                 call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_f64, '// &
                             'double '//trim(node%value)//')'
+                return
+            end if
+            if (is_character_literal(node%value)) then
+                string_value = strip_quotes(node%value)
+                string_label = add_string_global(context, string_value)
+                call_text = 'call i32 (ptr, ...) @printf(ptr @.fmt_str, ptr '// &
+                            string_label//')'
                 return
             end if
         end select
@@ -397,10 +413,53 @@ contains
 
     logical function is_real_literal(text) result(is_real)
         character(len=*), intent(in) :: text
+        integer :: i
+        logical :: has_real_marker
 
-        is_real = index(text, '.') > 0 .or. index(text, 'e') > 0 .or. &
-                  index(text, 'E') > 0
+        has_real_marker = index(text, '.') > 0 .or. index(text, 'e') > 0 .or. &
+                          index(text, 'E') > 0
+        is_real = len_trim(text) > 0 .and. has_real_marker
+        if (.not. is_real) return
+
+        do i = 1, len_trim(text)
+            select case (text(i:i))
+            case ('0':'9', '.', '+', '-', 'e', 'E')
+                cycle
+            case default
+                is_real = .false.
+                return
+            end select
+        end do
     end function is_real_literal
+
+    logical function is_character_literal(text) result(is_character)
+        character(len=*), intent(in) :: text
+        character(len=1) :: first_char
+        character(len=1) :: last_char
+        integer :: text_len
+
+        text_len = len_trim(text)
+        is_character = .false.
+        if (text_len < 2) return
+
+        first_char = text(1:1)
+        last_char = text(text_len:text_len)
+        is_character = (first_char == '"' .and. last_char == '"') .or. &
+                       (first_char == "'" .and. last_char == "'")
+    end function is_character_literal
+
+    function strip_quotes(text) result(unquoted)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: unquoted
+        integer :: text_len
+
+        text_len = len_trim(text)
+        if (is_character_literal(text)) then
+            unquoted = text(2:text_len - 1)
+        else
+            unquoted = trim(text)
+        end if
+    end function strip_quotes
 
     subroutine llvm_binary_op(source_op, llvm_op, error_msg)
         character(len=*), intent(in) :: source_op
@@ -550,6 +609,20 @@ contains
         write (buffer, '(I0)') value
         text = trim(buffer)
     end function int_to_text
+
+    function add_string_global(context, value) result(label)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: value
+        character(len=:), allocatable :: label
+        character(len=32) :: length_text
+
+        context%string_count = context%string_count + 1
+        label = '@.str'//int_to_text(context%string_count)
+        write (length_text, '(I0)') len_trim(value) + 1
+        context%globals = context%globals//label//' = private constant ['// &
+                          trim(length_text)//' x i8] c"'//trim(value)// &
+                          '\00"'//new_line('a')
+    end function add_string_global
 
     subroutine append_line(context, line)
         type(lowering_context_t), intent(inout) :: context
