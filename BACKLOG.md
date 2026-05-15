@@ -26,11 +26,15 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower terminating integer comparison `if` blocks to LIRIC blocks.
 - Done: lower fallthrough integer comparison `if` blocks that merge assigned
   integer values before a later `stop`.
+- Done: lower literal-bound counted `do` loops through direct LIRIC session
+  scalar operations by compile-time expansion.
 - Next: lower mutable integer storage once direct executable alloca/load/store
   behavior is covered.
 - Next: generalize non-terminating `if` merges beyond the current integer
   assignment subset.
-- Next: lower counted `do` loops to LIRIC blocks, not unrolled text.
+- Next: lower runtime counted `do` loops to LIRIC blocks once LIRIC direct
+  session backedge PHI values are reliable in executable output
+  (krystophny/liric#519).
 - Done: move the CLI default from bootstrap `.ll` emission to direct session
   lowering for the currently supported direct-session subset.
 - Next: close direct-session feature gaps until the old bootstrap path can be
@@ -45,6 +49,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
 ```
 
 ## P2: Bootstrap Feature Parity

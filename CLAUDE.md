@@ -37,6 +37,10 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Integer literal and arithmetic `stop` codes.
 - Integer declarations and assignments consumed by `stop`.
 - Integer comparison `if` blocks where both branches terminate with `stop`.
+- Fallthrough integer `if` blocks that merge assigned integer values before
+  `stop`.
+- Literal-bound counted `do` loops expanded through direct LIRIC scalar
+  operations.
 
 ## Immediate Work
 
@@ -44,8 +48,9 @@ calls, LIRIC bindings, object emission, and executable emission.
   arena internals.
 - Lower mutable storage through direct LIRIC once alloca/load/store executable
   behavior is covered.
-- Add non-terminating control flow with merge values.
-- Add counted `do` loops through LIRIC blocks.
+- Generalize non-terminating control flow with merge values.
+- Add runtime counted `do` loops through LIRIC blocks with backedge PHI values
+  after krystophny/liric#519.
 - Define and test the runtime/ABI surface for calls and `print`.
 
 ## Commands
@@ -64,6 +69,8 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_comp
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
 ```
 
 ## Documentation

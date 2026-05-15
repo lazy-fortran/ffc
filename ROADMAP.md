@@ -123,9 +123,13 @@ Tasks:
 - Done: lower terminating integer comparison `if` blocks to LIRIC blocks
 - Done: lower fallthrough integer comparison `if` blocks that merge assigned
   integer values before a later `stop`
+- Done: lower literal-bound counted `do` loops by direct-session scalar
+  operation expansion
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
 - generalize non-terminating blocks/control flow with merge values
+- lower runtime counted `do` loops to LIRIC blocks with backedge PHI values
+  after krystophny/liric#519
 - lower calls with an explicit ABI
 - emit objects/executables directly from the session
 

@@ -1,7 +1,7 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
-                         declaration_node, identifier_node, if_node, &
+                         declaration_node, do_loop_node, identifier_node, if_node, &
                          literal_node, program_node, stop_node
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t
@@ -166,12 +166,15 @@ contains
             end if
         type is (if_node)
             call lower_if(arena, node, context, value, error_msg)
+        type is (do_loop_node)
+            call lower_do_loop(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP supports declarations, assignments, IF, STOP'
+            error_msg = 'direct LIRIC session MVP supports declarations, assignments, DO, IF, STOP'
         end select
     end subroutine lower_statement
 
     include 'session_program_lowering_control.inc'
+    include 'session_program_lowering_loops.inc'
 
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
