@@ -20,6 +20,9 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_SUB = 6_c_int
     integer(c_int), parameter, public :: LR_OP_MUL = 7_c_int
     integer(c_int), parameter, public :: LR_OP_SDIV = 8_c_int
+    integer(c_int), parameter, public :: LR_OP_ALLOCA = 26_c_int
+    integer(c_int), parameter, public :: LR_OP_LOAD = 27_c_int
+    integer(c_int), parameter, public :: LR_OP_STORE = 28_c_int
     integer(c_int), parameter, public :: LR_OP_CALL = 30_c_int
 
     integer(c_int), parameter, public :: LR_OP_KIND_VREG = 0_c_int
@@ -72,6 +75,9 @@ module liric_session_bindings
         procedure :: emit_i32_binary
         procedure :: emit_i32_binary_into
         procedure :: emit_i32_copy_to
+        procedure :: emit_i32_alloca
+        procedure :: emit_i32_load
+        procedure :: emit_i32_store
         procedure :: emit_i32_call
         procedure :: emit_ret_i32_main_exe
         procedure :: emit_ret_i32_operand
@@ -83,6 +89,8 @@ module liric_session_bindings
         procedure :: i32_param
         procedure :: i32_immediate
         procedure :: i32_vreg
+        procedure :: ptr_param
+        procedure :: ptr_vreg
         procedure :: reserve_i32_vreg
     end type liric_session_t
 
@@ -113,6 +121,12 @@ module liric_session_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_void_s
+
+        function lr_type_ptr_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_ptr_s
 
         function lr_session_func_begin(handle, name, ret, params, n, &
                                        vararg, err) result(status) bind(c)
@@ -259,6 +273,7 @@ contains
         class(liric_session_t), intent(inout) :: this
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
+        type(c_ptr) :: param_type
         type(c_ptr) :: i32_type
         type(lr_error_t) :: error
         integer(c_int32_t) :: block_id
@@ -292,6 +307,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
         type(c_ptr), allocatable, target :: params(:)
+        type(c_ptr) :: param_type
         type(c_ptr) :: i32_type
         type(c_ptr) :: params_ptr
         type(lr_error_t) :: error
@@ -305,11 +321,17 @@ contains
         i32_type = session_i32_type(this, error_msg)
         if (len_trim(error_msg) > 0) return
 
+        param_type = lr_type_ptr_s(this%handle)
+        if (.not. c_associated(param_type)) then
+            error_msg = 'LIRIC did not return a pointer type'
+            return
+        end if
+
         params_ptr = c_null_ptr
         if (param_count > 0) then
             allocate (params(param_count))
             do i = 1, param_count
-                params(i) = i32_type
+                params(i) = param_type
             end do
             params_ptr = c_loc(params)
         end if
@@ -336,6 +358,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
         type(c_ptr), allocatable, target :: params(:)
+        type(c_ptr) :: param_type
         type(c_ptr) :: i32_type
         type(c_ptr) :: params_ptr
         type(c_ptr) :: void_type
@@ -355,11 +378,17 @@ contains
             return
         end if
 
+        param_type = lr_type_ptr_s(this%handle)
+        if (.not. c_associated(param_type)) then
+            error_msg = 'LIRIC did not return a pointer type'
+            return
+        end if
+
         params_ptr = c_null_ptr
         if (param_count > 0) then
             allocate (params(param_count))
             do i = 1, param_count
-                params(i) = i32_type
+                params(i) = param_type
             end do
             params_ptr = c_loc(params)
         end if
@@ -513,12 +542,33 @@ contains
         operand = this%i32_vreg(vreg)
     end function i32_param
 
+    function ptr_param(this, index) result(operand)
+        class(liric_session_t), intent(in) :: this
+        integer, intent(in) :: index
+        type(lr_operand_desc_t) :: operand
+        integer(c_int32_t) :: vreg
+
+        vreg = lr_session_param(this%handle, int(index, c_int32_t))
+        operand = this%ptr_vreg(vreg)
+    end function ptr_param
+
     function reserve_i32_vreg(this) result(vreg)
         class(liric_session_t), intent(in) :: this
         integer(c_int32_t) :: vreg
 
         vreg = lr_session_vreg(this%handle)
     end function reserve_i32_vreg
+
+    function ptr_vreg(this, vreg) result(operand)
+        class(liric_session_t), intent(in) :: this
+        integer(c_int32_t), intent(in) :: vreg
+        type(lr_operand_desc_t) :: operand
+
+        operand%kind = LR_OP_KIND_VREG
+        operand%payload = int(vreg, c_int64_t)
+        operand%typ = lr_type_ptr_s(this%handle)
+        operand%global_offset = 0_c_int64_t
+    end function ptr_vreg
 
     logical function emit_i32_binary(this, opcode, lhs, rhs, result, error_msg)
         class(liric_session_t), intent(inout) :: this
@@ -583,6 +633,61 @@ contains
             LR_OP_ADD, value, this%i32_immediate(0_c_int64_t), &
             dest_vreg, result, error_msg)
     end function emit_i32_copy_to
+
+    logical function emit_i32_alloca(this, address, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_i32_alloca = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        vreg = emit_alloca_i32(this%handle, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        address = this%ptr_vreg(vreg)
+        call set_empty(error_msg)
+        emit_i32_alloca = .true.
+    end function emit_i32_alloca
+
+    logical function emit_i32_load(this, address, value, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        type(lr_operand_desc_t), intent(in) :: address
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_i32_load = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        vreg = emit_load_i32(this%handle, address, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        value = this%i32_vreg(vreg)
+        call set_empty(error_msg)
+        emit_i32_load = .true.
+    end function emit_i32_load
+
+    logical function emit_i32_store(this, value, address, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(in) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_i32_store = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        unused_vreg = emit_store_i32(this%handle, value, address, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_i32_store = .true.
+    end function emit_i32_store
 
     logical function emit_i32_call(this, name, args, result, error_msg)
         class(liric_session_t), intent(inout) :: this
@@ -705,6 +810,87 @@ contains
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_binary
+
+    function emit_alloca_i32(handle, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_inst_desc_t) :: inst
+
+        inst%op = LR_OP_ALLOCA
+        inst%typ = lr_type_i32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_null_ptr
+        inst%num_operands = 0_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_alloca_i32
+
+    function emit_load_i32(handle, address, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: address
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+
+        operands(1) = address
+
+        inst%op = LR_OP_LOAD
+        inst%typ = lr_type_i32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_load_i32
+
+    function emit_store_i32(handle, value, address, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(in) :: address
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+
+        operands = [value, address]
+
+        inst%op = LR_OP_STORE
+        inst%typ = c_null_ptr
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_store_i32
 
     function emit_call_i32(handle, name, args, error) result(vreg)
         type(c_ptr), intent(in) :: handle

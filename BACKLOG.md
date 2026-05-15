@@ -43,6 +43,8 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: lower simple contained integer functions and integer call expressions.
 - Done: lower simple contained integer subroutines and explicit `CALL`
   statements.
+- Done: lower integer procedure arguments through LIRIC pointer parameters with
+  copy-back for variable actual arguments.
 - Done: close krystophny/liric#519 with executable PHI-loop regression
   coverage and consume the validated direct-session loop shape in `ffc`.
 - Done: split contained-procedure lowering out of the main direct-session
@@ -108,7 +110,7 @@ Document and test the ABI before implementing procedures and arrays.
 
 - program entry and exit convention
 - scalar storage and calling convention
-- pass-by-reference rules
+- non-integer pass-by-reference rules
 - function result variables
 - logical representation
 - character value plus length representation

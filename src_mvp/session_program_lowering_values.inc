@@ -38,25 +38,25 @@
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
-            if (symbol_index > 0 .and. &
-                context%symbols(symbol_index)%value_kind == VALUE_F64) then
-                call lower_f64_expression(arena, node_index, context, value, &
-                                          error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_print_f64(context%session, &
-                                               context%f64_print_format_id, &
-                                               value, error_msg)) return
-                return
-            end if
-            if (symbol_index > 0 .and. &
-                context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
-                call lower_logical_expression(arena, node_index, context, value, &
-                                              error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_print_i32(context%session, &
-                                               context%i32_print_format_id, &
-                                               value, error_msg)) return
-                return
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
+                    call lower_f64_expression(arena, node_index, context, &
+                                              value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_f64(context%session, &
+                                                   context%f64_print_format_id, &
+                                                   value, error_msg)) return
+                    return
+                end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
+                    call lower_logical_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_i32(context%session, &
+                                                   context%i32_print_format_id, &
+                                                   value, error_msg)) return
+                    return
+                end if
             end if
         type is (binary_op_node)
             if (is_f64_expression(arena, node_index, context)) then
@@ -214,8 +214,9 @@
             is_f64 = is_real_literal(node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
-            is_f64 = symbol_index > 0 .and. &
-                     context%symbols(symbol_index)%value_kind == VALUE_F64
+            if (symbol_index > 0) then
+                is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
+            end if
         type is (binary_op_node)
             is_f64 = is_f64_expression(arena, node%left_index, context) .or. &
                      is_f64_expression(arena, node%right_index, context)

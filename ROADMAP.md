@@ -104,7 +104,8 @@ Verification:
 - Done: compile and run `print *, .true.`
 - Done: compile and run real variables/arithmetic
 - Done: compile and run block `if`
-- Remaining: richer procedure signatures and a fuller print/runtime surface
+- Remaining: richer non-integer procedure signatures and a fuller
+  print/runtime surface
 - compare output against a reference compiler for the supported subset
 
 ## Phase 3: Direct LIRIC Session Backend
@@ -134,9 +135,10 @@ Tasks:
 - Done: lower simple contained integer functions and integer call expressions
 - Done: lower simple contained integer subroutines and explicit `CALL`
   statements
+- Done: lower integer procedure arguments through pointer parameters with
+  copy-back for variable actual arguments
 - generalize non-terminating blocks/control flow with merge values
-- lower pass-by-reference procedure ABI and richer function/subroutine
-  signatures
+- lower richer non-integer function/subroutine signatures
 - Done: emit objects directly from the session
 - Done: document the current direct-session MVP ABI in `docs/RUNTIME_ABI.md`
 
@@ -154,7 +156,7 @@ Decisions to document and test:
 
 - program entry and exit-code convention
 - name mangling
-- pass-by-reference semantics
+- non-integer pass-by-reference semantics
 - return values
 - character representation
 - array descriptors

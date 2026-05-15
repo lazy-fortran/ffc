@@ -17,12 +17,15 @@ program test_session_integer_subroutine_compiler
     integer :: unit
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
-        '  call show(5)'//new_line('a')// &
+        '  integer :: x'//new_line('a')// &
+        '  x = 5'//new_line('a')// &
+        '  call bump(x)'//new_line('a')// &
+        '  print *, x'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine show(x)'//new_line('a')// &
-        '    integer, intent(in) :: x'//new_line('a')// &
-        '    print *, x'//new_line('a')// &
-        '  end subroutine show'//new_line('a')// &
+        '  subroutine bump(x)'//new_line('a')// &
+        '    integer, intent(inout) :: x'//new_line('a')// &
+        '    x = x + 2'//new_line('a')// &
+        '  end subroutine bump'//new_line('a')// &
         'end program main'
 
     print *, '=== direct session integer subroutine compiler test ==='
@@ -65,10 +68,10 @@ program test_session_integer_subroutine_compiler
     close (unit)
     call execute_command_line('rm -f '//exe_path//' '//out_path)
 
-    if (io_stat /= 0 .or. trim(adjustl(output_line)) /= '5') then
-        print *, 'FAIL: expected output 5, got ', trim(output_line)
+    if (io_stat /= 0 .or. trim(adjustl(output_line)) /= '7') then
+        print *, 'FAIL: expected output 7, got ', trim(output_line)
         stop 1
     end if
 
-    print *, 'PASS: integer subroutine calls lower through direct LIRIC session'
+    print *, 'PASS: integer subroutine reference args lower through direct LIRIC session'
 end program test_session_integer_subroutine_compiler

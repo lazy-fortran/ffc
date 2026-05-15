@@ -205,7 +205,10 @@
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
-        context%symbols(index)%value = context%session%i32_param(param_index)
+        context%symbols(index)%address = context%session%ptr_param(param_index)
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%is_reference = .true.
+        context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
         context%symbols(index)%is_parameter = .true.
         context%symbol_count = index
         call set_empty(error_msg)

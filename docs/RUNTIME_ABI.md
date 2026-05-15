@@ -18,16 +18,18 @@ small and should change only with matching executable tests.
 - `logical` values currently use the MVP `i32` representation: zero is false,
   nonzero is true. Printed logicals therefore use the same integer `printf`
   path and currently print `0` or `1`.
-- The current lowerer keeps scalar symbols as SSA-like current values. It does
-  not yet lower mutable storage with alloca/load/store.
+- The current lowerer keeps ordinary scalar symbols as SSA-like current values.
+- Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
+  call boundary.
 
 ## Procedures
 
 - The supported procedure slice is contained integer functions and subroutines
   with integer parameters.
-- Procedure parameters are currently lowered as direct LIRIC `i32` parameters.
-  This is an MVP calling convention, not the final Fortran pass-by-reference
-  ABI.
+- Procedure parameters are currently lowered as LIRIC pointer parameters for
+  integer arguments. Callers pass a reference slot; variable actual arguments
+  are copied back after the call, and parameter assignment stores through the
+  pointer.
 - Function results are represented by assignment to the function result name.
 - Subroutines return LIRIC `void`; explicit `CALL` statements emit `void` calls.
 - Names are emitted as source names for the current single-file subset. A
@@ -48,7 +50,7 @@ small and should change only with matching executable tests.
 
 ## Pending ABI Work
 
-- Pass-by-reference arguments and richer procedure signatures.
+- Non-integer pass-by-reference arguments and richer procedure signatures.
 - Character value plus length passing.
 - Arrays and descriptors.
 - Allocatable and pointer representation.

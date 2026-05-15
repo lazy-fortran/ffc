@@ -29,15 +29,16 @@ is not part of the default fpm build.
   assignments, `if (flag)` conditions, and printing of logical variables.
 - The direct LIRIC session lowerer can compile simple contained integer
   functions and subroutines with integer parameters and integer call
-  expressions/statements.
+  expressions/statements. Integer procedure arguments use pointer parameters
+  with copy-back for variable actual arguments.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
 - The bootstrap LIRIC compiler API path still has broader scalar coverage
   through generated text IR. It is kept as temporary executable reference
   coverage while the direct session path catches up.
-- Broader runtime calls, richer procedure signatures, arrays, modules, and
-  richer I/O are still pending.
+- Broader runtime calls, richer non-integer procedure signatures, arrays,
+  modules, and richer I/O are still pending.
 
 ## Target Architecture
 

@@ -62,7 +62,8 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
 - Scalar logical declarations, assignments, `if (flag)`, and printed
   variables.
 - Simple contained integer functions and subroutines with integer parameters
-  and integer call expressions/statements.
+  and integer call expressions/statements. Integer arguments use LIRIC pointer
+  parameters with copy-back for variable actual arguments.
 
 ## Bootstrap Reference Path
 

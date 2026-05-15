@@ -42,7 +42,10 @@ module session_program_lowering
         character(len=64) :: name = ''
         integer :: value_kind = VALUE_I32
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: address
         logical :: is_parameter = .false.
+        logical :: is_reference = .false.
+        logical :: has_address = .false.
     end type symbol_t
 
     type :: lowering_context_t
@@ -497,6 +500,15 @@ contains
         if (len_trim(error_msg) > 0) return
 
         context%symbols(symbol_index)%value = value
+        if (context%symbols(symbol_index)%has_address .and. &
+            context%symbols(symbol_index)%is_reference) then
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                error_msg = 'direct LIRIC session only stores integer reference arguments'
+                return
+            end if
+            if (.not. context%session%emit_i32_store( &
+                value, context%symbols(symbol_index)%address, error_msg)) return
+        end if
         call set_empty(error_msg)
     end subroutine lower_assignment
 
@@ -547,8 +559,15 @@ contains
                 error_msg = 'integer identifier was not declared: '//trim(node%name)
                 return
             end if
-            value = context%symbols(symbol_index)%value
-            call set_empty(error_msg)
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. context%session%emit_i32_load( &
+                    context%symbols(symbol_index)%address, value, &
+                    error_msg)) return
+            else
+                value = context%symbols(symbol_index)%value
+                call set_empty(error_msg)
+            end if
         type is (binary_op_node)
             call lower_i32_expression(arena, node%left_index, context, lhs, &
                                       error_msg)
@@ -574,7 +593,7 @@ contains
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
-        integer :: i
+        integer, allocatable :: copyback_indices(:)
 
         if (node%is_array_access) then
             error_msg = 'direct LIRIC session MVP does not support array access'
@@ -586,18 +605,17 @@ contains
         end if
 
         if (allocated(node%arg_indices)) then
-            allocate (args(size(node%arg_indices)))
-            do i = 1, size(node%arg_indices)
-                call lower_i32_expression(arena, node%arg_indices(i), context, &
-                                          args(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            end do
+            call prepare_i32_reference_args(arena, node%arg_indices, context, &
+                                            args, copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
         else
             allocate (args(0))
+            allocate (copyback_indices(0))
         end if
 
         if (.not. context%session%emit_i32_call(node%name, args, value, &
                                                 error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_i32_call
 
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
@@ -608,7 +626,7 @@ contains
         character(len=:), allocatable :: name
         integer, allocatable :: arg_indices(:)
         type(lr_operand_desc_t), allocatable :: args(:)
-        integer :: i
+        integer, allocatable :: copyback_indices(:)
 
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -616,15 +634,112 @@ contains
                                              error_msg)
         if (len_trim(error_msg) > 0) return
 
+        call prepare_i32_reference_args(arena, arg_indices, context, args, &
+                                        copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. context%session%emit_void_call(name, args, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_subroutine_call
+
+    subroutine prepare_i32_reference_args(arena, arg_indices, context, args, &
+                                          copyback_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
+        integer, allocatable, intent(out) :: copyback_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: symbol_index
+        integer :: i
+
         allocate (args(size(arg_indices)))
+        allocate (copyback_indices(size(arg_indices)))
+        copyback_indices = 0
+
         do i = 1, size(arg_indices)
-            call lower_i32_expression(arena, arg_indices(i), context, args(i), &
-                                      error_msg)
+            call argument_symbol_index(arena, arg_indices(i), context, &
+                                       symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_reference) then
+                    args(i) = context%symbols(symbol_index)%address
+                    cycle
+                end if
+                value = context%symbols(symbol_index)%value
+                copyback_indices(i) = symbol_index
+            else
+                call lower_i32_expression(arena, arg_indices(i), context, &
+                                          value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            call make_i32_reference_argument(context, value, args(i), &
+                                             error_msg)
             if (len_trim(error_msg) > 0) return
         end do
 
-        if (.not. context%session%emit_void_call(name, args, error_msg)) return
-    end subroutine lower_subroutine_call
+        call set_empty(error_msg)
+    end subroutine prepare_i32_reference_args
+
+    subroutine argument_symbol_index(arena, node_index, context, symbol_index, &
+                                     error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        symbol_index = 0
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'argument index does not reference an AST node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+        class default
+            symbol_index = 0
+        end select
+
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                error_msg = 'direct LIRIC session only passes integer arguments by reference'
+                return
+            end if
+        end if
+        call set_empty(error_msg)
+    end subroutine argument_symbol_index
+
+    subroutine make_i32_reference_argument(context, value, address, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. context%session%emit_i32_alloca(address, error_msg)) return
+        if (.not. context%session%emit_i32_store(value, address, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine make_i32_reference_argument
+
+    subroutine copy_back_reference_args(context, args, copyback_indices, &
+                                        error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        integer, intent(in) :: copyback_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: i
+
+        do i = 1, size(copyback_indices)
+            if (copyback_indices(i) <= 0) cycle
+            if (.not. context%session%emit_i32_load(args(i), value, &
+                                                    error_msg)) return
+            context%symbols(copyback_indices(i))%value = value
+        end do
+        call set_empty(error_msg)
+    end subroutine copy_back_reference_args
 
     recursive subroutine lower_i1_condition(arena, node_index, context, &
                                             value, error_msg)
