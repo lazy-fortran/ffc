@@ -48,6 +48,11 @@ source-dir = "test_mvp"
 main = "test_scalar_if_compiler.f90"
 
 [[test]]
+name = "test_block_if_compiler"
+source-dir = "test_mvp"
+main = "test_block_if_compiler.f90"
+
+[[test]]
 name = "test_counted_do_compiler"
 source-dir = "test_mvp"
 main = "test_counted_do_compiler.f90"
