@@ -16,6 +16,8 @@ but it is not part of the default fpm build.
   executable without `.ll` text.
 - The direct LIRIC session lowerer can compile empty `program main`.
 - The direct LIRIC session lowerer can compile integer arithmetic `stop` codes.
+- The direct LIRIC session lowerer can compile integer declarations and
+  assignments when the assigned value is consumed by `stop`.
 - `ffc empty.f90 -o empty` emits a native executable for:
   `program main; end program main`.
 - Integer declarations, assignment, `+ - * /` arithmetic, and `print *, expr`
@@ -102,6 +104,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
 ```
 

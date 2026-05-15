@@ -22,7 +22,9 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
 - Done: prove direct session executable emission with `main` returning zero.
 - Done: create a session lowerer for empty `program main`.
 - Done: lower integer literal and binary arithmetic expressions to LIRIC vregs.
-- Next: lower integer variables, declarations, and assignment to LIRIC storage.
+- Done: lower integer declarations and assignments to direct-session values.
+- Next: lower mutable integer storage once direct executable alloca/load/store
+  behavior is covered.
 - Next: lower integer comparisons and block `if` to LIRIC blocks.
 - Next: lower counted `do` loops to LIRIC blocks, not unrolled text.
 - Next: move the CLI default from bootstrap `.ll` emission to direct session
@@ -34,6 +36,7 @@ Verification:
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
 ```
 
 ## P2: Bootstrap Feature Parity

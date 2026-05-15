@@ -113,6 +113,7 @@ Tasks:
 - Done: lower empty `program main` to a direct LIRIC session executable
 - Done: lower integer literal/binary arithmetic stop codes to direct LIRIC
   vregs and return values
+- Done: lower integer declarations and assignments to direct-session values
 - map FortFront scalar types to LIRIC types
 - lower expressions to vregs
 - lower blocks/control flow to LIRIC blocks
