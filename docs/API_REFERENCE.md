@@ -56,6 +56,8 @@ use session_program_lowering, only: lower_program_to_liric_exe
 - Minimal scalar `print` for integer expressions, real values, character
   literals, and logical literals.
 - Scalar real declarations, assignments, arithmetic, and printed variables.
+- Scalar logical declarations, assignments, `if (flag)`, and printed
+  variables.
 - Simple contained integer functions with integer parameters and integer call
   expressions.
 

@@ -25,6 +25,8 @@ is not part of the default fpm build.
   logical literal `print` through external `printf` calls.
 - The direct LIRIC session lowerer can compile scalar `real` declarations,
   assignments, arithmetic, and printing of real variables.
+- The direct LIRIC session lowerer can compile scalar `logical` declarations,
+  assignments, `if (flag)` conditions, and printing of logical variables.
 - The direct LIRIC session lowerer can compile simple contained integer
   functions with integer parameters and integer call expressions.
 - `ffc empty.f90 -o empty` emits a native executable for:
@@ -118,6 +120,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compi
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler

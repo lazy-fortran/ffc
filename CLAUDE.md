@@ -46,6 +46,8 @@ calls, LIRIC bindings, object emission, and executable emission.
   calls.
 - Real declarations, assignments, arithmetic expressions, and printed real
   variables.
+- Logical declarations, assignments, `if (flag)` conditions, and printed
+  logical variables.
 - Simple contained integer functions with integer parameters, assignment to the
   function result name, and integer call expressions.
 
@@ -85,6 +87,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compi
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
 ```

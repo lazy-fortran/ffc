@@ -88,6 +88,11 @@ source-dir = "test_mvp"
 main = "test_session_logical_literal_print_compiler.f90"
 
 [[test]]
+name = "test_session_logical_variable_compiler"
+source-dir = "test_mvp"
+main = "test_session_logical_variable_compiler.f90"
+
+[[test]]
 name = "test_session_real_variable_compiler"
 source-dir = "test_mvp"
 main = "test_session_real_variable_compiler.f90"

@@ -125,10 +125,12 @@ Tasks:
   integer values before a later `stop`
 - Done: lower literal-bound counted `do` loops by direct-session scalar
   operation expansion
-- Done: map current integer and real scalar values to LIRIC types
-- Done: lower integer and real expressions to direct-session values
+- Done: map current integer, real, and logical scalar values to LIRIC types
+- Done: lower integer, real, and logical expressions to direct-session values
 - Done: lower scalar integer, real, character literal, and logical literal
   `print` through the current `printf` ABI shim
+- Done: lower logical declarations, assignment, printed logical variables, and
+  `if (flag)` conditions
 - Done: lower simple contained integer functions and integer call expressions
 - generalize non-terminating blocks/control flow with merge values
 - lower runtime counted `do` loops to LIRIC blocks with backedge PHI values
