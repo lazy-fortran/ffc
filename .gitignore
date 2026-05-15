@@ -41,6 +41,8 @@ ffc
 test_*.f90
 !test/
 !test/**/*.f90
+!test_mvp/
+!test_mvp/**/*.f90
 debug_*.txt
 debug_*.mlir
 

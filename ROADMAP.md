@@ -2,15 +2,14 @@
 
 ## Current Reality
 
-`ffc` is not a working compiler today.
+`ffc` now has a minimal working compiler path for the empty-program MVP.
 
 The old roadmap assumed an HLFIR/MLIR-first backend. The source tree still
-contains MLIR C API bindings and text-emitting MLIR generators, but the CLI
-source path is stubbed and MLIR lowering/object/executable emission is not
-implemented.
+contains MLIR C API bindings and text-emitting MLIR generators, but that code is
+legacy and not part of the default fpm build.
 
-The active plan is to repurpose `ffc` as the Lazy Fortran compiler driver:
-FortFront frontend, `ffc` lowering/runtime, LIRIC backend.
+The active plan is FortFront frontend, `ffc` lowering/runtime, and LIRIC
+backend.
 
 ## Architecture Decision
 
@@ -28,16 +27,15 @@ Goal: make the repository honest and buildable for the new backend direction.
 
 Tasks:
 
-- Mark MLIR docs and modules as legacy.
-- Remove MLIR/LLVM libraries from the default build path once LIRIC bindings
-  exist.
-- Keep old MLIR tests either disabled with clear naming or delete them when the
-  LIRIC path replaces them.
-- Replace the CLI source-file stub with a real FortFront frontend call.
+- Done: default fpm build points at `src_mvp/`, not the old MLIR tree.
+- Done: default manifest links LIRIC instead of MLIR/LLVM libraries.
+- Done: CLI source path calls FortFront's compiler API.
+- Pending: decide whether to move legacy MLIR code under an explicit archive
+  directory or keep it as reference source outside the default build.
 
 Verification:
 
-- `fpm build`
+- `LIBRARY_PATH=/home/ert/code/liric/build fpm build`
 - CLI parses a file through FortFront and reports diagnostics instead of using a
   hardcoded root index.
 
@@ -58,9 +56,10 @@ that is a FortFront API bug, not an `ffc` workaround.
 
 Verification:
 
-- parse `program main; end program`
-- parse `x = 1` in infer mode
-- diagnostics preserve source locations
+- Done in FortFront: `compile_frontend_from_string/file` returns arena,
+  root index, semantic context, tokens, and diagnostics.
+- Pending: add narrower compiler query APIs so `ffc` does not depend on arena
+  representation details for real scalar lowering.
 
 ## Phase 2: LIRIC Bootstrap Backend
 
@@ -88,7 +87,7 @@ Initial language subset:
 
 Verification:
 
-- compile and run `program main; end program`
+- Done: compile and run `program main; end program`
 - compile and run scalar arithmetic with known exit/output
 - compare output against a reference compiler for the supported subset
 

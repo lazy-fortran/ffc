@@ -1,21 +1,20 @@
 # ffc
 
-`ffc` is the planned compiler driver for Lazy Fortran and LFortran Infer-style
-source. It is not currently a working compiler.
+`ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style source.
 
-The existing tree contains an unfinished MLIR/HLFIR experiment. That code is
-useful as historical scaffolding, but the command path does not yet parse input
-through FortFront and the object/executable path is not implemented.
+The active build is the FortFront + LIRIC bootstrap compiler path. The older
+MLIR/HLFIR experiment remains in `src/` and `test/` as legacy reference code,
+but it is not part of the default fpm build.
 
 ## Current Status
 
-- The package builds against `fortfront` and contains MLIR/LLVM-oriented
-  modules.
-- The CLI still has a source-file compilation stub.
-- MLIR lowering/object/executable emission is explicitly unfinished.
-- Several end-to-end MLIR tests are disabled.
-- The active direction is to make `ffc` a small, real compiler driver using
-  FortFront for the frontend and LIRIC for backend code generation.
+- The package builds the MVP sources in `src_mvp/`.
+- The CLI parses files through FortFront's compiler-facing frontend API.
+- The bootstrap backend lowers an empty main program to LLVM IR text and feeds
+  it to LIRIC through ISO C bindings.
+- `ffc empty.f90 -o empty` emits a native executable for:
+  `program main; end program main`.
+- Scalar Fortran lowering is still pending.
 
 ## Target Architecture
 
@@ -71,13 +70,26 @@ cross-module inference come after that subset is executable and tested.
 
 ## Build
 
+Builds need the LIRIC static library on the linker search path:
+
 ```bash
-fpm build
+LIBRARY_PATH=/home/ert/code/liric/build fpm build
 ```
 
-The current manifest still links MLIR/LLVM libraries because the old backend is
-present. The LIRIC backend work should remove that requirement from the default
-build path.
+Run the MVP tests:
+
+```bash
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_bindings
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_empty_program_compiler
+```
+
+Compile the smallest supported program:
+
+```bash
+printf 'program main\nend program main\n' > /tmp/empty.f90
+LIBRARY_PATH=/home/ert/code/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
+/tmp/empty
+```
 
 ## Related Repositories
 
