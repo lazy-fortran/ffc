@@ -53,6 +53,11 @@ use session_program_lowering, only: lower_program_to_liric_exe
   assignments.
 - Literal-bound counted `do` loops by scalar expansion.
 - `stop` with integer expression.
+- Minimal scalar `print` for integer expressions, real values, character
+  literals, and logical literals.
+- Scalar real declarations, assignments, arithmetic, and printed variables.
+- Simple contained integer functions with integer parameters and integer call
+  expressions.
 
 ## Bootstrap Reference Path
 

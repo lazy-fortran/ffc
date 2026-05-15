@@ -66,9 +66,10 @@ supported subset.
 1. Empty `program main`.
 2. Scalar integer literals, variables, assignment, arithmetic, comparison.
 3. Minimal `print *, expr` for integers, reals, logicals, and strings.
-4. Block `if` and counted `do` without unrolling.
-5. Simple procedures with explicit ABI tests.
-6. Character representation and a fuller print/runtime surface.
+4. Block `if`, fallthrough integer merges, and literal-bound counted `do`.
+5. Simple contained integer functions with explicit ABI tests.
+6. Runtime counted `do`, subroutines, character representation, and a fuller
+   print/runtime surface.
 7. Arrays, modules, derived types, allocatables, and generics.
 
 ## Runtime And ABI Decisions
@@ -90,6 +91,6 @@ Direct LIRIC session lowering should replace text generation on the hot path.
 The expected performance wins are fewer string allocations, no parse-back step
 for generated text IR, and a cleaner path to incremental compilation.
 
-Measure compile latency against the bootstrap path once integer variables,
-arithmetic, comparisons, control flow, and print are implemented in the session
-lowerer.
+Measure compile latency against the bootstrap path once the direct session
+lowerer has runtime loops, procedures, and the same scalar executable coverage
+as the bootstrap path.

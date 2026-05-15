@@ -37,6 +37,12 @@ Goal: replace `.ll` text lowering with direct `lr_session_*` emission.
   (krystophny/liric#519).
 - Done: move the CLI default from bootstrap `.ll` emission to direct session
   lowering for the currently supported direct-session subset.
+- Done: lower minimal scalar `print` for integers, real values, character
+  literals, and logical literals through direct-session `printf` calls.
+- Done: lower scalar real declarations, assignments, arithmetic, and printing.
+- Done: lower simple contained integer functions and integer call expressions.
+- Done: split contained-function lowering out of the main direct-session
+  lowerer before it reached the module size limit.
 - Next: close direct-session feature gaps until the old bootstrap path can be
   removed.
 
@@ -50,6 +56,12 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_c
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
 ```
 
 ## P2: Bootstrap Feature Parity

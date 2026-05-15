@@ -58,9 +58,10 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Generalize non-terminating control flow with merge values.
 - Add runtime counted `do` loops through LIRIC blocks with backedge PHI values
   after krystophny/liric#519.
-- Broaden runtime/ABI calls beyond integer `print`.
-- Split the direct-session lowerer and binding modules before they cross the
-  hard 1000-line module limit.
+- Broaden runtime/ABI calls beyond the current scalar `printf` shim.
+- Continue splitting direct-session binding and lowering files before they
+  approach the hard 1000-line module limit. The main lowerer already separates
+  control, loop, and contained-function routines into include files.
 
 ## Commands
 

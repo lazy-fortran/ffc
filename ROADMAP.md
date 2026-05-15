@@ -125,13 +125,16 @@ Tasks:
   integer values before a later `stop`
 - Done: lower literal-bound counted `do` loops by direct-session scalar
   operation expansion
-- map FortFront scalar types to LIRIC types
-- lower expressions to vregs
+- Done: map current integer and real scalar values to LIRIC types
+- Done: lower integer and real expressions to direct-session values
+- Done: lower scalar integer, real, character literal, and logical literal
+  `print` through the current `printf` ABI shim
+- Done: lower simple contained integer functions and integer call expressions
 - generalize non-terminating blocks/control flow with merge values
 - lower runtime counted `do` loops to LIRIC blocks with backedge PHI values
   after krystophny/liric#519
-- lower calls with an explicit ABI
-- emit objects/executables directly from the session
+- lower subroutines and richer function signatures with an explicit ABI
+- emit objects directly from the session when the LIRIC API surface is ready
 
 Verification:
 

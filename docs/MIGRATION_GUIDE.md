@@ -20,7 +20,7 @@ native executable
 ## What To Move
 
 Move any useful scalar lowering behavior from the bootstrap reference path into
-`session_program_lowering` and its included control/loop files.
+`session_program_lowering` and its included control, loop, and function files.
 
 Use these modules:
 
