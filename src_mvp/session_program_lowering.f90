@@ -6,8 +6,9 @@ module session_program_lowering
                          cycle_node, exit_node, function_def_node, &
                          identifier_node, if_node, literal_node, &
                          parameter_declaration_node, &
-                         print_statement_node, program_node, module_node, stop_node, &
-                         subroutine_def_node, get_subroutine_call_arg_indices, &
+                         print_statement_node, program_node, module_node, &
+                         select_case_node, stop_node, subroutine_def_node, &
+                         get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t, LR_OP_ADD, LR_OP_SUB
@@ -324,6 +325,12 @@ contains
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
             call lower_do_loop(arena, node, context, value, error_msg)
+        type is (select_case_node)
+            call unsupported_feature_error('select case statement', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support multi-way branches', &
+                                           error_msg)
         class default
             node_type = 'unknown'
             if (allocated(arena%entries(node_index)%node_type)) then
