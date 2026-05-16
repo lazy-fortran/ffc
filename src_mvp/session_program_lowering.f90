@@ -382,10 +382,38 @@ contains
             if (allocated(arena%entries(node_index)%node_type)) then
                 node_type = arena%entries(node_index)%node_type
             end if
-            error_msg = 'direct LIRIC session MVP does not support statement node: '// &
-                        trim(node_type)
+            call unsupported_statement_node(arena, node_index, node_type, error_msg)
         end select
     end subroutine lower_statement
+
+    subroutine unsupported_statement_node(arena, node_index, node_type, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: node_type
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: column
+        integer :: line
+
+        line = arena%get_node_line(node_index)
+        column = arena%get_node_column(node_index)
+
+        select case (trim(node_type))
+        case ('use_statement')
+            call unsupported_feature_error('use statement', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support module imports', error_msg)
+        case ('interface_block')
+            call unsupported_feature_error('interface block', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support generic or explicit '// &
+                                           'interfaces', error_msg)
+        case default
+            call unsupported_feature_error('statement node: '//trim(node_type), &
+                                           line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support this AST node', error_msg)
+        end select
+    end subroutine unsupported_statement_node
 
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
