@@ -14,8 +14,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_real_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_logical_parameter_diagnostic()) all_passed = .false.
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -23,8 +21,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_cli_real_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_cli_logical_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
     if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -87,49 +83,6 @@ contains
                                               source, expected, &
                                               '/tmp/ffc_session_char_param_test')
     end function test_character_parameter_diagnostic
-
-    logical function test_real_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported real parameter declaration'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  real :: x'//new_line('a')// &
-                                       '  x = 1.0'//new_line('a')// &
-                                       '  call scale(x)'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine scale(value)'//new_line('a')// &
-                                       '    real, intent(inout) :: value'// &
-                                       new_line('a')// &
-                                       '    value = value + 1.0'//new_line('a')// &
-                                       '  end subroutine scale'//new_line('a')// &
-                                       'end program main'
-
-        test_real_parameter_diagnostic = expect_error_contains( &
-                                         source, expected, &
-                                         '/tmp/ffc_session_real_param_test')
-    end function test_real_parameter_diagnostic
-
-    logical function test_logical_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported logical parameter '// &
-                                       'declaration'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  logical :: flag'//new_line('a')// &
-                                       '  flag = .false.'//new_line('a')// &
-                                       '  call enable(flag)'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine enable(value)'//new_line('a')// &
-                                       '    logical, intent(inout) :: value'// &
-                                       new_line('a')// &
-                                       '    value = .true.'//new_line('a')// &
-                                       '  end subroutine enable'//new_line('a')// &
-                                       'end program main'
-
-        test_logical_parameter_diagnostic = expect_error_contains( &
-                                            source, expected, &
-                                            '/tmp/ffc_session_logical_param_test')
-    end function test_logical_parameter_diagnostic
 
     logical function test_exit_diagnostic()
         character(len=*), parameter :: source = &
@@ -223,49 +176,6 @@ contains
                                                   source, expected, &
                                                   '/tmp/ffc_cli_char_param_test')
     end function test_cli_character_parameter_diagnostic
-
-    logical function test_cli_real_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported real parameter declaration'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  real :: x'//new_line('a')// &
-                                       '  x = 1.0'//new_line('a')// &
-                                       '  call scale(x)'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine scale(value)'//new_line('a')// &
-                                       '    real, intent(inout) :: value'// &
-                                       new_line('a')// &
-                                       '    value = value + 1.0'//new_line('a')// &
-                                       '  end subroutine scale'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_real_parameter_diagnostic = expect_cli_error_contains( &
-                                             source, expected, &
-                                             '/tmp/ffc_cli_real_param_test')
-    end function test_cli_real_parameter_diagnostic
-
-    logical function test_cli_logical_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported logical parameter '// &
-                                       'declaration'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  logical :: flag'//new_line('a')// &
-                                       '  flag = .false.'//new_line('a')// &
-                                       '  call enable(flag)'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine enable(value)'//new_line('a')// &
-                                       '    logical, intent(inout) :: value'// &
-                                       new_line('a')// &
-                                       '    value = .true.'//new_line('a')// &
-                                       '  end subroutine enable'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_logical_parameter_diagnostic = expect_cli_error_contains( &
-                                                source, expected, &
-                                                '/tmp/ffc_cli_logical_param_test')
-    end function test_cli_logical_parameter_diagnostic
 
     logical function test_cli_exit_diagnostic()
         character(len=*), parameter :: source = &

@@ -31,7 +31,7 @@ The current implementation is a single-file, direct-session scalar subset.
 | Termination | Falling off `program main` returns zero. `stop <integer expression>` returns the integer expression as process status. |
 | `if` | Integer comparison `if` blocks with terminating branches or branches that assign mergeable integer values; scalar logical `if (flag)` conditions. |
 | `do` | Counted `do` loops with integer bounds and literal integer step. |
-| Procedures | Contained integer functions and subroutines with integer parameters only. Integer procedure actual arguments use pointer parameters with copy-back for variable actuals. |
+| Procedures | Contained integer, real, and logical functions and subroutines. Scalar procedure actual arguments use pointer parameters with copy-back for variable actuals. |
 | Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations, comparisons, branches, and PHI operations. |
 | `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, character variables, logical literals, real variables, and logical variables. |
 
@@ -39,7 +39,6 @@ The current implementation is a single-file, direct-session scalar subset.
 
 | Issue | Missing feature | Required result before support is claimed |
 | --- | --- | --- |
-| #50 | Non-integer scalar procedure ABI | Real, logical, and character scalar function/subroutine arguments and results have ABI tests and executable tests. |
 | #52 | Fixed-size one-dimensional arrays | Declaration, indexing, assignment, and printing tests pass for explicit-shape rank-one arrays. |
 | #53 | Allocatable arrays | Descriptor layout, allocation, deallocation, bounds, and element access are documented and tested. |
 | #54 | Modules and separate compilation | Module symbols, external procedure symbols, name mangling, and link behavior are deterministic and tested. |
