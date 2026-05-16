@@ -909,7 +909,16 @@ contains
             name = node%name
             call set_empty(error_msg)
         type is (call_or_subscript_node)
-            if (node%is_array_access .or. allocated(node%arg_indices)) then
+            if (node%is_array_access) then
+                call unsupported_feature_error('array assignment target', &
+                                               node%line, node%column, &
+                                               'direct LIRIC session does not '// &
+                                               'support assigning to array '// &
+                                               'elements', error_msg)
+                call set_empty(name)
+                return
+            end if
+            if (allocated(node%arg_indices)) then
                 error_msg = 'expected scalar assignment target'
                 call set_empty(name)
                 return
