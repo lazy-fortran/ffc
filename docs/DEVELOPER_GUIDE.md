@@ -40,8 +40,8 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 3. Minimal `print *, expr`.
 4. Block `if`, fallthrough integer merges, and counted loops.
 5. Real scalar values, logical variables, and minimal character/logical print.
-6. Simple contained integer functions/subroutines and explicit ABI tests.
-7. Richer non-integer procedure signatures.
+6. Simple contained integer, real, and logical functions/subroutines.
+7. Character procedure signatures.
 8. Character representation and a fuller runtime surface.
 9. Arrays, modules, derived types, allocatables, and generics.
 

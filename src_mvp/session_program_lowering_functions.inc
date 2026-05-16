@@ -6,8 +6,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        context%integer_function_count = 0
-        context%integer_function_names = ''
+        context%function_count = 0
+        context%function_names = ''
+        context%function_value_kinds = VALUE_I32
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
@@ -29,47 +30,101 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: next_index
+        integer :: value_kind
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-        if (context%integer_function_count >= MAX_PROCEDURES) then
+        if (context%function_count >= MAX_PROCEDURES) then
             error_msg = 'too many contained functions for direct LIRIC session MVP'
             return
         end if
-        if (is_contained_i32_function(context, node%name)) then
+        if (contained_function_kind(context, node%name) /= 0) then
             error_msg = 'duplicate contained function: '//trim(node%name)
             return
         end if
+        call function_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
 
-        next_index = context%integer_function_count + 1
-        context%integer_function_names(next_index) = trim(node%name)
-        context%integer_function_count = next_index
+        next_index = context%function_count + 1
+        context%function_names(next_index) = trim(node%name)
+        context%function_value_kinds(next_index) = value_kind
+        context%function_count = next_index
         call set_empty(error_msg)
     end subroutine register_internal_function_name
+
+    subroutine function_value_kind(node, value_kind, error_msg)
+        type(function_def_node), intent(in) :: node
+        integer, intent(out) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        value_kind = VALUE_I32
+        call set_empty(error_msg)
+        if (.not. allocated(node%return_type)) return
+
+        select case (trim(node%return_type))
+        case ('integer')
+            value_kind = VALUE_I32
+        case ('real')
+            value_kind = VALUE_F64
+        case ('logical')
+            value_kind = VALUE_LOGICAL
+        case default
+            call unsupported_feature_error('function result type', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session supports '// &
+                                           'integer, real, and logical '// &
+                                           'contained functions', error_msg)
+        end select
+    end subroutine function_value_kind
 
     subroutine copy_internal_function_names(source, destination)
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
 
-        destination%integer_function_names = source%integer_function_names
-        destination%integer_function_count = source%integer_function_count
+        destination%function_names = source%function_names
+        destination%function_value_kinds = source%function_value_kinds
+        destination%function_count = source%function_count
     end subroutine copy_internal_function_names
 
     logical function is_contained_i32_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
+
+        is_contained_i32_function = &
+            contained_function_kind(context, name) == VALUE_I32
+    end function is_contained_i32_function
+
+    logical function is_contained_f64_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_f64_function = &
+            contained_function_kind(context, name) == VALUE_F64
+    end function is_contained_f64_function
+
+    logical function is_contained_logical_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_logical_function = &
+            contained_function_kind(context, name) == VALUE_LOGICAL
+    end function is_contained_logical_function
+
+    integer function contained_function_kind(context, name) result(value_kind)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
         integer :: i
 
-        is_contained_i32_function = .false.
-        do i = 1, context%integer_function_count
-            if (same_name(context%integer_function_names(i), name)) then
-                is_contained_i32_function = .true.
+        value_kind = 0
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), name)) then
+                value_kind = context%function_value_kinds(i)
                 return
             end if
         end do
-    end function is_contained_i32_function
+    end function contained_function_kind
 
     subroutine lower_internal_functions(arena, root_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -85,7 +140,7 @@
             do i = 1, size(program%body_indices)
                 select type (node => arena%entries(program%body_indices(i))%node)
                 type is (function_def_node)
-                    call lower_i32_function(arena, node, context, error_msg)
+                    call lower_scalar_function(arena, node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (subroutine_def_node)
                     call lower_void_subroutine(arena, node, context, error_msg)
@@ -115,7 +170,7 @@
         end if
     end function is_internal_procedure_entry
 
-    subroutine lower_i32_function(arena, node, parent_context, error_msg)
+    subroutine lower_scalar_function(arena, node, parent_context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
@@ -123,18 +178,16 @@
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
+        integer :: result_index
+        integer :: value_kind
         logical :: terminated
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-        if (allocated(node%return_type)) then
-            if (trim(node%return_type) /= 'integer') then
-                error_msg = 'direct LIRIC session MVP only supports integer functions'
-                return
-            end if
-        end if
+        call function_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         context%session = parent_context%session
         context%i32_print_format_id = parent_context%i32_print_format_id
@@ -146,12 +199,18 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        if (.not. context%session%begin_i32_function(node%name, param_count, &
-                                                     error_msg)) return
+        if (value_kind == VALUE_F64) then
+            if (.not. begin_liric_f64_function(context%session, node%name, &
+                                               param_count, error_msg)) return
+        else
+            if (.not. context%session%begin_i32_function(node%name, param_count, &
+                                                         error_msg)) return
+        end if
 
-        call define_i32_symbol(context, node%name, error_msg)
+        call define_symbol(context, node%name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        call define_i32_parameters(arena, node%param_indices, context, error_msg)
+        call define_reference_parameters(arena, node%param_indices, context, &
+                                         error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
@@ -160,7 +219,13 @@
             if (len_trim(error_msg) > 0) return
         end if
 
-        value = context%symbols(find_symbol(context, node%name))%value
+        result_index = find_symbol(context, node%name)
+        if (result_index <= 0) then
+            error_msg = 'function result symbol was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        value = context%symbols(result_index)%value
         if (.not. context%current_block_terminated) then
             if (.not. context%session%emit_ret_i32_operand(value, error_msg)) return
         end if
@@ -169,7 +234,7 @@
         parent_context%session = context%session
         parent_context%string_literal_count = context%string_literal_count
         call set_empty(error_msg)
-    end subroutine lower_i32_function
+    end subroutine lower_scalar_function
 
     subroutine lower_void_subroutine(arena, node, parent_context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -199,7 +264,8 @@
         if (.not. context%session%begin_void_subroutine(node%name, param_count, &
                                                         error_msg)) return
 
-        call define_i32_parameters(arena, node%param_indices, context, error_msg)
+        call define_reference_parameters(arena, node%param_indices, context, &
+                                         error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
@@ -218,7 +284,7 @@
         call set_empty(error_msg)
     end subroutine lower_void_subroutine
 
-    subroutine define_i32_parameters(arena, param_indices, context, error_msg)
+    subroutine define_reference_parameters(arena, param_indices, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -231,10 +297,10 @@
         do i = 1, size(param_indices)
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            call define_i32_parameter_symbol(context, name, i - 1, error_msg)
+            call define_parameter_symbol(context, name, i - 1, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine define_i32_parameters
+    end subroutine define_reference_parameters
 
     subroutine parameter_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -261,7 +327,7 @@
         end select
     end subroutine parameter_name
 
-    subroutine define_i32_parameter_symbol(context, name, param_index, error_msg)
+    subroutine define_parameter_symbol(context, name, param_index, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: param_index
@@ -287,4 +353,4 @@
         context%symbols(index)%is_parameter = .true.
         context%symbol_count = index
         call set_empty(error_msg)
-    end subroutine define_i32_parameter_symbol
+    end subroutine define_parameter_symbol

@@ -34,6 +34,11 @@ module session_program_lowering
                                          LR_OP_FSUB, &
                                          materialize_liric_string, &
                                          prepare_liric_print_runtime
+    use liric_session_procedure_bindings, only: begin_liric_f64_function, &
+                                                emit_liric_f64_alloca, &
+                                                emit_liric_f64_call, &
+                                                emit_liric_f64_load, &
+                                                emit_liric_f64_store
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
     implicit none
@@ -88,8 +93,9 @@ module session_program_lowering
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
-        character(len=64) :: integer_function_names(MAX_PROCEDURES)
-        integer :: integer_function_count = 0
+        character(len=64) :: function_names(MAX_PROCEDURES)
+        integer :: function_value_kinds(MAX_PROCEDURES) = VALUE_I32
+        integer :: function_count = 0
         logical :: in_internal_function = .false.
         logical :: current_block_terminated = .false.
     end type lowering_context_t
@@ -398,9 +404,11 @@ contains
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
             if (context%symbols(existing_index)%is_parameter .and. &
-                value_kind /= VALUE_I32 .and. value_kind /= VALUE_CHARACTER) then
-                call unsupported_scalar_parameter_declaration( &
-                    value_kind, node%line, node%column, error_msg)
+                value_kind == VALUE_CHARACTER) then
+                call unsupported_feature_error( &
+                    'character parameter declaration', node%line, node%column, &
+                    'scalar character parameters are not supported '// &
+                    'by direct LIRIC session', error_msg)
                 return
             end if
         end if
@@ -412,33 +420,12 @@ contains
         end if
     end subroutine define_declared_symbol
 
-    subroutine unsupported_scalar_parameter_declaration(value_kind, line, column, &
-                                                        error_msg)
-        integer, intent(in) :: value_kind
-        integer, intent(in) :: line
-        integer, intent(in) :: column
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        if (value_kind == VALUE_F64) then
-            call unsupported_feature_error( &
-                'real parameter declaration', line, column, &
-                'real scalar parameters are not supported by direct LIRIC '// &
-                'session', error_msg)
-        else if (value_kind == VALUE_LOGICAL) then
-            call unsupported_feature_error( &
-                'logical parameter declaration', line, column, &
-                'logical scalar parameters are not supported by direct LIRIC '// &
-                'session', error_msg)
-        else
-            error_msg = 'unsupported parameter declaration value kind'
-        end if
-    end subroutine unsupported_scalar_parameter_declaration
-
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
+        integer :: value_kind
 
         if (.not. allocated(node%name)) then
             error_msg = 'parameter declaration did not expose a name'
@@ -452,19 +439,18 @@ contains
             return
         end if
         if (allocated(node%type_name)) then
-            if (trim(node%type_name) /= 'integer') then
-                if (is_character_type_name(node%type_name)) then
-                    call unsupported_feature_error( &
-                        'character parameter declaration', &
-                        node%line, node%column, &
-                        'scalar character parameters are not supported '// &
-                        'by direct LIRIC session', error_msg)
-                else
-                    error_msg = 'direct LIRIC session MVP only supports '// &
-                                'integer parameters'
-                end if
+            call type_name_value_kind(node%type_name, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (value_kind == VALUE_CHARACTER) then
+                call unsupported_feature_error( &
+                    'character parameter declaration', &
+                    node%line, node%column, &
+                    'scalar character parameters are not supported '// &
+                    'by direct LIRIC session', error_msg)
                 return
             end if
+        else
+            value_kind = VALUE_I32
         end if
 
         symbol_index = find_symbol(context, node%name)
@@ -479,8 +465,34 @@ contains
             return
         end if
 
+        call update_parameter_symbol(context, symbol_index, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
+
+    subroutine type_name_value_kind(type_name, value_kind, error_msg)
+        character(len=*), intent(in) :: type_name
+        integer, intent(out) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        value_kind = VALUE_I32
+        call set_empty(error_msg)
+        if (is_character_type_name(type_name)) then
+            value_kind = VALUE_CHARACTER
+            return
+        end if
+        select case (trim(type_name))
+        case ('integer')
+            value_kind = VALUE_I32
+        case ('real')
+            value_kind = VALUE_F64
+        case ('logical')
+            value_kind = VALUE_LOGICAL
+        case default
+            error_msg = 'direct LIRIC session MVP only supports integer, real, '// &
+                        'and logical scalar types'
+        end select
+    end subroutine type_name_value_kind
 
     subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node
@@ -490,21 +502,7 @@ contains
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
-        if (is_character_type_name(node%type_name)) then
-            value_kind = VALUE_CHARACTER
-            return
-        end if
-        select case (trim(node%type_name))
-        case ('integer')
-            value_kind = VALUE_I32
-        case ('real')
-            value_kind = VALUE_F64
-        case ('logical')
-            value_kind = VALUE_LOGICAL
-        case default
-            error_msg = 'direct LIRIC session MVP only supports integer, real, '// &
-                        'and logical declarations'
-        end select
+        call type_name_value_kind(node%type_name, value_kind, error_msg)
     end subroutine declaration_value_kind
 
     subroutine define_symbol(context, name, value_kind, error_msg)
@@ -517,11 +515,8 @@ contains
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
             if (context%symbols(existing_index)%is_parameter) then
-                if (context%symbols(existing_index)%value_kind == value_kind) then
-                    call set_empty(error_msg)
-                else
-                    error_msg = 'parameter declaration type mismatch: '//trim(name)
-                end if
+                call update_parameter_symbol(context, existing_index, value_kind, &
+                                             error_msg)
                 return
             end if
         end if
@@ -538,6 +533,34 @@ contains
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
     end subroutine define_symbol
+
+    subroutine update_parameter_symbol(context, index, value_kind, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: index
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (index <= 0 .or. index > context%symbol_count) then
+            error_msg = 'parameter index is outside the symbol table'
+            return
+        end if
+        if (.not. context%symbols(index)%is_parameter) then
+            error_msg = 'symbol is not a parameter: '//trim(context%symbols(index)%name)
+            return
+        end if
+
+        context%symbols(index)%value_kind = value_kind
+        if (value_kind == VALUE_F64) then
+            context%symbols(index)%value = liric_f64_immediate(context%session, &
+                                                               0.0_c_double)
+        else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
+            context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
+        else
+            error_msg = 'unsupported parameter declaration value kind'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine update_parameter_symbol
 
     subroutine define_i32_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -646,16 +669,13 @@ contains
         context%symbols(symbol_index)%value = value
         if (context%symbols(symbol_index)%has_address .and. &
             context%symbols(symbol_index)%is_reference) then
-            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session only stores integer '// &
-                            'reference arguments'
-                return
-            end if
-            if (.not. context%session%emit_i32_store( &
-                value, context%symbols(symbol_index)%address, error_msg)) return
+            call store_reference_value(context, symbol_index, value, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    include 'session_program_lowering_arguments.inc'
 
     include 'session_program_lowering_character.inc'
 
@@ -704,6 +724,11 @@ contains
             symbol_index = find_symbol(context, node%name)
             if (symbol_index <= 0) then
                 error_msg = 'integer identifier was not declared: '//trim(node%name)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                error_msg = 'integer expression used non-integer identifier: '// &
+                            trim(node%name)
                 return
             end if
             if (context%symbols(symbol_index)%has_address .and. &
@@ -766,8 +791,9 @@ contains
         end if
 
         if (allocated(node%arg_indices)) then
-            call prepare_i32_reference_args(arena, node%arg_indices, context, &
-                                            args, copyback_indices, error_msg)
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_I32, args, copyback_indices, &
+                                        error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (args(0))
@@ -797,113 +823,13 @@ contains
                                              error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call prepare_i32_reference_args(arena, arg_indices, context, args, &
-                                        copyback_indices, error_msg)
+        call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
+                                    args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (.not. context%session%emit_void_call(name, args, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
-
-    subroutine prepare_i32_reference_args(arena, arg_indices, context, args, &
-                                          copyback_indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: arg_indices(:)
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
-        integer, allocatable, intent(out) :: copyback_indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
-        integer :: symbol_index
-        integer :: i
-
-        allocate (args(size(arg_indices)))
-        allocate (copyback_indices(size(arg_indices)))
-        copyback_indices = 0
-
-        do i = 1, size(arg_indices)
-            call argument_symbol_index(arena, arg_indices(i), context, &
-                                       symbol_index, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (symbol_index > 0) then
-                if (context%symbols(symbol_index)%is_reference) then
-                    args(i) = context%symbols(symbol_index)%address
-                    cycle
-                end if
-                value = context%symbols(symbol_index)%value
-                copyback_indices(i) = symbol_index
-            else
-                call lower_i32_expression(arena, arg_indices(i), context, &
-                                          value, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            call make_i32_reference_argument(context, value, args(i), &
-                                             error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
-
-        call set_empty(error_msg)
-    end subroutine prepare_i32_reference_args
-
-    subroutine argument_symbol_index(arena, node_index, context, symbol_index, &
-                                     error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(out) :: symbol_index
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        symbol_index = 0
-        if (.not. arena%has_node_at(node_index)) then
-            error_msg = 'argument index does not reference an AST node'
-            return
-        end if
-
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
-        class default
-            symbol_index = 0
-        end select
-
-        if (symbol_index > 0) then
-            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session only passes integer '// &
-                            'arguments by reference'
-                return
-            end if
-        end if
-        call set_empty(error_msg)
-    end subroutine argument_symbol_index
-
-    subroutine make_i32_reference_argument(context, value, address, error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        if (.not. context%session%emit_i32_alloca(address, error_msg)) return
-        if (.not. context%session%emit_i32_store(value, address, error_msg)) return
-        call set_empty(error_msg)
-    end subroutine make_i32_reference_argument
-
-    subroutine copy_back_reference_args(context, args, copyback_indices, &
-                                        error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        integer, intent(in) :: copyback_indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
-        integer :: i
-
-        do i = 1, size(copyback_indices)
-            if (copyback_indices(i) <= 0) cycle
-            if (.not. context%session%emit_i32_load(args(i), value, &
-                                                    error_msg)) return
-            context%symbols(copyback_indices(i))%value = value
-        end do
-        call set_empty(error_msg)
-    end subroutine copy_back_reference_args
 
     recursive subroutine lower_i1_condition(arena, node_index, context, &
                                             value, error_msg)

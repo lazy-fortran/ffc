@@ -51,8 +51,8 @@ calls, LIRIC bindings, object emission, and executable emission.
   variables.
 - Logical declarations, assignments, `if (flag)` conditions, and printed
   logical variables.
-- Simple contained integer functions and subroutines with integer parameters,
-  assignment to the function result name, and integer call
+- Simple contained integer, real, and logical functions and subroutines with
+  scalar parameters, assignment to the function result name, and scalar call
   expressions/statements.
 
 ## Immediate Work

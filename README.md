@@ -96,13 +96,13 @@ The current MVP support claim is:
 - scalar `logical` literals in `print`
 - real variables/arithmetic
 - block `if`
-- simple contained integer functions and subroutines with integer parameters
+- simple contained integer, real, and logical functions and subroutines
 - integer and real scalar `abs`, `min`, and `max` intrinsics
 - integer-to-real `real()` conversion
 - object/executable emission through LIRIC
 
 Arrays, allocatables, modules, derived types, full I/O, generics,
-cross-module inference, and non-integer procedure ABIs are unsupported today.
+cross-module inference, and character procedure arguments are unsupported today.
 See the issue map in
 [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 

@@ -39,19 +39,18 @@ issue is closed with ABI documentation and executable tests.
 
 ## Procedures
 
-- The supported procedure slice is contained integer functions and subroutines
-  with integer parameters.
+- The supported procedure slice is contained integer, real, and logical
+  functions and subroutines with scalar parameters.
 - Procedure parameters are currently lowered as LIRIC pointer parameters for
-  integer arguments. Callers pass a reference slot; variable actual arguments
-  are copied back after the call, and parameter assignment stores through the
-  pointer.
+  integer, real, and logical arguments. Callers pass a reference slot; variable
+  actual arguments are copied back after the call, and parameter assignment
+  stores through the pointer.
 - Function results are represented by assignment to the function result name.
 - Subroutines return LIRIC `void`; explicit `CALL` statements emit `void` calls.
 - Names are emitted as source names for the current single-file subset. A
   deterministic mangling scheme is still required before broader procedure and
   module support.
-- Non-integer procedure parameters and results are unsupported; #50 owns that
-  ABI.
+- Character procedure parameters and results are unsupported.
 - External procedures, modules, and separate compilation are unsupported; #54
   owns symbol mangling and link behavior.
 
