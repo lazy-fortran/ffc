@@ -11,6 +11,7 @@ program test_session_unsupported_diagnostics
 
     all_passed = .true.
     if (.not. test_array_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
@@ -20,6 +21,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_external_function_call_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
@@ -44,6 +46,19 @@ contains
                                             source, 'unsupported array declaration', &
                                             '/tmp/ffc_session_array_diagnostic_test')
     end function test_array_declaration_diagnostic
+
+    logical function test_array_assignment_target_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported array assignment target'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  values(1) = 1'//new_line('a')// &
+                                       'end program main'
+
+        test_array_assignment_target_diagnostic = &
+            expect_error_contains(source, expected, &
+                                  '/tmp/ffc_session_array_target_test')
+    end function test_array_assignment_target_diagnostic
 
     logical function test_character_expression_diagnostic()
         character(len=*), parameter :: source = &
@@ -165,6 +180,19 @@ contains
                                               source, 'unsupported array declaration', &
                                                 '/tmp/ffc_cli_array_diagnostic_test')
     end function test_cli_array_declaration_diagnostic
+
+    logical function test_cli_array_assignment_target_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported array assignment target'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  values(1) = 1'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_array_assignment_target_diagnostic = &
+            expect_cli_error_contains(source, expected, &
+                                      '/tmp/ffc_cli_array_target_test')
+    end function test_cli_array_assignment_target_diagnostic
 
     logical function test_cli_character_expression_diagnostic()
         character(len=*), parameter :: source = &
