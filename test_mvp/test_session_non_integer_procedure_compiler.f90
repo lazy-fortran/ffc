@@ -13,6 +13,7 @@ program test_session_non_integer_procedure_compiler
     if (.not. test_real_subroutine()) all_passed = .false.
     if (.not. test_logical_subroutine()) all_passed = .false.
     if (.not. test_real_function()) all_passed = .false.
+    if (.not. test_mixed_real_logical_function()) all_passed = .false.
     if (.not. test_logical_function()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -77,6 +78,35 @@ contains
         test_real_function = expect_output(source, '4.500000', &
                                            '/tmp/ffc_session_real_fn_test')
     end function test_real_function
+
+    logical function test_mixed_real_logical_function()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  real :: x'//new_line('a')// &
+                                       '  logical :: enabled'//new_line('a')// &
+                                       '  x = 1.25'//new_line('a')// &
+                                       '  enabled = .true.'//new_line('a')// &
+                                       '  print *, choose(x, enabled)'// &
+                                       new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  real function choose(value, flag)'// &
+                                       new_line('a')// &
+                                       '    real, intent(in) :: value'// &
+                                       new_line('a')// &
+                                       '    logical, intent(in) :: flag'// &
+                                       new_line('a')// &
+                                       '    if (flag) then'//new_line('a')// &
+                                       '      choose = value + 0.75'//new_line('a')// &
+                                       '    else'//new_line('a')// &
+                                       '      choose = value'//new_line('a')// &
+                                       '    end if'//new_line('a')// &
+                                       '  end function choose'//new_line('a')// &
+                                       'end program main'
+
+        test_mixed_real_logical_function = expect_output( &
+                                           source, '2.000000', &
+                                           '/tmp/ffc_session_mixed_fn_test')
+    end function test_mixed_real_logical_function
 
     logical function test_logical_function()
         character(len=*), parameter :: source = &

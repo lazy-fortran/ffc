@@ -28,18 +28,18 @@ is not part of the default fpm build.
   assignments, arithmetic, and printing of real variables.
 - The direct LIRIC session lowerer can compile scalar `logical` declarations,
   assignments, `if (flag)` conditions, and printing of logical variables.
-- The direct LIRIC session lowerer can compile simple contained integer
-  functions and subroutines with integer parameters and integer call
-  expressions/statements. Integer procedure arguments use pointer parameters
-  with copy-back for variable actual arguments.
+- The direct LIRIC session lowerer can compile simple contained integer, real,
+  and logical functions and subroutines with scalar parameters and scalar call
+  expressions/statements. Procedure arguments use pointer parameters with
+  copy-back for variable actual arguments.
 - The direct LIRIC session lowerer can compile scalar `abs`, `min`, and
   `max` intrinsics for integer and real values, plus integer-to-real `real()`
   conversion, inline through LIRIC scalar operations, blocks, and PHI values.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
-- Broader runtime calls, richer non-integer procedure signatures, arrays,
-  modules, and richer I/O are unsupported. The tracked work is listed in
+- Arrays and modules are unsupported. Broader runtime calls and richer I/O are
+  unsupported. The tracked work is listed in
   [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Support Contract
@@ -133,6 +133,7 @@ LIBRARY_PATH=<liric-build> fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=<liric-build> fpm test test_session_real_variable_compiler
 LIBRARY_PATH=<liric-build> fpm test test_session_integer_function_compiler
 LIBRARY_PATH=<liric-build> fpm test test_session_integer_subroutine_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_non_integer_procedure_compiler
 LIBRARY_PATH=<liric-build> fpm test test_session_integer_intrinsic_compiler
 ```
 
@@ -154,8 +155,8 @@ LIBRARY_PATH=<liric-build> fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 
 ## Status Source
 
-See [ROADMAP.md](ROADMAP.md) for the active plan. The `docs/` directory now
-describes the FortFront-to-LIRIC path.
+The repository plan file tracks active work. The `docs/` directory now describes
+the FortFront-to-LIRIC path.
 
 The current direct-session MVP ABI is documented in
 [docs/RUNTIME_ABI.md](docs/RUNTIME_ABI.md).

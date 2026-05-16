@@ -7,9 +7,9 @@ Changes require matching executable tests and updates to
 
 ## Stability Rule
 
-Only the representations listed in this document are supported. All other
-values, arguments, descriptors, and runtime calls are unsupported until their
-issue is closed with ABI documentation and executable tests.
+Only the representations listed in this document are supported. Other values,
+argument forms, descriptors, and runtime calls are unsupported until their issue
+is closed with ABI documentation and executable tests.
 
 ## Program Entry
 
@@ -35,7 +35,8 @@ issue is closed with ABI documentation and executable tests.
   call boundary.
 - Scalar `abs`, `min`, and `max` intrinsics are supported for integer and real
   values. Integer-to-real `real()` conversion is supported. They lower inline
-  through LIRIC scalar operations, comparisons, branches, casts, and PHI values.
+  through LIRIC scalar operations, comparisons, branch control, casts, and PHI
+  values.
 
 ## Procedures
 
@@ -76,8 +77,6 @@ issue is closed with ABI documentation and executable tests.
 
 ## Unsupported ABI Work
 
-- #50: non-integer pass-by-reference arguments and richer procedure
-  signatures.
 - #52: fixed-size one-dimensional array lowering.
 - #53: array descriptors, allocatables, and pointer representation.
 - #54: module and external symbol mangling.
