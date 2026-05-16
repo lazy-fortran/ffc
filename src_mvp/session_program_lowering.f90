@@ -5,7 +5,7 @@ module session_program_lowering
     use ast_nodes_data, only: derived_type_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, declaration_node, do_loop_node, &
-                         cycle_node, exit_node, function_def_node, &
+                         do_while_node, cycle_node, exit_node, function_def_node, &
                          identifier_node, if_node, literal_node, &
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &
@@ -340,6 +340,12 @@ contains
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
             call lower_do_loop(arena, node, context, value, error_msg)
+        type is (do_while_node)
+            call unsupported_feature_error('do while statement', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session only supports '// &
+                                           'literal-bound counted do loops', &
+                                           error_msg)
         type is (select_case_node)
             call unsupported_feature_error('select case statement', &
                                            node%line, node%column, &

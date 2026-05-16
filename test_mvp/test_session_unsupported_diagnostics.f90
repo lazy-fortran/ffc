@@ -22,6 +22,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_select_case_diagnostic()) all_passed = .false.
     if (.not. test_do_step_diagnostic()) all_passed = .false.
     if (.not. test_do_zero_step_diagnostic()) all_passed = .false.
+    if (.not. test_do_while_diagnostic()) all_passed = .false.
     if (.not. test_derived_type_diagnostic()) all_passed = .false.
     if (.not. test_component_assignment_target_diagnostic()) &
         all_passed = .false.
@@ -47,6 +48,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_step_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_zero_step_diagnostic()) all_passed = .false.
+    if (.not. test_cli_do_while_diagnostic()) all_passed = .false.
     if (.not. test_cli_derived_type_diagnostic()) all_passed = .false.
     if (.not. test_cli_component_assignment_target_diagnostic()) &
         all_passed = .false.
@@ -228,6 +230,21 @@ contains
                                        source, 'nonzero literal step', &
                                        '/tmp/ffc_session_do_zero_step_test')
     end function test_do_zero_step_diagnostic
+
+    logical function test_do_while_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  i = 1'//new_line('a')// &
+                                       '  do while (i < 3)'//new_line('a')// &
+                                       '    i = i + 1'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
+
+        test_do_while_diagnostic = expect_error_contains( &
+                                   source, 'unsupported do while statement', &
+                                   '/tmp/ffc_session_do_while_test')
+    end function test_do_while_diagnostic
 
     logical function test_derived_type_diagnostic()
         character(len=*), parameter :: source = &
@@ -519,6 +536,21 @@ contains
                                            source, 'nonzero literal step', &
                                            '/tmp/ffc_cli_do_zero_step_test')
     end function test_cli_do_zero_step_diagnostic
+
+    logical function test_cli_do_while_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  i = 1'//new_line('a')// &
+                                       '  do while (i < 3)'//new_line('a')// &
+                                       '    i = i + 1'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_do_while_diagnostic = expect_cli_error_contains( &
+                                       source, 'unsupported do while statement', &
+                                       '/tmp/ffc_cli_do_while_test')
+    end function test_cli_do_while_diagnostic
 
     logical function test_cli_derived_type_diagnostic()
         character(len=*), parameter :: source = &
