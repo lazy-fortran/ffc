@@ -10,8 +10,8 @@ module session_program_lowering
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &
                          module_node, &
-                         select_case_node, stop_node, subroutine_def_node, &
-                         write_statement_node, &
+                         return_node, select_case_node, stop_node, &
+                         subroutine_def_node, write_statement_node, &
                          allocate_statement_node, deallocate_statement_node, &
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
@@ -330,6 +330,12 @@ contains
                                            node%column, &
                                            'direct LIRIC session does not '// &
                                            'support dynamic allocation', &
+                                           error_msg)
+        type is (return_node)
+            call unsupported_feature_error('return statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support early procedure returns', &
                                            error_msg)
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
