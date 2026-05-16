@@ -106,8 +106,11 @@
             return
         end if
         if (body_terminated) then
-            error_msg = 'direct LIRIC session DO does not support '// &
-                        'terminating loop bodies'
+            call unsupported_feature_error('terminating do loop body', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support stop or return inside '// &
+                                           'counted do loops', error_msg)
             return
         end if
         if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
