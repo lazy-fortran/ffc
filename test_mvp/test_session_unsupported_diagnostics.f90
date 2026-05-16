@@ -13,12 +13,14 @@ program test_session_unsupported_diagnostics
     if (.not. test_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
+    if (.not. test_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
+    if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
     if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -60,6 +62,27 @@ contains
                                  source, 'unsupported module program unit', &
                                  '/tmp/ffc_session_module_diagnostic_test')
     end function test_module_diagnostic
+
+    logical function test_character_parameter_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported character parameter '// &
+                                       'declaration'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  call show("hi")'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  subroutine show(s)'//new_line('a')// &
+                                       '    character(len=2), intent(in) :: '// &
+                                       's'// &
+                                       new_line('a')// &
+                                       '    print *, s'//new_line('a')// &
+                                       '  end subroutine show'//new_line('a')// &
+                                       'end program main'
+
+        test_character_parameter_diagnostic = expect_error_contains( &
+                                              source, expected, &
+                                              '/tmp/ffc_session_char_param_test')
+    end function test_character_parameter_diagnostic
 
     logical function test_exit_diagnostic()
         character(len=*), parameter :: source = &
@@ -132,6 +155,27 @@ contains
                                      source, 'unsupported module program unit', &
                                      '/tmp/ffc_cli_module_diagnostic_test')
     end function test_cli_module_diagnostic
+
+    logical function test_cli_character_parameter_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported character parameter '// &
+                                       'declaration'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  call show("hi")'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  subroutine show(s)'//new_line('a')// &
+                                       '    character(len=2), intent(in) :: '// &
+                                       's'// &
+                                       new_line('a')// &
+                                       '    print *, s'//new_line('a')// &
+                                       '  end subroutine show'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_character_parameter_diagnostic = expect_cli_error_contains( &
+                                                  source, expected, &
+                                                  '/tmp/ffc_cli_char_param_test')
+    end function test_cli_character_parameter_diagnostic
 
     logical function test_cli_exit_diagnostic()
         character(len=*), parameter :: source = &
