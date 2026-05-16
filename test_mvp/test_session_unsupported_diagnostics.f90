@@ -33,6 +33,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_external_real_function_call_diagnostic()) all_passed = .false.
     if (.not. test_external_logical_function_call_diagnostic()) &
         all_passed = .false.
+    if (.not. test_integer_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_real_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_read_statement_diagnostic()) all_passed = .false.
     if (.not. test_write_statement_diagnostic()) all_passed = .false.
@@ -62,6 +63,8 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_external_real_function_call_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_external_logical_function_call_diagnostic()) &
+        all_passed = .false.
+    if (.not. test_cli_integer_exponent_operator_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_real_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_cli_read_statement_diagnostic()) all_passed = .false.
@@ -354,6 +357,18 @@ contains
                                   'unsupported scalar logical function call', &
                                   '/tmp/ffc_session_external_logical_call_test')
     end function test_external_logical_function_call_diagnostic
+
+    logical function test_integer_exponent_operator_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 2 ** 3'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_exponent_operator_diagnostic = expect_error_contains( &
+            source, 'unsupported integer operator', &
+            '/tmp/ffc_session_integer_exponent_operator_test')
+    end function test_integer_exponent_operator_diagnostic
 
     logical function test_real_exponent_operator_diagnostic()
         character(len=*), parameter :: source = &
@@ -674,6 +689,19 @@ contains
                                       'unsupported scalar logical function call', &
                                       '/tmp/ffc_cli_external_logical_call_test')
     end function test_cli_external_logical_function_call_diagnostic
+
+    logical function test_cli_integer_exponent_operator_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 2 ** 3'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_integer_exponent_operator_diagnostic = &
+            expect_cli_error_contains(source, &
+                                      'unsupported integer operator', &
+                                      '/tmp/ffc_cli_integer_exponent_operator_test')
+    end function test_cli_integer_exponent_operator_diagnostic
 
     logical function test_cli_real_exponent_operator_diagnostic()
         character(len=*), parameter :: source = &

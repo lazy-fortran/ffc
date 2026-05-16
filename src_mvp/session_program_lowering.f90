@@ -783,7 +783,14 @@ contains
                                       error_msg)
             if (len_trim(error_msg) > 0) return
             call integer_opcode(node%operator, opcode, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('integer operator', &
+                                               node%line, node%column, &
+                                               'direct LIRIC session supports '// &
+                                               '+, -, *, and / for integer '// &
+                                               'expressions', error_msg)
+                return
+            end if
             if (.not. context%session%emit_i32_binary(opcode, lhs, rhs, value, &
                                                       error_msg)) return
         type is (call_or_subscript_node)
