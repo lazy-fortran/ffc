@@ -32,6 +32,8 @@ program test_session_unsupported_diagnostics
     if (.not. test_external_logical_function_call_diagnostic()) &
         all_passed = .false.
     if (.not. test_real_exponent_operator_diagnostic()) all_passed = .false.
+    if (.not. test_read_statement_diagnostic()) all_passed = .false.
+    if (.not. test_write_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
@@ -57,6 +59,8 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_external_logical_function_call_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_real_exponent_operator_diagnostic()) all_passed = .false.
+    if (.not. test_cli_read_statement_diagnostic()) all_passed = .false.
+    if (.not. test_cli_write_statement_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -329,6 +333,31 @@ contains
             '/tmp/ffc_session_real_exponent_operator_test')
     end function test_real_exponent_operator_diagnostic
 
+    logical function test_read_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  read *, x'//new_line('a')// &
+                                       'end program main'
+
+        test_read_statement_diagnostic = expect_error_contains( &
+                                         source, 'unsupported read statement', &
+                                         '/tmp/ffc_session_read_statement_test')
+    end function test_read_statement_diagnostic
+
+    logical function test_write_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  write (*,*) x'//new_line('a')// &
+                                       'end program main'
+
+        test_write_statement_diagnostic = expect_error_contains( &
+                                          source, 'unsupported write statement', &
+                                          '/tmp/ffc_session_write_statement_test')
+    end function test_write_statement_diagnostic
+
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -594,6 +623,31 @@ contains
             source, 'unsupported real operator', &
             '/tmp/ffc_cli_real_exponent_operator_test')
     end function test_cli_real_exponent_operator_diagnostic
+
+    logical function test_cli_read_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  read *, x'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_read_statement_diagnostic = expect_cli_error_contains( &
+                                             source, 'unsupported read statement', &
+                                             '/tmp/ffc_cli_read_statement_test')
+    end function test_cli_read_statement_diagnostic
+
+    logical function test_cli_write_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  write (*,*) x'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_write_statement_diagnostic = expect_cli_error_contains( &
+                                              source, 'unsupported write statement', &
+                                              '/tmp/ffc_cli_write_statement_test')
+    end function test_cli_write_statement_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source

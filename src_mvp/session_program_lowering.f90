@@ -8,8 +8,10 @@ module session_program_lowering
                          cycle_node, exit_node, function_def_node, &
                          identifier_node, if_node, literal_node, &
                          parameter_declaration_node, &
-                         print_statement_node, program_node, module_node, &
+                         print_statement_node, program_node, read_statement_node, &
+                         module_node, &
                          select_case_node, stop_node, subroutine_def_node, &
+                         write_statement_node, &
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -305,6 +307,17 @@ contains
             call lower_assignment(arena, node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
+        type is (read_statement_node)
+            call unsupported_feature_error('read statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support input runtime calls', &
+                                           error_msg)
+        type is (write_statement_node)
+            call unsupported_feature_error('write statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session only supports '// &
+                                           'minimal print output', error_msg)
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
@@ -972,29 +985,6 @@ contains
     end function find_symbol
 
     include 'session_program_lowering_text.inc'
-
-    subroutine set_empty(value)
-        character(len=:), allocatable, intent(out) :: value
-
-        allocate (character(len=0) :: value)
-    end subroutine set_empty
-
-    subroutine unsupported_feature_error(feature, line, column, limitation, &
-                                         error_msg)
-        character(len=*), intent(in) :: feature
-        integer, intent(in) :: line
-        integer, intent(in) :: column
-        character(len=*), intent(in) :: limitation
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=64) :: location
-
-        if (line > 0 .and. column > 0) then
-            write (location, '(" at line ",I0,", column ",I0)') line, column
-            error_msg = 'unsupported '//trim(feature)//trim(location)//': '// &
-                        trim(limitation)
-        else
-            error_msg = 'unsupported '//trim(feature)//': '//trim(limitation)
-        end if
-    end subroutine unsupported_feature_error
+    include 'session_program_lowering_diagnostics.inc'
 
 end module session_program_lowering
