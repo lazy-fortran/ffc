@@ -283,8 +283,14 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         if (allocated(node%name)) then
-            error_msg = 'unsupported scalar intrinsic: '//trim(node%name)
+            call unsupported_feature_error('scalar intrinsic: '//trim(node%name), &
+                                           node%line, node%column, &
+                                           'direct LIRIC session supports only '// &
+                                           'abs, min, max, and real', error_msg)
         else
-            error_msg = 'unsupported scalar intrinsic'
+            call unsupported_feature_error('scalar intrinsic', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session supports only '// &
+                                           'abs, min, max, and real', error_msg)
         end if
     end subroutine unsupported_intrinsic_error

@@ -15,11 +15,13 @@ program test_session_unsupported_diagnostics
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
+    if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
+    if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -86,6 +88,17 @@ contains
             '/tmp/ffc_session_cycle_diagnostic_test')
     end function test_cycle_diagnostic
 
+    logical function test_unsupported_intrinsic_diagnostic()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, sqrt(4)'//new_line('a')// &
+            'end program main'
+
+        test_unsupported_intrinsic_diagnostic = expect_error_contains( &
+            source, 'unsupported scalar intrinsic: sqrt', &
+            '/tmp/ffc_session_intrinsic_diagnostic_test')
+    end function test_unsupported_intrinsic_diagnostic
+
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
@@ -145,6 +158,17 @@ contains
             source, 'unsupported cycle statement', &
             '/tmp/ffc_cli_cycle_diagnostic_test')
     end function test_cli_cycle_diagnostic
+
+    logical function test_cli_unsupported_intrinsic_diagnostic()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, sqrt(4)'//new_line('a')// &
+            'end program main'
+
+        test_cli_unsupported_intrinsic_diagnostic = expect_cli_error_contains( &
+            source, 'unsupported scalar intrinsic: sqrt', &
+            '/tmp/ffc_cli_intrinsic_diagnostic_test')
+    end function test_cli_unsupported_intrinsic_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source
