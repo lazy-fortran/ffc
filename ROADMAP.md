@@ -1,11 +1,11 @@
-# ffc Roadmap
+# ffc Plan
 
 ## Current Reality
 
 `ffc` now has a minimal working compiler path for the direct-session scalar
 MVP. The exact support claim is in `docs/SUPPORT_CONTRACT.md`.
 
-The old roadmap assumed an HLFIR/MLIR-first backend. The source tree still
+The old plan assumed an HLFIR/MLIR-first backend. The source tree still
 contains that experiment, but it is legacy and not part of the default fpm
 build.
 
@@ -21,7 +21,8 @@ Do not put LIRIC in FortFront.
 - `ffc` owns lowering, ABI/runtime decisions, backend calls, object emission,
   and executable emission.
 - LIRIC is accessed from `ffc` through ISO C bindings to the C API.
-- `ffc` does not add LLVM, MLIR, HLFIR, or text-IR compiler paths.
+- `ffc` does not add LLVM or MLIR compiler paths.
+- `ffc` does not add HLFIR or text-IR compiler paths.
 
 ## Phase 0: Retire the Misleading MLIR Default
 
@@ -98,8 +99,9 @@ Verification:
 - Done: compile and run block `if`
 - Done: compile and run scalar integer/real `abs`, `min`, and `max`
   intrinsics and integer-to-real `real()` conversion
-- Tracked by #50 and #55: richer non-integer procedure signatures and a fuller
-  print/runtime surface.
+- Done: compile and run simple contained scalar integer, real, and logical
+  functions and subroutines.
+- Tracked by #55: fuller print/runtime surface.
 - Tracked by #59: compare output against a reference compiler for the
   supported subset.
 
@@ -128,12 +130,13 @@ Tasks:
   statements
 - Done: lower integer procedure arguments through pointer parameters with
   copy-back for variable actual arguments
+- Done: lower simple contained real and logical functions and subroutines with
+  scalar parameters and results
 - Done: lower integer and real scalar `abs`, `min`, and `max` intrinsics, plus
-  integer-to-real `real()` conversion, inline through direct-session scalar
-  operations, comparisons, branches, and PHI values
+  integer-to-real `real()` conversion, inline through direct-session scalar ops
+  and PHI values
 - Tracked by #56: generalize non-terminating blocks/control flow with merge
   values.
-- Tracked by #50: lower richer non-integer function/subroutine signatures.
 - Done: emit objects directly from the session
 - Done: remove the bootstrap text-IR reference path from `src_mvp/` and
   `test_mvp/`
@@ -152,11 +155,10 @@ Goal: move beyond toy programs without hiding semantics in ad hoc lowering.
 Decisions to document and test:
 
 - Done: program entry and exit-code convention.
-- Done for current subset: integer scalar storage, procedure parameter, and
-  return-value convention.
+- Done for current subset: integer, real, and logical scalar storage, procedure
+  parameter, and return-value convention.
 - #54: name mangling for modules, external procedures, and separate
   compilation.
-- #50: non-integer pass-by-reference semantics and return values.
 - #51: character representation.
 - #52 and #53: array descriptors, allocatables, and pointers.
 - Done for current subset: integer and real scalar `abs`, `min`, and `max`

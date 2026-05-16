@@ -30,23 +30,25 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 - Treat a need for private FortFront AST layout as a FortFront API issue.
 - Before claiming support for a feature, update
   `docs/SUPPORT_CONTRACT.md`.
-- If a feature changes calling convention, storage, symbols, or runtime calls,
-  update `docs/RUNTIME_ABI.md` in the same change.
+- If a feature changes calling convention or storage, update
+  `docs/RUNTIME_ABI.md` in the same change.
+- If a feature changes symbols or runtime calls, update `docs/RUNTIME_ABI.md` in
+  the same change.
 
 ## Feature Order
 
 1. Empty programs and integer `stop`.
-2. Scalar integer declarations, assignments, arithmetic, and comparisons.
-3. Minimal `print *, expr`.
-4. Block `if`, fallthrough integer merges, and counted loops.
-5. Real scalar values, logical variables, and minimal character/logical print.
-6. Simple contained integer, real, and logical functions/subroutines.
-7. Character procedure signatures.
-8. Character representation and a fuller runtime surface.
-9. Arrays, modules, derived types, allocatables, and generics.
+2. Scalar integer declarations and assignments.
+3. Integer arithmetic and comparisons.
+4. Minimal `print *, expr`.
+5. Block `if`, fallthrough integer merges, and counted loops.
+6. Real scalar values, logical variables, and minimal character/logical print.
+7. Simple contained integer, real, and logical functions/subroutines.
+8. Character procedure signatures.
+9. Character representation and a fuller runtime surface.
+10. Arrays, modules, derived types, allocatables, and generics.
 
-The concrete open work is tracked in issues #50 through #61 and summarized in
-`docs/SUPPORT_CONTRACT.md`.
+The concrete open work is summarized in `docs/SUPPORT_CONTRACT.md`.
 
 ## Verification
 
@@ -62,6 +64,7 @@ LIBRARY_PATH=/path/to/liric/build fpm test test_session_logical_variable_compile
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_real_variable_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_integer_function_compiler
 LIBRARY_PATH=/path/to/liric/build fpm test test_session_integer_subroutine_compiler
+LIBRARY_PATH=/path/to/liric/build fpm test test_session_non_integer_procedure_compiler
 ```
 
 For CLI checks:
