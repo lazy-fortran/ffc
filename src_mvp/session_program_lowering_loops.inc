@@ -221,7 +221,11 @@
                                 error_msg)
         if (len_trim(error_msg) > 0) return
         if (step_value == 0_c_int64_t) then
-            error_msg = 'direct LIRIC session DO does not support zero step'
+            call unsupported_feature_error('do loop step', &
+                                           arena%get_node_line(step_expr_index), &
+                                           arena%get_node_column(step_expr_index), &
+                                           'direct LIRIC session requires a '// &
+                                           'nonzero literal step', error_msg)
         end if
     end subroutine parse_do_step
 
@@ -242,6 +246,10 @@
         type is (literal_node)
             call parse_i32_literal(node%value, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session DO only supports literal steps'
+            call unsupported_feature_error('do loop '//trim(name), &
+                                           arena%get_node_line(node_index), &
+                                           arena%get_node_column(node_index), &
+                                           'direct LIRIC session only '// &
+                                           'supports literal steps', error_msg)
         end select
     end subroutine parse_i32_constant
