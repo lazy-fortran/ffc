@@ -57,6 +57,17 @@
                                                    value, error_msg)) return
                     return
                 end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+                    if (.not. context%symbols(symbol_index)%has_character_value) then
+                        error_msg = 'character variable was not assigned: '// &
+                                    trim(node%name)
+                        return
+                    end if
+                    if (.not. emit_liric_print_string_operand( &
+                        context%session, context%str_print_format_id, &
+                        context%symbols(symbol_index)%value, error_msg)) return
+                    return
+                end if
             end if
         type is (binary_op_node)
             if (is_f64_expression(arena, node_index, context)) then

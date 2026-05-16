@@ -28,9 +28,11 @@ module session_program_lowering
                                          emit_liric_i32_to_f64, &
                                          emit_liric_print_f64, &
                                          emit_liric_print_i32, &
+                                         emit_liric_print_string_operand, &
                                          emit_liric_print_string, &
                                          liric_f64_immediate, &
                                          LR_OP_FSUB, &
+                                         materialize_liric_string, &
                                          prepare_liric_print_runtime
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
@@ -45,6 +47,7 @@ module session_program_lowering
     integer, parameter :: VALUE_I32 = 1
     integer, parameter :: VALUE_F64 = 2
     integer, parameter :: VALUE_LOGICAL = 3
+    integer, parameter :: VALUE_CHARACTER = 4
     integer, parameter :: I32_INTRINSIC_NONE = 0
     integer, parameter :: I32_INTRINSIC_ABS = 1
     integer, parameter :: I32_INTRINSIC_MIN = 2
@@ -72,6 +75,8 @@ module session_program_lowering
         logical :: is_parameter = .false.
         logical :: is_reference = .false.
         logical :: has_address = .false.
+        integer :: character_length = 0
+        logical :: has_character_value = .false.
     end type symbol_t
 
     type :: lowering_context_t
@@ -370,16 +375,35 @@ contains
         if (len_trim(error_msg) > 0) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call define_symbol(context, node%var_names(i), value_kind, &
-                                   error_msg)
+                call define_declared_symbol(context, node, node%var_names(i), &
+                                            value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
-            call define_symbol(context, node%var_name, value_kind, error_msg)
+            call define_declared_symbol(context, node, node%var_name, &
+                                        value_kind, error_msg)
         else
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
+
+    subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: character_length
+
+        if (value_kind == VALUE_CHARACTER) then
+            call declaration_character_length(node, character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call define_character_symbol(context, name, character_length, &
+                                         error_msg)
+        else
+            call define_symbol(context, name, value_kind, error_msg)
+        end if
+    end subroutine define_declared_symbol
 
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
@@ -438,11 +462,7 @@ contains
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
         if (is_character_type_name(node%type_name)) then
-            call unsupported_feature_error('character variable declaration', &
-                                           node%line, node%column, &
-                                           'scalar character variables are not '// &
-                                           'supported by direct LIRIC session', &
-                                           error_msg)
+            value_kind = VALUE_CHARACTER
             return
         end if
         select case (trim(node%type_name))
@@ -483,6 +503,8 @@ contains
             call define_f64_symbol(context, name, error_msg)
         else if (value_kind == VALUE_LOGICAL) then
             call define_logical_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_CHARACTER) then
+            call define_character_symbol(context, name, 1, error_msg)
         else
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
@@ -582,6 +604,10 @@ contains
         else if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
             call lower_logical_expression(arena, node%value_index, context, &
                                           value, error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            call lower_character_assignment(arena, node, context, symbol_index, &
+                                            error_msg)
+            return
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -601,6 +627,8 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    include 'session_program_lowering_character.inc'
 
     subroutine lower_stop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -940,37 +968,7 @@ contains
         end do
     end function find_symbol
 
-    logical function same_name(lhs, rhs)
-        character(len=*), intent(in) :: lhs
-        character(len=*), intent(in) :: rhs
-
-        same_name = lowercase_text(lhs) == lowercase_text(rhs)
-    end function same_name
-
-    function lowercase_text(text) result(lowered)
-        character(len=*), intent(in) :: text
-        character(len=len_trim(text)) :: lowered
-        integer :: code
-        integer :: i
-
-        do i = 1, len(lowered)
-            code = iachar(text(i:i))
-            if (code >= iachar('A') .and. code <= iachar('Z')) then
-                lowered(i:i) = achar(code + 32)
-            else
-                lowered(i:i) = text(i:i)
-            end if
-        end do
-    end function lowercase_text
-
-    logical function is_character_type_name(name)
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable :: lowered
-
-        lowered = lowercase_text(name)
-        is_character_type_name = lowered == 'character' .or. &
-                                 index(lowered, 'character(') == 1
-    end function is_character_type_name
+    include 'session_program_lowering_text.inc'
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value

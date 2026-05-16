@@ -21,8 +21,9 @@ is not part of the default fpm build.
 - The direct LIRIC session lowerer can compile counted `do` loops with
   runtime-computed integer bounds through LIRIC blocks and PHI backedges.
 - The direct LIRIC session lowerer can compile minimal integer
-  `print *, expr`, real literal `print`, character literal `print`, and
-  logical literal `print` through external `printf` calls.
+  `print *, expr`, real literal `print`, character literal `print`,
+  character variable `print`, and logical literal `print` through external
+  `printf` calls.
 - The direct LIRIC session lowerer can compile scalar `real` declarations,
   assignments, arithmetic, and printing of real variables.
 - The direct LIRIC session lowerer can compile scalar `logical` declarations,
@@ -91,6 +92,7 @@ The current MVP support claim is:
 - counted `do` loops with integer bounds and literal integer step
 - scalar `real` literals in `print`
 - simple `character` literals in `print`
+- scalar `character(len=N)` variables assigned from literals and printed
 - scalar `logical` literals in `print`
 - real variables/arithmetic
 - block `if`
@@ -100,8 +102,8 @@ The current MVP support claim is:
 - object/executable emission through LIRIC
 
 Arrays, allocatables, modules, derived types, full I/O, generics,
-cross-module inference, non-integer procedure ABIs, and scalar character
-variables are unsupported today. See the issue map in
+cross-module inference, and non-integer procedure ABIs are unsupported today.
+See the issue map in
 [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Build

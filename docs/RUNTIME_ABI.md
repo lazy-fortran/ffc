@@ -26,11 +26,13 @@ issue is closed with ABI documentation and executable tests.
 - `logical` values currently use the MVP `i32` representation: zero is false,
   nonzero is true. Printed logicals therefore use the same integer `printf`
   path and currently print `0` or `1`.
+- Scalar `character(len=N)` variables keep an `i8*` pointer to literal-backed
+  storage plus the declared length `N` in the lowering symbol. Assignment from
+  character literals stores exactly `N` characters by truncating long literals
+  and blank-padding short literals.
 - The current lowerer keeps ordinary scalar symbols as SSA-like current values.
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.
-- Scalar character variables are unsupported; #51 owns their value-plus-length
-  ABI.
 - Scalar `abs`, `min`, and `max` intrinsics are supported for integer and real
   values. Integer-to-real `real()` conversion is supported. They lower inline
   through LIRIC scalar operations, comparisons, branches, casts, and PHI values.
@@ -59,9 +61,15 @@ issue is closed with ABI documentation and executable tests.
 - The current format globals are:
   - integer/logical: `%d\n`
   - real: `%f\n`
-  - character literal: `%s\n`
-- Character literal print materializes a global null-terminated byte array and
-  passes a pointer to `printf`.
+  - character: `%s\n`
+- Character literal print passes a pointer to a null-terminated global byte
+  array to `printf`. Scalar character variable print passes a pointer to a
+  global byte array containing the fixed-length value followed by a null
+  terminator. The current C `printf` shim consumes the terminator, not an
+  explicit length argument. #55 owns the Fortran-aware I/O runtime.
+- Character concatenation, substring access, deferred length, nonliteral
+  character assignment, character procedure arguments, and character
+  control-flow merges are unsupported in this slice.
 - Object output may contain unresolved references such as `printf`; final
   linking is responsible for resolving the C runtime.
 - The current `printf` path is the only supported I/O surface. #55 owns the
@@ -71,7 +79,6 @@ issue is closed with ABI documentation and executable tests.
 
 - #50: non-integer pass-by-reference arguments and richer procedure
   signatures.
-- #51: character value plus length passing.
 - #52: fixed-size one-dimensional array lowering.
 - #53: array descriptors, allocatables, and pointer representation.
 - #54: module and external symbol mangling.

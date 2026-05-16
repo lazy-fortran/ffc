@@ -43,8 +43,10 @@ calls, LIRIC bindings, object emission, and executable emission.
 - Literal-bound counted `do` loops expanded through direct LIRIC scalar
   operations.
 - Minimal `print *, expr` for integer expressions, real literals, character
-  literals, and logical literals through direct-session external `printf`
-  calls.
+  literals, character variables, and logical literals through direct-session
+  external `printf` calls.
+- Scalar `character(len=N)` declarations, assignment from character literals,
+  and printed character variables.
 - Real declarations, assignments, arithmetic expressions, and printed real
   variables.
 - Logical declarations, assignments, `if (flag)` conditions, and printed
@@ -90,6 +92,7 @@ LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
+LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
 LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler

@@ -28,7 +28,9 @@ module liric_session_io_bindings
     public :: emit_liric_print_f64
     public :: emit_liric_print_i32
     public :: emit_liric_print_string
+    public :: emit_liric_print_string_operand
     public :: liric_f64_immediate
+    public :: materialize_liric_string
     public :: prepare_liric_print_runtime
 
     interface
@@ -221,13 +223,29 @@ contains
         character(len=*), intent(in) :: string_global_name
         character(len=*), intent(in) :: text
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: string_ptr
+
+        emit_liric_print_string = .false.
+        call materialize_liric_string(session, string_global_name, text, &
+                                      string_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        emit_liric_print_string = emit_liric_print_string_operand( &
+                                  session, format_global_id, string_ptr, error_msg)
+    end function emit_liric_print_string
+
+    logical function emit_liric_print_string_operand(session, format_global_id, &
+                                                     string_ptr, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: string_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: callee
         type(lr_operand_desc_t) :: format_ptr
-        type(lr_operand_desc_t) :: string_ptr
         type(lr_error_t) :: error
         integer(c_int32_t) :: unused_vreg
 
-        emit_liric_print_string = .false.
+        emit_liric_print_string_operand = .false.
         if (.not. require_open_session(session, error_msg)) return
 
         call make_printf_operand(session, callee, error_msg)
@@ -237,17 +255,25 @@ contains
                                         error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call make_string_literal_operand(session, string_global_name, text, &
-                                         string_ptr, error_msg)
-        if (len_trim(error_msg) > 0) return
-
         unused_vreg = emit_call_ptr(session%handle, callee, format_ptr, &
                                     string_ptr, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
-        emit_liric_print_string = .true.
-    end function emit_liric_print_string
+        emit_liric_print_string_operand = .true.
+    end function emit_liric_print_string_operand
+
+    subroutine materialize_liric_string(session, string_global_name, text, &
+                                        operand, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: string_global_name
+        character(len=*), intent(in) :: text
+        type(lr_operand_desc_t), intent(out) :: operand
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call make_string_literal_operand(session, string_global_name, text, &
+                                         operand, error_msg)
+    end subroutine materialize_liric_string
 
     subroutine make_printf_operand(session, operand, error_msg)
         type(liric_session_t), intent(inout) :: session
