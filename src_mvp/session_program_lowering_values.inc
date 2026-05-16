@@ -68,6 +68,16 @@
                                                value, error_msg)) return
                 return
             end if
+        type is (call_or_subscript_node)
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64(context%session, &
+                                               context%f64_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
         type is (literal_node)
             if (is_character_literal(node)) then
                 call strip_literal_quotes(node%value, character_value)
@@ -196,16 +206,42 @@
             if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
                                             value, error_msg)) return
         type is (call_or_subscript_node)
-            if (node%is_intrinsic) then
-                call unsupported_intrinsic_error(node, error_msg)
-            else
-                error_msg = 'direct LIRIC session MVP does not support real '// &
-                            'function calls'
-            end if
+            call lower_f64_call(arena, node, context, value, error_msg)
         class default
             error_msg = 'direct LIRIC session MVP only supports real expressions'
         end select
     end subroutine lower_f64_expression
+
+    subroutine lower_f64_call(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: intrinsic_id
+
+        if (node%is_array_access) then
+            error_msg = 'direct LIRIC session MVP does not support array access'
+            return
+        end if
+        if (.not. allocated(node%name)) then
+            error_msg = 'direct LIRIC session real function call requires a name'
+            return
+        end if
+
+        intrinsic_id = f64_intrinsic_id(node%name)
+        if (intrinsic_id /= F64_INTRINSIC_NONE) then
+            call lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
+                                          value, error_msg)
+            return
+        end if
+        if (node%is_intrinsic) then
+            call unsupported_intrinsic_error(node, error_msg)
+        else
+            error_msg = 'direct LIRIC session MVP does not support real '// &
+                        'function calls'
+        end if
+    end subroutine lower_f64_call
 
     recursive logical function is_f64_expression(arena, node_index, context) &
         result(is_f64)
@@ -228,8 +264,37 @@
         type is (binary_op_node)
             is_f64 = is_f64_expression(arena, node%left_index, context) .or. &
                      is_f64_expression(arena, node%right_index, context)
+        type is (call_or_subscript_node)
+            is_f64 = is_f64_intrinsic_expression(arena, node, context)
         end select
     end function is_f64_expression
+
+    logical function is_f64_intrinsic_expression(arena, node, context) &
+        result(is_f64)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+        integer :: intrinsic_id
+
+        is_f64 = .false.
+        if (.not. allocated(node%name)) return
+
+        intrinsic_id = f64_intrinsic_id(node%name)
+        if (intrinsic_id == F64_INTRINSIC_REAL) then
+            is_f64 = .true.
+            return
+        end if
+        if (intrinsic_id == F64_INTRINSIC_NONE) return
+        if (.not. allocated(node%arg_indices)) return
+
+        do i = 1, size(node%arg_indices)
+            if (is_f64_expression(arena, node%arg_indices(i), context)) then
+                is_f64 = .true.
+                return
+            end if
+        end do
+    end function is_f64_intrinsic_expression
 
     subroutine real_opcode(source_op, opcode, error_msg)
         character(len=*), intent(in) :: source_op

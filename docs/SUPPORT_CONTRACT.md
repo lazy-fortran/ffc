@@ -32,7 +32,7 @@ The current implementation is a single-file, direct-session scalar subset.
 | `if` | Integer comparison `if` blocks with terminating branches or branches that assign mergeable integer values; scalar logical `if (flag)` conditions. |
 | `do` | Counted `do` loops with integer bounds and literal integer step. |
 | Procedures | Contained integer functions and subroutines with integer parameters only. Integer procedure actual arguments use pointer parameters with copy-back for variable actuals. |
-| Intrinsics | Integer scalar `abs`, `min`, and `max`, lowered inline with LIRIC integer comparison, branch, and PHI operations. |
+| Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations, comparisons, branches, and PHI operations. |
 | `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, logical literals, real variables, and logical variables. |
 
 ## Unsupported Work

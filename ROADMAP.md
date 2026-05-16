@@ -80,7 +80,8 @@ Current supported language subset:
 - `if`
 - counted `do`
 - simple function/subroutine calls
-- integer scalar `abs`, `min`, and `max` intrinsics
+- scalar `abs`, `min`, and `max` intrinsics for integer and real values, plus
+  integer-to-real `real()` conversion
 - minimal `print` runtime call
 
 Verification:
@@ -95,6 +96,8 @@ Verification:
 - Done: compile and run `print *, .true.`
 - Done: compile and run real variables/arithmetic
 - Done: compile and run block `if`
+- Done: compile and run scalar integer/real `abs`, `min`, and `max`
+  intrinsics and integer-to-real `real()` conversion
 - Tracked by #50 and #55: richer non-integer procedure signatures and a fuller
   print/runtime surface.
 - Tracked by #59: compare output against a reference compiler for the
@@ -125,8 +128,9 @@ Tasks:
   statements
 - Done: lower integer procedure arguments through pointer parameters with
   copy-back for variable actual arguments
-- Done: lower integer scalar `abs`, `min`, and `max` intrinsics inline through
-  direct-session comparisons, branches, and PHI values
+- Done: lower integer and real scalar `abs`, `min`, and `max` intrinsics, plus
+  integer-to-real `real()` conversion, inline through direct-session scalar
+  operations, comparisons, branches, and PHI values
 - Tracked by #56: generalize non-terminating blocks/control flow with merge
   values.
 - Tracked by #50: lower richer non-integer function/subroutine signatures.
@@ -155,7 +159,8 @@ Decisions to document and test:
 - #50: non-integer pass-by-reference semantics and return values.
 - #51: character representation.
 - #52 and #53: array descriptors, allocatables, and pointers.
-- Done for current subset: integer scalar `abs`, `min`, and `max` intrinsics.
+- Done for current subset: integer and real scalar `abs`, `min`, and `max`
+  intrinsics, plus integer-to-real `real()` conversion.
 - #55: I/O runtime surface.
 
 Verification:

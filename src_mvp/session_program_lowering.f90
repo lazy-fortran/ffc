@@ -1,6 +1,6 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
-                                           c_int64_t
+                                                                              c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, declaration_node, do_loop_node, &
                          function_def_node, identifier_node, if_node, &
@@ -13,17 +13,23 @@ module session_program_lowering
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
+                                              emit_liric_f64_fcmp, &
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
+                                              emit_liric_phi, &
+                                              LR_FCMP_OGE, &
+                                              LR_FCMP_OLE, &
                                               LR_CMP_SGE, &
                                               LR_CMP_SLE, &
                                               LR_CMP_NE, &
                                               set_liric_block
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
+                                         emit_liric_i32_to_f64, &
                                          emit_liric_print_f64, &
                                          emit_liric_print_i32, &
                                          emit_liric_print_string, &
                                          liric_f64_immediate, &
+                                         LR_OP_FSUB, &
                                          prepare_liric_print_runtime
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
@@ -42,10 +48,20 @@ module session_program_lowering
     integer, parameter :: I32_INTRINSIC_ABS = 1
     integer, parameter :: I32_INTRINSIC_MIN = 2
     integer, parameter :: I32_INTRINSIC_MAX = 3
+    integer, parameter :: F64_INTRINSIC_NONE = 0
+    integer, parameter :: F64_INTRINSIC_ABS = 1
+    integer, parameter :: F64_INTRINSIC_MIN = 2
+    integer, parameter :: F64_INTRINSIC_MAX = 3
+    integer, parameter :: F64_INTRINSIC_REAL = 4
     character(len=8), parameter :: I32_INTRINSIC_NAMES(3) = &
-        [character(len=8) :: 'abs', 'min', 'max']
+                                   [character(len=8) :: 'abs', 'min', 'max']
     integer, parameter :: I32_INTRINSIC_IDS(3) = &
-        [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX]
+                          [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX]
+    character(len=8), parameter :: F64_INTRINSIC_NAMES(4) = &
+                                   [character(len=8) :: 'abs', 'min', 'max', 'real']
+    integer, parameter :: F64_INTRINSIC_IDS(4) = &
+                          [F64_INTRINSIC_ABS, F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
+                           F64_INTRINSIC_REAL]
 
     type :: symbol_t
         character(len=64) :: name = ''
