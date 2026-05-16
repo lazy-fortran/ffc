@@ -26,9 +26,10 @@ issue is closed with ABI documentation and executable tests.
 - `logical` values currently use the MVP `i32` representation: zero is false,
   nonzero is true. Printed logicals therefore use the same integer `printf`
   path and currently print `0` or `1`.
-- Scalar `character(len=N)` variables keep an `i8*` pointer to the current
-  literal-backed storage plus the declared length `N` in the lowering symbol.
-  The first character slice supports assignment from character literals.
+- Scalar `character(len=N)` variables keep an `i8*` pointer to literal-backed
+  storage plus the declared length `N` in the lowering symbol. Assignment from
+  character literals stores exactly `N` characters by truncating long literals
+  and blank-padding short literals.
 - The current lowerer keeps ordinary scalar symbols as SSA-like current values.
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.
@@ -61,10 +62,11 @@ issue is closed with ABI documentation and executable tests.
   - integer/logical: `%d\n`
   - real: `%f\n`
   - character: `%s\n`
-- Character literal print and scalar character variable print pass a pointer to
-  a null-terminated global byte array to `printf`. Character variables retain
-  their declared length in the lowering metadata, but the current C `printf`
-  shim does not consume that length. #55 owns the Fortran-aware I/O runtime.
+- Character literal print passes a pointer to a null-terminated global byte
+  array to `printf`. Scalar character variable print passes a pointer to a
+  global byte array containing the fixed-length value followed by a null
+  terminator. The current C `printf` shim consumes the terminator, not an
+  explicit length argument. #55 owns the Fortran-aware I/O runtime.
 - Character concatenation, substring access, deferred length, nonliteral
   character assignment, character procedure arguments, and character
   control-flow merges are unsupported in this slice.

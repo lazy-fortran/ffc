@@ -8,17 +8,19 @@ program test_session_character_variable_compiler
     type(compiler_frontend_options_t) :: options
     type(compiler_frontend_result_t) :: frontend_result
     character(len=:), allocatable :: error_msg
+    character(len=6) :: output_text
     character(len=64) :: output_line
     character(len=*), parameter :: exe_path = '/tmp/ffc_session_char_var_test'
     character(len=*), parameter :: out_path = &
                                    '/tmp/ffc_session_char_var_test.out'
     integer :: exit_stat
+    integer :: file_size
     integer :: io_stat
     integer :: unit
     character(len=*), parameter :: source = &
                                    'program main'//new_line('a')// &
                                    '  character(len=5) :: s'//new_line('a')// &
-                                   '  s = "hello"'//new_line('a')// &
+                                   '  s = "hi"'//new_line('a')// &
                                    '  print *, s'//new_line('a')// &
                                    'end program main'
 
@@ -60,10 +62,22 @@ program test_session_character_variable_compiler
     end if
     read (unit, '(A)', iostat=io_stat) output_line
     close (unit)
+
+    inquire (file=out_path, size=file_size)
+    open (newunit=unit, file=out_path, status='old', access='stream', &
+          form='unformatted', action='read', iostat=io_stat)
+    if (io_stat /= 0) then
+        print *, 'FAIL: could not open captured output as stream'
+        call execute_command_line('rm -f '//exe_path//' '//out_path)
+        stop 1
+    end if
+    read (unit, iostat=io_stat) output_text
+    close (unit)
     call execute_command_line('rm -f '//exe_path//' '//out_path)
 
-    if (io_stat /= 0 .or. trim(adjustl(output_line)) /= 'hello') then
-        print *, 'FAIL: expected output hello, got ', trim(output_line)
+    if (io_stat /= 0 .or. file_size /= 6 .or. &
+        output_text /= 'hi   '//new_line('a')) then
+        print *, 'FAIL: expected fixed-length output hi, got ', output_line
         stop 1
     end if
 
