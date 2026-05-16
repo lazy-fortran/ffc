@@ -32,6 +32,7 @@ The current implementation is a single-file, direct-session scalar subset.
 | `if` | Integer comparison `if` blocks with terminating branches or branches that assign mergeable integer values; scalar logical `if (flag)` conditions. |
 | `do` | Counted `do` loops with integer bounds and literal integer step. |
 | Procedures | Contained integer functions and subroutines with integer parameters only. Integer procedure actual arguments use pointer parameters with copy-back for variable actuals. |
+| Intrinsics | Integer scalar `abs`, `min`, and `max`, lowered inline with LIRIC integer comparison, branch, and PHI operations. |
 | `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, logical literals, real variables, and logical variables. |
 
 ## Unsupported Work
@@ -49,7 +50,6 @@ The current implementation is a single-file, direct-session scalar subset.
 | #58 | FortFront compiler query boundary | `ffc` no longer depends on FortFront arena internals for lowering decisions. |
 | #59 | Standard and Infer-mode conformance tests | Supported constructs have reference behavior tests against the intended standard and Infer-mode semantics. |
 | #60 | Derived types and component access | Simple derived type declarations, scalar components, assignment, and access are lowered and tested. |
-| #61 | Scalar intrinsic functions | The first supported scalar intrinsics are lowered with documented runtime or backend behavior. |
 
 Unsupported features must fail during parsing, semantic analysis, or lowering
 with a diagnostic. Silent partial lowering is a bug.

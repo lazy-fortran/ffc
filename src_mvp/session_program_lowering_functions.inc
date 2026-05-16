@@ -1,3 +1,76 @@
+    subroutine collect_internal_function_names(arena, root_index, context, &
+                                               error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        context%integer_function_count = 0
+        context%integer_function_names = ''
+        call set_empty(error_msg)
+
+        select type (program => arena%entries(root_index)%node)
+        type is (program_node)
+            if (.not. allocated(program%body_indices)) return
+            do i = 1, size(program%body_indices)
+                select type (node => arena%entries(program%body_indices(i))%node)
+                type is (function_def_node)
+                    call register_internal_function_name(node, context, &
+                                                         error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end select
+            end do
+        end select
+    end subroutine collect_internal_function_names
+
+    subroutine register_internal_function_name(node, context, error_msg)
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: next_index
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'direct LIRIC session function requires a name'
+            return
+        end if
+        if (context%integer_function_count >= MAX_PROCEDURES) then
+            error_msg = 'too many contained functions for direct LIRIC session MVP'
+            return
+        end if
+        if (is_contained_i32_function(context, node%name)) then
+            error_msg = 'duplicate contained function: '//trim(node%name)
+            return
+        end if
+
+        next_index = context%integer_function_count + 1
+        context%integer_function_names(next_index) = trim(node%name)
+        context%integer_function_count = next_index
+        call set_empty(error_msg)
+    end subroutine register_internal_function_name
+
+    subroutine copy_internal_function_names(source, destination)
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+
+        destination%integer_function_names = source%integer_function_names
+        destination%integer_function_count = source%integer_function_count
+    end subroutine copy_internal_function_names
+
+    logical function is_contained_i32_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        is_contained_i32_function = .false.
+        do i = 1, context%integer_function_count
+            if (same_name(context%integer_function_names(i), name)) then
+                is_contained_i32_function = .true.
+                return
+            end if
+        end do
+    end function is_contained_i32_function
+
     subroutine lower_internal_functions(arena, root_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -68,6 +141,7 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
+        call copy_internal_function_names(parent_context, context)
         context%in_internal_function = .true.
 
         param_count = 0
@@ -117,6 +191,7 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
+        call copy_internal_function_names(parent_context, context)
         context%in_internal_function = .true.
 
         param_count = 0

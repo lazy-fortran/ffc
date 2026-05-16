@@ -143,7 +143,8 @@
             value = context%symbols(symbol_index)%value
             call set_empty(error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP only supports logical literals and identifiers'
+            error_msg = 'direct LIRIC session MVP only supports logical '// &
+                        'literals and identifiers'
         end select
     end subroutine lower_logical_expression
 
@@ -194,6 +195,13 @@
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
                                             value, error_msg)) return
+        type is (call_or_subscript_node)
+            if (node%is_intrinsic) then
+                call unsupported_intrinsic_error(node, error_msg)
+            else
+                error_msg = 'direct LIRIC session MVP does not support real '// &
+                            'function calls'
+            end if
         class default
             error_msg = 'direct LIRIC session MVP only supports real expressions'
         end select
