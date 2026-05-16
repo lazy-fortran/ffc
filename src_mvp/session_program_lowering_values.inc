@@ -273,7 +273,8 @@
             call lower_f64_expression(arena, node%right_index, context, rhs, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
-            call real_opcode(node%operator, opcode, error_msg)
+            call real_opcode(node%operator, node%line, node%column, opcode, &
+                             error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
                                             value, error_msg)) return
@@ -407,8 +408,10 @@
         end do
     end function is_f64_intrinsic_expression
 
-    subroutine real_opcode(source_op, opcode, error_msg)
+    subroutine real_opcode(source_op, line, column, opcode, error_msg)
         character(len=*), intent(in) :: source_op
+        integer, intent(in) :: line
+        integer, intent(in) :: column
         integer, intent(out) :: opcode
         character(len=:), allocatable, intent(out) :: error_msg
 
@@ -423,8 +426,10 @@
         case ('/')
             opcode = 21
         case default
-            error_msg = 'direct LIRIC session MVP does not support real operator: '// &
-                        trim(source_op)
+            call unsupported_feature_error('real operator', line, column, &
+                                           'direct LIRIC session supports '// &
+                                           '+, -, *, and / for real expressions', &
+                                           error_msg)
         end select
     end subroutine real_opcode
 
