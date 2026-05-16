@@ -121,8 +121,7 @@
                 return
             end if
 
-            context%symbols(i)%name = then_result%symbols(i)%name
-            context%symbols(i)%value_kind = then_result%symbols(i)%value_kind
+            context%symbols(i) = then_result%symbols(i)
             if (then_result%symbols(i)%value_kind /= &
                 else_result%symbols(i)%value_kind) then
                 error_msg = 'direct LIRIC session IF branch symbol types diverged'
@@ -131,22 +130,48 @@
             if (same_operand(then_result%symbols(i)%value, &
                              else_result%symbols(i)%value)) then
                 context%symbols(i)%value = then_result%symbols(i)%value
-            else if (then_result%symbols(i)%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session IF only merges integer symbols'
-                return
-            else if (.not. emit_liric_i32_phi(context%session, &
-                                              then_result%symbols(i)%value, &
-                                              then_result%predecessor_block_id, &
-                                              else_result%symbols(i)%value, &
-                                              else_result%predecessor_block_id, &
-                                              context%symbols(i)%value, &
-                                              error_msg)) then
-                return
+            else
+                call merge_symbol_value(context, then_result, else_result, i, &
+                                        error_msg)
+                if (len_trim(error_msg) > 0) return
             end if
         end do
 
         call set_empty(error_msg)
     end subroutine merge_branch_symbols
+
+    subroutine merge_symbol_value(context, then_result, else_result, index, &
+                                  error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(branch_result_t), intent(in) :: then_result
+        type(branch_result_t), intent(in) :: else_result
+        integer, intent(in) :: index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (then_result%symbols(index)%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. emit_liric_i32_phi(context%session, &
+                                         then_result%symbols(index)%value, &
+                                         then_result%predecessor_block_id, &
+                                         else_result%symbols(index)%value, &
+                                         else_result%predecessor_block_id, &
+                                         context%symbols(index)%value, &
+                                         error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_phi(context%session, &
+                                     then_result%symbols(index)%value, &
+                                     then_result%predecessor_block_id, &
+                                     else_result%symbols(index)%value, &
+                                     else_result%predecessor_block_id, &
+                                     context%symbols(index)%value, &
+                                     error_msg)) return
+        case default
+            error_msg = 'direct LIRIC session IF cannot merge unknown symbol kind'
+            return
+        end select
+
+        call set_empty(error_msg)
+    end subroutine merge_symbol_value
 
     logical function same_operand(lhs, rhs)
         type(lr_operand_desc_t), intent(in) :: lhs
