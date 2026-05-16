@@ -16,6 +16,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
+    if (.not. test_select_case_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
@@ -23,6 +24,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
+    if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
     if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -111,6 +113,22 @@ contains
                                 source, 'unsupported cycle statement', &
                                 '/tmp/ffc_session_cycle_diagnostic_test')
     end function test_cycle_diagnostic
+
+    logical function test_select_case_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  select case (x)'//new_line('a')// &
+                                       '  case (1)'//new_line('a')// &
+                                       '    print *, 1'//new_line('a')// &
+                                       '  end select'//new_line('a')// &
+                                       'end program main'
+
+        test_select_case_diagnostic = expect_error_contains( &
+                                    source, 'unsupported select case statement', &
+                                    '/tmp/ffc_session_select_case_test')
+    end function test_select_case_diagnostic
 
     logical function test_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
@@ -204,6 +222,22 @@ contains
                                     source, 'unsupported cycle statement', &
                                     '/tmp/ffc_cli_cycle_diagnostic_test')
     end function test_cli_cycle_diagnostic
+
+    logical function test_cli_select_case_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  select case (x)'//new_line('a')// &
+                                       '  case (1)'//new_line('a')// &
+                                       '    print *, 1'//new_line('a')// &
+                                       '  end select'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_select_case_diagnostic = expect_cli_error_contains( &
+                                    source, 'unsupported select case statement', &
+                                    '/tmp/ffc_cli_select_case_test')
+    end function test_cli_select_case_diagnostic
 
     logical function test_cli_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
