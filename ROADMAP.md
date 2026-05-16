@@ -80,6 +80,7 @@ Current supported language subset:
 - `if`
 - counted `do`
 - simple function/subroutine calls
+- integer scalar `abs`, `min`, and `max` intrinsics
 - minimal `print` runtime call
 
 Verification:
@@ -124,6 +125,8 @@ Tasks:
   statements
 - Done: lower integer procedure arguments through pointer parameters with
   copy-back for variable actual arguments
+- Done: lower integer scalar `abs`, `min`, and `max` intrinsics inline through
+  direct-session comparisons, branches, and PHI values
 - Tracked by #56: generalize non-terminating blocks/control flow with merge
   values.
 - Tracked by #50: lower richer non-integer function/subroutine signatures.
@@ -152,7 +155,7 @@ Decisions to document and test:
 - #50: non-integer pass-by-reference semantics and return values.
 - #51: character representation.
 - #52 and #53: array descriptors, allocatables, and pointers.
-- #61: intrinsic/runtime call surface.
+- Done for current subset: integer scalar `abs`, `min`, and `max` intrinsics.
 - #55: I/O runtime surface.
 
 Verification:

@@ -103,6 +103,11 @@ source-dir = "test_mvp"
 main = "test_session_integer_subroutine_compiler.f90"
 
 [[test]]
+name = "test_session_integer_intrinsic_compiler"
+source-dir = "test_mvp"
+main = "test_session_integer_intrinsic_compiler.f90"
+
+[[test]]
 name = "test_counted_do_compiler"
 source-dir = "test_mvp"
 main = "test_counted_do_compiler.f90"

@@ -9,7 +9,7 @@ module session_program_lowering
                          subroutine_def_node, get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                      lr_operand_desc_t, LR_OP_ADD
+                                      lr_operand_desc_t, LR_OP_ADD, LR_OP_SUB
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -34,9 +34,18 @@ module session_program_lowering
     public :: lower_program_to_liric_object
 
     integer, parameter :: MAX_SYMBOLS = 64
+    integer, parameter :: MAX_PROCEDURES = 32
     integer, parameter :: VALUE_I32 = 1
     integer, parameter :: VALUE_F64 = 2
     integer, parameter :: VALUE_LOGICAL = 3
+    integer, parameter :: I32_INTRINSIC_NONE = 0
+    integer, parameter :: I32_INTRINSIC_ABS = 1
+    integer, parameter :: I32_INTRINSIC_MIN = 2
+    integer, parameter :: I32_INTRINSIC_MAX = 3
+    character(len=8), parameter :: I32_INTRINSIC_NAMES(3) = &
+        [character(len=8) :: 'abs', 'min', 'max']
+    integer, parameter :: I32_INTRINSIC_IDS(3) = &
+        [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX]
 
     type :: symbol_t
         character(len=64) :: name = ''
@@ -57,6 +66,8 @@ module session_program_lowering
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
+        character(len=64) :: integer_function_names(MAX_PROCEDURES)
+        integer :: integer_function_count = 0
         logical :: in_internal_function = .false.
         logical :: current_block_terminated = .false.
     end type lowering_context_t
@@ -113,6 +124,13 @@ contains
                                               context%f64_print_format_id, &
                                               context%str_print_format_id, &
                                               error_msg)) then
+            call context%session%destroy()
+            return
+        end if
+
+        call collect_internal_function_names(arena, root_index, context, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) then
             call context%session%destroy()
             return
         end if
@@ -180,7 +198,8 @@ contains
         type is (program_node)
             continue
         class default
-            error_msg = 'direct LIRIC session MVP only supports a top-level program unit'
+            error_msg = 'direct LIRIC session MVP only supports a top-level '// &
+                        'program unit'
             return
         end select
 
@@ -365,7 +384,8 @@ contains
         case ('logical')
             value_kind = VALUE_LOGICAL
         case default
-            error_msg = 'direct LIRIC session MVP only supports integer, real, and logical declarations'
+            error_msg = 'direct LIRIC session MVP only supports integer, real, '// &
+                        'and logical declarations'
         end select
     end subroutine declaration_value_kind
 
@@ -503,7 +523,8 @@ contains
         if (context%symbols(symbol_index)%has_address .and. &
             context%symbols(symbol_index)%is_reference) then
             if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session only stores integer reference arguments'
+                error_msg = 'direct LIRIC session only stores integer '// &
+                            'reference arguments'
                 return
             end if
             if (.not. context%session%emit_i32_store( &
@@ -594,6 +615,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        integer :: intrinsic_id
 
         if (node%is_array_access) then
             error_msg = 'direct LIRIC session MVP does not support array access'
@@ -602,6 +624,19 @@ contains
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function call requires a name'
             return
+        end if
+
+        intrinsic_id = i32_intrinsic_id(node%name)
+        if (.not. is_contained_i32_function(context, node%name)) then
+            if (intrinsic_id /= I32_INTRINSIC_NONE) then
+                call lower_i32_intrinsic_call(arena, node, intrinsic_id, &
+                                              context, value, error_msg)
+                return
+            end if
+            if (node%is_intrinsic) then
+                call unsupported_intrinsic_error(node, error_msg)
+                return
+            end if
         end if
 
         if (allocated(node%arg_indices)) then
@@ -617,6 +652,8 @@ contains
                                                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_i32_call
+
+    include 'session_program_lowering_intrinsics.inc'
 
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -705,7 +742,8 @@ contains
 
         if (symbol_index > 0) then
             if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session only passes integer arguments by reference'
+                error_msg = 'direct LIRIC session only passes integer '// &
+                            'arguments by reference'
                 return
             end if
         end if
@@ -784,7 +822,8 @@ contains
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
         class default
-            error_msg = 'direct LIRIC session IF requires an integer comparison or logical expression'
+            error_msg = 'direct LIRIC session IF requires an integer '// &
+                        'comparison or logical expression'
         end select
     end subroutine lower_i1_condition
 
@@ -831,6 +870,29 @@ contains
             end if
         end do
     end function find_symbol
+
+    logical function same_name(lhs, rhs)
+        character(len=*), intent(in) :: lhs
+        character(len=*), intent(in) :: rhs
+
+        same_name = lowercase_text(lhs) == lowercase_text(rhs)
+    end function same_name
+
+    function lowercase_text(text) result(lowered)
+        character(len=*), intent(in) :: text
+        character(len=len_trim(text)) :: lowered
+        integer :: code
+        integer :: i
+
+        do i = 1, len(lowered)
+            code = iachar(text(i:i))
+            if (code >= iachar('A') .and. code <= iachar('Z')) then
+                lowered(i:i) = achar(code + 32)
+            else
+                lowered(i:i) = text(i:i)
+            end if
+        end do
+    end function lowercase_text
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value

@@ -31,6 +31,9 @@ is not part of the default fpm build.
   functions and subroutines with integer parameters and integer call
   expressions/statements. Integer procedure arguments use pointer parameters
   with copy-back for variable actual arguments.
+- The direct LIRIC session lowerer can compile integer scalar `abs`, `min`,
+  and `max` intrinsics inline through LIRIC integer operations, blocks, and
+  PHI values.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
@@ -92,6 +95,7 @@ The current MVP support claim is:
 - real variables/arithmetic
 - block `if`
 - simple contained integer functions and subroutines with integer parameters
+- integer scalar `abs`, `min`, and `max` intrinsics
 - object/executable emission through LIRIC
 
 Arrays, allocatables, modules, derived types, full I/O, generics,
