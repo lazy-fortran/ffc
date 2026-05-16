@@ -1,3 +1,26 @@
+    subroutine define_declared_character_symbol(context, node, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: character_length
+        integer :: existing_index
+
+        existing_index = find_symbol(context, name)
+        if (existing_index > 0) then
+            if (context%symbols(existing_index)%is_parameter) then
+                call unsupported_feature_error( &
+                    'character parameter declaration', node%line, node%column, &
+                    'scalar character parameters are not supported '// &
+                    'by direct LIRIC session', error_msg)
+                return
+            end if
+        end if
+        call declaration_character_length(node, character_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call define_character_symbol(context, name, character_length, error_msg)
+    end subroutine define_declared_character_symbol
+
     subroutine declaration_character_length(node, character_length, error_msg)
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: character_length
