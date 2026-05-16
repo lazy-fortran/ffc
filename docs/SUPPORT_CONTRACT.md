@@ -33,14 +33,13 @@ The current implementation is a single-file, direct-session scalar subset.
 | `do` | Counted `do` loops with integer bounds and literal integer step. |
 | Procedures | Contained integer functions and subroutines with integer parameters only. Integer procedure actual arguments use pointer parameters with copy-back for variable actuals. |
 | Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations, comparisons, branches, and PHI operations. |
-| `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, logical literals, real variables, and logical variables. |
+| `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, character variables, logical literals, real variables, and logical variables. |
 
 ## Unsupported Work
 
 | Issue | Missing feature | Required result before support is claimed |
 | --- | --- | --- |
 | #50 | Non-integer scalar procedure ABI | Real, logical, and character scalar function/subroutine arguments and results have ABI tests and executable tests. |
-| #51 | Scalar character variables and ABI | Character variables have a documented value-plus-length representation and executable behavior. |
 | #52 | Fixed-size one-dimensional arrays | Declaration, indexing, assignment, and printing tests pass for explicit-shape rank-one arrays. |
 | #53 | Allocatable arrays | Descriptor layout, allocation, deallocation, bounds, and element access are documented and tested. |
 | #54 | Modules and separate compilation | Module symbols, external procedure symbols, name mangling, and link behavior are deterministic and tested. |

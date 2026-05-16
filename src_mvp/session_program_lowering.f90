@@ -28,9 +28,11 @@ module session_program_lowering
                                          emit_liric_i32_to_f64, &
                                          emit_liric_print_f64, &
                                          emit_liric_print_i32, &
+                                         emit_liric_print_string_operand, &
                                          emit_liric_print_string, &
                                          liric_f64_immediate, &
                                          LR_OP_FSUB, &
+                                         materialize_liric_string, &
                                          prepare_liric_print_runtime
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
@@ -45,6 +47,7 @@ module session_program_lowering
     integer, parameter :: VALUE_I32 = 1
     integer, parameter :: VALUE_F64 = 2
     integer, parameter :: VALUE_LOGICAL = 3
+    integer, parameter :: VALUE_CHARACTER = 4
     integer, parameter :: I32_INTRINSIC_NONE = 0
     integer, parameter :: I32_INTRINSIC_ABS = 1
     integer, parameter :: I32_INTRINSIC_MIN = 2
@@ -72,6 +75,8 @@ module session_program_lowering
         logical :: is_parameter = .false.
         logical :: is_reference = .false.
         logical :: has_address = .false.
+        integer :: character_length = 0
+        logical :: has_character_value = .false.
     end type symbol_t
 
     type :: lowering_context_t
@@ -370,16 +375,35 @@ contains
         if (len_trim(error_msg) > 0) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call define_symbol(context, node%var_names(i), value_kind, &
-                                   error_msg)
+                call define_declared_symbol(context, node, node%var_names(i), &
+                                            value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
-            call define_symbol(context, node%var_name, value_kind, error_msg)
+            call define_declared_symbol(context, node, node%var_name, &
+                                        value_kind, error_msg)
         else
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
+
+    subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: character_length
+
+        if (value_kind == VALUE_CHARACTER) then
+            call declaration_character_length(node, character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call define_character_symbol(context, name, character_length, &
+                                         error_msg)
+        else
+            call define_symbol(context, name, value_kind, error_msg)
+        end if
+    end subroutine define_declared_symbol
 
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
@@ -438,11 +462,7 @@ contains
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
         if (is_character_type_name(node%type_name)) then
-            call unsupported_feature_error('character variable declaration', &
-                                           node%line, node%column, &
-                                           'scalar character variables are not '// &
-                                           'supported by direct LIRIC session', &
-                                           error_msg)
+            value_kind = VALUE_CHARACTER
             return
         end if
         select case (trim(node%type_name))
@@ -457,6 +477,23 @@ contains
                         'and logical declarations'
         end select
     end subroutine declaration_value_kind
+
+    subroutine declaration_character_length(node, character_length, error_msg)
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: parse_error
+
+        character_length = 1
+        call set_empty(error_msg)
+        if (.not. allocated(node%type_name)) return
+        call parse_character_length(node%type_name, character_length, parse_error)
+        if (len_trim(parse_error) > 0) then
+            call unsupported_feature_error('character length declaration', &
+                                           node%line, node%column, &
+                                           trim(parse_error), error_msg)
+        end if
+    end subroutine declaration_character_length
 
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -483,6 +520,8 @@ contains
             call define_f64_symbol(context, name, error_msg)
         else if (value_kind == VALUE_LOGICAL) then
             call define_logical_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_CHARACTER) then
+            call define_character_symbol(context, name, 1, error_msg)
         else
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
@@ -558,6 +597,36 @@ contains
         call set_empty(error_msg)
     end subroutine define_logical_symbol
 
+    subroutine define_character_symbol(context, name, character_length, &
+                                       error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate character declaration: '//trim(name)
+            return
+        end if
+        if (context%symbol_count >= MAX_SYMBOLS) then
+            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            return
+        end if
+        if (character_length <= 0) then
+            error_msg = 'character declaration requires positive length'
+            return
+        end if
+
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_CHARACTER
+        context%symbols(index)%character_length = character_length
+        context%symbols(index)%has_character_value = .false.
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_character_symbol
+
     subroutine lower_assignment(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
@@ -582,6 +651,10 @@ contains
         else if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
             call lower_logical_expression(arena, node%value_index, context, &
                                           value, error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            call lower_character_assignment(arena, node, context, symbol_index, &
+                                            error_msg)
+            return
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -601,6 +674,59 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    subroutine lower_character_assignment(arena, node, context, symbol_index, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: literal_text
+        character(len=64) :: string_name
+
+        if (.not. arena%has_node_at(node%value_index)) then
+            error_msg = 'character assignment value does not reference an AST node'
+            return
+        end if
+
+        select type (value_node => arena%entries(node%value_index)%node)
+        type is (literal_node)
+            if (.not. is_character_literal(value_node)) then
+                call unsupported_feature_error('character assignment', &
+                                               node%line, node%column, &
+                                               'only character literal '// &
+                                               'assignment is supported', &
+                                               error_msg)
+                return
+            end if
+            call strip_literal_quotes(value_node%value, literal_text)
+        class default
+            call unsupported_feature_error('character assignment', &
+                                           node%line, node%column, &
+                                           'only character literal assignment '// &
+                                           'is supported', error_msg)
+            return
+        end select
+
+        if (len(literal_text) > &
+            context%symbols(symbol_index)%character_length) then
+            literal_text = literal_text(1: &
+                                        context%symbols(symbol_index)%character_length)
+        end if
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.char.', &
+            context%string_literal_count
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      literal_text, &
+                                      context%symbols(symbol_index)%value, &
+                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_character_assignment
 
     subroutine lower_stop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -971,6 +1097,48 @@ contains
         is_character_type_name = lowered == 'character' .or. &
                                  index(lowered, 'character(') == 1
     end function is_character_type_name
+
+    subroutine parse_character_length(type_name, character_length, error_msg)
+        character(len=*), intent(in) :: type_name
+        integer, intent(out) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lowered
+        character(len=:), allocatable :: length_text
+        integer :: close_pos
+        integer :: io_stat
+        integer :: len_pos
+        integer :: start_pos
+
+        character_length = 1
+        lowered = lowercase_text(type_name)
+        if (trim(lowered) == 'character') then
+            call set_empty(error_msg)
+            return
+        end if
+
+        len_pos = index(lowered, 'len=')
+        if (len_pos <= 0) then
+            error_msg = 'only character(len=N) declarations are supported'
+            return
+        end if
+
+        start_pos = len_pos + len('len=')
+        close_pos = index(lowered(start_pos:), ')')
+        if (close_pos <= 0) then
+            error_msg = 'character length declaration is missing ")"'
+            return
+        end if
+
+        close_pos = start_pos + close_pos - 2
+        length_text = adjustl(lowered(start_pos:close_pos))
+        read (length_text, *, iostat=io_stat) character_length
+        if (io_stat /= 0 .or. character_length <= 0) then
+            error_msg = 'character length must be a positive integer literal'
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine parse_character_length
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value

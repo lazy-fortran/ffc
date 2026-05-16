@@ -11,13 +11,13 @@ program test_session_unsupported_diagnostics
 
     all_passed = .true.
     if (.not. test_array_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_character_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_cli_character_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
@@ -30,144 +30,146 @@ contains
 
     logical function test_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: values(3)'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       'end program main'
 
         test_array_declaration_diagnostic = expect_error_contains( &
-            source, 'unsupported array declaration', &
-            '/tmp/ffc_session_array_diagnostic_test')
+                                            source, 'unsupported array declaration', &
+                                            '/tmp/ffc_session_array_diagnostic_test')
     end function test_array_declaration_diagnostic
 
-    logical function test_character_declaration_diagnostic()
+    logical function test_character_expression_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  character(len=5) :: name'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  character(len=5) :: name'//new_line('a')// &
+                                       '  name = "he" // "llo"'//new_line('a')// &
+                                       'end program main'
 
-        test_character_declaration_diagnostic = expect_error_contains( &
-            source, 'unsupported character variable declaration', &
-            '/tmp/ffc_session_character_diagnostic_test')
-    end function test_character_declaration_diagnostic
+        test_character_expression_diagnostic = expect_error_contains( &
+                                           source, 'unsupported character assignment', &
+                                           '/tmp/ffc_session_character_diagnostic_test')
+    end function test_character_expression_diagnostic
 
     logical function test_module_diagnostic()
         character(len=*), parameter :: source = &
-            'module m'//new_line('a')// &
-            'end module m'
+                                       'module m'//new_line('a')// &
+                                       'end module m'
 
         test_module_diagnostic = expect_error_contains( &
-            source, 'unsupported module program unit', &
-            '/tmp/ffc_session_module_diagnostic_test')
+                                 source, 'unsupported module program unit', &
+                                 '/tmp/ffc_session_module_diagnostic_test')
     end function test_module_diagnostic
 
     logical function test_exit_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: i'//new_line('a')// &
-            '  do i = 1, 3'//new_line('a')// &
-            '    exit'//new_line('a')// &
-            '  end do'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3'//new_line('a')// &
+                                       '    exit'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
 
         test_exit_diagnostic = expect_error_contains( &
-            source, 'unsupported exit statement', &
-            '/tmp/ffc_session_exit_diagnostic_test')
+                               source, 'unsupported exit statement', &
+                               '/tmp/ffc_session_exit_diagnostic_test')
     end function test_exit_diagnostic
 
     logical function test_cycle_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: i'//new_line('a')// &
-            '  do i = 1, 3'//new_line('a')// &
-            '    cycle'//new_line('a')// &
-            '  end do'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3'//new_line('a')// &
+                                       '    cycle'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
 
         test_cycle_diagnostic = expect_error_contains( &
-            source, 'unsupported cycle statement', &
-            '/tmp/ffc_session_cycle_diagnostic_test')
+                                source, 'unsupported cycle statement', &
+                                '/tmp/ffc_session_cycle_diagnostic_test')
     end function test_cycle_diagnostic
 
     logical function test_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  print *, sqrt(4)'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  print *, sqrt(4)'//new_line('a')// &
+                                       'end program main'
 
         test_unsupported_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar intrinsic: sqrt', &
-            '/tmp/ffc_session_intrinsic_diagnostic_test')
+                                         source, 'unsupported scalar intrinsic: sqrt', &
+                                           '/tmp/ffc_session_intrinsic_diagnostic_test')
     end function test_unsupported_intrinsic_diagnostic
 
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: values(3)'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       'end program main'
 
         test_cli_array_declaration_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported array declaration', &
-            '/tmp/ffc_cli_array_diagnostic_test')
+                                              source, 'unsupported array declaration', &
+                                                '/tmp/ffc_cli_array_diagnostic_test')
     end function test_cli_array_declaration_diagnostic
 
-    logical function test_cli_character_declaration_diagnostic()
+    logical function test_cli_character_expression_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  character(len=5) :: name'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  character(len=5) :: name'//new_line('a')// &
+                                       '  name = "he" // "llo"'//new_line('a')// &
+                                       'end program main'
 
-        test_cli_character_declaration_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported character variable declaration', &
-            '/tmp/ffc_cli_character_diagnostic_test')
-    end function test_cli_character_declaration_diagnostic
+        test_cli_character_expression_diagnostic = expect_cli_error_contains( &
+                                           source, 'unsupported character assignment', &
+                                               '/tmp/ffc_cli_character_diagnostic_test')
+    end function test_cli_character_expression_diagnostic
 
     logical function test_cli_module_diagnostic()
         character(len=*), parameter :: source = &
-            'module m'//new_line('a')// &
-            'end module m'
+                                       'module m'//new_line('a')// &
+                                       'end module m'
 
         test_cli_module_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported module program unit', &
-            '/tmp/ffc_cli_module_diagnostic_test')
+                                     source, 'unsupported module program unit', &
+                                     '/tmp/ffc_cli_module_diagnostic_test')
     end function test_cli_module_diagnostic
 
     logical function test_cli_exit_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: i'//new_line('a')// &
-            '  do i = 1, 3'//new_line('a')// &
-            '    exit'//new_line('a')// &
-            '  end do'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3'//new_line('a')// &
+                                       '    exit'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
 
         test_cli_exit_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported exit statement', &
-            '/tmp/ffc_cli_exit_diagnostic_test')
+                                   source, 'unsupported exit statement', &
+                                   '/tmp/ffc_cli_exit_diagnostic_test')
     end function test_cli_exit_diagnostic
 
     logical function test_cli_cycle_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: i'//new_line('a')// &
-            '  do i = 1, 3'//new_line('a')// &
-            '    cycle'//new_line('a')// &
-            '  end do'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3'//new_line('a')// &
+                                       '    cycle'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
 
         test_cli_cycle_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported cycle statement', &
-            '/tmp/ffc_cli_cycle_diagnostic_test')
+                                    source, 'unsupported cycle statement', &
+                                    '/tmp/ffc_cli_cycle_diagnostic_test')
     end function test_cli_cycle_diagnostic
 
     logical function test_cli_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  print *, sqrt(4)'//new_line('a')// &
-            'end program main'
+                                       'program main'//new_line('a')// &
+                                       '  print *, sqrt(4)'//new_line('a')// &
+                                       'end program main'
 
         test_cli_unsupported_intrinsic_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported scalar intrinsic: sqrt', &
-            '/tmp/ffc_cli_intrinsic_diagnostic_test')
+                                         source, 'unsupported scalar intrinsic: sqrt', &
+                                               '/tmp/ffc_cli_intrinsic_diagnostic_test')
     end function test_cli_unsupported_intrinsic_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)

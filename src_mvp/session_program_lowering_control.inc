@@ -165,6 +165,9 @@
                                      else_result%predecessor_block_id, &
                                      context%symbols(index)%value, &
                                      error_msg)) return
+        case (VALUE_CHARACTER)
+            error_msg = 'direct LIRIC session IF cannot merge character values'
+            return
         case default
             error_msg = 'direct LIRIC session IF cannot merge unknown symbol kind'
             return
