@@ -380,9 +380,7 @@ contains
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
-
-        integer :: value_kind
+        integer :: i, value_kind
 
         if (node%is_array) then
             call unsupported_feature_error('array declaration', &
@@ -439,8 +437,7 @@ contains
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index
-        integer :: value_kind
+        integer :: symbol_index, value_kind
 
         if (.not. allocated(node%name)) then
             error_msg = 'parameter declaration did not expose a name'
@@ -454,7 +451,8 @@ contains
             return
         end if
         if (allocated(node%type_name)) then
-            call type_name_value_kind(node%type_name, value_kind, error_msg)
+            call type_name_value_kind(node%type_name, node%line, node%column, &
+                                      value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             if (value_kind == VALUE_CHARACTER) then
                 call unsupported_feature_error( &
@@ -485,11 +483,11 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
 
-    subroutine type_name_value_kind(type_name, value_kind, error_msg)
+    subroutine type_name_value_kind(type_name, line, column, value_kind, error_msg)
         character(len=*), intent(in) :: type_name
+        integer, intent(in) :: line, column
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (is_character_type_name(type_name)) then
@@ -504,8 +502,10 @@ contains
         case ('logical')
             value_kind = VALUE_LOGICAL
         case default
-            error_msg = 'direct LIRIC session MVP only supports integer, real, '// &
-                        'and logical scalar types'
+            call unsupported_feature_error('scalar type', line, column, &
+                                           'direct LIRIC session only supports '// &
+                                           'integer, real, logical, and character '// &
+                                           'scalars', error_msg)
         end select
     end subroutine type_name_value_kind
 
@@ -517,7 +517,8 @@ contains
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
-        call type_name_value_kind(node%type_name, value_kind, error_msg)
+        call type_name_value_kind(node%type_name, node%line, node%column, &
+                                  value_kind, error_msg)
     end subroutine declaration_value_kind
 
     subroutine define_symbol(context, name, value_kind, error_msg)
