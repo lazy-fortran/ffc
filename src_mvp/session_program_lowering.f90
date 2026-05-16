@@ -776,7 +776,11 @@ contains
         integer :: intrinsic_id
 
         if (node%is_array_access) then
-            error_msg = 'direct LIRIC session MVP does not support array access'
+            call unsupported_feature_error('array expression', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support reading array elements', &
+                                           error_msg)
             return
         end if
         if (.not. allocated(node%name)) then
@@ -795,11 +799,12 @@ contains
                 call unsupported_intrinsic_error(node, error_msg)
                 return
             end if
-            call unsupported_feature_error('scalar function call', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'contained scalar functions and '// &
-                                           'supported intrinsics', error_msg)
+            call unsupported_feature_error( &
+                'scalar function call or array expression', &
+                node%line, node%column, &
+                'direct LIRIC session only supports contained scalar '// &
+                'functions, supported intrinsics, and scalar variables', &
+                error_msg)
             return
         end if
 
