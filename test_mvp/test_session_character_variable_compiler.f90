@@ -20,7 +20,7 @@ program test_session_character_variable_compiler
     character(len=*), parameter :: source = &
                                    'program main'//new_line('a')// &
                                    '  character(len=5) :: s'//new_line('a')// &
-                                   '  s = "hi"'//new_line('a')// &
+                                   '  s = "hello"'//new_line('a')// &
                                    '  print *, s'//new_line('a')// &
                                    'end program main'
 
@@ -76,8 +76,8 @@ program test_session_character_variable_compiler
     call execute_command_line('rm -f '//exe_path//' '//out_path)
 
     if (io_stat /= 0 .or. file_size /= 6 .or. &
-        output_text /= 'hi   '//new_line('a')) then
-        print *, 'FAIL: expected fixed-length output hi, got ', output_line
+        output_text /= 'hello'//new_line('a')) then
+        print *, 'FAIL: expected fixed-length output hello, got ', output_line
         stop 1
     end if
 
