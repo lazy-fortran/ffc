@@ -39,6 +39,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_write_statement_diagnostic()) all_passed = .false.
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_deallocate_statement_diagnostic()) all_passed = .false.
+    if (.not. test_return_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
@@ -73,6 +74,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_write_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_deallocate_statement_diagnostic()) all_passed = .false.
+    if (.not. test_cli_return_statement_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -435,6 +437,18 @@ contains
                                                '/tmp/ffc_session_deallocate_test')
     end function test_deallocate_statement_diagnostic
 
+    logical function test_return_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  return'//new_line('a')// &
+                                       'end program main'
+
+        test_return_statement_diagnostic = expect_error_contains( &
+                                           source, &
+                                           'unsupported return statement', &
+                                           '/tmp/ffc_session_return_test')
+    end function test_return_statement_diagnostic
+
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -791,6 +805,18 @@ contains
                                                    'unsupported deallocate statement', &
                                                    '/tmp/ffc_cli_deallocate_test')
     end function test_cli_deallocate_statement_diagnostic
+
+    logical function test_cli_return_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  return'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_return_statement_diagnostic = expect_cli_error_contains( &
+                                               source, &
+                                               'unsupported return statement', &
+                                               '/tmp/ffc_cli_return_test')
+    end function test_cli_return_statement_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source
