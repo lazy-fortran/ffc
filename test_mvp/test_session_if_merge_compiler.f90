@@ -13,6 +13,8 @@ program test_session_if_merge_compiler
     if (.not. test_integer_if_merge()) all_passed = .false.
     if (.not. test_real_if_merge()) all_passed = .false.
     if (.not. test_logical_if_merge()) all_passed = .false.
+    if (.not. test_nested_if_in_do_merge()) all_passed = .false.
+    if (.not. test_do_in_if_merge()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: fallthrough IF merges scalar values through direct LIRIC'
@@ -74,6 +76,63 @@ contains
                                 '/tmp/ffc_session_if_logical_merge_test', 7)
     end function test_logical_if_merge
 
+    logical function test_nested_if_in_do_merge()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       'integer :: i'//new_line('a')// &
+                                       'integer :: total'//new_line('a')// &
+                                       'logical :: found'//new_line('a')// &
+                                       'total = 0'//new_line('a')// &
+                                       'found = .false.'//new_line('a')// &
+                                       'do i = 1, 3'//new_line('a')// &
+                                       '    if (i < 3) then'//new_line('a')// &
+                                       '        total = total + i'//new_line('a')// &
+                                       '        found = .true.'//new_line('a')// &
+                                       '    else'//new_line('a')// &
+                                       '        total = total + 4'//new_line('a')// &
+                                       '        found = found'//new_line('a')// &
+                                       '    end if'//new_line('a')// &
+                                       'end do'//new_line('a')// &
+                                       'if (found) then'//new_line('a')// &
+                                       '    stop total'//new_line('a')// &
+                                       'else'//new_line('a')// &
+                                       '    stop 1'//new_line('a')// &
+                                       'end if'//new_line('a')// &
+                                       'end program main'
+
+        test_nested_if_in_do_merge = compile_and_expect_exit( &
+                                     source, &
+                                     '/tmp/ffc_session_nested_if_do_test', 7)
+    end function test_nested_if_in_do_merge
+
+    logical function test_do_in_if_merge()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       'integer :: i'//new_line('a')// &
+                                       'integer :: total'//new_line('a')// &
+                                       'logical :: flag'//new_line('a')// &
+                                       'total = 0'//new_line('a')// &
+                                       'flag = .false.'//new_line('a')// &
+                                       'if (2 < 3) then'//new_line('a')// &
+                                       '    do i = 1, 2'//new_line('a')// &
+                                       '        total = total + i'//new_line('a')// &
+                                       '        flag = .true.'//new_line('a')// &
+                                       '    end do'//new_line('a')// &
+                                       'else'//new_line('a')// &
+                                       '    total = 9'//new_line('a')// &
+                                       '    flag = .false.'//new_line('a')// &
+                                       'end if'//new_line('a')// &
+                                       'if (flag) then'//new_line('a')// &
+                                       '    stop total'//new_line('a')// &
+                                       'else'//new_line('a')// &
+                                       '    stop 8'//new_line('a')// &
+                                       'end if'//new_line('a')// &
+                                       'end program main'
+
+        test_do_in_if_merge = compile_and_expect_exit( &
+                              source, '/tmp/ffc_session_do_if_test', 3)
+    end function test_do_in_if_merge
+
     logical function compile_and_expect_exit(source, exe_path, expected_status)
         character(len=*), intent(in) :: source
         character(len=*), intent(in) :: exe_path
@@ -126,8 +185,11 @@ contains
         if (io_stat == 0) close (unit)
         call execute_command_line('rm -f '//exe_path//' '//out_path)
 
-        if (io_stat /= 0 .or. &
-            trim(adjustl(output_line)) /= expected_output) then
+        if (io_stat /= 0) then
+            print *, 'FAIL: could not read executable output'
+            return
+        end if
+        if (trim(adjustl(output_line)) /= expected_output) then
             print *, 'FAIL: expected output ', expected_output, ', got ', &
                 trim(output_line)
             return

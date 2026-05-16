@@ -17,6 +17,7 @@
         integer(c_int32_t) :: entry_block
         integer(c_int32_t) :: header_block
         integer(c_int32_t) :: body_block
+        integer(c_int32_t) :: latch_block
         integer(c_int32_t) :: exit_block
         integer(c_int32_t) :: reserved_vreg
         integer :: loop_symbol_index
@@ -54,8 +55,8 @@
         context%symbols(loop_symbol_index)%value = start_value
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
-        call collect_i32_carried_symbols(context, carried_indices, &
-                                         carried_count)
+        call collect_i32_like_carried_symbols(context, carried_indices, &
+                                              carried_count)
         do i = 1, carried_count
             entry_values(carried_indices(i)) = &
                 context%symbols(carried_indices(i))%value
@@ -67,6 +68,7 @@
 
         header_block = create_liric_block(context%session)
         body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
         exit_block = create_liric_block(context%session)
         if (.not. emit_liric_br(context%session, header_block, error_msg)) return
 
@@ -78,7 +80,7 @@
                                          entry_values(carried_indices(i)), &
                                          entry_block, &
                                          backedge_values(carried_indices(i)), &
-                                         body_block, &
+                                         latch_block, &
                                          header_values(carried_indices(i)), &
                                          error_msg)) return
             context%symbols(carried_indices(i))%value = &
@@ -104,23 +106,28 @@
             return
         end if
         if (body_terminated) then
-            error_msg = 'direct LIRIC session DO does not support terminating loop bodies'
+            error_msg = 'direct LIRIC session DO does not support '// &
+                        'terminating loop bodies'
             return
         end if
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
 
         step_operand = context%session%i32_immediate(step_value)
         reserved_vreg = int(backedge_values(loop_symbol_index)%payload, &
                             c_int32_t)
-        if (.not. context%session%emit_i32_binary_into(LR_OP_ADD, &
-                                                       header_values(loop_symbol_index), &
-                                                       step_operand, &
-                                                       reserved_vreg, &
-                                                       next_index, &
-                                                       error_msg)) return
+        if (.not. context%session%emit_i32_binary_into( &
+            LR_OP_ADD, header_values(loop_symbol_index), step_operand, &
+            reserved_vreg, next_index, error_msg)) return
         do i = 1, carried_count
             if (carried_indices(i) == loop_symbol_index) cycle
-            if (context%symbols(carried_indices(i))%value_kind /= VALUE_I32) then
-                error_msg = 'direct LIRIC session DO only carries integer symbols'
+            if (.not. is_i32_like_kind( &
+                context%symbols(carried_indices(i))%value_kind)) then
+                error_msg = 'direct LIRIC session DO only carries integer '// &
+                            'or logical symbols'
                 return
             end if
             if (.not. context%session%emit_i32_copy_to( &
@@ -142,7 +149,7 @@
         call set_empty(error_msg)
     end subroutine lower_do_loop
 
-    subroutine collect_i32_carried_symbols(context, indices, count)
+    subroutine collect_i32_like_carried_symbols(context, indices, count)
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: indices(MAX_SYMBOLS)
         integer, intent(out) :: count
@@ -150,12 +157,19 @@
 
         count = 0
         do i = 1, context%symbol_count
-            if (context%symbols(i)%value_kind == VALUE_I32) then
+            if (is_i32_like_kind(context%symbols(i)%value_kind)) then
                 count = count + 1
                 indices(count) = i
             end if
         end do
-    end subroutine collect_i32_carried_symbols
+    end subroutine collect_i32_like_carried_symbols
+
+    logical function is_i32_like_kind(value_kind)
+        integer, intent(in) :: value_kind
+
+        is_i32_like_kind = value_kind == VALUE_I32 .or. &
+                           value_kind == VALUE_LOGICAL
+    end function is_i32_like_kind
 
     subroutine reserve_backedge_value(context, vreg, error_msg)
         type(lowering_context_t), intent(in) :: context
