@@ -393,6 +393,17 @@ contains
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: existing_index
+
+        existing_index = find_symbol(context, name)
+        if (existing_index > 0) then
+            if (context%symbols(existing_index)%is_parameter .and. &
+                value_kind /= VALUE_I32 .and. value_kind /= VALUE_CHARACTER) then
+                call unsupported_scalar_parameter_declaration( &
+                    value_kind, node%line, node%column, error_msg)
+                return
+            end if
+        end if
 
         if (value_kind == VALUE_CHARACTER) then
             call define_declared_character_symbol(context, node, name, error_msg)
@@ -400,6 +411,28 @@ contains
             call define_symbol(context, name, value_kind, error_msg)
         end if
     end subroutine define_declared_symbol
+
+    subroutine unsupported_scalar_parameter_declaration(value_kind, line, column, &
+                                                        error_msg)
+        integer, intent(in) :: value_kind
+        integer, intent(in) :: line
+        integer, intent(in) :: column
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (value_kind == VALUE_F64) then
+            call unsupported_feature_error( &
+                'real parameter declaration', line, column, &
+                'real scalar parameters are not supported by direct LIRIC '// &
+                'session', error_msg)
+        else if (value_kind == VALUE_LOGICAL) then
+            call unsupported_feature_error( &
+                'logical parameter declaration', line, column, &
+                'logical scalar parameters are not supported by direct LIRIC '// &
+                'session', error_msg)
+        else
+            error_msg = 'unsupported parameter declaration value kind'
+        end if
+    end subroutine unsupported_scalar_parameter_declaration
 
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
