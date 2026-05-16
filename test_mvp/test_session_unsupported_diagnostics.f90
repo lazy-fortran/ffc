@@ -31,6 +31,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_external_real_function_call_diagnostic()) all_passed = .false.
     if (.not. test_external_logical_function_call_diagnostic()) &
         all_passed = .false.
+    if (.not. test_real_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
@@ -55,6 +56,7 @@ program test_session_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_external_logical_function_call_diagnostic()) &
         all_passed = .false.
+    if (.not. test_cli_real_exponent_operator_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -315,6 +317,18 @@ contains
                                   '/tmp/ffc_session_external_logical_call_test')
     end function test_external_logical_function_call_diagnostic
 
+    logical function test_real_exponent_operator_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  real :: x'//new_line('a')// &
+                                       '  x = 2.0 ** 3.0'//new_line('a')// &
+                                       'end program main'
+
+        test_real_exponent_operator_diagnostic = expect_error_contains( &
+            source, 'unsupported real operator', &
+            '/tmp/ffc_session_real_exponent_operator_test')
+    end function test_real_exponent_operator_diagnostic
+
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -568,6 +582,18 @@ contains
                                       'unsupported scalar logical function call', &
                                       '/tmp/ffc_cli_external_logical_call_test')
     end function test_cli_external_logical_function_call_diagnostic
+
+    logical function test_cli_real_exponent_operator_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  real :: x'//new_line('a')// &
+                                       '  x = 2.0 ** 3.0'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_real_exponent_operator_diagnostic = expect_cli_error_contains( &
+            source, 'unsupported real operator', &
+            '/tmp/ffc_cli_real_exponent_operator_test')
+    end function test_cli_real_exponent_operator_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source
