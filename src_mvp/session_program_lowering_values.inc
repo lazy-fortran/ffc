@@ -188,7 +188,11 @@
         integer, allocatable :: copyback_indices(:)
 
         if (node%is_array_access) then
-            error_msg = 'direct LIRIC session MVP does not support array access'
+            call unsupported_feature_error('array expression', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support reading array elements', &
+                                           error_msg)
             return
         end if
         if (.not. allocated(node%name)) then
@@ -286,7 +290,11 @@
         integer :: intrinsic_id
 
         if (node%is_array_access) then
-            error_msg = 'direct LIRIC session MVP does not support array access'
+            call unsupported_feature_error('array expression', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support reading array elements', &
+                                           error_msg)
             return
         end if
         if (.not. allocated(node%name)) then
