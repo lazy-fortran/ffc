@@ -80,7 +80,8 @@ Current supported language subset:
 - `if`
 - counted `do`
 - simple function/subroutine calls
-- integer scalar `abs`, `min`, and `max` intrinsics
+- scalar `abs`, `min`, and `max` intrinsics for integer and real values, plus
+  integer-to-real `real()` conversion
 - minimal `print` runtime call
 
 Verification:
@@ -95,6 +96,8 @@ Verification:
 - Done: compile and run `print *, .true.`
 - Done: compile and run real variables/arithmetic
 - Done: compile and run block `if`
+- Done: compile and run scalar integer/real `abs`, `min`, and `max`
+  intrinsics and integer-to-real `real()` conversion
 - Tracked by #50 and #55: richer non-integer procedure signatures and a fuller
   print/runtime surface.
 - Tracked by #59: compare output against a reference compiler for the

@@ -31,8 +31,9 @@ issue is closed with ABI documentation and executable tests.
   call boundary.
 - Scalar character variables are unsupported; #51 owns their value-plus-length
   ABI.
-- Scalar intrinsic functions are unsupported; #61 owns the first supported
-  intrinsic set.
+- Scalar `abs`, `min`, and `max` intrinsics are supported for integer and real
+  values. Integer-to-real `real()` conversion is supported. They lower inline
+  through LIRIC scalar operations, comparisons, branches, casts, and PHI values.
 
 ## Procedures
 
