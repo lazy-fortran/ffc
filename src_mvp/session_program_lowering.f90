@@ -12,6 +12,7 @@ module session_program_lowering
                          module_node, &
                          select_case_node, stop_node, subroutine_def_node, &
                          write_statement_node, &
+                         allocate_statement_node, deallocate_statement_node, &
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -318,6 +319,18 @@ contains
                                            node%column, &
                                            'direct LIRIC session only supports '// &
                                            'minimal print output', error_msg)
+        type is (allocate_statement_node)
+            call unsupported_feature_error('allocate statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support dynamic allocation', &
+                                           error_msg)
+        type is (deallocate_statement_node)
+            call unsupported_feature_error('deallocate statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support dynamic allocation', &
+                                           error_msg)
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
