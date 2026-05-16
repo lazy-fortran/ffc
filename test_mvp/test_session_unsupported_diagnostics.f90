@@ -14,6 +14,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
+    if (.not. test_unassigned_character_print_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_scalar_type_diagnostic()) all_passed = .false.
@@ -39,6 +40,8 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
+    if (.not. test_cli_unassigned_character_print_diagnostic()) &
+        all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_unsupported_scalar_type_diagnostic()) &
@@ -115,6 +118,20 @@ contains
                                            source, 'unsupported character assignment', &
                                            '/tmp/ffc_session_character_diagnostic_test')
     end function test_character_expression_diagnostic
+
+    logical function test_unassigned_character_print_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported character variable print'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  character(len=5) :: name'//new_line('a')// &
+                                       '  print *, name'//new_line('a')// &
+                                       'end program main'
+
+        test_unassigned_character_print_diagnostic = &
+            expect_error_contains(source, expected, &
+                                  '/tmp/ffc_session_unassigned_character_test')
+    end function test_unassigned_character_print_diagnostic
 
     logical function test_module_diagnostic()
         character(len=*), parameter :: source = &
@@ -421,6 +438,20 @@ contains
                                            source, 'unsupported character assignment', &
                                                '/tmp/ffc_cli_character_diagnostic_test')
     end function test_cli_character_expression_diagnostic
+
+    logical function test_cli_unassigned_character_print_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported character variable print'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  character(len=5) :: name'//new_line('a')// &
+                                       '  print *, name'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_unassigned_character_print_diagnostic = &
+            expect_cli_error_contains(source, expected, &
+                                      '/tmp/ffc_cli_unassigned_character_test')
+    end function test_cli_unassigned_character_print_diagnostic
 
     logical function test_cli_module_diagnostic()
         character(len=*), parameter :: source = &
