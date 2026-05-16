@@ -200,8 +200,11 @@
             return
         end if
         if (.not. is_contained_logical_function(context, node%name)) then
-            error_msg = 'direct LIRIC session MVP does not support logical '// &
-                        'function calls'
+            call unsupported_feature_error('scalar logical function call', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session only '// &
+                                           'supports contained logical '// &
+                                           'functions', error_msg)
             return
         end if
 
@@ -315,8 +318,12 @@
         if (node%is_intrinsic) then
             call unsupported_intrinsic_error(node, error_msg)
         else
-            error_msg = 'direct LIRIC session MVP does not support real '// &
-                        'function calls'
+            call unsupported_feature_error('scalar real function call', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session only '// &
+                                           'supports contained real '// &
+                                           'functions and supported '// &
+                                           'intrinsics', error_msg)
         end if
     end subroutine lower_f64_call
 

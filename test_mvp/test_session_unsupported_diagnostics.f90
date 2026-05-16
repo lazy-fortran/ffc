@@ -27,6 +27,9 @@ program test_session_unsupported_diagnostics
     if (.not. test_component_expression_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_external_function_call_diagnostic()) all_passed = .false.
+    if (.not. test_external_real_function_call_diagnostic()) all_passed = .false.
+    if (.not. test_external_logical_function_call_diagnostic()) &
+        all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
@@ -45,6 +48,10 @@ program test_session_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_external_function_call_diagnostic()) all_passed = .false.
+    if (.not. test_cli_external_real_function_call_diagnostic()) &
+        all_passed = .false.
+    if (.not. test_cli_external_logical_function_call_diagnostic()) &
+        all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -267,6 +274,33 @@ contains
                                      '/tmp/ffc_session_external_call_test')
     end function test_external_function_call_diagnostic
 
+    logical function test_external_real_function_call_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  real :: x'//new_line('a')// &
+                                       '  x = external_real(1.0)'//new_line('a')// &
+                                       'end program main'
+
+        test_external_real_function_call_diagnostic = &
+            expect_error_contains(source, &
+                                  'unsupported scalar real function call', &
+                                  '/tmp/ffc_session_external_real_call_test')
+    end function test_external_real_function_call_diagnostic
+
+    logical function test_external_logical_function_call_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  logical :: flag'//new_line('a')// &
+                                       '  flag = external_flag(.true.)'// &
+                                       new_line('a')// &
+                                       'end program main'
+
+        test_external_logical_function_call_diagnostic = &
+            expect_error_contains(source, &
+                                  'unsupported scalar logical function call', &
+                                  '/tmp/ffc_session_external_logical_call_test')
+    end function test_external_logical_function_call_diagnostic
+
     logical function test_cli_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -482,6 +516,33 @@ contains
                                      source, 'unsupported scalar function call', &
                                      '/tmp/ffc_cli_external_call_test')
     end function test_cli_external_function_call_diagnostic
+
+    logical function test_cli_external_real_function_call_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  real :: x'//new_line('a')// &
+                                       '  x = external_real(1.0)'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_external_real_function_call_diagnostic = &
+            expect_cli_error_contains(source, &
+                                      'unsupported scalar real function call', &
+                                      '/tmp/ffc_cli_external_real_call_test')
+    end function test_cli_external_real_function_call_diagnostic
+
+    logical function test_cli_external_logical_function_call_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  logical :: flag'//new_line('a')// &
+                                       '  flag = external_flag(.true.)'// &
+                                       new_line('a')// &
+                                       'end program main'
+
+        test_cli_external_logical_function_call_diagnostic = &
+            expect_cli_error_contains(source, &
+                                      'unsupported scalar logical function call', &
+                                      '/tmp/ffc_cli_external_logical_call_test')
+    end function test_cli_external_logical_function_call_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source
