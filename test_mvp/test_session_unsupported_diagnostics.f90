@@ -20,6 +20,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_select_case_diagnostic()) all_passed = .false.
     if (.not. test_do_step_diagnostic()) all_passed = .false.
+    if (.not. test_do_zero_step_diagnostic()) all_passed = .false.
     if (.not. test_derived_type_diagnostic()) all_passed = .false.
     if (.not. test_component_assignment_target_diagnostic()) &
         all_passed = .false.
@@ -36,6 +37,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
     if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_step_diagnostic()) all_passed = .false.
+    if (.not. test_cli_do_zero_step_diagnostic()) all_passed = .false.
     if (.not. test_cli_derived_type_diagnostic()) all_passed = .false.
     if (.not. test_cli_component_assignment_target_diagnostic()) &
         all_passed = .false.
@@ -185,6 +187,20 @@ contains
                                   source, 'unsupported do loop step', &
                                   '/tmp/ffc_session_do_step_test')
     end function test_do_step_diagnostic
+
+    logical function test_do_zero_step_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3, 0'//new_line('a')// &
+                                       '    print *, i'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
+
+        test_do_zero_step_diagnostic = expect_error_contains( &
+                                       source, 'nonzero literal step', &
+                                       '/tmp/ffc_session_do_zero_step_test')
+    end function test_do_zero_step_diagnostic
 
     logical function test_derived_type_diagnostic()
         character(len=*), parameter :: source = &
@@ -387,6 +403,20 @@ contains
                                       source, 'unsupported do loop step', &
                                       '/tmp/ffc_cli_do_step_test')
     end function test_cli_do_step_diagnostic
+
+    logical function test_cli_do_zero_step_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: i'//new_line('a')// &
+                                       '  do i = 1, 3, 0'//new_line('a')// &
+                                       '    print *, i'//new_line('a')// &
+                                       '  end do'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_do_zero_step_diagnostic = expect_cli_error_contains( &
+                                           source, 'nonzero literal step', &
+                                           '/tmp/ffc_cli_do_zero_step_test')
+    end function test_cli_do_zero_step_diagnostic
 
     logical function test_cli_derived_type_diagnostic()
         character(len=*), parameter :: source = &
