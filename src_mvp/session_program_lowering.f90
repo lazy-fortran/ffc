@@ -795,6 +795,12 @@ contains
                 call unsupported_intrinsic_error(node, error_msg)
                 return
             end if
+            call unsupported_feature_error('scalar function call', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session only supports '// &
+                                           'contained scalar functions and '// &
+                                           'supported intrinsics', error_msg)
+            return
         end if
 
         if (allocated(node%arg_indices)) then
