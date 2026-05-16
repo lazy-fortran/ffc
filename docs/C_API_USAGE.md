@@ -8,7 +8,8 @@ The active backend integration uses LIRIC through `iso_c_binding`.
   emission, instruction emission, object output, and executable output.
 - `liric_session_control_bindings`: block, branch, comparison, and PHI helpers.
 
-New lowering code should target `liric_session_bindings`.
+New lowering code targets `liric_session_bindings` and the companion session
+binding modules. It does not target LLVM, MLIR, HLFIR, or text IR.
 
 ## Session Flow
 

@@ -2,8 +2,8 @@
 
 ## Current Reality
 
-`ffc` now has a minimal working compiler path for the empty-program MVP and the
-first straight-line integer scalar slice.
+`ffc` now has a minimal working compiler path for the direct-session scalar
+MVP. The exact support claim is in `docs/SUPPORT_CONTRACT.md`.
 
 The old roadmap assumed an HLFIR/MLIR-first backend. The source tree still
 contains that experiment, but it is legacy and not part of the default fpm
@@ -21,6 +21,7 @@ Do not put LIRIC in FortFront.
 - `ffc` owns lowering, ABI/runtime decisions, backend calls, object emission,
   and executable emission.
 - LIRIC is accessed from `ffc` through ISO C bindings to the C API.
+- `ffc` does not add LLVM, MLIR, HLFIR, or text-IR compiler paths.
 
 ## Phase 0: Retire the Misleading MLIR Default
 
@@ -31,12 +32,12 @@ Tasks:
 - Done: default fpm build points at `src_mvp/`, not the old MLIR tree.
 - Done: default manifest links LIRIC instead of the old backend libraries.
 - Done: CLI source path calls FortFront's compiler API.
-- Pending: decide whether to move legacy MLIR code under an explicit archive
+- Tracked: decide whether to move legacy MLIR code under an explicit archive
   directory or keep it as reference source outside the default build.
 
 Verification:
 
-- `LIBRARY_PATH=/home/ert/code/liric/build fpm build`
+- `LIBRARY_PATH=<liric-build> fpm build`
 - CLI parses a file through FortFront and reports diagnostics instead of using a
   hardcoded root index.
 - Done: CLI emits executables and object files through the direct LIRIC session
@@ -54,21 +55,21 @@ Required FortFront contract:
 - semantic/type data usable by lowering
 - no forced standard Fortran code emission
 
-`ffc` should use public FortFront APIs only. If private AST layout is required,
-that is a FortFront API bug, not an `ffc` workaround.
+`ffc` uses public FortFront APIs only. A need for private AST layout is tracked
+as FortFront API work, not as an `ffc` workaround.
 
 Verification:
 
 - Done in FortFront: `compile_frontend_from_string/file` returns arena,
   root index, semantic context, tokens, and diagnostics.
-- Pending: add narrower compiler query APIs so `ffc` does not depend on arena
-  representation details for real scalar lowering.
+- Tracked by #58: add narrower compiler query APIs so `ffc` does not depend on
+  arena representation details.
 
 ## Phase 2: Direct LIRIC Session Backend
 
 Goal: keep the compiler path on direct LIRIC session calls.
 
-Initial supported language subset:
+Current supported language subset:
 
 - main program
 - scalar integer/real/logical literals
@@ -93,9 +94,10 @@ Verification:
 - Done: compile and run `print *, .true.`
 - Done: compile and run real variables/arithmetic
 - Done: compile and run block `if`
-- Remaining: richer non-integer procedure signatures and a fuller
-  print/runtime surface
-- compare output against a reference compiler for the supported subset
+- Tracked by #50 and #55: richer non-integer procedure signatures and a fuller
+  print/runtime surface.
+- Tracked by #59: compare output against a reference compiler for the
+  supported subset.
 
 Tasks:
 
@@ -122,8 +124,9 @@ Tasks:
   statements
 - Done: lower integer procedure arguments through pointer parameters with
   copy-back for variable actual arguments
-- generalize non-terminating blocks/control flow with merge values
-- lower richer non-integer function/subroutine signatures
+- Tracked by #56: generalize non-terminating blocks/control flow with merge
+  values.
+- Tracked by #50: lower richer non-integer function/subroutine signatures.
 - Done: emit objects directly from the session
 - Done: remove the bootstrap text-IR reference path from `src_mvp/` and
   `test_mvp/`
@@ -141,28 +144,30 @@ Goal: move beyond toy programs without hiding semantics in ad hoc lowering.
 
 Decisions to document and test:
 
-- program entry and exit-code convention
-- name mangling
-- non-integer pass-by-reference semantics
-- return values
-- character representation
-- array descriptors
-- allocatables and pointers
-- intrinsic/runtime call surface
-- I/O runtime surface
+- Done: program entry and exit-code convention.
+- Done for current subset: integer scalar storage, procedure parameter, and
+  return-value convention.
+- #54: name mangling for modules, external procedures, and separate
+  compilation.
+- #50: non-integer pass-by-reference semantics and return values.
+- #51: character representation.
+- #52 and #53: array descriptors, allocatables, and pointers.
+- #61: intrinsic/runtime call surface.
+- #55: I/O runtime surface.
 
 Verification:
 
 - executable parity tests grouped by language feature
 - each new runtime call has a focused ABI test
 
-## Deferred
+## Unsupported Beyond The Current Contract
 
-- Full Fortran module support
-- Derived types
-- Allocatable arrays and descriptors
-- Generic specialization
-- Cross-module inference
-- Optimization beyond basic lowering correctness
-
-Those are important, but they should not block the first working compiler.
+- Full Fortran module support: #54.
+- Derived types: #60.
+- Allocatable arrays and descriptors: #53.
+- Generic specialization: out of scope for `ffc` until FortFront and
+  package-level monomorphization contracts exist.
+- Cross-module inference: out of scope for `ffc` until FortFront and
+  package-level orchestration contracts exist.
+- Optimization beyond basic lowering correctness: out of scope until the
+  supported contract has reference conformance coverage.

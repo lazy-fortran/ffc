@@ -8,7 +8,7 @@ is not part of the default fpm build.
 
 ## Current Status
 
-- The package builds the MVP sources in `src_mvp/`.
+- The package builds the active compiler sources in `src_mvp/`.
 - The CLI parses files through FortFront's compiler-facing frontend API.
 - The CLI lowers through the direct LIRIC session API and emits a runnable
   executable without `.ll` text.
@@ -35,7 +35,14 @@ is not part of the default fpm build.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
 - Broader runtime calls, richer non-integer procedure signatures, arrays,
-  modules, and richer I/O are still pending.
+  modules, and richer I/O are unsupported. The tracked work is listed in
+  [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
+
+## Support Contract
+
+A program is supported only when every construct it uses appears in
+[docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md). Anything else must fail
+with a diagnostic instead of being partially lowered.
 
 ## Target Architecture
 
@@ -55,7 +62,7 @@ LIRIC C API
 object file / executable
 ```
 
-FortFront should remain backend-neutral. `ffc` owns lowering, ABI decisions,
+FortFront remains backend-neutral. `ffc` owns lowering, ABI decisions,
 runtime calls, backend selection, object emission, and executable emission.
 
 ## Backend Direction
@@ -63,14 +70,14 @@ runtime calls, backend selection, object emission, and executable emission.
 The preferred backend path is LIRIC through ISO C bindings to its C API.
 
 Lower typed AST to LIRIC `lr_session_*` calls. This is the CLI path and target
-architecture; new lowering work should go here.
+architecture; new lowering work goes here.
 
-The current MLIR binding work should not be expanded unless the project
-explicitly changes direction back to a Flang-style backend.
+Do not expand the current MLIR binding work unless the project explicitly
+changes direction back to a Flang-style backend.
 
-## MVP Scope
+## Current MVP Scope
 
-The first useful compiler should support:
+The current MVP support claim is:
 
 - `program main`
 - scalar `integer` literals
@@ -84,46 +91,48 @@ The first useful compiler should support:
 - scalar `logical` literals in `print`
 - real variables/arithmetic
 - block `if`
-- simple functions and subroutines
+- simple contained integer functions and subroutines with integer parameters
 - object/executable emission through LIRIC
 
-Arrays, allocatables, modules, derived types, full I/O, generics, and
-cross-module inference come after that subset is executable and tested.
+Arrays, allocatables, modules, derived types, full I/O, generics,
+cross-module inference, non-integer procedure ABIs, and scalar character
+variables are unsupported today. See the issue map in
+[docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Build
 
 Builds need the LIRIC static library on the linker search path:
 
 ```bash
-LIBRARY_PATH=/home/ert/code/liric/build fpm build
+LIBRARY_PATH=<liric-build> fpm build
 ```
 
 Run the MVP tests:
 
 ```bash
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
+LIBRARY_PATH=<liric-build> fpm test test_liric_session_bindings
+LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_object_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_stop_code_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_block_if_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_if_merge_compiler
+LIBRARY_PATH=<liric-build> fpm test test_counted_do_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_scalar_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_real_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_character_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_logical_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_real_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_function_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_subroutine_compiler
 ```
 
 Compile the smallest supported program:
 
 ```bash
 printf 'program main\nend program main\n' > /tmp/empty.f90
-LIBRARY_PATH=/home/ert/code/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
+LIBRARY_PATH=<liric-build> fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 /tmp/empty
 ```
 

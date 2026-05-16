@@ -1,7 +1,15 @@
 # Runtime ABI
 
-This document records the current direct-session MVP ABI. It is intentionally
-small and should change only with matching executable tests.
+This document records the current direct-session MVP ABI. It is an internal
+compiler ABI for the current supported subset, not a stable external ABI.
+Changes require matching executable tests and updates to
+`docs/SUPPORT_CONTRACT.md`.
+
+## Stability Rule
+
+Only the representations listed in this document are supported. All other
+values, arguments, descriptors, and runtime calls are unsupported until their
+issue is closed with ABI documentation and executable tests.
 
 ## Program Entry
 
@@ -21,6 +29,10 @@ small and should change only with matching executable tests.
 - The current lowerer keeps ordinary scalar symbols as SSA-like current values.
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.
+- Scalar character variables are unsupported; #51 owns their value-plus-length
+  ABI.
+- Scalar intrinsic functions are unsupported; #61 owns the first supported
+  intrinsic set.
 
 ## Procedures
 
@@ -35,6 +47,10 @@ small and should change only with matching executable tests.
 - Names are emitted as source names for the current single-file subset. A
   deterministic mangling scheme is still required before broader procedure and
   module support.
+- Non-integer procedure parameters and results are unsupported; #50 owns that
+  ABI.
+- External procedures, modules, and separate compilation are unsupported; #54
+  owns symbol mangling and link behavior.
 
 ## Runtime Calls
 
@@ -47,12 +63,15 @@ small and should change only with matching executable tests.
   passes a pointer to `printf`.
 - Object output may contain unresolved references such as `printf`; final
   linking is responsible for resolving the C runtime.
+- The current `printf` path is the only supported I/O surface. #55 owns the
+  Fortran-aware scalar I/O runtime.
 
-## Pending ABI Work
+## Unsupported ABI Work
 
-- Non-integer pass-by-reference arguments and richer procedure signatures.
-- Character value plus length passing.
-- Arrays and descriptors.
-- Allocatable and pointer representation.
-- Module and external symbol mangling.
-- Runtime I/O beyond the current scalar `printf` shim.
+- #50: non-integer pass-by-reference arguments and richer procedure
+  signatures.
+- #51: character value plus length passing.
+- #52: fixed-size one-dimensional array lowering.
+- #53: array descriptors, allocatables, and pointer representation.
+- #54: module and external symbol mangling.
+- #55: runtime I/O beyond the current scalar `printf` shim.

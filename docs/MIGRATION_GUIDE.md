@@ -1,6 +1,8 @@
 # Migration Guide: Legacy Backend to LIRIC
 
-The project direction is LIRIC, not the old MLIR/HLFIR experiment.
+The project direction is LIRIC, not the old MLIR/HLFIR experiment. Migration
+from the removed bootstrap text-IR compiler path is complete for the default
+build; new behavior goes directly into the LIRIC session lowerer.
 
 ## Target State
 
@@ -42,5 +44,6 @@ the LIRIC session API.
 - Add or update a `test_session_*` executable test.
 - Keep CLI behavior on the direct session path.
 - Document ABI/runtime decisions before broadening the language surface.
+- Update `docs/SUPPORT_CONTRACT.md` when the support claim changes.
 - If LIRIC lacks a required primitive, file the issue in LIRIC and keep the
   `ffc` issue blocked on that upstream item.

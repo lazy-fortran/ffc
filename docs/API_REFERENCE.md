@@ -1,7 +1,8 @@
 # ffc API Reference
 
 `ffc` is the compiler driver between FortFront and LIRIC. The active API
-surface is intentionally small.
+surface is intentionally small. The supported language contract is
+`docs/SUPPORT_CONTRACT.md`.
 
 ## FortFront Input
 
@@ -24,7 +25,7 @@ FortFront remains backend-neutral. It must not depend on LIRIC.
 
 ## LIRIC Session API
 
-New compiler work should use `liric_session_bindings`:
+New compiler work uses `liric_session_bindings`:
 
 ```fortran
 use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -47,6 +48,8 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
 
 ## Current Supported Direct-Session Subset
 
+The list below is a summary. `docs/SUPPORT_CONTRACT.md` is authoritative.
+
 - Empty `program main`.
 - Object and executable emission for the supported direct-session subset.
 - Scalar integer declarations and assignments.
@@ -64,6 +67,9 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
 - Simple contained integer functions and subroutines with integer parameters
   and integer call expressions/statements. Integer arguments use LIRIC pointer
   parameters with copy-back for variable actual arguments.
+
+All other constructs are unsupported unless `docs/SUPPORT_CONTRACT.md` lists
+them as supported.
 
 ## Runtime ABI
 

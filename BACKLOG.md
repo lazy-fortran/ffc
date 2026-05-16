@@ -27,10 +27,8 @@ Goal: keep the compiler path on direct `lr_session_*` emission.
   integer values before a later `stop`.
 - Done: lower counted `do` loops with runtime-computed integer bounds through
   direct LIRIC session blocks and PHI backedges.
-- Next: lower mutable integer storage once direct executable alloca/load/store
-  behavior is covered.
-- Next: generalize non-terminating `if` merges beyond the current integer
-  assignment subset.
+- Tracked by #56: generalize non-terminating `if` merges beyond the current
+  integer assignment subset.
 - Done: move the CLI default to direct session lowering.
 - Done: lower minimal scalar `print` for integers, real values, character
   literals, and logical literals through direct-session `printf` calls.
@@ -52,30 +50,30 @@ Goal: keep the compiler path on direct `lr_session_*` emission.
 Verification:
 
 ```bash
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_liric_session_bindings
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_empty_program_object_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_stop_code_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_block_if_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_if_merge_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_counted_do_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_scalar_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_character_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_literal_print_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_logical_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_real_variable_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_function_compiler
-LIBRARY_PATH=/home/ert/code/liric/build fpm test test_session_integer_subroutine_compiler
+LIBRARY_PATH=<liric-build> fpm test test_liric_session_bindings
+LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_object_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_stop_code_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_block_if_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_if_merge_compiler
+LIBRARY_PATH=<liric-build> fpm test test_counted_do_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_scalar_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_real_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_character_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_logical_literal_print_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_logical_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_real_variable_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_function_compiler
+LIBRARY_PATH=<liric-build> fpm test test_session_integer_subroutine_compiler
 ```
 
 ## P2: FortFront API Needs
 
-`ffc` still reaches into arena/node representation for much of lowering.
-FortFront now exposes explicit subroutine call queries; more compiler-facing
-queries should follow so `ffc` can lower without depending on private layout
-details.
+Tracked by #58. `ffc` still reaches into arena/node representation for much of
+lowering. FortFront now exposes explicit subroutine call queries; more
+compiler-facing queries are required so `ffc` can lower without depending on
+private layout details.
 
 Needed API surface:
 
@@ -88,22 +86,33 @@ Needed API surface:
 
 ## P3: Runtime And ABI
 
-Document and test the ABI before implementing procedures and arrays.
+Document and test the ABI before claiming support for each feature.
 
-- program entry and exit convention
-- scalar storage and calling convention
-- non-integer pass-by-reference rules
-- function result variables
-- logical representation
-- character value plus length representation
-- print/runtime call surface
-- array descriptor representation
+- Done: program entry and exit convention.
+- Done for current subset: integer scalar procedure storage and calling
+  convention.
+- #50: non-integer pass-by-reference rules and function results.
+- Done for current subset: logical `i32` representation.
+- #51: character value plus length representation.
+- #55: print/runtime call surface.
+- #52 and #53: array descriptor representation.
 
-## Deferred
+## Issue Map
 
-- full Fortran module compilation
-- derived types
-- allocatable arrays and pointers
-- generics and monomorphization
-- cross-module inference orchestration
-- optimization beyond basic lowering correctness
+- #50: Direct session: support non-integer scalar procedure ABI.
+- #51: Direct session: implement scalar character variables and ABI.
+- #52: Direct session: support fixed-size one-dimensional arrays.
+- #53: Runtime ABI: design descriptor-backed allocatable arrays.
+- #54: Compiler: support modules, separate compilation, and name mangling.
+- #55: Runtime: replace `printf` shim with Fortran-aware scalar I/O.
+- #56: Direct session: generalize control-flow value merging.
+- #57: Diagnostics: add source locations and targeted unsupported-feature
+  errors.
+- #58: Frontend boundary: replace arena internals with FortFront compiler
+  queries.
+- #59: Conformance: add standard/Infer-mode end-to-end coverage.
+- #60: Direct session: implement simple derived types and component access.
+- #61: Direct session: lower first scalar intrinsic functions.
+
+Features outside this map are not part of the current implementation plan
+until a new issue names the feature, contract, tests, and dependencies.

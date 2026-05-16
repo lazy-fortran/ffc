@@ -28,6 +28,10 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 - Keep the CLI on `session_program_lowering`.
 - Add focused executable tests in `test_mvp/`.
 - Treat a need for private FortFront AST layout as a FortFront API issue.
+- Before claiming support for a feature, update
+  `docs/SUPPORT_CONTRACT.md`.
+- If a feature changes calling convention, storage, symbols, or runtime calls,
+  update `docs/RUNTIME_ABI.md` in the same change.
 
 ## Feature Order
 
@@ -40,6 +44,9 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 7. Richer non-integer procedure signatures.
 8. Character representation and a fuller runtime surface.
 9. Arrays, modules, derived types, allocatables, and generics.
+
+The concrete open work is tracked in issues #50 through #61 and summarized in
+`docs/SUPPORT_CONTRACT.md`.
 
 ## Verification
 
