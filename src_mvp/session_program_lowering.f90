@@ -1,6 +1,8 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
                                                                               c_int64_t
+    use ast_nodes_core, only: component_access_node
+    use ast_nodes_data, only: derived_type_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, declaration_node, do_loop_node, &
                          cycle_node, exit_node, function_def_node, &
@@ -331,6 +333,12 @@ contains
                                            'direct LIRIC session does not '// &
                                            'support multi-way branches', &
                                            error_msg)
+        type is (derived_type_node)
+            call unsupported_feature_error('derived type definition', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support derived types or '// &
+                                           'component layout', error_msg)
         class default
             node_type = 'unknown'
             if (allocated(arena%entries(node_index)%node_type)) then
@@ -760,6 +768,11 @@ contains
                                                       error_msg)) return
         type is (call_or_subscript_node)
             call lower_i32_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call unsupported_feature_error('derived type component expression', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support component access', error_msg)
         class default
             error_msg = 'direct LIRIC session MVP only supports integer expressions'
         end select
@@ -930,6 +943,13 @@ contains
             end if
             name = node%name
             call set_empty(error_msg)
+        type is (component_access_node)
+            call unsupported_feature_error('derived type component assignment target', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support assigning to components', &
+                                           error_msg)
+            call set_empty(name)
         class default
             error_msg = 'expected identifier assignment target'
             call set_empty(name)

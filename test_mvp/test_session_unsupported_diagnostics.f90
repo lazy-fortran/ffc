@@ -19,6 +19,10 @@ program test_session_unsupported_diagnostics
     if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_select_case_diagnostic()) all_passed = .false.
+    if (.not. test_derived_type_diagnostic()) all_passed = .false.
+    if (.not. test_component_assignment_target_diagnostic()) &
+        all_passed = .false.
+    if (.not. test_component_expression_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_external_function_call_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
@@ -30,6 +34,11 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
     if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
+    if (.not. test_cli_derived_type_diagnostic()) all_passed = .false.
+    if (.not. test_cli_component_assignment_target_diagnostic()) &
+        all_passed = .false.
+    if (.not. test_cli_component_expression_diagnostic()) &
+        all_passed = .false.
     if (.not. test_cli_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_cli_external_function_call_diagnostic()) all_passed = .false.
 
@@ -159,6 +168,48 @@ contains
                                     source, 'unsupported select case statement', &
                                     '/tmp/ffc_session_select_case_test')
     end function test_select_case_diagnostic
+
+    logical function test_derived_type_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: point'//new_line('a')// &
+                                       '    integer :: x'//new_line('a')// &
+                                       '  end type point'//new_line('a')// &
+                                       'end program main'
+
+        test_derived_type_diagnostic = expect_error_contains( &
+                                       source, &
+                                       'unsupported derived type definition', &
+                                       '/tmp/ffc_session_derived_type_test')
+    end function test_derived_type_diagnostic
+
+    logical function test_component_assignment_target_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported derived type component '// &
+                                       'assignment target'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  p%x = 1'//new_line('a')// &
+                                       'end program main'
+
+        test_component_assignment_target_diagnostic = expect_error_contains( &
+                                                      source, expected, &
+                                             '/tmp/ffc_session_component_target_test')
+    end function test_component_assignment_target_diagnostic
+
+    logical function test_component_expression_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported derived type component '// &
+                                       'expression'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  print *, p%x'//new_line('a')// &
+                                       'end program main'
+
+        test_component_expression_diagnostic = expect_error_contains( &
+                                               source, expected, &
+                                               '/tmp/ffc_session_component_expr_test')
+    end function test_component_expression_diagnostic
 
     logical function test_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
@@ -304,6 +355,48 @@ contains
                                     source, 'unsupported select case statement', &
                                     '/tmp/ffc_cli_select_case_test')
     end function test_cli_select_case_diagnostic
+
+    logical function test_cli_derived_type_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: point'//new_line('a')// &
+                                       '    integer :: x'//new_line('a')// &
+                                       '  end type point'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_derived_type_diagnostic = expect_cli_error_contains( &
+                                           source, &
+                                           'unsupported derived type definition', &
+                                           '/tmp/ffc_cli_derived_type_test')
+    end function test_cli_derived_type_diagnostic
+
+    logical function test_cli_component_assignment_target_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported derived type component '// &
+                                       'assignment target'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  p%x = 1'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_component_assignment_target_diagnostic = &
+            expect_cli_error_contains(source, expected, &
+                                      '/tmp/ffc_cli_component_target_test')
+    end function test_cli_component_assignment_target_diagnostic
+
+    logical function test_cli_component_expression_diagnostic()
+        character(len=*), parameter :: expected = &
+                                       'unsupported derived type component '// &
+                                       'expression'
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  print *, p%x'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_component_expression_diagnostic = expect_cli_error_contains( &
+                                                   source, expected, &
+                                                   '/tmp/ffc_cli_component_expr_test')
+    end function test_cli_component_expression_diagnostic
 
     logical function test_cli_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
