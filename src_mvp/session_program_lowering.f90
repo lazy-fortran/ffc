@@ -5,7 +5,7 @@ module session_program_lowering
                          call_or_subscript_node, declaration_node, do_loop_node, &
                          function_def_node, identifier_node, if_node, &
                          literal_node, parameter_declaration_node, &
-                         print_statement_node, program_node, stop_node, &
+                         print_statement_node, program_node, module_node, stop_node, &
                          subroutine_def_node, get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -197,9 +197,18 @@ contains
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             continue
+        type is (module_node)
+            call unsupported_feature_error('module program unit', &
+                                           program%line, program%column, &
+                                           'direct LIRIC session only lowers '// &
+                                           'top-level programs', error_msg)
+            return
         class default
-            error_msg = 'direct LIRIC session MVP only supports a top-level '// &
-                        'program unit'
+            call unsupported_feature_error('program unit', &
+                                           arena%get_node_line(root_index), &
+                                           arena%get_node_column(root_index), &
+                                           'direct LIRIC session only lowers '// &
+                                           'top-level programs', error_msg)
             return
         end select
 
@@ -321,6 +330,14 @@ contains
 
         integer :: value_kind
 
+        if (node%is_array) then
+            call unsupported_feature_error('array declaration', &
+                                           node%line, node%column, &
+                                           'fixed-size arrays are not supported '// &
+                                           'by direct LIRIC session', error_msg)
+            return
+        end if
+
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
@@ -346,9 +363,25 @@ contains
             error_msg = 'parameter declaration did not expose a name'
             return
         end if
+        if (node%is_array) then
+            call unsupported_feature_error('array parameter declaration', &
+                                           node%line, node%column, &
+                                           'array parameters are not supported '// &
+                                           'by direct LIRIC session', error_msg)
+            return
+        end if
         if (allocated(node%type_name)) then
             if (trim(node%type_name) /= 'integer') then
-                error_msg = 'direct LIRIC session MVP only supports integer parameters'
+                if (is_character_type_name(node%type_name)) then
+                    call unsupported_feature_error( &
+                        'character parameter declaration', &
+                        node%line, node%column, &
+                        'scalar character parameters are not supported '// &
+                        'by direct LIRIC session', error_msg)
+                else
+                    error_msg = 'direct LIRIC session MVP only supports '// &
+                                'integer parameters'
+                end if
                 return
             end if
         end if
@@ -376,6 +409,14 @@ contains
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
+        if (is_character_type_name(node%type_name)) then
+            call unsupported_feature_error('character variable declaration', &
+                                           node%line, node%column, &
+                                           'scalar character variables are not '// &
+                                           'supported by direct LIRIC session', &
+                                           error_msg)
+            return
+        end if
         select case (trim(node%type_name))
         case ('integer')
             value_kind = VALUE_I32
@@ -894,10 +935,37 @@ contains
         end do
     end function lowercase_text
 
+    logical function is_character_type_name(name)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: lowered
+
+        lowered = lowercase_text(name)
+        is_character_type_name = lowered == 'character' .or. &
+                                 index(lowered, 'character(') == 1
+    end function is_character_type_name
+
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value
 
         allocate (character(len=0) :: value)
     end subroutine set_empty
+
+    subroutine unsupported_feature_error(feature, line, column, limitation, &
+                                         error_msg)
+        character(len=*), intent(in) :: feature
+        integer, intent(in) :: line
+        integer, intent(in) :: column
+        character(len=*), intent(in) :: limitation
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+
+        if (line > 0 .and. column > 0) then
+            write (location, '(" at line ",I0,", column ",I0)') line, column
+            error_msg = 'unsupported '//trim(feature)//trim(location)//': '// &
+                        trim(limitation)
+        else
+            error_msg = 'unsupported '//trim(feature)//': '//trim(limitation)
+        end if
+    end subroutine unsupported_feature_error
 
 end module session_program_lowering
