@@ -3,8 +3,9 @@ module session_program_lowering
                                                                               c_int64_t
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, declaration_node, do_loop_node, &
-                         function_def_node, identifier_node, if_node, &
-                         literal_node, parameter_declaration_node, &
+                         cycle_node, exit_node, function_def_node, &
+                         identifier_node, if_node, literal_node, &
+                         parameter_declaration_node, &
                          print_statement_node, program_node, module_node, stop_node, &
                          subroutine_def_node, get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
@@ -297,6 +298,17 @@ contains
                                                                error_msg)) return
                 context%current_block_terminated = .true.
             end if
+        type is (exit_node)
+            call unsupported_feature_error('exit statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support early loop exits', error_msg)
+        type is (cycle_node)
+            call unsupported_feature_error('cycle statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support early loop backedges', &
+                                           error_msg)
         type is (if_node)
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
