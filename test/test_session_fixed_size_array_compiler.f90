@@ -76,7 +76,8 @@ contains
                                        '  values(-1) = 4'//new_line('a')// &
                                        '  values(0) = 5'//new_line('a')// &
                                        '  values(1) = 6'//new_line('a')// &
-                                       '  print *, values(-1) + values(0) + values(1)'// &
+                                       '  print *, values(-1) + values(0) '// &
+                                       '+ values(1)'// &
                                        new_line('a')// &
                                        'end program main'
 
