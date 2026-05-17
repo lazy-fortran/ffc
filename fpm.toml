@@ -9,8 +9,8 @@ stdlib = "*"
 fortfront = { path = "../fortfront" }
 
 [build]
-auto-executables = false
-auto-tests = false
+auto-executables = true
+auto-tests = true
 auto-examples = false
 link = ["liric", "stdc++", "m", "dl", "pthread"]
 
@@ -18,116 +18,3 @@ link = ["liric", "stdc++", "m", "dl", "pthread"]
 implicit-external = false
 implicit-typing = false
 source-form = "free"
-
-[library]
-source-dir = "src_mvp"
-
-[[executable]]
-name = "ffc"
-source-dir = "app"
-main = "ffc.f90"
-
-[[test]]
-name = "test_liric_session_bindings"
-source-dir = "test_mvp"
-main = "test_liric_session_bindings.f90"
-
-[[test]]
-name = "test_session_empty_program_compiler"
-source-dir = "test_mvp"
-main = "test_session_empty_program_compiler.f90"
-
-[[test]]
-name = "test_session_empty_program_object_compiler"
-source-dir = "test_mvp"
-main = "test_session_empty_program_object_compiler.f90"
-
-[[test]]
-name = "test_session_stop_code_compiler"
-source-dir = "test_mvp"
-main = "test_session_stop_code_compiler.f90"
-
-[[test]]
-name = "test_session_integer_variable_compiler"
-source-dir = "test_mvp"
-main = "test_session_integer_variable_compiler.f90"
-
-[[test]]
-name = "test_session_block_if_compiler"
-source-dir = "test_mvp"
-main = "test_session_block_if_compiler.f90"
-
-[[test]]
-name = "test_session_if_merge_compiler"
-source-dir = "test_mvp"
-main = "test_session_if_merge_compiler.f90"
-
-[[test]]
-name = "test_session_scalar_print_compiler"
-source-dir = "test_mvp"
-main = "test_session_scalar_print_compiler.f90"
-
-[[test]]
-name = "test_session_real_literal_print_compiler"
-source-dir = "test_mvp"
-main = "test_session_real_literal_print_compiler.f90"
-
-[[test]]
-name = "test_session_character_literal_print_compiler"
-source-dir = "test_mvp"
-main = "test_session_character_literal_print_compiler.f90"
-
-[[test]]
-name = "test_session_character_variable_compiler"
-source-dir = "test_mvp"
-main = "test_session_character_variable_compiler.f90"
-
-[[test]]
-name = "test_session_logical_literal_print_compiler"
-source-dir = "test_mvp"
-main = "test_session_logical_literal_print_compiler.f90"
-
-[[test]]
-name = "test_session_logical_variable_compiler"
-source-dir = "test_mvp"
-main = "test_session_logical_variable_compiler.f90"
-
-[[test]]
-name = "test_session_real_variable_compiler"
-source-dir = "test_mvp"
-main = "test_session_real_variable_compiler.f90"
-
-[[test]]
-name = "test_session_integer_function_compiler"
-source-dir = "test_mvp"
-main = "test_session_integer_function_compiler.f90"
-
-[[test]]
-name = "test_session_integer_subroutine_compiler"
-source-dir = "test_mvp"
-main = "test_session_integer_subroutine_compiler.f90"
-
-[[test]]
-name = "test_session_non_integer_procedure_compiler"
-source-dir = "test_mvp"
-main = "test_session_non_integer_procedure_compiler.f90"
-
-[[test]]
-name = "test_session_integer_intrinsic_compiler"
-source-dir = "test_mvp"
-main = "test_session_integer_intrinsic_compiler.f90"
-
-[[test]]
-name = "test_session_unsupported_diagnostics"
-source-dir = "test_mvp"
-main = "test_session_unsupported_diagnostics.f90"
-
-[[test]]
-name = "test_session_unit_boundary_diagnostics"
-source-dir = "test_mvp"
-main = "test_session_unit_boundary_diagnostics.f90"
-
-[[test]]
-name = "test_counted_do_compiler"
-source-dir = "test_mvp"
-main = "test_counted_do_compiler.f90"
