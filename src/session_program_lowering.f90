@@ -425,6 +425,8 @@ contains
         column = arena%get_node_column(node_index)
 
         select case (trim(node_type))
+        case ('implicit_statement')
+            call set_empty(error_msg)
         case ('use_statement')
             call unsupported_feature_error('use statement', line, column, &
                                            'direct LIRIC session does not '// &

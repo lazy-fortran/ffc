@@ -1,0 +1,28 @@
+# Fortfront standard-mode examples where the runtime stdout of the
+# ffc-built binary must match gfortran's stdout byte-for-byte. Used as the
+# real runtime-conformance gate.
+#
+# Today every entry in this list happens to produce *empty* stdout (so the
+# match is trivial); once Fortran-aware list-directed I/O lands (#55) the
+# many "prints something" examples in supported_f90.txt should migrate
+# here. Lines starting with '#' and blank lines are ignored.
+#
+# Each line is a basename resolved against ../fortfront/examples/f90/.
+docs_character_length_inference_out.f90
+docs_fixed_length_reassignment_out.f90
+docs_variable_length_strings_out.f90
+implicit_none_single.f90
+issue_104_assignment_identifiers.f90
+issue_1093_function_result_inference.f90
+issue_1664_result_in.f90
+issue_1664_result_inout.f90
+issue_1664_result_out.f90
+issue_2273_identifier_stop.f90
+issue_2274_identifier_cycle.f90
+issue_2275_identifier_exit.f90
+issue_6_expression_assignment.f90
+issue_6_multiple_assignments.f90
+issue_6_simple_assignment.f90
+lazy_standard_declarations.f90
+lazy_standard_implicit_none.f90
+parameter_attributes_simple.f90
