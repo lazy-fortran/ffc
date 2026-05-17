@@ -251,13 +251,13 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
-                                       '    integer :: x'//new_line('a')// &
+                                       '    real :: x'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
                                        'end program main'
 
         test_derived_type_diagnostic = expect_error_contains( &
                                        source, &
-                                       'unsupported derived type definition', &
+                                       'unsupported derived type component', &
                                        '/tmp/ffc_session_derived_type_test')
     end function test_derived_type_diagnostic
 
@@ -598,13 +598,13 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
-                                       '    integer :: x'//new_line('a')// &
+                                       '    real :: x'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
                                        'end program main'
 
         test_cli_derived_type_diagnostic = expect_cli_error_contains( &
                                            source, &
-                                           'unsupported derived type definition', &
+                                           'unsupported derived type component', &
                                            '/tmp/ffc_cli_derived_type_test')
     end function test_cli_derived_type_diagnostic
 

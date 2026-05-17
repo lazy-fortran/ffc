@@ -74,10 +74,7 @@
               call lower_i32_call(arena, node, context, value, error_msg)
           end if
       type is (component_access_node)
-          call unsupported_feature_error('derived type component expression', &
-                                         node%line, node%column, &
-                                         'direct LIRIC session does not '// &
-                                         'support component access', error_msg)
+          call lower_derived_component_load(arena, node, context, value, error_msg)
       type is (array_slice_node)
           call unsupported_array_subscript(arena, node_index, &
                                            'ranges and slices', error_msg)

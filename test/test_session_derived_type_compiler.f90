@@ -35,7 +35,7 @@ contains
                                        '  type(cell_t) :: node'//new_line('a')// &
                                        '  node%lo = 4'//new_line('a')// &
                                        '  node%mid = 6'//new_line('a')// &
-                                       '  node%hi = node%lo + node%mid'//new_line('a')// &
+                                     '  node%hi = node%lo + node%mid'//new_line('a')// &
                                        '  print *, node%lo + node%mid + node%hi'// &
                                        new_line('a')// &
                                        'end program main'

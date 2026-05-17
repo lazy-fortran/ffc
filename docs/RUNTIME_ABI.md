@@ -38,6 +38,19 @@ is closed with ABI documentation and executable tests.
   through LIRIC scalar operations, comparisons, branch control, casts, and PHI
   values.
 
+## Derived Types
+
+- The MVP derived-type layout supports only scalar integer components.
+- Each scalar derived-type variable is stored as one LIRIC array alloca with
+  `component_count` `i32` elements.
+- Component order is source declaration order. Offset zero is the first
+  declared component, offset one is the second component, and so on.
+- Component assignment and reads use the same explicit storage operations as
+  fixed-size arrays: alloca, aggregate GEP, `i32` store, and `i32` load.
+- Constructors, inheritance, type parameters, type-bound procedures, nested
+  derived types, derived type arrays, whole-derived assignment, and non-integer
+  components have no ABI representation in this slice.
+
 ## Procedures
 
 - The supported procedure slice is contained integer, real, and logical
@@ -77,7 +90,6 @@ is closed with ABI documentation and executable tests.
 
 ## Unsupported ABI Work
 
-- #52: fixed-size one-dimensional array lowering.
 - #53: array descriptors, allocatables, and pointer representation.
 - #54: module and external symbol mangling.
 - #55: runtime I/O beyond the current scalar `printf` shim.

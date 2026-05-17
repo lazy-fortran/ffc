@@ -46,7 +46,7 @@ LIBRARY_PATH=/path/to/liric/build fpm build
 7. Simple contained integer, real, and logical functions/subroutines.
 8. Character procedure signatures.
 9. Character representation and a fuller runtime surface.
-10. Arrays, modules, derived types, allocatables, and generics.
+10. Arrays, simple derived types, modules, allocatables, and generics.
 
 The concrete open work is summarized in `docs/SUPPORT_CONTRACT.md`.
 
