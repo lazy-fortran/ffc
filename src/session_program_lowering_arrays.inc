@@ -240,6 +240,10 @@
             return
         end if
 
+        call validate_i32_array_subscript(arena, node%arg_indices(1), context, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+
         call lower_i32_expression(arena, node%arg_indices(1), context, &
                                   index_value, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -265,3 +269,77 @@
 
         call set_empty(error_msg)
     end subroutine lower_i32_array_element_address
+
+    recursive subroutine validate_i32_array_subscript(arena, node_index, context, &
+                                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: literal_value
+        integer :: opcode
+        integer :: symbol_index
+        character(len=:), allocatable :: parse_error
+
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'array subscript index does not reference an AST node'
+            return
+        end if
+
+        select type (subscript => arena%entries(node_index)%node)
+        type is (range_expression_node)
+            call unsupported_array_subscript(arena, node_index, &
+                                             'ranges and slices', error_msg)
+        type is (literal_node)
+            call parse_i32_literal(subscript%value, literal_value, parse_error)
+            if (len_trim(parse_error) > 0) then
+                call unsupported_array_subscript(arena, node_index, &
+                                                 'non-integer literals', error_msg)
+                return
+            end if
+            call set_empty(error_msg)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, subscript%name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_array .or. &
+                    context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                    call unsupported_array_subscript(arena, node_index, &
+                                                     'non-integer identifiers', &
+                                                     error_msg)
+                    return
+                end if
+            end if
+            call set_empty(error_msg)
+        type is (binary_op_node)
+            call validate_i32_array_subscript(arena, subscript%left_index, &
+                                              context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call validate_i32_array_subscript(arena, subscript%right_index, &
+                                              context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_opcode(subscript%operator, opcode, parse_error)
+            if (len_trim(parse_error) > 0) then
+                call unsupported_array_subscript(arena, node_index, &
+                                                 'non-integer operators', &
+                                                 error_msg)
+                return
+            end if
+            call set_empty(error_msg)
+        class default
+            call set_empty(error_msg)
+        end select
+    end subroutine validate_i32_array_subscript
+
+    subroutine unsupported_array_subscript(arena, node_index, detail, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: detail
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call unsupported_feature_error('array subscript', &
+                                       arena%get_node_line(node_index), &
+                                       arena%get_node_column(node_index), &
+                                       'direct LIRIC session supports scalar '// &
+                                       'integer array subscripts, not '// &
+                                       trim(detail), error_msg)
+    end subroutine unsupported_array_subscript

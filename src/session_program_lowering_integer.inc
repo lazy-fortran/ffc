@@ -78,6 +78,9 @@
                                          node%line, node%column, &
                                          'direct LIRIC session does not '// &
                                          'support component access', error_msg)
+      type is (array_slice_node)
+          call unsupported_array_subscript(arena, node_index, &
+                                           'ranges and slices', error_msg)
       class default
           error_msg = 'direct LIRIC session MVP only supports integer expressions'
       end select

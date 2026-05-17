@@ -2,7 +2,7 @@ module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
                                                                               c_int64_t
     use ast_base, only: LITERAL_INTEGER
-    use ast_nodes_bounds, only: range_expression_node
+    use ast_nodes_bounds, only: array_slice_node, range_expression_node
     use ast_nodes_core, only: component_access_node
     use ast_nodes_data, only: derived_type_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &

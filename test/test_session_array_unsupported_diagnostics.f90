@@ -17,6 +17,8 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_whole_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_array_rhs_assignment_diagnostic()) all_passed = .false.
+    if (.not. test_array_slice_subscript_diagnostic()) all_passed = .false.
+    if (.not. test_array_real_subscript_diagnostic()) all_passed = .false.
     if (.not. test_whole_array_assignment_target_diagnostic()) &
         all_passed = .false.
     if (.not. test_whole_array_argument_diagnostic()) all_passed = .false.
@@ -28,6 +30,8 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_cli_whole_array_expression_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_array_rhs_assignment_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_slice_subscript_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_real_subscript_diagnostic()) all_passed = .false.
     if (.not. test_cli_whole_array_assignment_target_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_whole_array_argument_diagnostic()) all_passed = .false.
@@ -110,6 +114,30 @@ contains
                                            '/tmp/ffc_session_array_rhs_assignment_test')
     end function test_array_rhs_assignment_diagnostic
 
+    logical function test_array_slice_subscript_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       '  print *, values(1:2)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_slice_subscript_diagnostic = expect_error_contains( &
+                                                source, 'unsupported array subscript', &
+                                                '/tmp/ffc_session_array_slice_test')
+    end function test_array_slice_subscript_diagnostic
+
+    logical function test_array_real_subscript_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       '  print *, values(1.0)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_real_subscript_diagnostic = expect_error_contains( &
+                                               source, 'unsupported array subscript', &
+                                               '/tmp/ffc_session_array_real_index_test')
+    end function test_array_real_subscript_diagnostic
+
     logical function test_whole_array_assignment_target_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -136,8 +164,8 @@ contains
                                        'end program main'
 
         test_whole_array_argument_diagnostic = expect_error_contains( &
-                                             source, 'unsupported array argument', &
-                                             '/tmp/ffc_session_array_arg_test')
+                                               source, 'unsupported array argument', &
+                                               '/tmp/ffc_session_array_arg_test')
     end function test_whole_array_argument_diagnostic
 
     logical function test_cli_array_declaration_diagnostic()
@@ -213,6 +241,30 @@ contains
                                                '/tmp/ffc_cli_array_rhs_assignment_test')
     end function test_cli_array_rhs_assignment_diagnostic
 
+    logical function test_cli_array_slice_subscript_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       '  print *, values(1:2)'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_array_slice_subscript_diagnostic = expect_cli_error_contains( &
+                                                source, 'unsupported array subscript', &
+                                                    '/tmp/ffc_cli_array_slice_test')
+    end function test_cli_array_slice_subscript_diagnostic
+
+    logical function test_cli_array_real_subscript_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(3)'//new_line('a')// &
+                                       '  print *, values(1.0)'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_array_real_subscript_diagnostic = expect_cli_error_contains( &
+                                                source, 'unsupported array subscript', &
+                                                   '/tmp/ffc_cli_array_real_index_test')
+    end function test_cli_array_real_subscript_diagnostic
+
     logical function test_cli_whole_array_assignment_target_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -240,8 +292,8 @@ contains
                                        'end program main'
 
         test_cli_whole_array_argument_diagnostic = expect_cli_error_contains( &
-                                             source, 'unsupported array argument', &
-                                             '/tmp/ffc_cli_array_arg_test')
+                                                 source, 'unsupported array argument', &
+                                                   '/tmp/ffc_cli_array_arg_test')
     end function test_cli_whole_array_argument_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
