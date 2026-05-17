@@ -160,7 +160,8 @@
 
         count = 0
         do i = 1, context%symbol_count
-            if (is_i32_like_kind(context%symbols(i)%value_kind)) then
+            if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
+                .not. context%symbols(i)%is_array) then
                 count = count + 1
                 indices(count) = i
             end if

@@ -194,6 +194,7 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
+        context%arena = arena
         call copy_internal_function_names(parent_context, context)
         context%in_internal_function = .true.
 
@@ -256,6 +257,7 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
+        context%arena = arena
         call copy_internal_function_names(parent_context, context)
         context%in_internal_function = .true.
 

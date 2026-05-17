@@ -1,6 +1,8 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
                                                                               c_int64_t
+    use ast_base, only: LITERAL_INTEGER
+    use ast_nodes_bounds, only: range_expression_node
     use ast_nodes_core, only: component_access_node
     use ast_nodes_data, only: derived_type_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
@@ -88,10 +90,17 @@ module session_program_lowering
         logical :: has_address = .false.
         integer :: character_length = 0
         logical :: has_character_value = .false.
+        logical :: is_array = .false.
+        integer :: array_size = 0
+        integer :: array_lower_bound = 1
+        type(lr_operand_desc_t) :: element_address
+        logical :: has_i32_constant = .false.
+        integer(c_int64_t) :: i32_constant = 0_c_int64_t
     end type symbol_t
 
     type :: lowering_context_t
         type(liric_session_t) :: session
+        type(ast_arena_t) :: arena
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
@@ -152,6 +161,8 @@ contains
 
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        context%arena = arena
 
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
@@ -446,18 +457,47 @@ contains
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, value_kind
-
-        if (node%is_array) then
-            call unsupported_feature_error('array declaration', &
-                                           node%line, node%column, &
-                                           'fixed-size arrays are not supported '// &
-                                           'by direct LIRIC session', error_msg)
-            return
-        end if
+        integer :: array_lower_bound
+        integer :: array_size
+        integer :: i
+        integer :: value_kind
 
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (node%is_parameter) then
+            call lower_constant_declaration(node, context, value_kind, error_msg)
+            return
+        end if
+
+        if (node%is_array) then
+            if (value_kind /= VALUE_I32) then
+                call unsupported_feature_error('array declaration', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session MVP only '// &
+                                               'supports integer arrays', error_msg)
+                return
+            end if
+            call get_array_bounds(node, context, array_lower_bound, array_size, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    call define_declared_array_symbol( &
+                        context, node, node%var_names(i), array_lower_bound, &
+                        array_size, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(node%var_name)) then
+                call define_declared_array_symbol(context, node, node%var_name, &
+                                                  array_lower_bound, array_size, &
+                                                  error_msg)
+            else
+                error_msg = 'array declaration did not expose a variable name'
+            end if
+            return
+        end if
+
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_declared_symbol(context, node, node%var_names(i), &
@@ -471,6 +511,8 @@ contains
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
+
+    include 'session_program_lowering_declarations.inc'
 
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -549,43 +591,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
 
-    subroutine type_name_value_kind(type_name, line, column, value_kind, error_msg)
-        character(len=*), intent(in) :: type_name
-        integer, intent(in) :: line, column
-        integer, intent(out) :: value_kind
-        character(len=:), allocatable, intent(out) :: error_msg
-        value_kind = VALUE_I32
-        call set_empty(error_msg)
-        if (is_character_type_name(type_name)) then
-            value_kind = VALUE_CHARACTER
-            return
-        end if
-        select case (trim(type_name))
-        case ('integer')
-            value_kind = VALUE_I32
-        case ('real')
-            value_kind = VALUE_F64
-        case ('logical')
-            value_kind = VALUE_LOGICAL
-        case default
-            call unsupported_feature_error('scalar type', line, column, &
-                                           'direct LIRIC session only supports '// &
-                                           'integer, real, logical, and character '// &
-                                           'scalars', error_msg)
-        end select
-    end subroutine type_name_value_kind
-
-    subroutine declaration_value_kind(node, value_kind, error_msg)
-        type(declaration_node), intent(in) :: node
-        integer, intent(out) :: value_kind
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        value_kind = VALUE_I32
-        call set_empty(error_msg)
-        if (.not. allocated(node%type_name)) return
-        call type_name_value_kind(node%type_name, node%line, node%column, &
-                                  value_kind, error_msg)
-    end subroutine declaration_value_kind
+    include 'session_program_lowering_arrays.inc'
 
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -723,12 +729,36 @@ contains
         character(len=:), allocatable :: name
         integer :: symbol_index
 
+        select type (target => arena%entries(node%target_index)%node)
+        type is (call_or_subscript_node)
+            if (target%is_array_access) then
+                call lower_array_element_assignment(arena, node, target, context, &
+                                                    value, error_msg)
+                return
+            end if
+        end select
+
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
 
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) then
             error_msg = 'assignment target was not declared: '//trim(name)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_array) then
+            select type (target => arena%entries(node%target_index)%node)
+            type is (identifier_node)
+                call unsupported_feature_error('array assignment target', &
+                                               target%line, target%column, &
+                                               'whole-array assignment is not '// &
+                                               'supported', error_msg)
+            class default
+                call unsupported_feature_error('array assignment target', &
+                                               node%line, node%column, &
+                                               'whole-array assignment is not '// &
+                                               'supported', error_msg)
+            end select
             return
         end if
 
@@ -871,15 +901,6 @@ contains
             name = node%name
             call set_empty(error_msg)
         type is (call_or_subscript_node)
-            if (node%is_array_access) then
-                call unsupported_feature_error('array assignment target', &
-                                               node%line, node%column, &
-                                               'direct LIRIC session does not '// &
-                                               'support assigning to array '// &
-                                               'elements', error_msg)
-                call set_empty(name)
-                return
-            end if
             if (allocated(node%arg_indices)) then
                 error_msg = 'expected scalar assignment target'
                 call set_empty(name)

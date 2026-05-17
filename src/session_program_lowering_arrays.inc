@@ -1,0 +1,267 @@
+    subroutine get_array_bounds(node, context, array_lower_bound, array_size, &
+                                error_msg)
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: array_lower_bound
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_index
+        integer(c_int64_t) :: extent
+        integer(c_int64_t) :: lower_value
+        integer(c_int64_t) :: upper_value
+
+        array_lower_bound = 1
+        array_size = 0
+        call set_empty(error_msg)
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) then
+            call unsupported_feature_error('array declaration', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session only supports '// &
+                                           'one-dimensional arrays', error_msg)
+            return
+        end if
+
+        dim_index = node%dimension_indices(1)
+        if (.not. context%arena%has_node_at(dim_index)) then
+            error_msg = 'array dimension index does not reference an AST node'
+            return
+        end if
+
+        select type (dim_node => context%arena%entries(dim_index)%node)
+        type is (range_expression_node)
+            if (dim_node%stride_index > 0) then
+                call unsupported_feature_error('array declaration', node%line, &
+                                               node%column, &
+                                               'array declaration bounds do not '// &
+                                               'support strides', error_msg)
+                return
+            end if
+            if (dim_node%start_index <= 0 .or. dim_node%end_index <= 0) then
+                call unsupported_feature_error('array declaration', node%line, &
+                                               node%column, &
+                                               'array declaration requires '// &
+                                               'explicit lower and upper bounds', &
+                                               error_msg)
+                return
+            end if
+            call eval_i32_constant(context%arena, dim_node%start_index, context, &
+                                   lower_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(context%arena, dim_node%end_index, context, &
+                                   upper_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            extent = upper_value - lower_value + 1_c_int64_t
+        class default
+            call eval_i32_constant(context%arena, dim_index, context, &
+                                   upper_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lower_value = 1_c_int64_t
+            extent = upper_value
+        end select
+
+        if (extent <= 0_c_int64_t) then
+            error_msg = 'array bounds produce a non-positive extent'
+            return
+        end if
+        array_lower_bound = int(lower_value)
+        array_size = int(extent)
+        call set_empty(error_msg)
+    end subroutine get_array_bounds
+
+    recursive subroutine eval_i32_constant(arena, node_index, context, &
+                                           constant_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lhs
+        integer(c_int64_t) :: rhs
+        integer :: symbol_index
+
+        constant_value = 0_c_int64_t
+        if (.not. arena%has_node_at(node_index)) then
+            error_msg = 'constant expression index does not reference an AST node'
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            call parse_i32_literal(node%value, constant_value, error_msg)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+            if (symbol_index <= 0) then
+                error_msg = 'compile-time integer parameter was not declared: '// &
+                            trim(node%name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%has_i32_constant) then
+                error_msg = 'integer identifier is not a compile-time parameter: '// &
+                            trim(node%name)
+                return
+            end if
+            constant_value = context%symbols(symbol_index)%i32_constant
+            call set_empty(error_msg)
+        type is (binary_op_node)
+            call eval_i32_constant(arena, node%left_index, context, lhs, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(arena, node%right_index, context, rhs, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            select case (trim(node%operator))
+            case ('+')
+                constant_value = lhs + rhs
+            case ('-')
+                constant_value = lhs - rhs
+            case ('*')
+                constant_value = lhs*rhs
+            case ('/')
+                if (rhs == 0_c_int64_t) then
+                    error_msg = 'integer constant division by zero'
+                    return
+                end if
+                constant_value = lhs/rhs
+            case default
+                error_msg = 'unsupported integer constant operator: '// &
+                            trim(node%operator)
+                return
+            end select
+            call set_empty(error_msg)
+        class default
+            error_msg = 'array bound is not a compile-time integer expression'
+        end select
+    end subroutine eval_i32_constant
+
+    subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
+                                            array_size, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: array_lower_bound
+        integer, intent(in) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate array declaration: '//trim(name)
+            return
+        end if
+        if (context%symbol_count >= MAX_SYMBOLS) then
+            error_msg = 'too many symbols for direct LIRIC session MVP'
+            return
+        end if
+
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%is_array = .true.
+        context%symbols(index)%array_size = array_size
+        context%symbols(index)%array_lower_bound = array_lower_bound
+
+        if (.not. context%session%emit_i32_array_alloca( &
+            array_size, context%symbols(index)%element_address, error_msg)) then
+            error_msg = 'decl_array['//trim(name)//']: '//error_msg
+            return
+        end if
+
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_declared_array_symbol
+
+    subroutine lower_array_element_assignment(arena, node, target, context, value, &
+                                              error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_address
+
+        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_i32_array_element_address(arena, target, context, &
+                                             element_address, error_msg, &
+                                             'array assignment target')
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. context%session%emit_i32_store(value, element_address, &
+                                                 error_msg)) then
+            error_msg = 'arr_assign_store: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_array_element_assignment
+
+    subroutine lower_i32_array_element_address(arena, node, context, &
+                                               element_address, error_msg, &
+                                               feature)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: feature
+        character(len=:), allocatable :: diagnostic_feature
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: index_value
+        type(lr_operand_desc_t) :: offset
+        type(lr_operand_desc_t) :: lower_bound_value
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'array access requires an array name'
+            return
+        end if
+
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'array identifier was not declared: '//trim(node%name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = trim(node%name)//' is not an array'
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'direct LIRIC session MVP only supports integer arrays'
+            return
+        end if
+
+        diagnostic_feature = 'array expression'
+        if (present(feature)) diagnostic_feature = feature
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            call unsupported_feature_error(diagnostic_feature, node%line, &
+                                           node%column, &
+                                           'array access requires exactly one '// &
+                                           'subscript', error_msg)
+            return
+        end if
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, &
+                                  index_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Declared lower bound maps to element zero in LIRIC storage.
+        lower_bound_value = context%session%i32_immediate( &
+                            int(context%symbols(symbol_index)%array_lower_bound, &
+                                c_int64_t))
+        if (.not. context%session%emit_i32_binary(LR_OP_SUB, index_value, &
+                                                  lower_bound_value, &
+                                                  offset, error_msg)) then
+            error_msg = 'arr_element_sub: '//error_msg
+            return
+        end if
+
+        if (.not. context%session%emit_i32_array_element_addr( &
+            context%symbols(symbol_index)%array_size, &
+            context%symbols(symbol_index)%element_address, &
+            offset, element_address, error_msg)) then
+            error_msg = 'arr_element_gep: '//error_msg
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine lower_i32_array_element_address

@@ -23,6 +23,7 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_ALLOCA = 26_c_int
     integer(c_int), parameter, public :: LR_OP_LOAD = 27_c_int
     integer(c_int), parameter, public :: LR_OP_STORE = 28_c_int
+    integer(c_int), parameter, public :: LR_OP_GEP = 29_c_int
     integer(c_int), parameter, public :: LR_OP_CALL = 30_c_int
 
     integer(c_int), parameter, public :: LR_OP_KIND_VREG = 0_c_int
@@ -76,6 +77,8 @@ module liric_session_bindings
         procedure :: emit_i32_binary_into
         procedure :: emit_i32_copy_to
         procedure :: emit_i32_alloca
+        procedure :: emit_i32_array_alloca
+        procedure :: emit_i32_array_element_addr
         procedure :: emit_i32_load
         procedure :: emit_i32_store
         procedure :: emit_i32_call
@@ -115,6 +118,20 @@ module liric_session_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_i32_s
+
+        function lr_type_i64_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_i64_s
+
+        function lr_type_array_s(handle, elem, count) result(typ) bind(c)
+            import :: c_int64_t, c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr), value :: elem
+            integer(c_int64_t), value :: count
+            type(c_ptr) :: typ
+        end function lr_type_array_s
 
         function lr_type_void_s(handle) result(typ) bind(c)
             import :: c_ptr
@@ -630,8 +647,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         emit_i32_copy_to = this%emit_i32_binary_into( &
-            LR_OP_ADD, value, this%i32_immediate(0_c_int64_t), &
-            dest_vreg, result, error_msg)
+                           LR_OP_ADD, value, this%i32_immediate(0_c_int64_t), &
+                           dest_vreg, result, error_msg)
     end function emit_i32_copy_to
 
     logical function emit_i32_alloca(this, address, error_msg)
@@ -651,6 +668,8 @@ contains
         call set_empty(error_msg)
         emit_i32_alloca = .true.
     end function emit_i32_alloca
+
+    include 'liric_session_arrays.inc'
 
     logical function emit_i32_load(this, address, value, error_msg)
         class(liric_session_t), intent(inout) :: this
@@ -726,114 +745,6 @@ contains
         call set_empty(error_msg)
         emit_void_call = .true.
     end function emit_void_call
-
-    function emit_ret_i32(handle, value, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(1)
-        type(lr_inst_desc_t) :: inst
-
-        operands(1) = value
-
-        inst%op = LR_OP_RET
-        inst%typ = value%typ
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = 1_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_ret_i32
-
-    function emit_ret_void_inst(handle, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_inst_desc_t) :: inst
-
-        inst%op = LR_OP_RET_VOID
-        inst%typ = lr_type_void_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_null_ptr
-        inst%num_operands = 0_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_ret_void_inst
-
-    function emit_binary(handle, opcode, lhs, rhs, error, dest_vreg) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        integer(c_int), intent(in) :: opcode
-        type(lr_operand_desc_t), intent(in) :: lhs
-        type(lr_operand_desc_t), intent(in) :: rhs
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t), intent(in), optional :: dest_vreg
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
-        type(lr_inst_desc_t) :: inst
-
-        operands = [lhs, rhs]
-
-        inst%op = opcode
-        inst%typ = lhs%typ
-        inst%dest = 0_c_int32_t
-        if (present(dest_vreg)) inst%dest = dest_vreg
-        inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_binary
-
-    function emit_alloca_i32(handle, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_inst_desc_t) :: inst
-
-        inst%op = LR_OP_ALLOCA
-        inst%typ = lr_type_i32_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_null_ptr
-        inst%num_operands = 0_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_alloca_i32
 
     function emit_load_i32(handle, address, error) result(vreg)
         type(c_ptr), intent(in) :: handle

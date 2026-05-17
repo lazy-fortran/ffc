@@ -83,6 +83,7 @@ Current supported language subset:
 - simple function/subroutine calls
 - scalar `abs`, `min`, and `max` intrinsics for integer and real values, plus
   integer-to-real `real()` conversion
+- fixed-size one-dimensional integer arrays with compile-time integer bounds
 - minimal `print` runtime call
 
 Verification:
@@ -135,6 +136,9 @@ Tasks:
 - Done: lower integer and real scalar `abs`, `min`, and `max` intrinsics, plus
   integer-to-real `real()` conversion, inline through direct-session scalar ops
   and PHI values
+- Done: lower fixed-size one-dimensional integer arrays with compile-time
+  integer bounds, element assignment, element reads, `print`, `stop`, and
+  counted-loop subscripts
 - Tracked by #56: generalize non-terminating blocks/control flow with merge
   values.
 - Done: emit objects directly from the session
@@ -160,7 +164,10 @@ Decisions to document and test:
 - #54: name mangling for modules, external procedures, and separate
   compilation.
 - #51: character representation.
-- #52 and #53: array descriptors, allocatables, and pointers.
+- Done for current subset: fixed-size one-dimensional integer arrays use stack
+  storage and element GEPs. Explicit lower bounds are subtracted during element
+  addressing. Runtime bounds checks are not emitted.
+- #53: array descriptors, allocatables, and pointers.
 - Done for current subset: integer and real scalar `abs`, `min`, and `max`
   intrinsics, plus integer-to-real `real()` conversion.
 - #55: I/O runtime surface.
@@ -175,9 +182,9 @@ Verification:
 - Full Fortran module support: #54.
 - Derived types: #60.
 - Allocatable arrays and descriptors: #53.
-- Generic specialization: out of scope for `ffc` until FortFront and
-  package-level monomorphization contracts exist.
-- Cross-module inference: out of scope for `ffc` until FortFront and
-  package-level orchestration contracts exist.
-- Optimization beyond basic lowering correctness: out of scope until the
-  supported contract has reference conformance coverage.
+- Generic specialization waits for FortFront and package-level
+  monomorphization contracts.
+- Cross-module inference waits for FortFront and package-level orchestration
+  contracts.
+- Optimization beyond basic lowering correctness waits for reference
+  conformance coverage of the supported contract.
