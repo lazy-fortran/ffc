@@ -11,6 +11,8 @@ program test_session_array_unsupported_diagnostics
 
     all_passed = .true.
     if (.not. test_array_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_array_zero_extent_diagnostic()) all_passed = .false.
+    if (.not. test_array_reversed_extent_diagnostic()) all_passed = .false.
     if (.not. test_noninteger_array_declaration_diagnostic()) &
         all_passed = .false.
     if (.not. test_array_assignment_target_diagnostic()) all_passed = .false.
@@ -23,6 +25,8 @@ program test_session_array_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_whole_array_argument_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_zero_extent_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_reversed_extent_diagnostic()) all_passed = .false.
     if (.not. test_cli_noninteger_array_declaration_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
@@ -51,6 +55,28 @@ contains
                                             source, 'unsupported array declaration', &
                                             '/tmp/ffc_session_array_diagnostic_test')
     end function test_array_declaration_diagnostic
+
+    logical function test_array_zero_extent_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(0)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_zero_extent_diagnostic = expect_error_contains( &
+                                            source, 'non-positive extent', &
+                                            '/tmp/ffc_session_array_zero_test')
+    end function test_array_zero_extent_diagnostic
+
+    logical function test_array_reversed_extent_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(2:1)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_reversed_extent_diagnostic = expect_error_contains( &
+                                                source, 'non-positive extent', &
+                                                '/tmp/ffc_session_array_reversed_test')
+    end function test_array_reversed_extent_diagnostic
 
     logical function test_noninteger_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
@@ -178,6 +204,28 @@ contains
                                               source, 'unsupported array declaration', &
                                                 '/tmp/ffc_cli_array_diagnostic_test')
     end function test_cli_array_declaration_diagnostic
+
+    logical function test_cli_array_zero_extent_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(0)'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_array_zero_extent_diagnostic = expect_cli_error_contains( &
+                                                source, 'non-positive extent', &
+                                                '/tmp/ffc_cli_array_zero_test')
+    end function test_cli_array_zero_extent_diagnostic
+
+    logical function test_cli_array_reversed_extent_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(2:1)'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_array_reversed_extent_diagnostic = expect_cli_error_contains( &
+                                                    source, 'non-positive extent', &
+                                                    '/tmp/ffc_cli_array_reversed_test')
+    end function test_cli_array_reversed_extent_diagnostic
 
     logical function test_cli_noninteger_array_declaration_diagnostic()
         character(len=*), parameter :: source = &
