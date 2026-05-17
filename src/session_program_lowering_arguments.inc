@@ -155,6 +155,8 @@
                     value_kind = VALUE_LOGICAL
                 end if
             end if
+        type is (component_access_node)
+            value_kind = VALUE_I32
         end select
     end function expression_value_kind
 

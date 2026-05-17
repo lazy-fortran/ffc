@@ -41,6 +41,11 @@ is not part of the default fpm build.
   reads, `print`, `stop`, and counted-loop subscripts are supported. Runtime
   bounds checks are not emitted; out-of-bounds subscripts have backend-level
   behavior until #53 defines array descriptors and checks.
+- The direct LIRIC session lowerer can compile simple derived type definitions
+  with scalar integer components, scalar variables of those types, component
+  assignment, component reads, `print`, and `stop`. Constructors, inheritance,
+  type parameters, type-bound procedures, nested derived types, derived type
+  arrays, whole-derived assignment, and non-integer components are unsupported.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
@@ -107,11 +112,12 @@ The current MVP support claim is:
 - integer and real scalar `abs`, `min`, and `max` intrinsics
 - integer-to-real `real()` conversion
 - fixed-size one-dimensional integer arrays with compile-time integer bounds
+- simple derived types with scalar integer components and component access
 - object/executable emission through LIRIC
 
 Allocatable arrays, multidimensional arrays, non-integer arrays, modules,
-derived types, full I/O, generics, cross-module inference, and character
-procedure arguments are unsupported today. See the issue map in
+full I/O, generics, cross-module inference, and character procedure arguments
+are unsupported today. See the issue map in
 [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Build

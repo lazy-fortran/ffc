@@ -57,10 +57,13 @@ module session_program_lowering
 
     integer, parameter :: MAX_SYMBOLS = 64
     integer, parameter :: MAX_PROCEDURES = 32
+    integer, parameter :: MAX_DERIVED_TYPES = 32
+    integer, parameter :: MAX_DERIVED_COMPONENTS = 32
     integer, parameter :: VALUE_I32 = 1
     integer, parameter :: VALUE_F64 = 2
     integer, parameter :: VALUE_LOGICAL = 3
     integer, parameter :: VALUE_CHARACTER = 4
+    integer, parameter :: VALUE_DERIVED = 5
     integer, parameter :: I32_INTRINSIC_NONE = 0
     integer, parameter :: I32_INTRINSIC_ABS = 1
     integer, parameter :: I32_INTRINSIC_MIN = 2
@@ -91,6 +94,8 @@ module session_program_lowering
         integer :: character_length = 0
         logical :: has_character_value = .false.
         logical :: is_array = .false.
+        logical :: is_derived = .false.
+        integer :: derived_type_index = 0
         integer :: array_size = 0
         integer :: array_lower_bound = 1
         type(lr_operand_desc_t) :: element_address
@@ -98,11 +103,19 @@ module session_program_lowering
         integer(c_int64_t) :: i32_constant = 0_c_int64_t
     end type symbol_t
 
+    type :: derived_type_info_t
+        character(len=64) :: name = ''
+        integer :: component_count = 0
+        character(len=64) :: component_names(MAX_DERIVED_COMPONENTS) = ''
+    end type derived_type_info_t
+
     type :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
+        type(derived_type_info_t) :: derived_types(MAX_DERIVED_TYPES)
+        integer :: derived_type_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
@@ -169,6 +182,13 @@ contains
                                               context%f64_print_format_id, &
                                               context%str_print_format_id, &
                                               error_msg)) then
+            call context%session%destroy()
+            return
+        end if
+
+        call collect_derived_type_definitions(arena, root_index, context, &
+                                              error_msg)
+        if (len_trim(error_msg) > 0) then
             call context%session%destroy()
             return
         end if
@@ -383,11 +403,7 @@ contains
                                            'support multi-way branches', &
                                            error_msg)
         type is (derived_type_node)
-            call unsupported_feature_error('derived type definition', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support derived types or '// &
-                                           'component layout', error_msg)
+            call lower_derived_type_definition(node, context, error_msg)
         class default
             node_type = 'unknown'
             if (allocated(arena%entries(node_index)%node_type)) then
@@ -428,6 +444,7 @@ contains
 
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
+    include 'session_program_lowering_derived_types.inc'
 
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
@@ -459,18 +476,20 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: array_lower_bound
         integer :: array_size
+        integer :: derived_type_index
         integer :: i
         integer :: value_kind
 
-        call declaration_value_kind(node, value_kind, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        if (node%is_parameter) then
-            call lower_constant_declaration(node, context, value_kind, error_msg)
+        derived_type_index = declaration_derived_type_index(context, node)
+        if (derived_type_index > 0) then
+            call lower_derived_type_declaration(node, context, derived_type_index, &
+                                                error_msg)
             return
         end if
 
         if (node%is_array) then
+            call declaration_value_kind(node, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32) then
                 call unsupported_feature_error('array declaration', node%line, &
                                                node%column, &
@@ -495,6 +514,14 @@ contains
             else
                 error_msg = 'array declaration did not expose a variable name'
             end if
+            return
+        end if
+
+        call declaration_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (node%is_parameter) then
+            call lower_constant_declaration(node, context, value_kind, error_msg)
             return
         end if
 
@@ -736,6 +763,10 @@ contains
                                                     value, error_msg)
                 return
             end if
+        type is (component_access_node)
+            call lower_derived_component_assignment(arena, node, target, context, &
+                                                    value, error_msg)
+            return
         end select
 
         call identifier_name(arena, node%target_index, name, error_msg)
@@ -759,6 +790,12 @@ contains
                                                'whole-array assignment is not '// &
                                                'supported', error_msg)
             end select
+            return
+        end if
+        if (context%symbols(symbol_index)%is_derived) then
+            call lower_derived_whole_assignment_diagnostic(arena, node, &
+                                                           context, symbol_index, &
+                                                           error_msg)
             return
         end if
 

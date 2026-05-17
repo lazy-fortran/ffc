@@ -35,6 +35,7 @@ The current implementation is a single-file, direct-session subset.
 | Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations and control-flow PHI values. |
 | `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, character variables, logical literals, real variables, and logical variables. |
 | Arrays | Fixed-size one-dimensional integer arrays with compile-time integer bounds. Scalar integer parameters and explicit lower:upper bounds are supported. Element assignment, element reads, `print`, `stop`, and counted-loop subscripts are supported. Runtime bounds checks are not emitted; out-of-bounds subscripts have backend-level behavior until #53 defines array descriptors and checks. |
+| Derived types | Simple program-scope derived type definitions with scalar integer components. Scalar variables of those types are supported. Component assignment, component reads, `print`, and `stop` are supported. Constructors, inheritance, type parameters, type-bound procedures, nested derived types, derived type arrays, whole-derived assignment, and non-integer components are unsupported. |
 
 ## Unsupported Work
 
@@ -47,7 +48,6 @@ The current implementation is a single-file, direct-session subset.
 | #57 | Source locations and diagnostics | Unsupported features fail with targeted diagnostics containing source locations. |
 | #58 | FortFront compiler query boundary | `ffc` no longer depends on FortFront arena internals for lowering decisions. |
 | #59 | Standard and Infer-mode conformance tests | Supported constructs have reference behavior tests against the intended standard and Infer-mode semantics. |
-| #60 | Derived types and component access | Simple derived type declarations, scalar components, assignment, and access are lowered and tested. |
 
 Unsupported features must fail during parsing, semantic analysis, or lowering
 with a diagnostic. Silent partial lowering is a bug.

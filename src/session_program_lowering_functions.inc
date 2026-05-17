@@ -88,6 +88,14 @@
         destination%function_count = source%function_count
     end subroutine copy_internal_function_names
 
+    subroutine copy_derived_type_table(source, destination)
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+
+        destination%derived_types = source%derived_types
+        destination%derived_type_count = source%derived_type_count
+    end subroutine copy_derived_type_table
+
     logical function is_contained_i32_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
@@ -196,6 +204,7 @@
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
         call copy_internal_function_names(parent_context, context)
+        call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
 
         param_count = 0
@@ -259,6 +268,7 @@
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
         call copy_internal_function_names(parent_context, context)
+        call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
 
         param_count = 0
