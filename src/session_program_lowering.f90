@@ -434,6 +434,11 @@ contains
                                            'direct LIRIC session does not '// &
                                            'support generic or explicit '// &
                                            'interfaces', error_msg)
+        case ('goto_node')
+            call unsupported_feature_error('goto statement', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support unstructured branching', &
+                                           error_msg)
         case default
             call unsupported_feature_error('statement node: '//trim(node_type), &
                                            line, column, &

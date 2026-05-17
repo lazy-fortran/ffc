@@ -38,6 +38,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_deallocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_goto_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_unassigned_character_print_diagnostic()) &
         all_passed = .false.
@@ -71,6 +72,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_deallocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_cli_goto_statement_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -424,6 +426,22 @@ contains
                                            '/tmp/ffc_session_return_test')
     end function test_return_statement_diagnostic
 
+    logical function test_goto_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  go to 100'//new_line('a')// &
+                                       '  x = 2'//new_line('a')// &
+                                       '100 print *, x'//new_line('a')// &
+                                       'end program main'
+
+        test_goto_statement_diagnostic = expect_error_contains( &
+                                         source, &
+                                         'unsupported goto statement', &
+                                         '/tmp/ffc_session_goto_test')
+    end function test_goto_statement_diagnostic
+
     logical function test_cli_character_expression_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -771,6 +789,22 @@ contains
                                                'unsupported return statement', &
                                                '/tmp/ffc_cli_return_test')
     end function test_cli_return_statement_diagnostic
+
+    logical function test_cli_goto_statement_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = 1'//new_line('a')// &
+                                       '  go to 100'//new_line('a')// &
+                                       '  x = 2'//new_line('a')// &
+                                       '100 print *, x'//new_line('a')// &
+                                       'end program main'
+
+        test_cli_goto_statement_diagnostic = expect_cli_error_contains( &
+                                             source, &
+                                             'unsupported goto statement', &
+                                             '/tmp/ffc_cli_goto_test')
+    end function test_cli_goto_statement_diagnostic
 
     logical function expect_error_contains(source, expected, exe_path)
         character(len=*), intent(in) :: source
