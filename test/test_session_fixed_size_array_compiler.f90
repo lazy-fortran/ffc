@@ -13,6 +13,7 @@ program test_session_fixed_size_array_compiler
     if (.not. test_simple_array()) all_passed = .false.
     if (.not. test_array_parameter_bound()) all_passed = .false.
     if (.not. test_array_explicit_bounds()) all_passed = .false.
+    if (.not. test_array_negative_lower_bound()) all_passed = .false.
     if (.not. test_array_with_loop()) all_passed = .false.
     if (.not. test_array_variable_subscript()) all_passed = .false.
     if (.not. test_array_element_argument()) all_passed = .false.
@@ -67,6 +68,22 @@ contains
                                      source, '9', &
                                      '/tmp/ffc_session_array_explicit_bounds_test')
     end function test_array_explicit_bounds
+
+    logical function test_array_negative_lower_bound()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: values(-1:1)'//new_line('a')// &
+                                       '  values(-1) = 4'//new_line('a')// &
+                                       '  values(0) = 5'//new_line('a')// &
+                                       '  values(1) = 6'//new_line('a')// &
+                                       '  print *, values(-1) + values(0) + values(1)'// &
+                                       new_line('a')// &
+                                       'end program main'
+
+        test_array_negative_lower_bound = expect_output( &
+                                          source, '15', &
+                                          '/tmp/ffc_session_array_neg_lower_test')
+    end function test_array_negative_lower_bound
 
     logical function test_array_with_loop()
         character(len=*), parameter :: source = &
