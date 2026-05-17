@@ -1,18 +1,25 @@
 program test_fortfront_corpus_conformance
     use fortfront, only: compiler_frontend_options_t, &
                          compiler_frontend_result_t, &
-                         compile_frontend_from_file, INPUT_MODE_STANDARD
+                         compile_frontend_from_file, INPUT_MODE_STANDARD, &
+                         INPUT_MODE_LAZY
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
     character(len=*), parameter :: EXAMPLES_DIR = &
         '../fortfront/examples/f90/'
+    character(len=*), parameter :: LF_EXAMPLES_DIR = &
+        '../fortfront/examples/lf/'
     character(len=*), parameter :: SUPPORTED_MANIFEST = &
         'test/conformance/supported_f90.txt'
     character(len=*), parameter :: SUPPORTED_OUTPUT_MANIFEST = &
         'test/conformance/supported_with_output_f90.txt'
     character(len=*), parameter :: UNSUPPORTED_MANIFEST = &
         'test/conformance/unsupported_f90.txt'
+    character(len=*), parameter :: LF_SUPPORTED_MANIFEST = &
+        'test/conformance/supported_lf.txt'
+    character(len=*), parameter :: LF_UNSUPPORTED_MANIFEST = &
+        'test/conformance/unsupported_lf.txt'
     integer, parameter :: RUN_TIMEOUT_SECONDS = 5
 
     integer :: supported_failed
@@ -21,6 +28,10 @@ program test_fortfront_corpus_conformance
     integer :: output_total
     integer :: unsupported_failed
     integer :: unsupported_total
+    integer :: lf_supported_failed
+    integer :: lf_supported_total
+    integer :: lf_unsupported_failed
+    integer :: lf_unsupported_total
 
     print *, '=== fortfront corpus conformance test ==='
 
@@ -30,6 +41,12 @@ program test_fortfront_corpus_conformance
                              output_failed)
     call run_unsupported_manifest(UNSUPPORTED_MANIFEST, unsupported_total, &
                                   unsupported_failed)
+    call run_lf_supported_manifest(LF_SUPPORTED_MANIFEST, &
+                                   lf_supported_total, &
+                                   lf_supported_failed)
+    call run_lf_unsupported_manifest(LF_UNSUPPORTED_MANIFEST, &
+                                     lf_unsupported_total, &
+                                     lf_unsupported_failed)
 
     print '(A,I0,A,I0)', ' supported (exit 0): ', &
         supported_total - supported_failed, '/', supported_total
@@ -37,9 +54,15 @@ program test_fortfront_corpus_conformance
         output_total - output_failed, '/', output_total
     print '(A,I0,A,I0)', ' unsupported (must reject): ', &
         unsupported_total - unsupported_failed, '/', unsupported_total
+    print '(A,I0,A,I0)', ' lf supported (exit 0): ', &
+        lf_supported_total - lf_supported_failed, '/', lf_supported_total
+    print '(A,I0,A,I0)', ' lf unsupported (must reject): ', &
+        lf_unsupported_total - lf_unsupported_failed, '/', &
+        lf_unsupported_total
 
     if (supported_failed > 0 .or. output_failed > 0 .or. &
-        unsupported_failed > 0) stop 1
+        unsupported_failed > 0 .or. lf_supported_failed > 0 .or. &
+        lf_unsupported_failed > 0) stop 1
     print *, 'PASS: fortfront example corpus conforms to ffc support contract'
 
 contains
@@ -202,6 +225,126 @@ contains
                                   ' > /dev/null 2>&1', exitstat=status)
         files_equal = status == 0
     end function files_equal
+
+    subroutine run_lf_supported_manifest(manifest_path, total, failed)
+        character(len=*), intent(in) :: manifest_path
+        integer, intent(out) :: total
+        integer, intent(out) :: failed
+        character(len=256) :: example_name
+        character(len=:), allocatable :: source_path
+        character(len=:), allocatable :: exe_path
+        character(len=:), allocatable :: error_msg
+        integer :: exit_stat
+        integer :: unit
+        integer :: io_stat
+
+        total = 0
+        failed = 0
+
+        open (newunit=unit, file=manifest_path, status='old', action='read', &
+              iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: cannot open lf supported manifest ', manifest_path
+            failed = 1
+            return
+        end if
+
+        do
+            read (unit, '(A)', iostat=io_stat) example_name
+            if (io_stat /= 0) exit
+            if (is_blank_or_comment(example_name)) cycle
+            total = total + 1
+
+            source_path = LF_EXAMPLES_DIR//trim(adjustl(example_name))
+            exe_path = '/tmp/ffc_conformance_lf_supported_exe'
+            call execute_command_line('rm -f '//exe_path)
+            call compile_example_with_mode(source_path, exe_path, &
+                                           INPUT_MODE_LAZY, error_msg)
+            if (len_trim(error_msg) > 0) then
+                failed = failed + 1
+                print *, 'FAIL[lf-supported] ', trim(adjustl(example_name)), &
+                    ': ', trim(error_msg)
+                cycle
+            end if
+
+            call run_executable(exe_path, exit_stat)
+            call execute_command_line('rm -f '//exe_path)
+            if (exit_stat /= 0) then
+                failed = failed + 1
+                print *, 'FAIL[lf-supported] ', trim(adjustl(example_name)), &
+                    ': non-zero exit ', exit_stat
+            end if
+        end do
+        close (unit)
+    end subroutine run_lf_supported_manifest
+
+    subroutine run_lf_unsupported_manifest(manifest_path, total, failed)
+        character(len=*), intent(in) :: manifest_path
+        integer, intent(out) :: total
+        integer, intent(out) :: failed
+        character(len=256) :: example_name
+        character(len=:), allocatable :: source_path
+        character(len=:), allocatable :: exe_path
+        character(len=:), allocatable :: error_msg
+        integer :: unit
+        integer :: io_stat
+
+        total = 0
+        failed = 0
+
+        open (newunit=unit, file=manifest_path, status='old', action='read', &
+              iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: cannot open lf unsupported manifest ', manifest_path
+            failed = 1
+            return
+        end if
+
+        do
+            read (unit, '(A)', iostat=io_stat) example_name
+            if (io_stat /= 0) exit
+            if (is_blank_or_comment(example_name)) cycle
+            total = total + 1
+
+            source_path = LF_EXAMPLES_DIR//trim(adjustl(example_name))
+            exe_path = '/tmp/ffc_conformance_lf_unsupported_exe'
+            call execute_command_line('rm -f '//exe_path)
+            call compile_example_with_mode(source_path, exe_path, &
+                                           INPUT_MODE_LAZY, error_msg)
+            call execute_command_line('rm -f '//exe_path)
+            if (len_trim(error_msg) == 0) then
+                failed = failed + 1
+                print *, 'FAIL[lf-unsupported] ', trim(adjustl(example_name)), &
+                    ': lowered without any diagnostic'
+            end if
+        end do
+        close (unit)
+    end subroutine run_lf_unsupported_manifest
+
+    subroutine compile_example_with_mode(source_path, exe_path, input_mode, &
+                                         error_msg)
+        character(len=*), intent(in) :: source_path
+        character(len=*), intent(in) :: exe_path
+        integer, intent(in) :: input_mode
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(compiler_frontend_options_t) :: options
+        type(compiler_frontend_result_t) :: frontend_result
+
+        options = compiler_frontend_options_t()
+        options%run_semantics = .true.
+        options%input_mode = input_mode
+
+        call compile_frontend_from_file(source_path, frontend_result, options)
+        if (.not. frontend_result%success()) then
+            error_msg = 'FortFront rejected source: '// &
+                        trim(frontend_result%diagnostic_text)
+            return
+        end if
+
+        call lower_program_to_liric_exe(frontend_result%arena, &
+                                        frontend_result%root_index, exe_path, &
+                                        error_msg)
+    end subroutine compile_example_with_mode
 
     subroutine run_unsupported_manifest(manifest_path, total, failed)
         character(len=*), intent(in) :: manifest_path
