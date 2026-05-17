@@ -131,3 +131,8 @@ main = "test_session_unit_boundary_diagnostics.f90"
 name = "test_counted_do_compiler"
 source-dir = "test_mvp"
 main = "test_counted_do_compiler.f90"
+
+[[test]]
+name = "test_session_fixed_size_array_compiler"
+source-dir = "test_mvp"
+main = "test_session_fixed_size_array_compiler.f90"

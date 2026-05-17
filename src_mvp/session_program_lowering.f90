@@ -1,6 +1,7 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
-                                                                              c_int64_t
+                                                                               c_int64_t
+    use ast_base, only: LITERAL_INTEGER
     use ast_nodes_core, only: component_access_node
     use ast_nodes_data, only: derived_type_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
@@ -88,10 +89,14 @@ module session_program_lowering
         logical :: has_address = .false.
         integer :: character_length = 0
         logical :: has_character_value = .false.
+        logical :: is_array = .false.
+        integer :: array_size = 0
+        type(lr_operand_desc_t) :: element_address
     end type symbol_t
 
     type :: lowering_context_t
         type(liric_session_t) :: session
+        type(ast_arena_t) :: arena
         type(symbol_t) :: symbols(MAX_SYMBOLS)
         integer :: symbol_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
@@ -152,6 +157,8 @@ contains
 
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        context%arena = arena
 
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
@@ -446,18 +453,33 @@ contains
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, value_kind
-
-        if (node%is_array) then
-            call unsupported_feature_error('array declaration', &
-                                           node%line, node%column, &
-                                           'fixed-size arrays are not supported '// &
-                                           'by direct LIRIC session', error_msg)
-            return
-        end if
+        integer :: i, value_kind, array_size
 
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (node%is_array) then
+            if (value_kind /= VALUE_I32) then
+                error_msg = 'direct LIRIC session MVP only supports integer arrays'
+                return
+            end if
+            call get_array_size(context%arena, node, array_size, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    call define_declared_array_symbol(context, node, node%var_names(i), &
+                                                      array_size, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(node%var_name)) then
+                call define_declared_array_symbol(context, node, node%var_name, &
+                                                  array_size, error_msg)
+            else
+                error_msg = 'array declaration did not expose a variable name'
+            end if
+            return
+        end if
+
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_declared_symbol(context, node, node%var_names(i), &
@@ -587,6 +609,41 @@ contains
                                   value_kind, error_msg)
     end subroutine declaration_value_kind
 
+    subroutine get_array_size(arena, node, array_size, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_index
+        integer :: io_stat
+
+        array_size = 0
+        call set_empty(error_msg)
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) then
+            error_msg = 'direct LIRIC session only supports one-dimensional arrays'
+            return
+        end if
+
+        dim_index = node%dimension_indices(1)
+        if (.not. arena%has_node_at(dim_index)) then
+            error_msg = 'array dimension index does not reference an AST node'
+            return
+        end if
+
+ select type (dim_node => arena%entries(dim_index)%node)
+        type is (literal_node)
+            read (dim_node%value, *, iostat=io_stat) array_size
+            if (io_stat /= 0 .or. array_size <= 0) then
+                error_msg = 'invalid array size: '//trim(dim_node%value)
+                return
+            end if
+        class default
+            error_msg = 'array dimension must be an integer literal, not a variable'
+            return
+        end select
+    end subroutine get_array_size
+
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
@@ -615,6 +672,41 @@ contains
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
     end subroutine define_symbol
+
+    subroutine define_declared_array_symbol(context, node, name, array_size, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        integer :: i
+        type(lr_operand_desc_t) :: element_addr
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate array declaration: '//trim(name)
+            return
+        end if
+        if (context%symbol_count >= MAX_SYMBOLS) then
+            error_msg = 'too many symbols for direct LIRIC session MVP'
+            return
+        end if
+
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%is_array = .true.
+        context%symbols(index)%array_size = array_size
+
+        if (.not. context%session%emit_i32_array_alloca(array_size, &
+                context%symbols(index)%element_address, error_msg)) then
+            error_msg = 'decl_array['//trim(name)//']: '//error_msg
+            return
+        end if
+
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_declared_array_symbol
 
     subroutine update_parameter_symbol(context, index, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -723,6 +815,15 @@ contains
         character(len=:), allocatable :: name
         integer :: symbol_index
 
+        select type (target => arena%entries(node%target_index)%node)
+        type is (call_or_subscript_node)
+            if (target%is_array_access) then
+                call lower_array_element_assignment(arena, node, target, context, &
+                                                    value, error_msg)
+                return
+            end if
+        end select
+
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
 
@@ -756,6 +857,73 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    subroutine lower_array_element_assignment(arena, node, target, context, value, &
+                                              error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: index_value
+        type(lr_operand_desc_t) :: base_address
+        type(lr_operand_desc_t) :: offset
+        type(lr_operand_desc_t) :: element_address
+
+        if (.not. allocated(target%name)) then
+            error_msg = 'array assignment requires an array name'
+            return
+        end if
+
+        symbol_index = find_symbol(context, target%name)
+        if (symbol_index <= 0) then
+            error_msg = 'array identifier was not declared: '//trim(target%name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = trim(target%name)//' is not an array'
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'direct LIRIC session MVP only supports integer arrays'
+            return
+        end if
+
+        if (.not. allocated(target%arg_indices) .or. size(target%arg_indices) /= 1) then
+            error_msg = 'array assignment requires exactly one subscript'
+            return
+        end if
+
+        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_i32_expression(arena, target%arg_indices(1), context, index_value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Fortran subscripts are 1-based; LLVM GEP is 0-based.
+        if (.not. context%session%emit_i32_binary(LR_OP_SUB, index_value, &
+                context%session%i32_immediate(1_c_int64_t), offset, error_msg)) then
+            error_msg = 'arr_assign_sub: '//error_msg
+            return
+        end if
+
+        if (.not. context%session%emit_i32_array_element_addr( &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                offset, element_address, error_msg)) then
+            error_msg = 'arr_assign_gep: '//error_msg
+            return
+        end if
+
+        if (.not. context%session%emit_i32_store(value, element_address, error_msg)) then
+            error_msg = 'arr_assign_store: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_array_element_assignment
 
     include 'session_program_lowering_arguments.inc'
 
@@ -871,15 +1039,6 @@ contains
             name = node%name
             call set_empty(error_msg)
         type is (call_or_subscript_node)
-            if (node%is_array_access) then
-                call unsupported_feature_error('array assignment target', &
-                                               node%line, node%column, &
-                                               'direct LIRIC session does not '// &
-                                               'support assigning to array '// &
-                                               'elements', error_msg)
-                call set_empty(name)
-                return
-            end if
             if (allocated(node%arg_indices)) then
                 error_msg = 'expected scalar assignment target'
                 call set_empty(name)

@@ -1,5 +1,6 @@
-    recursive subroutine lower_i32_expression(arena, node_index, context, &
-                                              value, error_msg)
+  recursive subroutine lower_i32_expression(arena, node_index, context, &
+                                               value, error_msg)
+        use liric_session_bindings, only: LR_OP_ADD
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -60,7 +61,11 @@
             if (.not. context%session%emit_i32_binary(opcode, lhs, rhs, value, &
                                                       error_msg)) return
         type is (call_or_subscript_node)
-            call lower_i32_call(arena, node, context, value, error_msg)
+            if (node%is_array_access) then
+                call lower_i32_array_element(arena, node, context, value, error_msg)
+            else
+                call lower_i32_call(arena, node, context, value, error_msg)
+            end if
         type is (component_access_node)
             call unsupported_feature_error('derived type component expression', &
                                            node%line, node%column, &
@@ -124,7 +129,69 @@
             allocate (copyback_indices(0))
         end if
 
-        if (.not. context%session%emit_i32_call(node%name, args, value, &
-                                                error_msg)) return
+ if (.not. context%session%emit_i32_call(node%name, args, value, &
+                                                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_i32_call
+
+    subroutine lower_i32_array_element(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: index_value
+        type(lr_operand_desc_t) :: base_address
+        type(lr_operand_desc_t) :: offset
+        type(lr_operand_desc_t) :: element_address
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'array access requires an array name'
+            return
+        end if
+
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'array identifier was not declared: '//trim(node%name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = trim(node%name)//' is not an array'
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'direct LIRIC session MVP only supports integer arrays'
+            return
+        end if
+
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'array access requires exactly one subscript'
+            return
+        end if
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, index_value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Fortran is 1-based; LLVM GEP is 0-based.
+        if (.not. context%session%emit_i32_binary(LR_OP_SUB, index_value, &
+                context%session%i32_immediate(1_c_int64_t), offset, error_msg)) then
+            error_msg = 'arr_read_sub: '//error_msg
+            return
+        end if
+
+        if (.not. context%session%emit_i32_array_element_addr( &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                offset, element_address, error_msg)) then
+            error_msg = 'arr_read_gep: '//error_msg
+            return
+        end if
+
+        if (.not. context%session%emit_i32_load(element_address, value, error_msg)) then
+            error_msg = 'arr_read_load: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_i32_array_element

@@ -23,6 +23,7 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_ALLOCA = 26_c_int
     integer(c_int), parameter, public :: LR_OP_LOAD = 27_c_int
     integer(c_int), parameter, public :: LR_OP_STORE = 28_c_int
+    integer(c_int), parameter, public :: LR_OP_GEP = 29_c_int
     integer(c_int), parameter, public :: LR_OP_CALL = 30_c_int
 
     integer(c_int), parameter, public :: LR_OP_KIND_VREG = 0_c_int
@@ -76,6 +77,8 @@ module liric_session_bindings
         procedure :: emit_i32_binary_into
         procedure :: emit_i32_copy_to
         procedure :: emit_i32_alloca
+        procedure :: emit_i32_array_alloca
+        procedure :: emit_i32_array_element_addr
         procedure :: emit_i32_load
         procedure :: emit_i32_store
         procedure :: emit_i32_call
@@ -115,6 +118,20 @@ module liric_session_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_i32_s
+
+        function lr_type_i64_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_i64_s
+
+        function lr_type_array_s(handle, elem, count) result(typ) bind(c)
+            import :: c_int64_t, c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr), value :: elem
+            integer(c_int64_t), value :: count
+            type(c_ptr) :: typ
+        end function lr_type_array_s
 
         function lr_type_void_s(handle) result(typ) bind(c)
             import :: c_ptr
@@ -652,6 +669,116 @@ contains
         emit_i32_alloca = .true.
     end function emit_i32_alloca
 
+    ! Allocates an LLVM [size x i32] on the stack and returns a pointer to it.
+    ! The pointer can be passed to emit_i32_array_element_addr for indexing.
+    logical function emit_i32_array_alloca(this, array_size, address, error_msg)
+        class(liric_session_t), intent(inout) :: this
+        integer, intent(in) :: array_size
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(c_ptr) :: array_type
+        integer(c_int32_t) :: vreg
+        type(lr_inst_desc_t) :: inst
+
+        emit_i32_array_alloca = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        array_type = lr_type_array_s(this%handle, &
+                                     lr_type_i32_s(this%handle), &
+                                     int(array_size, c_int64_t))
+        write(0,'(a,i0,a,l1)') '[DBG] array_alloca size=', array_size, &
+            ' type_assoc=', c_associated(array_type)
+        inst%op = LR_OP_ALLOCA
+        inst%typ = array_type
+        inst%dest = 0_c_int32_t
+        inst%operands = c_null_ptr
+        inst%num_operands = 0_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(this%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) then
+            error_msg = 'array_alloca: '//error_msg
+            return
+        end if
+
+        address = this%ptr_vreg(vreg)
+        call set_empty(error_msg)
+        emit_i32_array_alloca = .true.
+    end function emit_i32_array_alloca
+
+    ! Emits a GEP {0, index_0based} into a [array_size x i32] at base_ptr,
+    ! returning a pointer to that element. The index operand must be i32 or
+    ! i64; this routine sign-extends i32 to i64 via the caller's prior work
+    ! is not required — the C GEP accepts whichever integer type is given.
+    logical function emit_i32_array_element_addr(this, array_size, base_ptr, &
+                                                  index_0based, element_addr, &
+                                                  error_msg)
+        class(liric_session_t), intent(inout) :: this
+        integer, intent(in) :: array_size
+        type(lr_operand_desc_t), intent(in) :: base_ptr
+        type(lr_operand_desc_t), intent(in) :: index_0based
+        type(lr_operand_desc_t), intent(out) :: element_addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(c_ptr) :: array_type
+        type(lr_operand_desc_t), target :: operands(3)
+        type(lr_operand_desc_t) :: zero64
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+
+        emit_i32_array_element_addr = .false.
+        if (.not. require_open_session(this, error_msg)) return
+
+        array_type = lr_type_array_s(this%handle, &
+                                     lr_type_i32_s(this%handle), &
+                                     int(array_size, c_int64_t))
+
+        ! First GEP index walks across the [N x i32] aggregate; second
+        ! selects the element within it. Match what lr_emit_gep does in C.
+        zero64%kind = LR_OP_KIND_IMM_I64
+        zero64%payload = 0_c_int64_t
+        zero64%typ = lr_type_i64_s(this%handle)
+        zero64%global_offset = 0_c_int64_t
+
+        operands(1) = base_ptr
+        operands(2) = zero64
+        operands(3) = index_0based
+
+        inst%op = LR_OP_GEP
+        inst%typ = array_type
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 3_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(this%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) then
+            error_msg = 'gep: '//error_msg
+            return
+        end if
+
+        element_addr = this%ptr_vreg(vreg)
+        call set_empty(error_msg)
+        emit_i32_array_element_addr = .true.
+    end function emit_i32_array_element_addr
+
     logical function emit_i32_load(this, address, value, error_msg)
         class(liric_session_t), intent(inout) :: this
         type(lr_operand_desc_t), intent(in) :: address
@@ -794,6 +921,9 @@ contains
 
         inst%op = opcode
         inst%typ = lhs%typ
+        if (.not. c_associated(inst%typ)) then
+            write(0,'(a,i0)') '[DBG] emit_binary null typ op=', opcode
+        end if
         inst%dest = 0_c_int32_t
         if (present(dest_vreg)) inst%dest = dest_vreg
         inst%operands = c_loc(operands)
