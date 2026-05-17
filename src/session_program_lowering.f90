@@ -18,7 +18,8 @@ module session_program_lowering
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                      lr_operand_desc_t, LR_OP_ADD, LR_OP_SUB
+                                      lr_operand_desc_t, LR_OP_ADD, LR_OP_SREM, &
+                                      LR_OP_SUB
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -68,15 +69,17 @@ module session_program_lowering
     integer, parameter :: I32_INTRINSIC_ABS = 1
     integer, parameter :: I32_INTRINSIC_MIN = 2
     integer, parameter :: I32_INTRINSIC_MAX = 3
+    integer, parameter :: I32_INTRINSIC_MOD = 4
     integer, parameter :: F64_INTRINSIC_NONE = 0
     integer, parameter :: F64_INTRINSIC_ABS = 1
     integer, parameter :: F64_INTRINSIC_MIN = 2
     integer, parameter :: F64_INTRINSIC_MAX = 3
     integer, parameter :: F64_INTRINSIC_REAL = 4
-    character(len=8), parameter :: I32_INTRINSIC_NAMES(3) = &
-                                   [character(len=8) :: 'abs', 'min', 'max']
-    integer, parameter :: I32_INTRINSIC_IDS(3) = &
-                          [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX]
+    character(len=8), parameter :: I32_INTRINSIC_NAMES(4) = &
+                                   [character(len=8) :: 'abs', 'min', 'max', 'mod']
+    integer, parameter :: I32_INTRINSIC_IDS(4) = &
+                          [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
+                           I32_INTRINSIC_MOD]
     character(len=8), parameter :: F64_INTRINSIC_NAMES(4) = &
                                    [character(len=8) :: 'abs', 'min', 'max', 'real']
     integer, parameter :: F64_INTRINSIC_IDS(4) = &
