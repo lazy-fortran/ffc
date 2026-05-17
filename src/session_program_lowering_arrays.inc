@@ -61,7 +61,10 @@
         end select
 
         if (extent <= 0_c_int64_t) then
-            error_msg = 'array bounds produce a non-positive extent'
+            call unsupported_feature_error('array declaration', node%line, &
+                                           node%column, &
+                                           'array bounds produce a '// &
+                                           'non-positive extent', error_msg)
             return
         end if
         array_lower_bound = int(lower_value)
