@@ -35,11 +35,18 @@ is not part of the default fpm build.
 - The direct LIRIC session lowerer can compile scalar `abs`, `min`, and
   `max` intrinsics for integer and real values, plus integer-to-real `real()`
   conversion, inline through LIRIC scalar operations, blocks, and PHI values.
+- The direct LIRIC session lowerer can compile fixed-size one-dimensional
+  integer arrays with compile-time integer bounds, including scalar integer
+  parameters and explicit lower:upper bounds. Element assignment, element
+  reads, `print`, `stop`, and counted-loop subscripts are supported. Runtime
+  bounds checks are not emitted; out-of-bounds subscripts have backend-level
+  behavior until #53 defines array descriptors and checks.
 - The direct LIRIC session path emits native executables and object files.
 - `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
   empty.o` emits an object file.
-- Arrays and modules are unsupported. Broader runtime calls and richer I/O are
-  unsupported. The tracked work is listed in
+- Allocatable arrays, multidimensional arrays, non-integer arrays, and modules
+  are unsupported. Broader runtime calls and richer I/O are unsupported. The
+  tracked work is listed in
   [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Support Contract
@@ -99,11 +106,12 @@ The current MVP support claim is:
 - simple contained integer, real, and logical functions and subroutines
 - integer and real scalar `abs`, `min`, and `max` intrinsics
 - integer-to-real `real()` conversion
+- fixed-size one-dimensional integer arrays with compile-time integer bounds
 - object/executable emission through LIRIC
 
-Arrays, allocatables, modules, derived types, full I/O, generics,
-cross-module inference, and character procedure arguments are unsupported today.
-See the issue map in
+Allocatable arrays, multidimensional arrays, non-integer arrays, modules,
+derived types, full I/O, generics, cross-module inference, and character
+procedure arguments are unsupported today. See the issue map in
 [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
 
 ## Build

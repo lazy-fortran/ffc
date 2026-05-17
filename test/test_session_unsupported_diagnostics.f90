@@ -10,9 +10,6 @@ program test_session_unsupported_diagnostics
     print *, '=== direct session unsupported diagnostic test ==='
 
     all_passed = .true.
-    if (.not. test_array_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_array_assignment_target_diagnostic()) all_passed = .false.
-    if (.not. test_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_unassigned_character_print_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
@@ -41,9 +38,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_deallocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_return_statement_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_unassigned_character_print_diagnostic()) &
         all_passed = .false.
@@ -82,41 +76,6 @@ program test_session_unsupported_diagnostics
     print *, 'PASS: unsupported direct-session features emit diagnostics'
 
 contains
-
-    logical function test_array_declaration_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: values(3)'//new_line('a')// &
-                                       'end program main'
-
-        test_array_declaration_diagnostic = expect_error_contains( &
-                                            source, 'unsupported array declaration', &
-                                            '/tmp/ffc_session_array_diagnostic_test')
-    end function test_array_declaration_diagnostic
-
-    logical function test_array_assignment_target_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported array assignment target'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  values(1) = 1'//new_line('a')// &
-                                       'end program main'
-
-        test_array_assignment_target_diagnostic = &
-            expect_error_contains(source, expected, &
-                                  '/tmp/ffc_session_array_target_test')
-    end function test_array_assignment_target_diagnostic
-
-    logical function test_array_expression_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  print *, values(1)'//new_line('a')// &
-                                       'end program main'
-
-        test_array_expression_diagnostic = expect_error_contains( &
-                                           source, 'array expression', &
-                                           '/tmp/ffc_session_array_expr_test')
-    end function test_array_expression_diagnostic
 
     logical function test_character_expression_diagnostic()
         character(len=*), parameter :: source = &
@@ -226,8 +185,8 @@ contains
                                        'end program main'
 
         test_select_case_diagnostic = expect_error_contains( &
-                                    source, 'unsupported select case statement', &
-                                    '/tmp/ffc_session_select_case_test')
+                                      source, 'unsupported select case statement', &
+                                      '/tmp/ffc_session_select_case_test')
     end function test_select_case_diagnostic
 
     logical function test_do_step_diagnostic()
@@ -269,8 +228,8 @@ contains
                                        'end program main'
 
         test_do_terminating_body_diagnostic = expect_error_contains( &
-            source, 'unsupported terminating do loop body', &
-            '/tmp/ffc_session_do_terminating_body_test')
+                                       source, 'unsupported terminating do loop body', &
+                                            '/tmp/ffc_session_do_terminating_body_test')
     end function test_do_terminating_body_diagnostic
 
     logical function test_do_while_diagnostic()
@@ -313,7 +272,7 @@ contains
 
         test_component_assignment_target_diagnostic = expect_error_contains( &
                                                       source, expected, &
-                                             '/tmp/ffc_session_component_target_test')
+                                               '/tmp/ffc_session_component_target_test')
     end function test_component_assignment_target_diagnostic
 
     logical function test_component_expression_diagnostic()
@@ -349,8 +308,8 @@ contains
                                        'end program main'
 
         test_external_function_call_diagnostic = expect_error_contains( &
-                                     source, 'unsupported scalar function call', &
-                                     '/tmp/ffc_session_external_call_test')
+                                           source, 'unsupported scalar function call', &
+                                                 '/tmp/ffc_session_external_call_test')
     end function test_external_function_call_diagnostic
 
     logical function test_external_real_function_call_diagnostic()
@@ -388,8 +347,8 @@ contains
                                        'end program main'
 
         test_integer_exponent_operator_diagnostic = expect_error_contains( &
-            source, 'unsupported integer operator', &
-            '/tmp/ffc_session_integer_exponent_operator_test')
+                                               source, 'unsupported integer operator', &
+                                      '/tmp/ffc_session_integer_exponent_operator_test')
     end function test_integer_exponent_operator_diagnostic
 
     logical function test_real_exponent_operator_diagnostic()
@@ -400,8 +359,8 @@ contains
                                        'end program main'
 
         test_real_exponent_operator_diagnostic = expect_error_contains( &
-            source, 'unsupported real operator', &
-            '/tmp/ffc_session_real_exponent_operator_test')
+                                                 source, 'unsupported real operator', &
+                                         '/tmp/ffc_session_real_exponent_operator_test')
     end function test_real_exponent_operator_diagnostic
 
     logical function test_read_statement_diagnostic()
@@ -464,41 +423,6 @@ contains
                                            'unsupported return statement', &
                                            '/tmp/ffc_session_return_test')
     end function test_return_statement_diagnostic
-
-    logical function test_cli_array_declaration_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: values(3)'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_array_declaration_diagnostic = expect_cli_error_contains( &
-                                              source, 'unsupported array declaration', &
-                                                '/tmp/ffc_cli_array_diagnostic_test')
-    end function test_cli_array_declaration_diagnostic
-
-    logical function test_cli_array_assignment_target_diagnostic()
-        character(len=*), parameter :: expected = &
-                                       'unsupported array assignment target'
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  values(1) = 1'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_array_assignment_target_diagnostic = &
-            expect_cli_error_contains(source, expected, &
-                                      '/tmp/ffc_cli_array_target_test')
-    end function test_cli_array_assignment_target_diagnostic
-
-    logical function test_cli_array_expression_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  print *, values(1)'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_array_expression_diagnostic = expect_cli_error_contains( &
-                                               source, 'array expression', &
-                                               '/tmp/ffc_cli_array_expr_test')
-    end function test_cli_array_expression_diagnostic
 
     logical function test_cli_character_expression_diagnostic()
         character(len=*), parameter :: source = &
@@ -608,8 +532,8 @@ contains
                                        'end program main'
 
         test_cli_select_case_diagnostic = expect_cli_error_contains( &
-                                    source, 'unsupported select case statement', &
-                                    '/tmp/ffc_cli_select_case_test')
+                                          source, 'unsupported select case statement', &
+                                          '/tmp/ffc_cli_select_case_test')
     end function test_cli_select_case_diagnostic
 
     logical function test_cli_do_step_diagnostic()
@@ -651,8 +575,8 @@ contains
                                        'end program main'
 
         test_cli_do_terminating_body_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported terminating do loop body', &
-            '/tmp/ffc_cli_do_terminating_body_test')
+                                       source, 'unsupported terminating do loop body', &
+                                                '/tmp/ffc_cli_do_terminating_body_test')
     end function test_cli_do_terminating_body_diagnostic
 
     logical function test_cli_do_while_diagnostic()
@@ -731,8 +655,8 @@ contains
                                        'end program main'
 
         test_cli_external_function_call_diagnostic = expect_cli_error_contains( &
-                                     source, 'unsupported scalar function call', &
-                                     '/tmp/ffc_cli_external_call_test')
+                                           source, 'unsupported scalar function call', &
+                                                     '/tmp/ffc_cli_external_call_test')
     end function test_cli_external_function_call_diagnostic
 
     logical function test_cli_external_real_function_call_diagnostic()
@@ -783,8 +707,8 @@ contains
                                        'end program main'
 
         test_cli_real_exponent_operator_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported real operator', &
-            '/tmp/ffc_cli_real_exponent_operator_test')
+                                                  source, 'unsupported real operator', &
+                                             '/tmp/ffc_cli_real_exponent_operator_test')
     end function test_cli_real_exponent_operator_diagnostic
 
     logical function test_cli_read_statement_diagnostic()

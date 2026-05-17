@@ -28,9 +28,6 @@
         type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
         integer, allocatable, intent(out) :: copyback_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
-        integer :: value_kind
-        integer :: symbol_index
         integer :: i
 
         allocate (args(size(arg_indices)))
@@ -38,41 +35,29 @@
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
-            call argument_symbol_index(arena, arg_indices(i), context, &
-                                       symbol_index, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (symbol_index > 0) then
-                if (context%symbols(symbol_index)%is_reference) then
-                    args(i) = context%symbols(symbol_index)%address
-                    cycle
-                end if
-                value = context%symbols(symbol_index)%value
-                value_kind = context%symbols(symbol_index)%value_kind
-                copyback_indices(i) = symbol_index
-            else
-                value_kind = expression_value_kind(arena, arg_indices(i), context, &
-                                                   default_kind)
-                call lower_expression_by_kind(arena, arg_indices(i), context, &
-                                              value_kind, value, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            call make_reference_argument(context, value_kind, value, args(i), &
-                                         error_msg)
+            call prepare_reference_arg(arena, arg_indices(i), context, &
+                                       default_kind, args(i), &
+                                       copyback_indices(i), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
 
-    subroutine argument_symbol_index(arena, node_index, context, symbol_index, &
-                                     error_msg)
+    subroutine prepare_reference_arg(arena, node_index, context, default_kind, &
+                                     arg, copyback_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(out) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: default_kind
+        type(lr_operand_desc_t), intent(out) :: arg
+        integer, intent(out) :: copyback_index
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: value_kind
+        logical :: handled
 
-        symbol_index = 0
+        copyback_index = 0
         if (.not. arena%has_node_at(node_index)) then
             error_msg = 'argument index does not reference an AST node'
             return
@@ -80,17 +65,64 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
-        class default
-            symbol_index = 0
+            call prepare_identifier_reference_arg(node, context, arg, &
+                                                  copyback_index, handled, &
+                                                  error_msg)
+            if (len_trim(error_msg) > 0 .or. handled) return
+        type is (call_or_subscript_node)
+            if (node%is_array_access) then
+                call lower_i32_array_element_address(arena, node, context, arg, &
+                                                     error_msg)
+                return
+            end if
         end select
 
-        if (symbol_index > 0) then
+        value_kind = expression_value_kind(arena, node_index, context, default_kind)
+        call lower_expression_by_kind(arena, node_index, context, value_kind, value, &
+                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+        call make_reference_argument(context, value_kind, value, arg, error_msg)
+    end subroutine prepare_reference_arg
+
+    subroutine prepare_identifier_reference_arg(node, context, arg, copyback_index, &
+                                                handled, error_msg)
+        type(identifier_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: arg
+        integer, intent(out) :: copyback_index
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+
+        copyback_index = 0
+        handled = .false.
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
             call set_empty(error_msg)
             return
         end if
+        handled = .true.
+        if (context%symbols(symbol_index)%is_array) then
+            call unsupported_feature_error('array argument', node%line, &
+                                           node%column, &
+                                           'whole-array procedure arguments '// &
+                                           'are not supported', error_msg)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_reference) then
+            arg = context%symbols(symbol_index)%address
+            call set_empty(error_msg)
+            return
+        end if
+
+        call make_reference_argument(context, &
+                                     context%symbols(symbol_index)%value_kind, &
+                                     context%symbols(symbol_index)%value, arg, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        copyback_index = symbol_index
         call set_empty(error_msg)
-    end subroutine argument_symbol_index
+    end subroutine prepare_identifier_reference_arg
 
     integer function expression_value_kind(arena, node_index, context, &
                                            default_kind) result(value_kind)

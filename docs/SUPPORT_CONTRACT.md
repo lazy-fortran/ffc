@@ -19,7 +19,7 @@ executable tests.
 
 ## Supported Now
 
-The current implementation is a single-file, direct-session scalar subset.
+The current implementation is a single-file, direct-session subset.
 
 | Area | Supported contract |
 | --- | --- |
@@ -32,15 +32,15 @@ The current implementation is a single-file, direct-session scalar subset.
 | `if` | Integer comparison `if` blocks with terminating branches or branches that assign mergeable integer values; scalar logical `if (flag)` conditions. |
 | `do` | Counted `do` loops with integer bounds and literal integer step. |
 | Procedures | Contained integer, real, and logical functions and subroutines. Scalar procedure actual arguments use pointer parameters with copy-back for variable actuals. |
-| Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations, comparisons, branches, and PHI operations. |
+| Intrinsics | Scalar `abs`, `min`, and `max` for integer and real values, plus integer-to-real `real()` conversion. These lower inline with LIRIC scalar operations and control-flow PHI values. |
 | `print` | Minimal scalar `print *, expr` through the current `printf` shim for integer expressions, real values, character literals, character variables, logical literals, real variables, and logical variables. |
+| Arrays | Fixed-size one-dimensional integer arrays with compile-time integer bounds. Scalar integer parameters and explicit lower:upper bounds are supported. Element assignment, element reads, `print`, `stop`, and counted-loop subscripts are supported. Runtime bounds checks are not emitted; out-of-bounds subscripts have backend-level behavior until #53 defines array descriptors and checks. |
 
 ## Unsupported Work
 
 | Issue | Missing feature | Required result before support is claimed |
 | --- | --- | --- |
-| #52 | Fixed-size one-dimensional arrays | Declaration, indexing, assignment, and printing tests pass for explicit-shape rank-one arrays. |
-| #53 | Allocatable arrays | Descriptor layout, allocation, deallocation, bounds, and element access are documented and tested. |
+| #53 | Allocatable arrays | Descriptor layout, lifetime operations, bounds, and element access are documented and tested. |
 | #54 | Modules and separate compilation | Module symbols, external procedure symbols, name mangling, and link behavior are deterministic and tested. |
 | #55 | Fortran-aware scalar I/O runtime | The `printf` shim is replaced for supported scalar output semantics. |
 | #56 | General control-flow value merging | Non-terminating branches merge all supported scalar value kinds, not only the current integer subset. |
@@ -52,8 +52,8 @@ The current implementation is a single-file, direct-session scalar subset.
 Unsupported features must fail during parsing, semantic analysis, or lowering
 with a diagnostic. Silent partial lowering is a bug.
 
-Generic specialization and cross-module inference are out of scope for `ffc`
-until FortFront and package-level orchestration contracts exist.
+Generic specialization and cross-module inference wait for FortFront and
+package-level orchestration contracts.
 
 ## Feature Admission Rule
 
@@ -63,5 +63,12 @@ A feature becomes supported only after all of these are true:
 2. Any new runtime ABI is documented in `docs/RUNTIME_ABI.md`.
 3. The direct LIRIC session lowerer implements the feature.
 4. Executable tests cover success behavior and relevant diagnostics.
-5. This support contract, `README.md`, and `ROADMAP.md` are updated in the
-   same change.
+5. The support contract, README, and plan are updated in the same change.
+
+## FortFront API Gaps
+
+`ffc` currently reads `declaration_node%dimension_indices` and follows the
+referenced arena nodes to lower fixed-size array bounds. FortFront has no
+compiler-facing query that returns resolved explicit-shape lower and upper
+bounds for a declaration. Issue #58 tracks replacing this arena read with a
+public query.
