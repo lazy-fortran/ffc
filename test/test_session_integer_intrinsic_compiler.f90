@@ -11,6 +11,7 @@ program test_session_integer_intrinsic_compiler
 
     all_passed = .true.
     if (.not. test_integer_intrinsic_values()) all_passed = .false.
+    if (.not. test_integer_mod_intrinsic()) all_passed = .false.
     if (.not. test_real_intrinsic_values()) all_passed = .false.
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -35,6 +36,22 @@ contains
         test_integer_intrinsic_values = compile_and_expect_exit( &
                                    source, '/tmp/ffc_session_integer_intrinsic_test', 7)
     end function test_integer_intrinsic_values
+
+    logical function test_integer_mod_intrinsic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: a'//new_line('a')// &
+                                       '  integer :: b'//new_line('a')// &
+                                       '  a = 17'//new_line('a')// &
+                                       '  b = 5'//new_line('a')// &
+                                       '  stop mod(a, b) + mod(-7, 3)'// &
+                                       new_line('a')// &
+                                       'end program main'
+
+        test_integer_mod_intrinsic = compile_and_expect_exit( &
+                                     source, &
+                                     '/tmp/ffc_session_integer_mod_test', 1)
+    end function test_integer_mod_intrinsic
 
     logical function test_real_intrinsic_values()
         character(len=*), parameter :: source = &
@@ -69,7 +86,7 @@ contains
     logical function test_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
-                                       '  stop mod(5, 2)'//new_line('a')// &
+                                       '  stop int(5.5)'//new_line('a')// &
                                        'end program main'
         character(len=:), allocatable :: error_msg
 
@@ -80,7 +97,7 @@ contains
         call execute_command_line( &
             'rm -f /tmp/ffc_session_unsupported_intrinsic_test')
 
-        if (index(error_msg, 'unsupported scalar intrinsic: mod') <= 0) then
+        if (index(error_msg, 'unsupported scalar intrinsic: int') <= 0) then
             print *, 'FAIL: expected unsupported intrinsic diagnostic, got ', &
                 trim(error_msg)
             return

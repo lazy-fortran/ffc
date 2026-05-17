@@ -33,8 +33,9 @@ is not part of the default fpm build.
   expressions/statements. Procedure arguments use pointer parameters with
   copy-back for variable actual arguments.
 - The direct LIRIC session lowerer can compile scalar `abs`, `min`, and
-  `max` intrinsics for integer and real values, plus integer-to-real `real()`
-  conversion, inline through LIRIC scalar operations, blocks, and PHI values.
+  `max` intrinsics for integer and real values, integer `mod`, plus
+  integer-to-real `real()` conversion, inline through LIRIC scalar operations,
+  blocks, and PHI values.
 - The direct LIRIC session lowerer can compile fixed-size one-dimensional
   integer arrays with compile-time integer bounds, including scalar integer
   parameters and explicit lower:upper bounds. Element assignment, element
@@ -109,7 +110,8 @@ The current MVP support claim is:
 - real variables/arithmetic
 - block `if`
 - simple contained integer, real, and logical functions and subroutines
-- integer and real scalar `abs`, `min`, and `max` intrinsics
+- integer and real scalar `abs`, `min`, and `max` intrinsics, plus integer
+  `mod`
 - integer-to-real `real()` conversion
 - fixed-size one-dimensional integer arrays with compile-time integer bounds
 - simple derived types with scalar integer components and component access

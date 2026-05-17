@@ -16,6 +16,8 @@
         case (I32_INTRINSIC_MAX)
             call lower_i32_minmax_intrinsic(arena, node, LR_CMP_SGE, context, &
                                             value, error_msg)
+        case (I32_INTRINSIC_MOD)
+            call lower_i32_mod_intrinsic(arena, node, context, value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -96,6 +98,28 @@
                                         arg, negative, error_msg)) return
         call select_value(context, condition, arg, negative, value, error_msg)
     end subroutine lower_f64_abs_intrinsic
+
+    subroutine lower_i32_mod_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, lhs, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, rhs, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. context%session%emit_i32_binary(LR_OP_SREM, lhs, rhs, value, &
+                                                  error_msg)) return
+    end subroutine lower_i32_mod_intrinsic
 
     subroutine lower_i32_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)
@@ -286,11 +310,11 @@
             call unsupported_feature_error('scalar intrinsic: '//trim(node%name), &
                                            node%line, node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, and real', error_msg)
+                                           'abs, min, max, mod, and real', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, and real', error_msg)
+                                           'abs, min, max, mod, and real', error_msg)
         end if
     end subroutine unsupported_intrinsic_error
