@@ -62,6 +62,8 @@ module session_program_lowering
     integer, parameter :: MAX_PROCEDURES = 32
     integer, parameter :: MAX_DERIVED_TYPES = 32
     integer, parameter :: MAX_DERIVED_COMPONENTS = 32
+    integer, parameter :: MAX_MODULE_EXPORTS = 16
+    integer, parameter :: MAX_MODULE_NAMES = 16
     integer, parameter :: VALUE_I32 = 1
     integer, parameter :: VALUE_F64 = 2
     integer, parameter :: VALUE_LOGICAL = 3
@@ -114,6 +116,12 @@ module session_program_lowering
         character(len=64) :: component_names(MAX_DERIVED_COMPONENTS) = ''
     end type derived_type_info_t
 
+    type :: module_exports_t
+        character(len=64) :: module_name = ''
+        integer :: derived_type_indices(MAX_DERIVED_TYPES) = 0
+        integer :: derived_type_count = 0
+    end type module_exports_t
+
     type :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
@@ -121,6 +129,8 @@ module session_program_lowering
         integer :: symbol_count = 0
         type(derived_type_info_t) :: derived_types(MAX_DERIVED_TYPES)
         integer :: derived_type_count = 0
+        type(module_exports_t) :: module_exports(MAX_MODULE_NAMES)
+        integer :: module_export_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
@@ -193,6 +203,12 @@ contains
 
         call collect_derived_type_definitions(arena, root_index, context, &
                                               error_msg)
+        if (len_trim(error_msg) > 0) then
+            call context%session%destroy()
+            return
+        end if
+
+        call collect_module_exports(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call context%session%destroy()
             return
