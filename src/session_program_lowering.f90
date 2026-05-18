@@ -7,7 +7,8 @@ module session_program_lowering
     use ast_nodes_data, only: derived_type_node
     use ast_nodes_misc, only: use_statement_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
-                         call_or_subscript_node, declaration_node, do_loop_node, &
+                         call_or_subscript_node, case_block_node, &
+                         case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
                          identifier_node, if_node, literal_node, &
                          parameter_declaration_node, &
@@ -34,6 +35,7 @@ module session_program_lowering
                                               LR_CMP_SGE, &
                                               LR_CMP_SLE, &
                                               LR_CMP_NE, &
+                                              LR_CMP_EQ, &
                                               set_liric_block
 use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
@@ -464,11 +466,7 @@ contains
                                            'literal-bound counted do loops', &
                                            error_msg)
         type is (select_case_node)
-            call unsupported_feature_error('select case statement', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support multi-way branches', &
-                                           error_msg)
+            call lower_select_case(arena, node, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
         type is (module_node)
@@ -1094,6 +1092,7 @@ contains
     end function find_symbol
 
     include 'session_program_lowering_text.inc'
+    include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 
 end module session_program_lowering
