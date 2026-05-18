@@ -48,7 +48,7 @@
                     if (.not. allocated(mod_node%name)) cycle
                     if (.not. allocated(mod_node%declaration_indices)) cycle
                     if (context%module_export_count >= MAX_MODULE_NAMES) then
-                        error_msg = 'too many modules for direct LIRIC session MVP'
+                        error_msg = 'too many modules for ffc direct-session lowering'
                         return
                     end if
 
@@ -144,7 +144,7 @@
         end if
 
         if (context%derived_type_count >= MAX_DERIVED_TYPES) then
-            error_msg = 'too many derived types for direct LIRIC session MVP'
+            error_msg = 'too many derived types for ffc direct-session lowering'
             return
         end if
 
@@ -287,7 +287,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         end if
         if (context%derived_types(type_index)%component_count >= &
             MAX_DERIVED_COMPONENTS) then
-            error_msg = 'too many derived type components for direct LIRIC session MVP'
+            error_msg = 'too many derived type components for ffc direct-session lowering'
             return
         end if
 
@@ -360,7 +360,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many symbols for direct LIRIC session MVP'
+            error_msg = 'too many symbols for ffc direct-session lowering'
             return
         end if
 
@@ -696,7 +696,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         end if
 
         if (context%derived_type_count >= MAX_DERIVED_TYPES) then
-            error_msg = 'too many derived types for direct LIRIC session MVP'
+            error_msg = 'too many derived types for ffc direct-session lowering'
             return
         end if
 

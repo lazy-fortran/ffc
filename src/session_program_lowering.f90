@@ -365,7 +365,7 @@ contains
                 has_executable_statements = .true.
             end do
         class default
-            error_msg = 'direct LIRIC session MVP only supports a program node'
+            error_msg = 'ffc direct-session lowering only supports a program node'
         end select
     end subroutine lower_program_return
 
@@ -568,7 +568,7 @@ contains
             if (value_kind /= VALUE_I32) then
                 call unsupported_feature_error('array declaration', node%line, &
                                                node%column, &
-                                               'direct LIRIC session MVP only '// &
+                                               'ffc direct-session lowering only '// &
                                                'supports integer arrays', error_msg)
                 return
             end if
@@ -763,7 +763,7 @@ contains
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many integer symbols for direct LIRIC session MVP'
+            error_msg = 'too many integer symbols for ffc direct-session lowering'
             return
         end if
 
@@ -786,7 +786,7 @@ contains
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
 
@@ -810,7 +810,7 @@ contains
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
 

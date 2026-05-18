@@ -45,7 +45,7 @@ contains
         case ('/')
             opcode = LR_OP_SDIV
         case default
-            error_msg = 'direct LIRIC session MVP does not support operator: '// &
+            error_msg = 'ffc direct-session lowering does not support operator: '// &
                         trim(source_op)
             opcode = 0
         end select
@@ -71,7 +71,7 @@ contains
         case ('<=')
             predicate = LR_CMP_SLE
         case default
-            error_msg = 'direct LIRIC session MVP does not support comparison: '// &
+            error_msg = 'ffc direct-session lowering does not support comparison: '// &
                         trim(source_op)
             predicate = LR_CMP_EQ
         end select

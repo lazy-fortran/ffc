@@ -152,7 +152,7 @@
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many symbols for direct LIRIC session MVP'
+            error_msg = 'too many symbols for ffc direct-session lowering'
             return
         end if
 
@@ -229,7 +229,7 @@
             return
         end if
         if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-            error_msg = 'direct LIRIC session MVP only supports integer arrays'
+            error_msg = 'ffc direct-session lowering only supports integer arrays'
             return
         end if
 

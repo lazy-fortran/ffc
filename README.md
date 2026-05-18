@@ -1,181 +1,108 @@
 # ffc
 
-`ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style source.
-
-The active build is the FortFront + direct LIRIC session compiler path. The
-older MLIR/HLFIR experiment remains in `src/` as legacy reference code, but it
-is not part of the default fpm build.
-
-## Current Status
-
-- The package builds the active compiler sources in `src_mvp/`.
-- The CLI parses files through FortFront's compiler-facing frontend API.
-- The CLI lowers through the direct LIRIC session API and emits a runnable
-  executable without `.ll` text.
-- The direct LIRIC session lowerer can compile empty `program main`, integer
-  arithmetic `stop` codes, and integer declarations/assignments when the
-  assigned value is consumed by `stop`.
-- The direct LIRIC session lowerer can compile integer comparison `if` blocks
-  when both branches terminate with `stop` or both branches assign integer
-  values that merge before a later `stop`.
-- The direct LIRIC session lowerer can compile counted `do` loops with
-  runtime-computed integer bounds through LIRIC blocks and PHI backedges.
-- The direct LIRIC session lowerer can compile minimal integer
-  `print *, expr`, real literal `print`, character literal `print`,
-  character variable `print`, and logical literal `print` through external
-  `printf` calls.
-- The direct LIRIC session lowerer can compile scalar `real` declarations,
-  assignments, arithmetic, and printing of real variables.
-- The direct LIRIC session lowerer can compile scalar `logical` declarations,
-  assignments, `if (flag)` conditions, and printing of logical variables.
-- The direct LIRIC session lowerer can compile simple contained integer, real,
-  and logical functions and subroutines with scalar parameters and scalar call
-  expressions/statements. Procedure arguments use pointer parameters with
-  copy-back for variable actual arguments.
-- The direct LIRIC session lowerer can compile scalar `abs`, `min`, and
-  `max` intrinsics for integer and real values, integer `mod`, plus
-  integer-to-real `real()` conversion, inline through LIRIC scalar operations,
-  blocks, and PHI values.
-- The direct LIRIC session lowerer can compile fixed-size one-dimensional
-  integer arrays with compile-time integer bounds, including scalar integer
-  parameters and explicit lower:upper bounds. Element assignment, element
-  reads, `print`, `stop`, and counted-loop subscripts are supported. Runtime
-  bounds checks are not emitted; out-of-bounds subscripts have backend-level
-  behavior until #53 defines array descriptors and checks.
-- The direct LIRIC session lowerer can compile simple derived type definitions
-  with scalar integer components, scalar variables of those types, component
-  assignment, component reads, `print`, and `stop`. Constructors, inheritance,
-  type parameters, type-bound procedures, nested derived types, derived type
-  arrays, whole-derived assignment, and non-integer components are unsupported.
-- The direct LIRIC session path emits native executables and object files.
-- `ffc empty.f90 -o empty` emits a native executable; `ffc empty.f90 -c -o
-  empty.o` emits an object file.
-- Allocatable arrays, multidimensional arrays, non-integer arrays, and modules
-  are unsupported. Broader runtime calls and richer I/O are unsupported. The
-  tracked work is listed in
-  [docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
-
-## Support Contract
-
-A program is supported only when every construct it uses appears in
-[docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md). Anything else must fail
-with a diagnostic instead of being partially lowered.
-
-## Target Architecture
+`ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style
+source. It compiles supported Fortran programs to native object files and
+executables via FortFront's typed AST and LIRIC's session C API.
 
 ```
 Fortran / Lazy Fortran source
-        |
-        v
-FortFront typed AST + diagnostics
-        |
-        v
-ffc lowering and runtime ABI
-        |
-        v
-LIRIC C API
-        |
-        v
-object file / executable
+  -> FortFront typed AST + diagnostics
+  -> ffc lowering + runtime ABI
+  -> LIRIC C API (via ISO_C_BINDING)
+  -> object file / executable
 ```
 
-FortFront remains backend-neutral. `ffc` owns lowering, ABI decisions,
-runtime calls, backend selection, object emission, and executable emission.
+FortFront stays backend-neutral. `ffc` owns lowering, ABI, runtime calls,
+LIRIC bindings, and object/exe emission. The retired MLIR/HLFIR
+experiment lives only in git history.
 
-## Backend Direction
+## Current support claim
 
-The preferred backend path is LIRIC through ISO C bindings to its C API.
+The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
 
-Lower typed AST to LIRIC `lr_session_*` calls. This is the CLI path and target
-architecture; new lowering work goes here.
+- `program main`, scalar `integer` / `real` / `logical`, character
+  literals, fixed-length `character(len=N)` variables;
+- deferred-length `character(len=:), allocatable` including
+  self-aliasing and three-way `//` concatenation; compile-time `//`
+  folding for character literal chains;
+- arithmetic, comparisons, scalar logical conditions;
+- block `if` with PHI merge for scalars; array-element assignment inside
+  `if` branches; counted `do` with integer bounds and literal positive
+  or negative step;
+- single-arm and multi-arm `SELECT CASE` with terminating arms
+  (including multi-label `case (a, b)`) and `case default`;
+- contained integer / real / logical functions and subroutines with
+  scalar parameters; early `return` inside contained subroutines and
+  functions; integer procedure arguments use pointer parameters with
+  copy-back for variable actuals;
+- fixed-size 1-D integer arrays with compile-time bounds; element
+  assignment, element reads, `print`, `stop`, and counted-loop
+  subscripts;
+- simple derived types with scalar integer components; component
+  assignment, component reads, `print`, and `stop`;
+- minimal `print *, expr` through a `printf` shim for integers, reals,
+  logicals, characters; `stop <integer expression>` returns its argument
+  as the process exit status; `abs`, `min`, `max`, `mod`, integer-to-real
+  `real()`;
+- CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
+  consumed by lowering).
 
-Do not expand the current MLIR binding work unless the project explicitly
-changes direction back to a Flang-style backend.
-
-## Current MVP Scope
-
-The current MVP support claim is:
-
-- `program main`
-- scalar `integer` literals
-- scalar integer declarations and assignments
-- integer arithmetic
-- minimal `print *, expr`
-- one-line `if` with integer comparisons
-- counted `do` loops with integer bounds and literal integer step
-- scalar `real` literals in `print`
-- simple `character` literals in `print`
-- scalar `character(len=N)` variables assigned from literals and printed
-- scalar `character(len=:), allocatable` (deferred length) assigned from
-  literals and from `//` concatenation of any combination of literals,
-  deferred-length variables, and the destination itself
-- scalar `logical` literals in `print`
-- real variables/arithmetic
-- block `if`
-- simple contained integer, real, and logical functions and subroutines
-- integer and real scalar `abs`, `min`, and `max` intrinsics, plus integer
-  `mod`
-- integer-to-real `real()` conversion
-- fixed-size one-dimensional integer arrays with compile-time integer bounds
-- simple derived types with scalar integer components and component access
-- object/executable emission through LIRIC
-
-Allocatable arrays, multidimensional arrays, non-integer arrays, modules,
-full I/O, generics, cross-module inference, and character procedure arguments
-are unsupported today. See the issue map in
-[docs/SUPPORT_CONTRACT.md](docs/SUPPORT_CONTRACT.md).
+Allocatable arrays, multidimensional arrays, modules and separate
+compilation, polymorphism, full runtime I/O, generics, and most
+intrinsics are unsupported today and tracked as GitHub issues. The
+self-hosting dependency map is in
+[#167](https://github.com/lazy-fortran/ffc/issues/167).
 
 ## Build
 
-Builds need the LIRIC static library on the linker search path:
+The LIRIC static library must be on the linker path:
 
 ```bash
-LIBRARY_PATH=<liric-build> fpm build
+cd ../liric && cmake -S . -B build -G Ninja && cmake --build build
+cd ../ffc
+export LIBRARY_PATH=../liric/build
+fpm build
+fpm test
 ```
 
-Run the MVP tests:
+`fpm build` produces the `ffc` binary; `fpm test` runs the behavioural
+test suite (currently 40 programs). CI runs the same workflow on every
+push and pull request.
 
-```bash
-LIBRARY_PATH=<liric-build> fpm test test_liric_session_bindings
-LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_empty_program_object_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_stop_code_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_integer_variable_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_block_if_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_if_merge_compiler
-LIBRARY_PATH=<liric-build> fpm test test_counted_do_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_scalar_print_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_real_literal_print_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_character_literal_print_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_logical_literal_print_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_logical_variable_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_real_variable_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_integer_function_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_integer_subroutine_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_non_integer_procedure_compiler
-LIBRARY_PATH=<liric-build> fpm test test_session_integer_intrinsic_compiler
-```
-
-Compile the smallest supported program:
+Compile a minimal program:
 
 ```bash
 printf 'program main\nend program main\n' > /tmp/empty.f90
-LIBRARY_PATH=<liric-build> fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
+LIBRARY_PATH=../liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 /tmp/empty
+echo $?
 ```
 
-## Related Repositories
+## Layout
 
-- [fortfront](https://github.com/lazy-fortran/fortfront): frontend,
-  transformation, typed AST work.
-- [standard](https://github.com/lazy-fortran/standard): intended LFortran
-  Standard and Infer behavior.
-- [liric](https://github.com/lazy-fortran/liric): backend C API target.
+- `app/ffc.f90` — CLI entry.
+- `src/` — lowering, LIRIC bindings, CLI options (fpm auto-discovers).
+- `test/` — behavioural tests; each file is a standalone `program test_*`
+  picked up by fpm auto-discovery.
+- `docs/` — `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
+  `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`.
+- `ROADMAP.md`, `BACKLOG.md`, `DESIGN.md` — high-level direction.
 
-## Status Source
+## Conventions
 
-The repository plan file tracks active work. The `docs/` directory now describes
-the FortFront-to-LIRIC path.
+- Free-form Fortran 2003+; no implicit typing; declarations at scope top.
+- Modules under 500 lines (hard cap 1000); functions under 50 lines
+  (hard cap 100). Split into `*.inc` files (already used heavily) when
+  the lowerer grows.
+- Symbols `snake_case`, derived types end in `_t`.
+- Each new supported construct lands as a code change in
+  `src/session_program_lowering_*` plus a behavioural test under `test/`.
+  Update `README.md` and `docs/SUPPORT_CONTRACT.md` in the same commit.
 
-The current direct-session MVP ABI is documented in
-[docs/RUNTIME_ABI.md](docs/RUNTIME_ABI.md).
+## Related repositories
+
+- [fortfront](https://github.com/lazy-fortran/fortfront) — frontend,
+  transformation, typed AST.
+- [liric](https://github.com/lazy-fortran/liric) — backend C API target.
+- [standard](https://github.com/lazy-fortran/standard) — intended
+  LFortran Standard and Infer behaviour.

@@ -299,7 +299,7 @@
         type is (call_or_subscript_node)
             call lower_logical_call(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP only supports logical '// &
+            error_msg = 'ffc direct-session lowering only supports logical '// &
                         'literals, identifiers, and contained calls'
         end select
     end subroutine lower_logical_expression
@@ -407,7 +407,7 @@
         type is (call_or_subscript_node)
             call lower_f64_call(arena, node, context, value, error_msg)
         class default
-            error_msg = 'direct LIRIC session MVP only supports real expressions'
+            error_msg = 'ffc direct-session lowering only supports real expressions'
         end select
     end subroutine lower_f64_expression
 

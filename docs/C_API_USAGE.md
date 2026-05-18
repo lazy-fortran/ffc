@@ -2,14 +2,22 @@
 
 The active backend integration uses LIRIC through `iso_c_binding`.
 
-## Binding Modules
+## Binding modules
 
-- `liric_session_bindings`: direct session construction, function/subroutine
-  emission, instruction emission, object output, and executable output.
-- `liric_session_control_bindings`: block, branch, comparison, and PHI helpers.
+- `liric_session_bindings`: direct session construction,
+  function/subroutine emission, instruction emission, object output, and
+  executable output.
+- `liric_session_control_bindings`: block, branch, comparison, and PHI
+  helpers.
+- `liric_session_procedure_bindings`: function/subroutine begin/finish
+  and call helpers.
+- `liric_session_io_bindings`: minimal `printf` shim and string
+  materialisation used for `print *`.
+- `liric_session_arrays.inc`: array alloca and element-address helpers
+  bundled into `liric_session_bindings`.
 
-New lowering code targets `liric_session_bindings` and the companion session
-binding modules. It does not target LLVM, MLIR, HLFIR, or text IR.
+New lowering code targets these modules. It does not target LLVM, MLIR,
+HLFIR, or text IR.
 
 ## Session Flow
 
@@ -37,8 +45,10 @@ on the first error and destroy any open session.
 generation and executable emission. FortFront owns parsing, AST, semantic data,
 diagnostics, and source mapping.
 
-## Do Not Add
+## Do not add
 
 - New MLIR/HLFIR bindings.
 - Backend code in FortFront.
 - Text IR as a compiler path.
+
+The retired MLIR/HLFIR experiment lives only in git history.

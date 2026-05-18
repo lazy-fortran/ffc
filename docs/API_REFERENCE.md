@@ -4,7 +4,7 @@
 surface is intentionally small. The supported language contract is
 `docs/SUPPORT_CONTRACT.md`.
 
-## FortFront Input
+## FortFront input
 
 Use FortFront's compiler-facing API:
 
@@ -23,7 +23,7 @@ The frontend result owns:
 
 FortFront remains backend-neutral. It must not depend on LIRIC.
 
-## LIRIC Session API
+## LIRIC session API
 
 New compiler work uses `liric_session_bindings`:
 
@@ -35,7 +35,7 @@ use liric_session_bindings, only: liric_session_t, liric_session_create, &
 The direct session path:
 
 1. Creates a LIRIC session.
-2. Begins a `main` function.
+2. Begins a `main` function (or a contained function/subroutine).
 3. Lowers FortFront AST nodes into LIRIC instruction descriptors.
 4. Emits a native executable or object file through LIRIC.
 
@@ -46,38 +46,39 @@ use session_program_lowering, only: lower_program_to_liric_exe, &
                                     lower_program_to_liric_object
 ```
 
-## Current Supported Direct-Session Subset
+## CLI
 
-The list below is a summary. `docs/SUPPORT_CONTRACT.md` is authoritative.
+`app/ffc.f90` invokes `ffc_cli_options.parse_arguments` to parse argv.
+Today the CLI accepts:
 
-- Empty `program main`.
-- Object and executable emission for the supported direct-session subset.
-- Scalar integer declarations and assignments.
-- Integer literals and arithmetic.
-- Integer comparison `if` blocks with terminating branches or mergeable
-  assignments.
-- Counted `do` loops with runtime-computed integer bounds and literal integer
-  step.
-- `stop` with integer expression.
-- Minimal scalar `print` for integer expressions, real values, character
-  literals, and logical literals.
-- Scalar real declarations, assignments, arithmetic, and printed variables.
-- Scalar logical declarations, assignments, `if (flag)`, and printed
-  variables.
-- Simple contained integer functions and subroutines with integer parameters
-  and integer call expressions/statements. Integer arguments use LIRIC pointer
-  parameters with copy-back for variable actual arguments.
+- positional: input source file.
+- `-o <file>`: output path. Default is `a.out` (or `a.o` with `-c`).
+- `-c`: emit an object file instead of an executable.
+- `-I <dir>`: append a module/include search directory. Repeatable.
+  Stored but not yet consumed by lowering.
 
-All other constructs are unsupported unless `docs/SUPPORT_CONTRACT.md` lists
-them as supported.
+## Supported direct-session subset
+
+`docs/SUPPORT_CONTRACT.md` is authoritative. Briefly:
+
+- empty `program main`; scalar integer / real / logical / character;
+- arithmetic, comparisons; block `if`; counted `do` with literal step
+  (positive or negative); `SELECT CASE` with terminating arms;
+- contained integer / real / logical functions and subroutines, plus
+  early `return`;
+- fixed-size 1-D integer arrays; simple derived types with scalar
+  integer components;
+- deferred-length character with assignment, concatenation including
+  self-aliasing, and compile-time literal `//` folding;
+- minimal `print *, expr`, `stop <expr>`, scalar `abs`/`min`/`max`/`mod`
+  and integer-to-real `real()`;
+- object and executable emission.
+
+All other constructs are unsupported unless `docs/SUPPORT_CONTRACT.md`
+lists them as supported.
 
 ## Runtime ABI
 
 The current direct-session runtime and scalar ABI is documented in
-`docs/RUNTIME_ABI.md`.
-
-## Legacy Source Tree
-
-The old MLIR/HLFIR source tree under `src/` is outside the default fpm build.
-It is reference material only. The active library source directory is
-`src_mvp/`.
+`docs/RUNTIME_ABI.md`. Each new feature that changes layout or calling
+convention updates that document in the same change.

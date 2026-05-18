@@ -1,97 +1,81 @@
 # ffc Architecture
 
-`ffc` is the compiler driver. FortFront owns the frontend; LIRIC owns native
-code generation. `ffc` connects them.
+`ffc` is the compiler driver. FortFront owns the frontend; LIRIC owns
+native code generation. `ffc` lowers FortFront's typed AST into LIRIC
+session calls.
 
-## Active Pipeline
+## Pipeline
 
 ```
 Fortran / Lazy Fortran source
-        |
-        v
-FortFront compiler API
-        |
-        v
-typed AST, semantic context, diagnostics
-        |
-        v
-ffc lowering and runtime ABI
-        |
-        v
-LIRIC session C API
-        |
-        v
-object file / executable
+  -> FortFront compiler API
+  -> typed AST, semantic context, diagnostics
+  -> ffc lowering + runtime ABI
+  -> LIRIC session C API
+  -> object file / executable
 ```
 
-FortFront must stay backend-neutral. It should expose stable compiler-facing
-queries for typed AST, symbols, scopes, diagnostics, and source mapping. It
-should not know about LIRIC, object formats, runtime ABI, or executable linking.
+## Component boundaries
+
+FortFront stays backend-neutral. It exposes:
+
+- a typed AST arena and root index;
+- semantic analysis state and tokens for diagnostics;
+- public compiler-facing queries used by `ffc`.
 
 `ffc` owns:
 
-- lowering FortFront nodes to backend operations
-- Fortran ABI and runtime call decisions
-- program entry and object/executable emission
-- compiler flags and backend selection
-- feature-level executable tests
+- lowering FortFront nodes to LIRIC instruction descriptors;
+- Fortran ABI and runtime call decisions;
+- program entry, object emission, and executable emission;
+- CLI parsing and backend invocation;
+- behavioural executable tests for every claimed feature.
 
-## Backend Rule
+LIRIC owns native code generation behind its session C API. `ffc` reaches
+LIRIC through ISO C bindings only.
 
-Use LIRIC through ISO C bindings to its C API.
+## Backend rule
 
-The old MLIR/HLFIR source tree remains as legacy reference material outside the
-default fpm build. Do not expand that path unless the backend decision is
-reopened.
+New compiler work targets LIRIC's session C API. `ffc` does not add LLVM
+bindings, MLIR bindings, HLFIR, or text-IR compiler paths.
 
-## Current Backend State
-
-Two LIRIC paths exist:
-
-- `liric_bindings`: bootstrap compiler API binding. It feeds generated text IR
-  to LIRIC's compiler API. This proves end-to-end execution, but it is not the
-  target architecture.
-- `liric_session_bindings`: direct session API binding. It emits LIRIC
-  instruction descriptors through `lr_session_emit()` and can build a runnable
-  executable directly.
-
-New lowering work should target `liric_session_bindings`. Keep the bootstrap
-path only until the direct session path has equivalent executable coverage.
-
-## Capability Order
+## Capability order
 
 Each step must leave `ffc` able to compile and run at least the previous
-supported subset.
+supported subset. The current supported surface is in
+`docs/SUPPORT_CONTRACT.md`; broadly:
 
-1. Empty `program main`.
-2. Scalar integer literals, variables, assignment, arithmetic, comparison.
-3. Minimal `print *, expr` for integers, reals, logicals, and strings.
-4. Block `if`, fallthrough integer merges, and literal-bound counted `do`.
-5. Simple contained integer functions with explicit ABI tests.
-6. Runtime counted `do`, subroutines, character representation, and a fuller
-   print/runtime surface.
-7. Arrays, modules, derived types, allocatables, and generics.
+1. `program main`, integer scalars, arithmetic, `stop`.
+2. Minimal `print *, expr` for integers, reals, logicals, characters.
+3. Block `if` with PHI merges; counted `do` with literal step.
+4. `SELECT CASE` with terminating arms.
+5. Contained integer / real / logical functions and subroutines.
+6. Fixed-size 1-D integer arrays; simple derived types with scalar
+   integer components.
+7. Deferred-length character with assignment, concatenation including
+   self-aliasing, and `len()` queries.
 
-## Runtime And ABI Decisions
+Arrays beyond fixed-size, modules and separate compilation, polymorphism,
+type-bound procedures, allocatables, the full intrinsic set, and a
+Fortran-aware I/O runtime are unsupported and tracked as GitHub issues.
 
-The current MVP ABI is documented in `docs/RUNTIME_ABI.md`. Before broadening
-language coverage, keep documenting and testing:
+## Runtime and ABI decisions
 
-- program entry and exit status convention
-- name mangling
-- pass-by-reference versus value passing
-- scalar return values and function result variables
-- logical representation
-- character storage and length passing
-- array descriptor shape
-- I/O runtime call surface
+The current ABI is documented in `docs/RUNTIME_ABI.md`. Before broadening
+language coverage, document and test:
 
-## Performance Direction
+- program entry and exit-status convention;
+- name mangling;
+- pass-by-reference vs pass-by-value;
+- scalar return values and function result variables;
+- logical and character representation, character length passing;
+- array descriptor shape;
+- I/O runtime call surface.
 
-Direct LIRIC session lowering should replace text generation on the hot path.
-The expected performance wins are fewer string allocations, no parse-back step
-for generated text IR, and a cleaner path to incremental compilation.
+## Performance direction
 
-Measure compile latency against the bootstrap path once the direct session
-lowerer has runtime loops, procedures, and the same scalar executable coverage
-as the bootstrap path.
+The direct LIRIC session path replaces text-IR generation on the hot
+path. The expected wins are fewer string allocations, no parse-back step
+for generated text IR, and a cleaner road to incremental compilation.
+Measurement is deferred until the supported surface is wider; today the
+priority is correctness and coverage.

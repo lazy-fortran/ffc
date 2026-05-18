@@ -59,7 +59,7 @@
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
         if (character_length <= 0) then
@@ -265,7 +265,7 @@
             return
         end if
         if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
 

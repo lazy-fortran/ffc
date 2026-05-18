@@ -79,7 +79,7 @@
           call unsupported_array_subscript(arena, node_index, &
                                            'ranges and slices', error_msg)
       class default
-          error_msg = 'direct LIRIC session MVP only supports integer expressions'
+          error_msg = 'ffc direct-session lowering only supports integer expressions'
       end select
   end subroutine lower_i32_expression
 
