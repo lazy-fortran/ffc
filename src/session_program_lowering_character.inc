@@ -123,19 +123,41 @@
             return
         end select
 
-        call normalize_character_literal( &
-            literal_text, context%symbols(symbol_index)%character_length)
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            context%string_literal_count = context%string_literal_count + 1
+            write (string_name, '(A,I0)') '.ffc.char.', &
+                context%string_literal_count
+            call materialize_liric_string(context%session, trim(string_name), &
+                                          literal_text, &
+                                          context%symbols(symbol_index)%value, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
 
-        context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.char.', &
-            context%string_literal_count
-        call materialize_liric_string(context%session, trim(string_name), &
-                                      literal_text, &
-                                      context%symbols(symbol_index)%value, &
-                                      error_msg)
-        if (len_trim(error_msg) > 0) return
+            if (.not. context%session%emit_ptr_store( &
+                context%symbols(symbol_index)%value, &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
 
-        context%symbols(symbol_index)%has_character_value = .true.
+            if (.not. context%session%emit_i64_store( &
+                 context%session%i64_immediate(int(len(literal_text), &
+                     c_int64_t)), &
+                 context%symbols(symbol_index)%deferred_length, error_msg)) return
+
+            context%symbols(symbol_index)%has_character_value = .true.
+        else
+            call normalize_character_literal( &
+                literal_text, context%symbols(symbol_index)%character_length)
+
+            context%string_literal_count = context%string_literal_count + 1
+            write (string_name, '(A,I0)') '.ffc.char.', &
+                context%string_literal_count
+            call materialize_liric_string(context%session, trim(string_name), &
+                                          literal_text, &
+                                          context%symbols(symbol_index)%value, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            context%symbols(symbol_index)%has_character_value = .true.
+        end if
         call set_empty(error_msg)
     end subroutine lower_character_assignment
 
