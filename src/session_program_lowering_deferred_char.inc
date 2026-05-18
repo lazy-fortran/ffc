@@ -129,6 +129,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! Get left operand text/content
         if (left_is_literal) then
             call strip_literal_quotes(left_name, left_text)
+            call materialize_concat_literal(context, left_text, left_data, &
+                left_len, error_msg)
+            if (len_trim(error_msg) > 0) return
         else
             ! For self-aliasing, use captured old values
             ! For non-self-aliasing, load from symbol
@@ -148,6 +151,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! Get right operand text/content
         if (right_is_literal) then
             call strip_literal_quotes(right_name, right_text)
+            call materialize_concat_literal(context, right_text, right_data, &
+                right_len, error_msg)
+            if (len_trim(error_msg) > 0) return
         else
             if (is_self_alias .and. right_sym_idx == dest_symbol_index) then
                 right_data = old_data
@@ -197,37 +203,107 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 context%session%i64_immediate(combined_len), &
                 context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
 
+            context%symbols(dest_symbol_index)%value = new_ptr
             context%symbols(dest_symbol_index)%has_character_value = .true.
             call set_empty(error_msg)
             return
         end if
 
-        ! Runtime concatenation: use alloca + memcpy
-        if (.not. context%session%emit_alloca_bytes(total_len, new_ptr, &
-            error_msg)) return
+        ! Runtime concatenation: alloca (total_len + 1) for trailing null,
+        ! memcpy operands, then write null byte so %s printers stay bounded.
+        block
+            type(lr_operand_desc_t) :: alloca_size
+            type(lr_operand_desc_t) :: null_byte_ptr
+            type(lr_operand_desc_t) :: null_dest
+            character(len=64) :: null_name
 
-        ! memcpy(dest, left_data, left_len)
-        if (.not. context%session%emit_memcpy( &
-            new_ptr, left_data, left_len, error_msg)) return
+            if (.not. context%session%emit_i64_binary( &
+                LR_OP_ADD, total_len, &
+                context%session%i64_immediate(1_c_int64_t), &
+                alloca_size, error_msg)) return
 
-        ! offset = new_ptr + left_len
-        if (.not. context%session%emit_i64_binary( &
-            LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
+            if (.not. context%session%emit_alloca_bytes(alloca_size, new_ptr, &
+                error_msg)) return
 
-        ! memcpy(offset, right_data, right_len)
-        if (.not. context%session%emit_memcpy( &
-            running_offset, right_data, right_len, error_msg)) return
+            if (.not. context%session%emit_memcpy( &
+                new_ptr, left_data, left_len, error_msg)) return
 
-        ! Store new_ptr into s.data
+            if (.not. context%session%emit_i64_binary( &
+                LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
+
+            if (.not. context%session%emit_memcpy( &
+                running_offset, right_data, right_len, error_msg)) return
+
+            if (.not. context%session%emit_i64_binary( &
+                LR_OP_ADD, running_offset, right_len, null_dest, &
+                error_msg)) return
+
+            context%string_literal_count = context%string_literal_count + 1
+            write (null_name, '(A,I0)') '.ffc.cat.term.', &
+                context%string_literal_count
+            call materialize_liric_string(context%session, trim(null_name), &
+                                          '', null_byte_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            if (.not. context%session%emit_memcpy( &
+                null_dest, null_byte_ptr, &
+                context%session%i64_immediate(1_c_int64_t), error_msg)) return
+        end block
+
         if (.not. context%session%emit_i64_store( &
             new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
             error_msg)) return
 
-        ! Store total_len into s.length
         if (.not. context%session%emit_i64_store( &
             total_len, context%symbols(dest_symbol_index)%deferred_length, &
             error_msg)) return
 
+        context%symbols(dest_symbol_index)%value = new_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_concat_assignment
+
+    subroutine materialize_concat_literal(context, text, data_op, len_op, &
+                                          error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: text
+        type(lr_operand_desc_t), intent(out) :: data_op
+        type(lr_operand_desc_t), intent(out) :: len_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: string_name
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.cat.lit.', &
+            context%string_literal_count
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      text, data_op, error_msg)
+        if (len_trim(error_msg) > 0) return
+        len_op = context%session%i64_immediate(int(len(text), c_int64_t))
+        call set_empty(error_msg)
+    end subroutine materialize_concat_literal
+
+    subroutine lower_deferred_literal_assignment(value_node, context, &
+                                                 dest_symbol_index, error_msg)
+        type(literal_node), intent(in) :: value_node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: literal_text
+        type(lr_operand_desc_t) :: data_op
+        type(lr_operand_desc_t) :: len_op
+
+        call strip_literal_quotes(value_node%value, literal_text)
+        call materialize_concat_literal(context, literal_text, data_op, &
+                                        len_op, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. context%session%emit_ptr_store(data_op, &
+            context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        if (.not. context%session%emit_i64_store(len_op, &
+            context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+
+        context%symbols(dest_symbol_index)%value = data_op
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_deferred_literal_assignment

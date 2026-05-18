@@ -20,7 +20,7 @@ contains
     logical function test_self_concat_appends_literal_case()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  character :: s'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
             '  s = "hi"'//new_line('a')// &
             '  s = s // "!"'//new_line('a')// &
             '  print *, s'//new_line('a')// &

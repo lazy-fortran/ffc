@@ -20,7 +20,7 @@ contains
     logical function test_self_concat_three_times_case()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  character :: s'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
             '  s = "x"'//new_line('a')// &
             '  s = s // "."'//new_line('a')// &
             '  s = s // "."'//new_line('a')// &

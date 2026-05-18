@@ -101,6 +101,12 @@
                         context, symbol_index, error_msg)
                     return
                 end if
+            type is (literal_node)
+                if (is_character_literal(value_node)) then
+                    call lower_deferred_literal_assignment(value_node, &
+                        context, symbol_index, error_msg)
+                    return
+                end if
             end select
         end if
 
@@ -191,6 +197,11 @@
 
         close_pos = start_pos + close_pos - 2
         length_text = adjustl(lowered(start_pos:close_pos))
+        if (trim(length_text) == ':' .or. trim(length_text) == '*') then
+            character_length = -1
+            call set_empty(error_msg)
+            return
+        end if
         read (length_text, *, iostat=io_stat) character_length
         if (io_stat /= 0 .or. character_length <= 0) then
             error_msg = 'character length must be a positive integer literal'
