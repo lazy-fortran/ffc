@@ -4,37 +4,48 @@ program ffc_main
                          compile_frontend_from_file, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
                                         lower_program_to_liric_object
+    use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
     implicit none
 
     type(compiler_frontend_options_t) :: frontend_options
     type(compiler_frontend_result_t) :: frontend_result
-    character(len=512) :: input_file
-    character(len=512) :: output_file
+    type(cli_options_t) :: opts
+    character(len=CLI_PATH_LEN), allocatable :: argv(:)
     character(len=:), allocatable :: error_msg
-    logical :: emit_object
+    character(len=CLI_PATH_LEN) :: output_file
+    integer :: nargs, i
 
-    if (command_argument_count() < 1) then
+    nargs = command_argument_count()
+    if (nargs < 1) then
         call print_usage()
         stop 1
     end if
 
-    call get_command_argument(1, input_file)
-    call parse_command_line(output_file, emit_object)
+    allocate (argv(nargs))
+    do i = 1, nargs
+        call get_command_argument(i, argv(i))
+    end do
+    call parse_arguments(argv, opts)
+    if (opts%error) then
+        print '(A)', opts%error_message
+        stop 1
+    end if
 
     frontend_options = compiler_frontend_options_t()
     frontend_options%run_semantics = .true.
     frontend_options%input_mode = INPUT_MODE_STANDARD
 
-    call compile_frontend_from_file(trim(input_file), frontend_result, &
+    call compile_frontend_from_file(trim(opts%input_file), frontend_result, &
                                     frontend_options)
     if (.not. frontend_result%success()) then
         print '(A)', trim(frontend_result%diagnostic_text)
         stop 1
     end if
 
-    if (len_trim(output_file) == 0) output_file = default_output_name(emit_object)
+    output_file = opts%output_file
+    if (len_trim(output_file) == 0) output_file = default_output_name(opts%emit_object)
 
-    if (emit_object) then
+    if (opts%emit_object) then
         call lower_program_to_liric_object(frontend_result%arena, &
                                            frontend_result%root_index, &
                                            trim(output_file), error_msg)
@@ -55,40 +66,12 @@ contains
         print '(A)', 'Options:'
         print '(A)', '  -o <file>     Output file'
         print '(A)', '  -c            Emit object file'
+        print '(A)', '  -I <dir>      Add module/include search directory'
     end subroutine print_usage
-
-    subroutine parse_command_line(out_file, emit_object)
-        character(len=*), intent(out) :: out_file
-        logical, intent(out) :: emit_object
-        integer :: i
-        character(len=512) :: arg
-
-        out_file = ''
-        emit_object = .false.
-        i = 2
-        do while (i <= command_argument_count())
-            call get_command_argument(i, arg)
-            select case (trim(arg))
-            case ('-c')
-                emit_object = .true.
-            case ('-o')
-                i = i + 1
-                if (i > command_argument_count()) then
-                    print '(A)', 'Missing value for -o'
-                    stop 1
-                end if
-                call get_command_argument(i, out_file)
-            case default
-                print '(A,A)', 'Unknown option: ', trim(arg)
-                stop 1
-            end select
-            i = i + 1
-        end do
-    end subroutine parse_command_line
 
     function default_output_name(emit_object) result(name)
         logical, intent(in) :: emit_object
-        character(len=512) :: name
+        character(len=CLI_PATH_LEN) :: name
 
         if (emit_object) then
             name = 'a.o'
