@@ -15,6 +15,9 @@ program test_session_select_case_compiler
     if (.not. test_select_case_three_arms_matches_first()) all_passed = .false.
     if (.not. test_select_case_three_arms_matches_middle()) all_passed = .false.
     if (.not. test_select_case_three_arms_matches_default()) all_passed = .false.
+    if (.not. test_select_case_multi_label_first_matches()) all_passed = .false.
+    if (.not. test_select_case_multi_label_second_matches()) all_passed = .false.
+    if (.not. test_select_case_multi_label_no_match()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: SELECT CASE lowers through direct LIRIC'
@@ -117,6 +120,57 @@ contains
         test_select_case_three_arms_matches_default = expect_exit_status( &
             source, 99, '/tmp/ffc_session_select_three_default_test')
     end function test_select_case_three_arms_matches_default
+
+    logical function test_select_case_multi_label_first_matches()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 2'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (2, 5)'//new_line('a')// &
+            '    stop 25'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_multi_label_first_matches = expect_exit_status( &
+            source, 25, '/tmp/ffc_session_select_multi_first_test')
+    end function test_select_case_multi_label_first_matches
+
+    logical function test_select_case_multi_label_second_matches()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 5'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (2, 5)'//new_line('a')// &
+            '    stop 25'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_multi_label_second_matches = expect_exit_status( &
+            source, 25, '/tmp/ffc_session_select_multi_second_test')
+    end function test_select_case_multi_label_second_matches
+
+    logical function test_select_case_multi_label_no_match()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 7'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (2, 5)'//new_line('a')// &
+            '    stop 25'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_multi_label_no_match = expect_exit_status( &
+            source, 99, '/tmp/ffc_session_select_multi_none_test')
+    end function test_select_case_multi_label_no_match
 
     logical function expect_exit_status(source, expected, exe_path) result(ok)
         character(len=*), intent(in) :: source

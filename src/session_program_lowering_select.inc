@@ -53,8 +53,6 @@
         integer(c_int32_t), intent(in) :: default_block
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: literal_value
-        type(lr_operand_desc_t) :: cond
         type(lr_operand_desc_t) :: dummy_value
         integer(c_int32_t) :: arm_block
         integer(c_int32_t) :: next_check_block
@@ -74,16 +72,13 @@
                                                error_msg)
                 return
             end if
-            if (size(arm%value_indices) /= 1) then
+            if (size(arm%value_indices) < 1) then
                 call unsupported_feature_error('select case statement', &
                                                arm%line, arm%column, &
-                                               'multi-label case arms not yet '// &
-                                               'supported', error_msg)
+                                               'case arm requires at least one label', &
+                                               error_msg)
                 return
             end if
-            call lower_i32_expression(arena, arm%value_indices(1), context, &
-                                      literal_value, error_msg)
-            if (len_trim(error_msg) > 0) return
 
             arm_block = create_liric_block(context%session)
             if (is_last_arm) then
@@ -92,10 +87,10 @@
                 next_check_block = create_liric_block(context%session)
             end if
 
-            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, selector, &
-                                          literal_value, cond, error_msg)) return
-            if (.not. emit_liric_condbr(context%session, cond, arm_block, &
-                                        next_check_block, error_msg)) return
+            call emit_case_label_dispatch(arena, arm%value_indices, selector, &
+                                          arm_block, next_check_block, &
+                                          context, error_msg)
+            if (len_trim(error_msg) > 0) return
 
             if (.not. set_liric_block(context%session, arm_block, &
                                       error_msg)) return
@@ -171,3 +166,41 @@
         context%current_block_terminated = .true.
         call set_empty(error_msg)
     end subroutine lower_select_case_default
+
+    subroutine emit_case_label_dispatch(arena, value_indices, selector, &
+                                        arm_block, no_match_block, context, &
+                                        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_indices(:)
+        type(lr_operand_desc_t), intent(in) :: selector
+        integer(c_int32_t), intent(in) :: arm_block
+        integer(c_int32_t), intent(in) :: no_match_block
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: literal_value
+        type(lr_operand_desc_t) :: cond
+        integer(c_int32_t) :: false_target
+        integer :: i
+
+        do i = 1, size(value_indices)
+            call lower_i32_expression(arena, value_indices(i), context, &
+                                      literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, selector, &
+                                          literal_value, cond, error_msg)) return
+            if (i == size(value_indices)) then
+                false_target = no_match_block
+            else
+                false_target = create_liric_block(context%session)
+            end if
+            if (.not. emit_liric_condbr(context%session, cond, arm_block, &
+                                        false_target, error_msg)) return
+            if (i < size(value_indices)) then
+                if (.not. set_liric_block(context%session, false_target, &
+                                          error_msg)) return
+                context%current_block_id = false_target
+                context%current_block_terminated = .false.
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_case_label_dispatch
