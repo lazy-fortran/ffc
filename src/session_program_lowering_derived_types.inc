@@ -108,8 +108,8 @@
         call set_empty(error_msg)
     end subroutine collect_derived_components
 
-    subroutine collect_component_declaration(component_index, parent, context, &
-                                             type_index, error_msg)
+subroutine collect_component_declaration(component_index, parent, context, &
+                                              type_index, error_msg)
         integer, intent(in) :: component_index
         type(derived_type_node), intent(in) :: parent
         type(lowering_context_t), intent(inout) :: context
@@ -563,3 +563,204 @@
             end if
         end do
     end function find_derived_component
+
+    subroutine import_module_derived_types(arena, use_node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: module_index
+        integer :: i
+        integer :: derived_type_index
+        character(len=:), allocatable :: module_lowered
+
+        call set_empty(error_msg)
+
+        if (.not. allocated(use_node%module_name)) return
+
+        module_lowered = lowercase_text(use_node%module_name)
+        call find_module_in_arena(arena, module_lowered, module_index)
+        if (module_index <= 0) return
+
+        if (.not. allocated(arena%entries(module_index)%node)) return
+        select type (mod_node => arena%entries(module_index)%node)
+        type is (module_node)
+            if (.not. allocated(mod_node%declaration_indices)) return
+            do i = 1, size(mod_node%declaration_indices)
+                select type (decl => arena%entries(mod_node%declaration_indices(i))%node)
+                type is (derived_type_node)
+                    if (allocated(decl%name)) then
+                        derived_type_index = find_derived_type(context, decl%name)
+                        if (derived_type_index > 0) then
+                            call unsupported_feature_error( &
+                                'derived type import', decl%line, decl%column, &
+                                'derived type already declared in scope: '// &
+                                trim(decl%name), error_msg)
+                            return
+                        end if
+                        call add_derived_type_from_arena(arena, &
+                            mod_node%declaration_indices(i), context, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
+                end select
+            end do
+        end select
+    end subroutine import_module_derived_types
+
+    subroutine add_derived_type_from_arena(arena, type_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: type_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: type_index_new
+
+        call set_empty(error_msg)
+
+        if (.not. arena%has_node_at(type_index)) then
+            error_msg = 'derived type index does not reference an AST node'
+            return
+        end if
+
+        if (context%derived_type_count >= MAX_DERIVED_TYPES) then
+            error_msg = 'too many derived types for direct LIRIC session MVP'
+            return
+        end if
+
+        type_index_new = context%derived_type_count + 1
+
+        ! Use the existing lower_derived_type_definition pattern but with arena index
+        call import_derived_type_from_arena(arena, type_index, context, &
+            type_index_new, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%derived_type_count = type_index_new
+    end subroutine add_derived_type_from_arena
+
+subroutine import_derived_type_from_arena(arena, type_index, context, &
+        type_index_new, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: type_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index_new
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+
+        if (.not. arena%has_node_at(type_index)) then
+            error_msg = 'derived type index does not reference an AST node'
+            return
+        end if
+
+        context%derived_types(type_index_new)%component_count = 0
+
+        ! Get the derived type name from the node
+        select type (dtype => arena%entries(type_index)%node)
+        type is (derived_type_node)
+            context%derived_types(type_index_new)%name = trim(dtype%name)
+        end select
+
+        call collect_derived_components_via_arena(arena, type_index, context, &
+            type_index_new, error_msg)
+    end subroutine import_derived_type_from_arena
+
+    subroutine collect_derived_components_via_arena(arena, type_index, &
+        context, type_index_new, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: type_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index_new
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+
+        if (.not. arena%has_node_at(type_index)) then
+            error_msg = 'derived type index does not reference an AST node'
+            return
+        end if
+
+        ! The key insight: we need to access derived_type_node%component_indices
+        ! which is an allocatable integer array. When we do select type on
+        ! arena%entries(type_index)%node (which is class(ast_node), allocatable),
+        ! the allocatable arrays in the derived type should be accessible.
+        !
+        ! The issue we've been seeing is that component_indices appears unallocated.
+        ! This might be because the arena stores nodes differently than expected.
+        !
+        ! Let's try using context%arena instead of arena to see if that helps.
+        call collect_derived_components_from_context_arena(arena, type_index, context, &
+            type_index_new, error_msg)
+    end subroutine collect_derived_components_via_arena
+
+    subroutine collect_derived_components_from_context_arena(arena, type_index, &
+        context, type_index_new, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: type_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index_new
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+
+        if (.not. arena%has_node_at(type_index)) then
+            error_msg = 'derived type index does not reference an AST node'
+            return
+        end if
+
+        select type (dtype => arena%entries(type_index)%node)
+        type is (derived_type_node)
+            if (allocated(dtype%component_indices)) then
+                do i = 1, size(dtype%component_indices)
+                    call collect_component_declaration( &
+                        dtype%component_indices(i), dtype, context, type_index_new, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        class default
+            error_msg = 'node at type_index is not a derived_type_node'
+        end select
+    end subroutine collect_derived_components_from_context_arena
+
+    subroutine lower_program_body(arena, program, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(program_node), intent(in) :: program
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        value = context%session%i32_immediate(0_c_int64_t)
+        context%current_block_terminated = .false.
+
+        if (.not. allocated(program%body_indices)) return
+        do i = 1, size(program%body_indices)
+            if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
+            call lower_statement(arena, program%body_indices(i), context, &
+                                 value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%current_block_terminated) return
+        end do
+    end subroutine lower_program_body
+
+    subroutine find_module_in_arena(arena, module_lowered, module_index)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_lowered
+        integer, intent(out) :: module_index
+        integer :: i
+
+        module_index = 0
+        if (len_trim(module_lowered) == 0) return
+
+        do i = 1, arena%size
+            if (.not. allocated(arena%entries(i)%node)) cycle
+            select type (node => arena%entries(i)%node)
+            type is (module_node)
+                if (.not. allocated(node%name)) cycle
+                if (lowercase_text(node%name) == module_lowered) then
+                    module_index = i
+                    return
+                end if
+            end select
+        end do
+    end subroutine find_module_in_arena

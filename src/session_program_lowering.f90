@@ -5,6 +5,7 @@ module session_program_lowering
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
     use ast_nodes_core, only: component_access_node
     use ast_nodes_data, only: derived_type_node
+    use ast_nodes_misc, only: use_statement_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
@@ -16,7 +17,8 @@ module session_program_lowering
                          subroutine_def_node, write_statement_node, &
                          allocate_statement_node, deallocate_statement_node, &
                          get_subroutine_call_arg_indices, &
-                         get_subroutine_call_name, is_subroutine_call_statement
+                         get_subroutine_call_name, is_subroutine_call_statement, &
+                         is_declaration_node, is_module_node, is_program_node
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
                                       lr_operand_desc_t, LR_OP_ADD, LR_OP_SREM, &
                                       LR_OP_SUB
@@ -290,20 +292,48 @@ contains
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        integer :: j
+        logical :: has_executable_statements
+        logical :: has_nested_program
 
         value = context%session%i32_immediate(0_c_int64_t)
         context%current_block_terminated = .false.
+        has_executable_statements = .false.
+        has_nested_program = .false.
+
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             if (.not. allocated(program%body_indices)) return
+            ! Check if there's a program_node in the body (multi-unit source)
+            has_nested_program = .false.
+            do i = 1, size(program%body_indices)
+                if (is_program_node(arena, program%body_indices(i))) then
+                    has_nested_program = .true.
+                    exit
+                end if
+            end do
+            ! Process body elements
             do i = 1, size(program%body_indices)
                 if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
+                if (is_module_node(arena, program%body_indices(i))) then
+                    ! Skip module nodes only if there's a nested program
+                    if (.not. has_nested_program) then
+                        call unsupported_feature_error('module definition', &
+                            arena%entries(program%body_indices(i))%node%line, &
+                            arena%entries(program%body_indices(i))%node%column, &
+                            'direct LIRIC session only supports modules as USE '// &
+                            'targets, not as top-level program units', error_msg)
+                        return
+                    end if
+                    cycle
+                end if
                 call lower_statement(arena, program%body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (context%current_block_terminated) return
+                has_executable_statements = .true.
             end do
         class default
             error_msg = 'direct LIRIC session MVP only supports a program node'
@@ -407,6 +437,14 @@ contains
                                            error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
+        type is (module_node)
+            ! Module nodes are skipped silently (they're USE targets, not executable)
+            call set_empty(error_msg)
+        type is (program_node)
+            call lower_program_body(arena, node, context, value, error_msg)
+        
+        type is (use_statement_node)
+            call import_module_derived_types(arena, node, context, error_msg)
         class default
             node_type = 'unknown'
             if (allocated(arena%entries(node_index)%node_type)) then
