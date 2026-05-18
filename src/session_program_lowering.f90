@@ -150,6 +150,7 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
         integer :: function_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
+        integer :: current_function_result_index = 0
         logical :: current_block_terminated = .false.
     end type lowering_context_t
 
@@ -426,10 +427,7 @@ contains
                 if (.not. context%session%emit_ret_void(error_msg)) return
                 context%current_block_terminated = .true.
             else if (context%in_internal_function) then
-                call unsupported_feature_error('return inside function', &
-                                               node%line, node%column, &
-                                               'function early return is not '// &
-                                               'yet supported', error_msg)
+                call lower_function_return(node, context, error_msg)
             else
                 call unsupported_feature_error('return statement', node%line, &
                                                node%column, &
@@ -908,6 +906,33 @@ contains
     include 'session_program_lowering_character.inc'
 
     include 'session_program_lowering_deferred_char.inc'
+
+    subroutine lower_function_return(node, context, error_msg)
+        type(return_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: idx
+        type(lr_operand_desc_t) :: result_value
+
+        idx = context%current_function_result_index
+        if (idx <= 0) then
+            error_msg = 'function return without a tracked result symbol'
+            return
+        end if
+        select case (context%symbols(idx)%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL, VALUE_F64)
+            result_value = context%symbols(idx)%value
+            if (.not. context%session%emit_ret_i32_operand(result_value, &
+                                                           error_msg)) return
+            context%current_block_terminated = .true.
+        case default
+            call unsupported_feature_error('return from non-scalar function', &
+                                           node%line, node%column, &
+                                           'only integer, logical and real '// &
+                                           'function returns are supported', &
+                                           error_msg)
+        end select
+    end subroutine lower_function_return
 
     subroutine lower_stop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena

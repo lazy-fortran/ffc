@@ -219,6 +219,7 @@
 
         call define_symbol(context, node%name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
+        context%current_function_result_index = find_symbol(context, node%name)
         call define_reference_parameters(arena, node%param_indices, context, &
                                          error_msg)
         if (len_trim(error_msg) > 0) return
