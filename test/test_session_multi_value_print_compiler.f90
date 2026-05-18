@@ -99,81 +99,42 @@ contains
     logical function outputs_match(left, right)
         character(len=*), intent(in) :: left
         character(len=*), intent(in) :: right
-        character(len=256) :: left_line, right_line
-        integer :: unit_l, unit_r, io_stat_l, io_stat_r
-        logical :: done_l, done_r
-        character(len=256) :: norm_left, norm_right
-        integer :: ll, lr, li, lc
+        character(len=:), allocatable :: norm_left
+        character(len=:), allocatable :: norm_right
+        integer :: status
 
         outputs_match = .false.
-        open (newunit=unit_l, file=left, status='old', action='read', &
-              iostat=io_stat_l)
-        if (io_stat_l /= 0) return
-        open (newunit=unit_r, file=right, status='old', action='read', &
-              iostat=io_stat_r)
-        if (io_stat_r /= 0) then
-            close (unit_l)
-            return
-        end if
 
-        done_l = .true.
-        done_r = .true.
-        do
-            read (unit_l, '(A)', iostat=io_stat_l) left_line
-            if (io_stat_l /= 0) then
-                done_l = .true.
-            else
-                done_l = .false.
-            end if
-            read (unit_r, '(A)', iostat=io_stat_r) right_line
-            if (io_stat_r /= 0) then
-                done_r = .true.
-            else
-                done_r = .false.
-            end if
-            if (done_l .and. done_r) then
-                outputs_match = .true.
-                exit
-            end if
-            if (done_l .neqv. done_r) exit
+        call normalize_file(left, norm_left, .true.)
+        call normalize_file(right, norm_right, .false.)
 
-            norm_left = normalize_ws(trim(left_line))
-            norm_right = normalize_ws(trim(right_line))
-            if (norm_left /= norm_right) exit
-        end do
+        call execute_command_line('diff -q '//norm_left//' '//norm_right// &
+                                  ' > /dev/null 2>&1', exitstat=status)
+        outputs_match = status == 0
 
-        close (unit_l)
-        close (unit_r)
+        call execute_command_line('rm -f '//norm_left//' '//norm_right)
     end function outputs_match
 
-    function normalize_ws(text) result(normalized)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable :: normalized
-        character(len=256) :: buf
-        integer :: li, lc, len_text
+    subroutine normalize_file(in_path, out_path, is_first)
+        character(len=*), intent(in) :: in_path
+        character(len=:), allocatable, intent(out) :: out_path
+        logical, intent(in) :: is_first
+        integer :: io_stat
+        character(len=256) :: cmd
+        character(len=64) :: norm_path
 
-        len_text = len_trim(text)
-        if (len_text == 0) then
-            allocate (character(len=0) :: normalized)
-            return
+        if (is_first) then
+            norm_path = '/tmp/ffc_norm_a'
+        else
+            norm_path = '/tmp/ffc_norm_b'
         end if
 
-        buf = ''
-        lc = 0
-        do li = 1, len_text
-            if (text(li:li) == ' ') then
-                if (lc > 0) then
-                    lc = lc + 1
-                    buf(lc:lc) = ' '
-                end if
-            else
-                lc = lc + 1
-                buf(lc:lc) = text(li:li)
-            end if
-        end do
-        allocate (character(len=lc) :: normalized)
-        normalized = buf(1:lc)
-    end function normalize_ws
+        cmd = 'sed "s/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\{1,\}/ /g" '// &
+              in_path//' > '//norm_path//' 2>/dev/null'
+        call execute_command_line(cmd, exitstat=io_stat)
+        allocate (character(len=len_trim(norm_path)) :: out_path)
+        out_path = trim(norm_path)
+    end subroutine normalize_file
 
     subroutine dump_file(path)
         character(len=*), intent(in) :: path
