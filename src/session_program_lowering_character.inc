@@ -178,3 +178,38 @@
 
         call set_empty(error_msg)
     end subroutine parse_character_length
+
+    subroutine define_deferred_character_symbol(context, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        type(lr_operand_desc_t) :: data_addr
+        type(lr_operand_desc_t) :: len_addr
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate character declaration: '//trim(name)
+            return
+        end if
+        if (context%symbol_count >= MAX_SYMBOLS) then
+            error_msg = 'too many scalar symbols for direct LIRIC session MVP'
+            return
+        end if
+
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_CHARACTER
+        context%symbols(index)%is_deferred_character = .true.
+        context%symbols(index)%has_character_value = .false.
+
+        ! Allocate stack space for descriptor: data_addr + len_addr
+        call context%session%emit_i32_alloca(data_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call context%session%emit_i32_alloca(len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols(index)%deferred_data = data_addr
+        context%symbols(index)%deferred_length = len_addr
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_deferred_character_symbol

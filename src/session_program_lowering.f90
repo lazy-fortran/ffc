@@ -114,6 +114,9 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
         type(lr_operand_desc_t) :: element_address
         logical :: has_i32_constant = .false.
         integer(c_int64_t) :: i32_constant = 0_c_int64_t
+        logical :: is_deferred_character = .false.
+        type(lr_operand_desc_t) :: deferred_data
+        type(lr_operand_desc_t) :: deferred_length
     end type symbol_t
 
     type :: derived_type_info_t
