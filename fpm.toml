@@ -5,7 +5,6 @@ author = "krystophny"
 license = "MIT"
 
 [dependencies]
-stdlib = "*"
 fortfront = { path = "../fortfront" }
 
 [build]

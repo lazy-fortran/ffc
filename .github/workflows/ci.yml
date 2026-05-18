@@ -1,16 +1,64 @@
-name: FortFC CI
+name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    name: test
+  build-test:
+    name: build + fpm test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder test
-        run: echo "ffc is retired in favor of LFortran - tests disabled"
+      - name: Checkout ffc
+        uses: actions/checkout@v4
+        with:
+          path: ffc
+
+      - name: Checkout fortfront (sibling path)
+        uses: actions/checkout@v4
+        with:
+          repository: lazy-fortran/fortfront
+          path: fortfront
+
+      - name: Checkout liric
+        uses: actions/checkout@v4
+        with:
+          repository: lazy-fortran/liric
+          path: liric
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran cmake ninja-build curl
+
+      - name: Install fpm
+        run: |
+          sudo curl -L -o /usr/local/bin/fpm \
+            https://github.com/fortran-lang/fpm/releases/download/v0.10.1/fpm-0.10.1-linux-x86_64-gcc-12
+          sudo chmod +x /usr/local/bin/fpm
+          fpm --version
+
+      - name: Build liric
+        working-directory: liric
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j"$(nproc)"
+          ls -la build/libliric.a
+
+      - name: Build ffc
+        working-directory: ffc
+        env:
+          LIBRARY_PATH: ${{ github.workspace }}/liric/build
+        run: fpm build
+
+      - name: Run ffc tests
+        working-directory: ffc
+        env:
+          LIBRARY_PATH: ${{ github.workspace }}/liric/build
+        run: fpm test

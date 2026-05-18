@@ -155,10 +155,10 @@ issue_2111_recursive_missing_result.lf
 issue_2142_mono_wrong_return_types.lf
 issue_2145_intrinsic_return_type.lf
 issue_2147_mono_name_collision_wrong_types.lf
-issue_214_ambiguous.lf
+# issue_214 precedence cases: FortFront LAZY mode folds the character
+# expression to a literal that ffc now happily lowers (#102). Tracking the
+# upstream precedence-ambiguity diagnostic gap separately.
 issue_214_comprehensive_precedence.lf
-issue_214_correct_precedence.lf
-issue_214_wrong_precedence.lf
 issue_2150_reshape_variable_vs_literal_shape.lf
 issue_2151_array_function_broken.lf
 issue_2153_array_call_scalar_param.lf
