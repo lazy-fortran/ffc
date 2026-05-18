@@ -896,6 +896,8 @@ contains
 
     include 'session_program_lowering_character.inc'
 
+    include 'session_program_lowering_deferred_char.inc'
+
     subroutine lower_stop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(stop_node), intent(in) :: node

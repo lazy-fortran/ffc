@@ -211,3 +211,27 @@
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_alloca_i32
+
+    function emit_alloca_i64(handle, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_inst_desc_t) :: inst
+
+        inst%op = LR_OP_ALLOCA
+        inst%typ = lr_type_i64_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_null_ptr
+        inst%num_operands = 0_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_alloca_i64

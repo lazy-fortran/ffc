@@ -130,26 +130,36 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (left_is_literal) then
             call strip_literal_quotes(left_name, left_text)
         else
-            ! For identifier operands, we need to get the text from the
-            ! symbol's descriptor at runtime
-            if (.not. context%session%emit_i64_load( &
-                context%symbols(left_sym_idx)%deferred_data, &
-                left_data, error_msg)) return
-            if (.not. context%session%emit_i64_load( &
-                context%symbols(left_sym_idx)%deferred_length, &
-                left_len, error_msg)) return
+            ! For self-aliasing, use captured old values
+            ! For non-self-aliasing, load from symbol
+            if (is_self_alias .and. left_sym_idx == dest_symbol_index) then
+                left_data = old_data
+                left_len = old_len_val
+            else
+                if (.not. context%session%emit_i64_load( &
+                    context%symbols(left_sym_idx)%deferred_data, &
+                    left_data, error_msg)) return
+                if (.not. context%session%emit_i64_load( &
+                    context%symbols(left_sym_idx)%deferred_length, &
+                    left_len, error_msg)) return
+            end if
         end if
 
         ! Get right operand text/content
         if (right_is_literal) then
             call strip_literal_quotes(right_name, right_text)
         else
-            if (.not. context%session%emit_i64_load( &
-                context%symbols(right_sym_idx)%deferred_data, &
-                right_data, error_msg)) return
-            if (.not. context%session%emit_i64_load( &
-                context%symbols(right_sym_idx)%deferred_length, &
-                right_len, error_msg)) return
+            if (is_self_alias .and. right_sym_idx == dest_symbol_index) then
+                right_data = old_data
+                right_len = old_len_val
+            else
+                if (.not. context%session%emit_i64_load( &
+                    context%symbols(right_sym_idx)%deferred_data, &
+                    right_data, error_msg)) return
+                if (.not. context%session%emit_i64_load( &
+                    context%symbols(right_sym_idx)%deferred_length, &
+                    right_len, error_msg)) return
+            end if
         end if
 
         ! Compute total length
@@ -193,29 +203,20 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Runtime concatenation: use alloca + memcpy
-        one_i64 = context%session%i64_immediate(1_c_int64_t)
-        if (.not. context%session%emit_i64_binary( &
-            LR_OP_ADD, total_len, one_i64, total_len, error_msg)) return
-
-        ! alloca(total_len) - returns pointer
         if (.not. context%session%emit_alloca_bytes(total_len, new_ptr, &
             error_msg)) return
 
-        ! Zero offset for first memcpy
-        zero_i64 = context%session%i64_immediate(0_c_int64_t)
-
-        ! memcpy(dest + 0, left_data, left_len)
+        ! memcpy(dest, left_data, left_len)
         if (.not. context%session%emit_memcpy( &
-            new_ptr, left_data, left_len, new_ptr, error_msg)) return
+            new_ptr, left_data, left_len, error_msg)) return
 
-        ! running_offset = left_len
-        running_offset = left_len
-
-        ! memcpy(dest + left_len, right_data, right_len)
+        ! offset = new_ptr + left_len
         if (.not. context%session%emit_i64_binary( &
-            LR_OP_ADD, new_ptr, running_offset, new_ptr, error_msg)) return
+            LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
+
+        ! memcpy(offset, right_data, right_len)
         if (.not. context%session%emit_memcpy( &
-            new_ptr, right_data, right_len, new_ptr, error_msg)) return
+            running_offset, right_data, right_len, error_msg)) return
 
         ! Store new_ptr into s.data
         if (.not. context%session%emit_i64_store( &

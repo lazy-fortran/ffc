@@ -26,10 +26,18 @@
         integer, intent(out) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: parse_error
+        character(len=:), allocatable :: lowered
 
-        character_length = 1
+        character_length = -1
         call set_empty(error_msg)
-        if (.not. allocated(node%type_name)) return
+        if (.not. allocated(node%type_name)) then
+            return
+        end if
+        lowered = lowercase_text(node%type_name)
+        if (trim(lowered) == 'character') then
+            ! Deferred character: no len=N specified
+            return
+        end if
         call parse_character_length(node%type_name, character_length, parse_error)
         if (len_trim(parse_error) > 0) then
             call unsupported_feature_error('character length declaration', &
@@ -55,7 +63,7 @@
             return
         end if
         if (character_length <= 0) then
-            error_msg = 'character declaration requires positive length'
+            call define_deferred_character_symbol(context, name, error_msg)
             return
         end if
 
@@ -77,10 +85,23 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
+        type(binary_op_node) :: binop
 
         if (.not. arena%has_node_at(node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
             return
+        end if
+
+        ! Check for deferred character with binary // operator
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            select type (value_node => arena%entries(node%value_index)%node)
+            type is (binary_op_node)
+                if (trim(value_node%operator) == '//') then
+                    call lower_deferred_concat_assignment(arena, node, &
+                        context, symbol_index, error_msg)
+                    return
+                end if
+            end select
         end if
 
         select type (value_node => arena%entries(node%value_index)%node)
@@ -203,8 +224,8 @@
         context%symbols(index)%has_character_value = .false.
 
         ! Allocate stack space for descriptor: data_addr + len_addr
-        if (.not. context%session%emit_i32_alloca(data_addr, error_msg)) return
-        if (.not. context%session%emit_i32_alloca(len_addr, error_msg)) return
+        if (.not. context%session%emit_i64_alloca(data_addr, error_msg)) return
+        if (.not. context%session%emit_i64_alloca(len_addr, error_msg)) return
 
         context%symbols(index)%deferred_data = data_addr
         context%symbols(index)%deferred_length = len_addr
