@@ -835,7 +835,8 @@ contains
 
         select type (target => arena%entries(node%target_index)%node)
         type is (call_or_subscript_node)
-            if (target%is_array_access) then
+            if (target%is_array_access .or. &
+                is_known_array_symbol(context, target)) then
                 call lower_array_element_assignment(arena, node, target, context, &
                                                     value, error_msg)
                 return
@@ -906,6 +907,20 @@ contains
     include 'session_program_lowering_character.inc'
 
     include 'session_program_lowering_deferred_char.inc'
+
+    logical function is_known_array_symbol(context, target)
+        type(lowering_context_t), intent(in) :: context
+        type(call_or_subscript_node), intent(in) :: target
+        integer :: idx
+
+        is_known_array_symbol = .false.
+        if (.not. allocated(target%name)) return
+        if (.not. allocated(target%arg_indices)) return
+        if (size(target%arg_indices) == 0) return
+        idx = find_symbol(context, target%name)
+        if (idx <= 0) return
+        is_known_array_symbol = context%symbols(idx)%is_array
+    end function is_known_array_symbol
 
     subroutine lower_function_return(node, context, error_msg)
         type(return_node), intent(in) :: node
