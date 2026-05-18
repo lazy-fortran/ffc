@@ -22,6 +22,21 @@
             error_msg = 'direct LIRIC session IF requires THEN and ELSE bodies'
             return
         end if
+        ! FortFront occasionally returns size-0 body_indices for if branches
+        ! whose statements its standardiser has dropped (observed for derived
+        ! component assignments inside if branches, fortfront upstream).
+        ! Detect this and fail loud instead of silently lowering as a no-op.
+        if (size(node%then_body_indices) == 0 .and. &
+            size(node%else_body_indices) == 0) then
+            call unsupported_feature_error('if statement', node%line, &
+                                           node%column, &
+                                           'both branches empty after frontend '// &
+                                           'standardisation (likely fortfront '// &
+                                           'dropped derived-component or other '// &
+                                           'unsupported body statements)', &
+                                           error_msg)
+            return
+        end if
 
         call lower_i1_condition(arena, node%condition_index, context, &
                                 condition, error_msg)
@@ -168,6 +183,12 @@
         case (VALUE_CHARACTER)
             error_msg = 'direct LIRIC session IF cannot merge character values'
             return
+        case (VALUE_DERIVED)
+            ! Derived-type symbols hold their storage in element_address (a
+            ! stable alloca emitted at declaration time).  Both branches store
+            ! into that same address, so the symbol value field is not used
+            ! and no phi is needed; just adopt the then-branch snapshot.
+            context%symbols(index) = then_result%symbols(index)
         case default
             error_msg = 'direct LIRIC session IF cannot merge unknown symbol kind'
             return
