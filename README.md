@@ -106,6 +106,9 @@ The current MVP support claim is:
 - scalar `real` literals in `print`
 - simple `character` literals in `print`
 - scalar `character(len=N)` variables assigned from literals and printed
+- scalar `character(len=:), allocatable` (deferred length) assigned from
+  literals and from `//` concatenation of any combination of literals,
+  deferred-length variables, and the destination itself
 - scalar `logical` literals in `print`
 - real variables/arithmetic
 - block `if`
