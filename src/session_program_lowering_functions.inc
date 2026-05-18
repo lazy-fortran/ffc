@@ -270,6 +270,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
+        context%in_internal_subroutine = .true.
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)

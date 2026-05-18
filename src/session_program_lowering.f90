@@ -149,6 +149,7 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
         integer :: function_value_kinds(MAX_PROCEDURES) = VALUE_I32
         integer :: function_count = 0
         logical :: in_internal_function = .false.
+        logical :: in_internal_subroutine = .false.
         logical :: current_block_terminated = .false.
     end type lowering_context_t
 
@@ -421,11 +422,21 @@ contains
                                            'support dynamic allocation', &
                                            error_msg)
         type is (return_node)
-            call unsupported_feature_error('return statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support early procedure returns', &
-                                           error_msg)
+            if (context%in_internal_subroutine) then
+                if (.not. context%session%emit_ret_void(error_msg)) return
+                context%current_block_terminated = .true.
+            else if (context%in_internal_function) then
+                call unsupported_feature_error('return inside function', &
+                                               node%line, node%column, &
+                                               'function early return is not '// &
+                                               'yet supported', error_msg)
+            else
+                call unsupported_feature_error('return statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session does not '// &
+                                               'support return at top level', &
+                                               error_msg)
+            end if
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
