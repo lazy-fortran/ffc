@@ -26,9 +26,15 @@ module liric_session_io_bindings
     public :: emit_liric_f64_binary
     public :: emit_liric_i32_to_f64
     public :: emit_liric_print_f64
+    public :: emit_liric_print_f64_value
     public :: emit_liric_print_i32
+    public :: emit_liric_print_i32_value
+    public :: emit_liric_print_newline
+    public :: emit_liric_print_space
     public :: emit_liric_print_string
     public :: emit_liric_print_string_operand
+    public :: emit_liric_print_string_operand_value
+    public :: emit_liric_print_string_value
     public :: liric_f64_immediate
     public :: materialize_liric_string
     public :: prepare_liric_print_runtime
@@ -123,11 +129,23 @@ contains
         call create_i32_format_global(session, '.ffc.fmt.i32', &
                                       i32_format_id, error_msg)
         if (len_trim(error_msg) > 0) return
+        call create_i32_format_global_no_newline(session, &
+                                                 '.ffc.fmt.i32.vn', &
+                                                 i32_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
         call create_f64_format_global(session, '.ffc.fmt.f64', &
                                       f64_format_id, error_msg)
         if (len_trim(error_msg) > 0) return
+        call create_f64_format_global_no_newline(session, &
+                                                 '.ffc.fmt.f64.vn', &
+                                                 f64_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
         call create_str_format_global(session, '.ffc.fmt.str', &
                                       str_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call create_str_format_global_no_newline(session, &
+                                                 '.ffc.fmt.str.vn', &
+                                                 str_format_id, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call set_empty(error_msg)
@@ -234,8 +252,8 @@ contains
                                   session, format_global_id, string_ptr, error_msg)
     end function emit_liric_print_string
 
-    logical function emit_liric_print_string_operand(session, format_global_id, &
-                                                     string_ptr, error_msg)
+  logical function emit_liric_print_string_operand(session, format_global_id, &
+                                                      string_ptr, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: string_ptr
@@ -262,6 +280,155 @@ contains
         call set_empty(error_msg)
         emit_liric_print_string_operand = .true.
     end function emit_liric_print_string_operand
+
+    logical function emit_liric_print_i32_value(session, format_global_id, &
+                                                value, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_operand_desc_t) :: format_ptr
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_i32_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call materialize_global_pointer(session, format_global_id, format_ptr, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
+                                    error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_i32_value = .true.
+    end function emit_liric_print_i32_value
+
+    logical function emit_liric_print_f64_value(session, format_global_id, &
+                                                value, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_operand_desc_t) :: format_ptr
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_f64_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call materialize_global_pointer(session, format_global_id, format_ptr, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_f64(session%handle, callee, format_ptr, value, &
+                                    error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_f64_value = .true.
+    end function emit_liric_print_f64_value
+
+    logical function emit_liric_print_string_value(session, format_global_id, &
+                                                   string_global_name, text, &
+                                                   error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        character(len=*), intent(in) :: string_global_name
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: string_ptr
+
+        emit_liric_print_string_value = .false.
+        call materialize_liric_string(session, string_global_name, text, &
+                                      string_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        emit_liric_print_string_value = emit_liric_print_string_operand_value( &
+                                          session, format_global_id, string_ptr, &
+                                          error_msg)
+    end function emit_liric_print_string_value
+
+    logical function emit_liric_print_string_operand_value(session, &
+                                                           format_global_id, &
+                                                           string_ptr, &
+                                                           error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: string_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_operand_desc_t) :: format_ptr
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_string_operand_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call materialize_global_pointer(session, format_global_id, format_ptr, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_ptr(session%handle, callee, format_ptr, &
+                                    string_ptr, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_string_operand_value = .true.
+    end function emit_liric_print_string_operand_value
+
+    logical function emit_liric_print_newline(session, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_newline = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_newline(session%handle, callee, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_newline = .true.
+    end function emit_liric_print_newline
+
+    logical function emit_liric_print_space(session, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_space = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_space(session%handle, callee, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_space = .true.
+    end function emit_liric_print_space
 
     subroutine materialize_liric_string(session, string_global_name, text, &
                                         operand, error_msg)
@@ -293,7 +460,7 @@ contains
         call set_empty(error_msg)
     end subroutine make_printf_operand
 
-    subroutine create_i32_format_global(session, name, global_id, error_msg)
+ subroutine create_i32_format_global(session, name, global_id, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         integer(c_int32_t), intent(out) :: global_id
@@ -309,7 +476,7 @@ contains
         format_text(4) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                     4_c_int64_t)
+                                      4_c_int64_t)
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a format string array type'
             return
@@ -332,7 +499,46 @@ contains
         call set_empty(error_msg)
     end subroutine create_i32_format_global
 
-    subroutine create_f64_format_global(session, name, global_id, error_msg)
+    subroutine create_i32_format_global_no_newline(session, name, global_id, &
+                                                   error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), target :: format_text(3)
+        type(c_ptr) :: array_type
+
+        call to_c_chars(name, c_name)
+        format_text(1) = '%'
+        format_text(2) = 'd'
+        format_text(3) = c_null_char
+
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                      3_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(format_text(1)), &
+                                      3_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create printf format string'
+            return
+        end if
+
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern printf format string'
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine create_i32_format_global_no_newline
+
+subroutine create_f64_format_global(session, name, global_id, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         integer(c_int32_t), intent(out) :: global_id
@@ -348,7 +554,7 @@ contains
         format_text(4) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                     4_c_int64_t)
+                                      4_c_int64_t)
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a format string array type'
             return
@@ -371,7 +577,46 @@ contains
         call set_empty(error_msg)
     end subroutine create_f64_format_global
 
-    subroutine create_str_format_global(session, name, global_id, error_msg)
+    subroutine create_f64_format_global_no_newline(session, name, global_id, &
+                                                   error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), target :: format_text(3)
+        type(c_ptr) :: array_type
+
+        call to_c_chars(name, c_name)
+        format_text(1) = '%'
+        format_text(2) = 'f'
+        format_text(3) = c_null_char
+
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                      3_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(format_text(1)), &
+                                      3_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create printf format string'
+            return
+        end if
+
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern printf format string'
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine create_f64_format_global_no_newline
+
+subroutine create_str_format_global(session, name, global_id, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         integer(c_int32_t), intent(out) :: global_id
@@ -387,7 +632,7 @@ contains
         format_text(4) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                     4_c_int64_t)
+                                      4_c_int64_t)
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a format string array type'
             return
@@ -410,7 +655,46 @@ contains
         call set_empty(error_msg)
     end subroutine create_str_format_global
 
-    subroutine make_string_literal_operand(session, name, text, operand, error_msg)
+    subroutine create_str_format_global_no_newline(session, name, global_id, &
+                                                   error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), target :: format_text(3)
+        type(c_ptr) :: array_type
+
+        call to_c_chars(name, c_name)
+        format_text(1) = '%'
+        format_text(2) = 's'
+        format_text(3) = c_null_char
+
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                      3_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(format_text(1)), &
+                                      3_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create printf format string'
+            return
+        end if
+
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern printf format string'
+            return
+        end if
+
+        call set_empty(error_msg)
+    end subroutine create_str_format_global_no_newline
+
+subroutine make_string_literal_operand(session, name, text, operand, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         character(len=*), intent(in) :: text
@@ -430,7 +714,7 @@ contains
         text_chars(len(text) + 1) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                     int(len(text) + 1, c_int64_t))
+                                      int(len(text) + 1, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a string literal array type'
             return
@@ -452,6 +736,49 @@ contains
 
         call materialize_global_pointer(session, global_id, operand, error_msg)
     end subroutine make_string_literal_operand
+
+    subroutine make_string_literal_operand_from_chars(handle, name, text_chars, &
+                                                      total_size, operand, error)
+        type(c_ptr), intent(in) :: handle
+        character(len=*), intent(in) :: name
+        character(kind=c_char), intent(in), target :: text_chars(:)
+        integer(c_int64_t), intent(in) :: total_size
+        type(lr_operand_desc_t), intent(out) :: operand
+        type(lr_error_t), intent(inout) :: error
+        character(kind=c_char), allocatable :: c_name(:)
+        type(c_ptr) :: array_type
+        integer(c_int32_t) :: global_id
+
+        call to_c_chars(name, c_name)
+
+        array_type = lr_type_array_s(handle, lr_type_i8_s(handle), total_size)
+        if (.not. c_associated(array_type)) then
+            error%code = 1_c_int
+            error%msg = c_null_char
+            return
+        end if
+
+        global_id = lr_session_global(handle, c_name, array_type, c_true, &
+                                      c_loc(text_chars(1)), &
+                                      int(total_size, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error%code = 1_c_int
+            error%msg = c_null_char
+            return
+        end if
+
+        global_id = lr_session_intern(handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error%code = 1_c_int
+            error%msg = c_null_char
+            return
+        end if
+
+        operand%kind = LR_OP_KIND_GLOBAL
+        operand%payload = int(global_id, c_int64_t)
+        operand%typ = lr_type_ptr_s(handle)
+        operand%global_offset = 0_c_int64_t
+    end subroutine make_string_literal_operand_from_chars
 
     subroutine materialize_global_pointer(session, global_id, operand, error_msg)
         type(liric_session_t), intent(inout) :: session
@@ -563,6 +890,80 @@ contains
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_ptr
+
+    function emit_call_newline(handle, callee, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), target :: newline_text(2)
+
+        newline_text(1) = achar(10, kind=c_char)
+        newline_text(2) = c_null_char
+
+        call make_string_literal_operand_from_chars( &
+            handle, '.ffc.str.nl', newline_text, 2_c_int64_t, &
+            operands(2), error)
+        if (.not. c_associated(operands(2)%typ)) return
+
+        operands(1) = callee
+
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_i32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_true
+        inst%call_vararg = c_true
+        inst%call_fixed_args = 1_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_call_newline
+
+    function emit_call_space(handle, callee, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), target :: space_text(2)
+
+        space_text(1) = achar(32, kind=c_char)
+        space_text(2) = c_null_char
+
+        call make_string_literal_operand_from_chars( &
+            handle, '.ffc.str.sp', space_text, 2_c_int64_t, &
+            operands(2), error)
+        if (.not. c_associated(operands(2)%typ)) return
+
+        operands(1) = callee
+
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_i32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_true
+        inst%call_vararg = c_true
+        inst%call_fixed_args = 1_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_call_space
 
     function liric_f64_immediate(session, value) result(operand)
         type(liric_session_t), intent(in) :: session

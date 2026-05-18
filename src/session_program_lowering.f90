@@ -35,16 +35,22 @@ module session_program_lowering
                                               LR_CMP_SLE, &
                                               LR_CMP_NE, &
                                               set_liric_block
-    use liric_session_io_bindings, only: emit_liric_f64_binary, &
-                                         emit_liric_i32_to_f64, &
-                                         emit_liric_print_f64, &
-                                         emit_liric_print_i32, &
-                                         emit_liric_print_string_operand, &
-                                         emit_liric_print_string, &
-                                         liric_f64_immediate, &
-                                         LR_OP_FSUB, &
-                                         materialize_liric_string, &
-                                         prepare_liric_print_runtime
+use liric_session_io_bindings, only: emit_liric_f64_binary, &
+                                          emit_liric_i32_to_f64, &
+                                          emit_liric_print_f64, &
+                                          emit_liric_print_f64_value, &
+                                          emit_liric_print_i32, &
+                                          emit_liric_print_i32_value, &
+                                          emit_liric_print_newline, &
+                                          emit_liric_print_space, &
+                                          emit_liric_print_string_operand, &
+                                          emit_liric_print_string_operand_value, &
+                                          emit_liric_print_string, &
+                                          emit_liric_print_string_value, &
+                                          liric_f64_immediate, &
+                                          LR_OP_FSUB, &
+                                          materialize_liric_string, &
+                                          prepare_liric_print_runtime
     use liric_session_procedure_bindings, only: begin_liric_f64_function, &
                                                 emit_liric_f64_alloca, &
                                                 emit_liric_f64_call, &
