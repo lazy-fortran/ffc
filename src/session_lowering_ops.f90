@@ -1,5 +1,6 @@
 module session_lowering_ops
     use, intrinsic :: iso_c_binding, only: c_int, c_int64_t
+    use ffc_strings, only: set_empty
     use liric_session_bindings, only: LR_OP_ADD, LR_OP_MUL, LR_OP_SDIV, &
                                       LR_OP_SUB
     use liric_session_control_bindings, only: LR_CMP_EQ, LR_CMP_NE, &
@@ -76,11 +77,5 @@ contains
             predicate = LR_CMP_EQ
         end select
     end subroutine integer_compare_predicate
-
-    subroutine set_empty(value)
-        character(len=:), allocatable, intent(out) :: value
-
-        allocate (character(len=0) :: value)
-    end subroutine set_empty
 
 end module session_lowering_ops

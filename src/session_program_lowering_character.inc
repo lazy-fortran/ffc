@@ -85,7 +85,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
-        type(binary_op_node) :: binop
+        logical :: fold_ok
 
         if (.not. arena%has_node_at(node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
@@ -122,19 +122,16 @@
             end if
             call strip_literal_quotes(value_node%value, literal_text)
         type is (binary_op_node)
-            block
-                logical :: ok
-                call concat_character_literals(arena, node%value_index, &
-                                               literal_text, ok)
-                if (.not. ok) then
-                    call unsupported_feature_error('character assignment', &
-                                                   node%line, node%column, &
-                                                   'only character literal '// &
-                                                   'assignment is supported', &
-                                                   error_msg)
-                    return
-                end if
-            end block
+            call concat_character_literals(arena, node%value_index, &
+                                           literal_text, fold_ok)
+            if (.not. fold_ok) then
+                call unsupported_feature_error('character assignment', &
+                                               node%line, node%column, &
+                                               'only character literal '// &
+                                               'assignment is supported', &
+                                               error_msg)
+                return
+            end if
         class default
             call unsupported_feature_error('character assignment', &
                                            node%line, node%column, &

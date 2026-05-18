@@ -60,6 +60,7 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                                 emit_liric_f64_store
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
+    use ffc_strings, only: set_empty
     implicit none
     private
 

@@ -1,9 +1,3 @@
-    subroutine set_empty(value)
-        character(len=:), allocatable, intent(out) :: value
-
-        allocate (character(len=0) :: value)
-    end subroutine set_empty
-
     subroutine unsupported_feature_error(feature, line, column, limitation, &
                                          error_msg)
         character(len=*), intent(in) :: feature

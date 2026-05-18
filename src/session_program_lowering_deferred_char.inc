@@ -73,6 +73,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         character(len=64) :: string_name
         character(len=:), allocatable :: combined_text
         integer(c_int64_t) :: combined_len
+        type(lr_operand_desc_t) :: alloca_size
+        type(lr_operand_desc_t) :: null_byte_ptr
+        type(lr_operand_desc_t) :: null_dest
+        character(len=64) :: null_name
 
         call set_empty(error_msg)
         left_is_literal = .false.
@@ -211,44 +215,37 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         ! Runtime concatenation: alloca (total_len + 1) for trailing null,
         ! memcpy operands, then write null byte so %s printers stay bounded.
-        block
-            type(lr_operand_desc_t) :: alloca_size
-            type(lr_operand_desc_t) :: null_byte_ptr
-            type(lr_operand_desc_t) :: null_dest
-            character(len=64) :: null_name
+        if (.not. context%session%emit_i64_binary( &
+            LR_OP_ADD, total_len, &
+            context%session%i64_immediate(1_c_int64_t), &
+            alloca_size, error_msg)) return
 
-            if (.not. context%session%emit_i64_binary( &
-                LR_OP_ADD, total_len, &
-                context%session%i64_immediate(1_c_int64_t), &
-                alloca_size, error_msg)) return
+        if (.not. context%session%emit_alloca_bytes(alloca_size, new_ptr, &
+            error_msg)) return
 
-            if (.not. context%session%emit_alloca_bytes(alloca_size, new_ptr, &
-                error_msg)) return
+        if (.not. context%session%emit_memcpy( &
+            new_ptr, left_data, left_len, error_msg)) return
 
-            if (.not. context%session%emit_memcpy( &
-                new_ptr, left_data, left_len, error_msg)) return
+        if (.not. context%session%emit_i64_binary( &
+            LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
 
-            if (.not. context%session%emit_i64_binary( &
-                LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
+        if (.not. context%session%emit_memcpy( &
+            running_offset, right_data, right_len, error_msg)) return
 
-            if (.not. context%session%emit_memcpy( &
-                running_offset, right_data, right_len, error_msg)) return
+        if (.not. context%session%emit_i64_binary( &
+            LR_OP_ADD, running_offset, right_len, null_dest, &
+            error_msg)) return
 
-            if (.not. context%session%emit_i64_binary( &
-                LR_OP_ADD, running_offset, right_len, null_dest, &
-                error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        write (null_name, '(A,I0)') '.ffc.cat.term.', &
+            context%string_literal_count
+        call materialize_liric_string(context%session, trim(null_name), &
+                                      '', null_byte_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
 
-            context%string_literal_count = context%string_literal_count + 1
-            write (null_name, '(A,I0)') '.ffc.cat.term.', &
-                context%string_literal_count
-            call materialize_liric_string(context%session, trim(null_name), &
-                                          '', null_byte_ptr, error_msg)
-            if (len_trim(error_msg) > 0) return
-
-            if (.not. context%session%emit_memcpy( &
-                null_dest, null_byte_ptr, &
-                context%session%i64_immediate(1_c_int64_t), error_msg)) return
-        end block
+        if (.not. context%session%emit_memcpy( &
+            null_dest, null_byte_ptr, &
+            context%session%i64_immediate(1_c_int64_t), error_msg)) return
 
         if (.not. context%session%emit_i64_store( &
             new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
