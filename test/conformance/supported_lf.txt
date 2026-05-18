@@ -20,4 +20,5 @@ issue_637_do_loop_with_variables.lf
 issue_652_multi_var_init.lf
 issue_652_multi_var_simple.lf
 issue_957_parameter_attributes.lf
+issue_1540_do_loop_procedure.lf
 string_transform_hello.lf

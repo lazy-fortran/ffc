@@ -57,48 +57,16 @@
                         trim(mod_node%name)
                     context%module_exports(export_idx)%derived_type_count = 0
 
-                    do j = 1, size(mod_node%declaration_indices)
+                     do j = 1, size(mod_node%declaration_indices)
                         select type (decl => &
                             arena%entries(mod_node%declaration_indices(j))%node)
                         type is (derived_type_node)
                             if (.not. allocated(decl%name)) cycle
 
-                            type_idx = find_derived_type(context, decl%name)
-                            if (type_idx > 0) cycle
-
-                            if (context%derived_type_count >= MAX_DERIVED_TYPES) then
-                                error_msg = 'too many derived types for direct LIRIC session MVP'
-                                return
-                            end if
-
-                            type_idx = context%derived_type_count + 1
-                            context%derived_types(type_idx)%name = &
-                                trim(decl%name)
-                            context%derived_types(type_idx)%component_count = 0
-
-                            if (allocated(decl%component_indices)) then
-                                do comp_idx = 1, size(decl%component_indices)
-                                    call collect_component_declaration( &
-                                        decl%component_indices(comp_idx), &
-                                        decl, context, type_idx, error_msg)
-                                    if (len_trim(error_msg) > 0) return
-                                end do
-                            end if
-
-                            if (context%derived_types(type_idx)% &
-                                component_count <= 0) then
-                                error_msg = 'derived type '// &
-                                            trim(decl%name)// &
-                                            ' needs at least one integer component'
-                                return
-                            end if
-
-                            context%derived_type_count = type_idx
-
                             context%module_exports(export_idx)% &
                                 derived_type_indices( &
                                 context%module_exports(export_idx)% &
-                                derived_type_count + 1) = type_idx
+                                derived_type_count + 1) = mod_node%declaration_indices(j)
                             context%module_exports(export_idx)% &
                                 derived_type_count = &
                                 context%module_exports(export_idx)% &
@@ -676,7 +644,9 @@ subroutine collect_component_declaration(component_index, parent, context, &
         integer :: export_idx
         integer :: i
         integer :: type_idx
+        integer :: type_idx_in_context
         character(len=:), allocatable :: module_lowered
+        character(len=64) :: type_name
 
         call set_empty(error_msg)
 
@@ -689,14 +659,25 @@ subroutine collect_component_declaration(component_index, parent, context, &
         do i = 1, context%module_exports(export_idx)%derived_type_count
             type_idx = context%module_exports(export_idx)% &
                 derived_type_indices(i)
-            if (find_derived_type(context, &
-                context%derived_types(type_idx)%name) > 0) then
-                call unsupported_feature_error( &
-                    'derived type import', use_node%line, use_node%column, &
-                    'derived type already declared in scope: '// &
-                    trim(context%derived_types(type_idx)%name), error_msg)
+            if (.not. arena%has_node_at(type_idx)) then
+                error_msg = 'invalid derived type arena index in module '// &
+                    trim(context%module_exports(export_idx)%module_name)
                 return
             end if
+            select type (dtype => arena%entries(type_idx)%node)
+            type is (derived_type_node)
+                if (.not. allocated(dtype%name)) cycle
+                type_name = trim(dtype%name)
+            class default
+                cycle
+            end select
+            type_idx_in_context = find_derived_type(context, type_name)
+            if (type_idx_in_context > 0) then
+                cycle
+            end if
+            call add_derived_type_from_arena(arena, type_idx, context, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_module_derived_types
 
