@@ -203,10 +203,8 @@
         context%symbols(index)%has_character_value = .false.
 
         ! Allocate stack space for descriptor: data_addr + len_addr
-        call context%session%emit_i32_alloca(data_addr, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call context%session%emit_i32_alloca(len_addr, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (.not. context%session%emit_i32_alloca(data_addr, error_msg)) return
+        if (.not. context%session%emit_i32_alloca(len_addr, error_msg)) return
 
         context%symbols(index)%deferred_data = data_addr
         context%symbols(index)%deferred_length = len_addr
