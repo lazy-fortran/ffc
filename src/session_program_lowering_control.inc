@@ -22,21 +22,6 @@
             error_msg = 'direct LIRIC session IF requires THEN and ELSE bodies'
             return
         end if
-        ! FortFront occasionally returns size-0 body_indices for if branches
-        ! whose statements its standardiser has dropped (observed for derived
-        ! component assignments inside if branches, fortfront upstream).
-        ! Detect this and fail loud instead of silently lowering as a no-op.
-        if (size(node%then_body_indices) == 0 .and. &
-            size(node%else_body_indices) == 0) then
-            call unsupported_feature_error('if statement', node%line, &
-                                           node%column, &
-                                           'both branches empty after frontend '// &
-                                           'standardisation (likely fortfront '// &
-                                           'dropped derived-component or other '// &
-                                           'unsupported body statements)', &
-                                           error_msg)
-            return
-        end if
 
         call lower_i1_condition(arena, node%condition_index, context, &
                                 condition, error_msg)
@@ -181,8 +166,31 @@
                                      context%symbols(index)%value, &
                                      error_msg)) return
         case (VALUE_CHARACTER)
-            error_msg = 'direct LIRIC session IF cannot merge character values'
-            return
+            ! Both deferred-length and fixed-length character symbols carry
+            ! their current data pointer as the SSA %value field.  Print
+            ! and concat sites read %value directly, so we need a phi on
+            ! the pointer in the merge block; otherwise downstream uses
+            ! pull an SSA value that is only defined in one predecessor.
+            ! For deferred-length characters, the (data_ptr, length)
+            ! allocas remain shared across branches, so deferred_data /
+            ! deferred_length stay valid in then_result.
+            if (.not. emit_liric_phi(context%session, &
+                                     then_result%symbols(index)%value, &
+                                     then_result%predecessor_block_id, &
+                                     else_result%symbols(index)%value, &
+                                     else_result%predecessor_block_id, &
+                                     context%symbols(index)%value, &
+                                     error_msg)) return
+            context%symbols(index)%is_deferred_character = &
+                then_result%symbols(index)%is_deferred_character
+            context%symbols(index)%deferred_data = &
+                then_result%symbols(index)%deferred_data
+            context%symbols(index)%deferred_length = &
+                then_result%symbols(index)%deferred_length
+            context%symbols(index)%character_length = &
+                then_result%symbols(index)%character_length
+            context%symbols(index)%has_character_value = &
+                then_result%symbols(index)%has_character_value
         case (VALUE_DERIVED)
             ! Derived-type symbols hold their storage in element_address (a
             ! stable alloca emitted at declaration time).  Both branches store
