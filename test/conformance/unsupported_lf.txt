@@ -97,7 +97,7 @@ issue_1536_array_stride_assignment.lf
 issue_1537_cycle_exit.lf
 issue_1538_module_main.lf
 issue_1539_reshape.lf
-issue_1540_do_loop_procedure.lf
+
 issue_1545_complex_literal.lf
 issue_1547_scalar_allocatable.lf
 issue_1547_scalar_multiple_assignments.lf
