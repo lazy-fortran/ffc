@@ -61,6 +61,8 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
+    use ffc_fortfront_queries, only: node_exists, get_node_line, &
+                                     get_node_column, get_node_type_at
     implicit none
     private
 
@@ -289,7 +291,7 @@ contains
             return
         end if
 
-        if (.not. arena%has_node_at(root_index)) then
+        if (.not. node_exists(arena, root_index)) then
             error_msg = 'FortFront root index does not reference an AST node'
             return
         end if
@@ -305,8 +307,8 @@ contains
             return
         class default
             call unsupported_feature_error('program unit', &
-                                           arena%get_node_line(root_index), &
-                                           arena%get_node_column(root_index), &
+                                           get_node_line(arena, root_index), &
+                                           get_node_column(arena, root_index), &
                                            'direct LIRIC session only lowers '// &
                                            'top-level programs', error_msg)
             return
@@ -383,7 +385,7 @@ contains
 
         context%current_block_terminated = .false.
         value = context%session%i32_immediate(0_c_int64_t)
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'program body index does not reference an AST node'
             return
         end if
@@ -479,10 +481,8 @@ contains
         type is (use_statement_node)
             call import_module_derived_types(arena, node, context, error_msg)
         class default
-            node_type = 'unknown'
-            if (allocated(arena%entries(node_index)%node_type)) then
-                node_type = arena%entries(node_index)%node_type
-            end if
+            node_type = get_node_type_at(arena, node_index)
+            if (len_trim(node_type) == 0) node_type = 'unknown'
             call unsupported_statement_node(arena, node_index, node_type, error_msg)
         end select
     end subroutine lower_statement
@@ -495,8 +495,8 @@ contains
         integer :: column
         integer :: line
 
-        line = arena%get_node_line(node_index)
-        column = arena%get_node_column(node_index)
+        line = get_node_line(arena, node_index)
+        column = get_node_column(arena, node_index)
 
         select case (trim(node_type))
         case ('implicit_statement')
@@ -1004,7 +1004,7 @@ contains
         type(lr_operand_desc_t) :: rhs
         integer(c_int) :: pred
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'condition index does not reference an AST node'
             return
         end if
@@ -1047,7 +1047,7 @@ contains
         character(len=:), allocatable, intent(out) :: name
         character(len=:), allocatable, intent(out) :: error_msg
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'identifier index does not reference an AST node'
             call set_empty(name)
             return

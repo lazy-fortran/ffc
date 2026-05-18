@@ -58,7 +58,7 @@
         integer(c_int32_t) :: next_check_block
         logical :: terminated
 
-        if (.not. arena%has_node_at(case_node_index)) then
+        if (.not. node_exists(arena, case_node_index)) then
             error_msg = 'select case arm index does not reference an AST node'
             return
         end if
@@ -133,7 +133,7 @@
         type(lr_operand_desc_t) :: dummy_value
         logical :: terminated
 
-        if (.not. arena%has_node_at(default_idx)) then
+        if (.not. node_exists(arena, default_idx)) then
             error_msg = 'select case default index does not reference an AST node'
             return
         end if

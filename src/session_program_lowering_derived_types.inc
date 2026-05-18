@@ -189,7 +189,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        if (.not. context%arena%has_node_at(component_index)) then
+        if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
             return
         end if
@@ -496,7 +496,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         character(len=:), allocatable, intent(out) :: name
         character(len=:), allocatable, intent(out) :: error_msg
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'component base index does not reference an AST node'
             call set_empty(name)
             return
@@ -545,7 +545,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         integer, intent(in) :: type_index
 
         is_derived_constructor_call = .false.
-        if (.not. arena%has_node_at(node_index)) return
+        if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
@@ -659,7 +659,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         do i = 1, context%module_exports(export_idx)%derived_type_count
             type_idx = context%module_exports(export_idx)% &
                 derived_type_indices(i)
-            if (.not. arena%has_node_at(type_idx)) then
+            if (.not. node_exists(arena, type_idx)) then
                 error_msg = 'invalid derived type arena index in module '// &
                     trim(context%module_exports(export_idx)%module_name)
                 return
@@ -690,7 +690,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
 
         call set_empty(error_msg)
 
-        if (.not. arena%has_node_at(type_index)) then
+        if (.not. node_exists(arena, type_index)) then
             error_msg = 'derived type index does not reference an AST node'
             return
         end if
@@ -720,7 +720,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
 
         call set_empty(error_msg)
 
-        if (.not. arena%has_node_at(type_index)) then
+        if (.not. node_exists(arena, type_index)) then
             error_msg = 'derived type index does not reference an AST node'
             return
         end if
@@ -747,7 +747,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
 
         call set_empty(error_msg)
 
-        if (.not. arena%has_node_at(type_index)) then
+        if (.not. node_exists(arena, type_index)) then
             error_msg = 'derived type index does not reference an AST node'
             return
         end if
@@ -776,7 +776,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
 
         call set_empty(error_msg)
 
-        if (.not. arena%has_node_at(type_index)) then
+        if (.not. node_exists(arena, type_index)) then
             error_msg = 'derived type index does not reference an AST node'
             return
         end if

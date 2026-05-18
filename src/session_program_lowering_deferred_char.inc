@@ -15,7 +15,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         out_name = ''
         call set_empty(error_msg)
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'concat operand index does not reference an AST node'
             return
         end if
@@ -84,7 +84,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         is_self_alias = .false.
 
         ! Get the binary_op_node from the assignment value
-        if (.not. arena%has_node_at(node%value_index)) then
+        if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'concat assignment value does not reference an AST node'
             return
         end if

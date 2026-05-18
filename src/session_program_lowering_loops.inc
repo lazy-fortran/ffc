@@ -226,8 +226,8 @@
         if (len_trim(error_msg) > 0) return
         if (step_value == 0_c_int64_t) then
             call unsupported_feature_error('do loop step', &
-                                           arena%get_node_line(step_expr_index), &
-                                           arena%get_node_column(step_expr_index), &
+                                           get_node_line(arena, step_expr_index), &
+                                           get_node_column(arena, step_expr_index), &
                                            'direct LIRIC session requires a '// &
                                            'nonzero literal step', error_msg)
         end if
@@ -240,7 +240,7 @@
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'DO loop '//trim(name)// &
                         ' index does not reference an AST node'
             return
@@ -260,15 +260,15 @@
                 call set_empty(error_msg)
             else
                 call unsupported_feature_error('do loop '//trim(name), &
-                                               arena%get_node_line(node_index), &
-                                               arena%get_node_column(node_index), &
+                                               get_node_line(arena, node_index), &
+                                               get_node_column(arena, node_index), &
                                                'direct LIRIC session only '// &
                                                'supports literal steps', error_msg)
             end if
         class default
             call unsupported_feature_error('do loop '//trim(name), &
-                                           arena%get_node_line(node_index), &
-                                           arena%get_node_column(node_index), &
+                                           get_node_line(arena, node_index), &
+                                           get_node_column(arena, node_index), &
                                            'direct LIRIC session only '// &
                                            'supports literal steps', error_msg)
         end select
@@ -280,7 +280,7 @@
 
         is_zero_i32_literal = .false.
         if (node_index <= 0) return
-        if (.not. arena%has_node_at(node_index)) return
+        if (.not. node_exists(arena, node_index)) return
         select type (n => arena%entries(node_index)%node)
         type is (literal_node)
             if (allocated(n%value)) then

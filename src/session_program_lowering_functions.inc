@@ -163,7 +163,7 @@
         integer, intent(in) :: node_index
 
         is_internal_procedure_entry = .false.
-        if (.not. arena%has_node_at(node_index)) return
+        if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
         type is (function_def_node)
             is_internal_procedure_entry = .true.
@@ -171,10 +171,8 @@
             is_internal_procedure_entry = .true.
         end select
         if (.not. is_internal_procedure_entry) then
-            if (allocated(arena%entries(node_index)%node_type)) then
-                is_internal_procedure_entry = &
-                    trim(arena%entries(node_index)%node_type) == 'contains'
-            end if
+            is_internal_procedure_entry = &
+                trim(get_node_type_at(arena, node_index)) == 'contains'
         end if
     end function is_internal_procedure_entry
 
@@ -322,7 +320,7 @@
         character(len=:), allocatable, intent(out) :: name
         character(len=:), allocatable, intent(out) :: error_msg
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'parameter index does not reference an AST node'
             call set_empty(name)
             return

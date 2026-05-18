@@ -23,7 +23,7 @@
         end if
 
         dim_index = node%dimension_indices(1)
-        if (.not. context%arena%has_node_at(dim_index)) then
+        if (.not. node_exists(context%arena, dim_index)) then
             error_msg = 'array dimension index does not reference an AST node'
             return
         end if
@@ -84,7 +84,7 @@
         integer :: symbol_index
 
         constant_value = 0_c_int64_t
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'constant expression index does not reference an AST node'
             return
         end if
@@ -284,7 +284,7 @@
         integer :: symbol_index
         character(len=:), allocatable :: parse_error
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'array subscript index does not reference an AST node'
             return
         end if
@@ -340,8 +340,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         call unsupported_feature_error('array subscript', &
-                                       arena%get_node_line(node_index), &
-                                       arena%get_node_column(node_index), &
+                                       get_node_line(arena, node_index), &
+                                       get_node_column(arena, node_index), &
                                        'direct LIRIC session supports scalar '// &
                                        'integer array subscripts, not '// &
                                        trim(detail), error_msg)

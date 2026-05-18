@@ -12,7 +12,7 @@
       integer :: opcode
       integer :: symbol_index
 
-      if (.not. arena%has_node_at(node_index)) then
+      if (.not. node_exists(arena, node_index)) then
           error_msg = 'expression index does not reference an AST node'
           return
       end if

@@ -39,7 +39,7 @@
         real(c_double) :: real_value
         integer :: symbol_index
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
             return
         end if
@@ -151,7 +151,7 @@
         real(c_double) :: real_value
         integer :: symbol_index
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
             return
         end if
@@ -262,7 +262,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'logical expression index does not reference an AST node'
             return
         end if
@@ -362,7 +362,7 @@
         integer :: opcode
         integer :: symbol_index
 
-        if (.not. arena%has_node_at(node_index)) then
+        if (.not. node_exists(arena, node_index)) then
             error_msg = 'real expression index does not reference an AST node'
             return
         end if
@@ -486,7 +486,7 @@
         integer :: symbol_index
 
         is_f64 = .false.
-        if (.not. arena%has_node_at(node_index)) return
+        if (.not. node_exists(arena, node_index)) return
 
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)

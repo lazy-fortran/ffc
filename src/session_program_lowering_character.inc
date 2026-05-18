@@ -87,7 +87,7 @@
         character(len=64) :: string_name
         logical :: fold_ok
 
-        if (.not. arena%has_node_at(node%value_index)) then
+        if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
             return
         end if
@@ -165,7 +165,7 @@
         character(len=:), allocatable :: left_text, right_text, piece
 
         ok = .false.
-        if (.not. arena%has_node_at(node_index)) return
+        if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)
             if (.not. is_character_literal(node)) return
