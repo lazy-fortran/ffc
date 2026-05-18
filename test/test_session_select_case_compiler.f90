@@ -12,9 +12,12 @@ program test_session_select_case_compiler
     all_passed = .true.
     if (.not. test_select_case_one_arm_matches()) all_passed = .false.
     if (.not. test_select_case_one_arm_default()) all_passed = .false.
+    if (.not. test_select_case_three_arms_matches_first()) all_passed = .false.
+    if (.not. test_select_case_three_arms_matches_middle()) all_passed = .false.
+    if (.not. test_select_case_three_arms_matches_default()) all_passed = .false.
 
     if (.not. all_passed) stop 1
-    print *, 'PASS: single-arm SELECT CASE lowers through direct LIRIC'
+    print *, 'PASS: SELECT CASE lowers through direct LIRIC'
 
 contains
 
@@ -51,6 +54,69 @@ contains
         test_select_case_one_arm_default = expect_exit_status( &
             source, 99, '/tmp/ffc_session_select_default_test')
     end function test_select_case_one_arm_default
+
+    logical function test_select_case_three_arms_matches_first()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 1'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (1)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    stop 22'//new_line('a')// &
+            '  case (3)'//new_line('a')// &
+            '    stop 33'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_three_arms_matches_first = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_select_first_test')
+    end function test_select_case_three_arms_matches_first
+
+    logical function test_select_case_three_arms_matches_middle()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 2'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (1)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    stop 22'//new_line('a')// &
+            '  case (3)'//new_line('a')// &
+            '    stop 33'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_three_arms_matches_middle = expect_exit_status( &
+            source, 22, '/tmp/ffc_session_select_middle_test')
+    end function test_select_case_three_arms_matches_middle
+
+    logical function test_select_case_three_arms_matches_default()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 7'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (1)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    stop 22'//new_line('a')// &
+            '  case (3)'//new_line('a')// &
+            '    stop 33'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_three_arms_matches_default = expect_exit_status( &
+            source, 99, '/tmp/ffc_session_select_three_default_test')
+    end function test_select_case_three_arms_matches_default
 
     logical function expect_exit_status(source, expected, exe_path) result(ok)
         character(len=*), intent(in) :: source

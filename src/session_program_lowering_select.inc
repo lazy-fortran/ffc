@@ -4,13 +4,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: selector
-        type(lr_operand_desc_t) :: literal_value
-        type(lr_operand_desc_t) :: cond
-        integer(c_int32_t) :: arm_block
         integer(c_int32_t) :: default_block
         integer :: case_idx
-        type(lr_operand_desc_t) :: dummy_value
-        logical :: terminated
 
         if (node%selector_index <= 0) then
             error_msg = 'select case requires a selector expression'
@@ -21,13 +16,6 @@
                                            node%column, &
                                            'select case requires at least one '// &
                                            'case arm', error_msg)
-            return
-        end if
-        if (size(node%case_indices) /= 1) then
-            call unsupported_feature_error('select case statement', node%line, &
-                                           node%column, &
-                                           'multi-arm select case not yet supported', &
-                                           error_msg)
             return
         end if
         if (node%default_index <= 0) then
@@ -42,13 +30,42 @@
                                   selector, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        case_idx = node%case_indices(1)
-        if (.not. arena%has_node_at(case_idx)) then
+        default_block = create_liric_block(context%session)
+
+        do case_idx = 1, size(node%case_indices)
+            call lower_select_case_arm(arena, node%case_indices(case_idx), &
+                                       case_idx == size(node%case_indices), &
+                                       selector, default_block, context, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+
+        call lower_select_case_default(arena, node%default_index, default_block, &
+                                       context, error_msg)
+    end subroutine lower_select_case
+
+    subroutine lower_select_case_arm(arena, case_node_index, is_last_arm, &
+                                     selector, default_block, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: case_node_index
+        logical, intent(in) :: is_last_arm
+        type(lr_operand_desc_t), intent(in) :: selector
+        integer(c_int32_t), intent(in) :: default_block
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: literal_value
+        type(lr_operand_desc_t) :: cond
+        type(lr_operand_desc_t) :: dummy_value
+        integer(c_int32_t) :: arm_block
+        integer(c_int32_t) :: next_check_block
+        logical :: terminated
+
+        if (.not. arena%has_node_at(case_node_index)) then
             error_msg = 'select case arm index does not reference an AST node'
             return
         end if
 
-        select type (arm => arena%entries(case_idx)%node)
+        select type (arm => arena%entries(case_node_index)%node)
         type is (case_block_node)
             if (.not. allocated(arm%value_indices)) then
                 call unsupported_feature_error('select case statement', &
@@ -69,12 +86,16 @@
             if (len_trim(error_msg) > 0) return
 
             arm_block = create_liric_block(context%session)
-            default_block = create_liric_block(context%session)
+            if (is_last_arm) then
+                next_check_block = default_block
+            else
+                next_check_block = create_liric_block(context%session)
+            end if
 
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, selector, &
                                           literal_value, cond, error_msg)) return
             if (.not. emit_liric_condbr(context%session, cond, arm_block, &
-                                        default_block, error_msg)) return
+                                        next_check_block, error_msg)) return
 
             if (.not. set_liric_block(context%session, arm_block, &
                                       error_msg)) return
@@ -94,14 +115,18 @@
                                                '(stop/return)', error_msg)
                 return
             end if
+
+            if (.not. is_last_arm) then
+                if (.not. set_liric_block(context%session, next_check_block, &
+                                          error_msg)) return
+                context%current_block_id = next_check_block
+                context%current_block_terminated = .false.
+            end if
         class default
             error_msg = 'select case arm node has unexpected kind'
             return
         end select
-
-        call lower_select_case_default(arena, node%default_index, default_block, &
-                                       context, error_msg)
-    end subroutine lower_select_case
+    end subroutine lower_select_case_arm
 
     subroutine lower_select_case_default(arena, default_idx, default_block, &
                                          context, error_msg)
