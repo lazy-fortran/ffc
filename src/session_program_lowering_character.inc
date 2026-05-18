@@ -121,6 +121,20 @@
                 return
             end if
             call strip_literal_quotes(value_node%value, literal_text)
+        type is (binary_op_node)
+            block
+                logical :: ok
+                call concat_character_literals(arena, node%value_index, &
+                                               literal_text, ok)
+                if (.not. ok) then
+                    call unsupported_feature_error('character assignment', &
+                                                   node%line, node%column, &
+                                                   'only character literal '// &
+                                                   'assignment is supported', &
+                                                   error_msg)
+                    return
+                end if
+            end block
         class default
             call unsupported_feature_error('character assignment', &
                                            node%line, node%column, &
@@ -144,6 +158,33 @@
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_character_assignment
+
+    recursive subroutine concat_character_literals(arena, node_index, &
+                                                   accumulated, ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: accumulated
+        logical, intent(out) :: ok
+        character(len=:), allocatable :: left_text, right_text, piece
+
+        ok = .false.
+        if (.not. arena%has_node_at(node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            if (.not. is_character_literal(node)) return
+            call strip_literal_quotes(node%value, piece)
+            accumulated = piece
+            ok = .true.
+        type is (binary_op_node)
+            if (trim(node%operator) /= '//') return
+            call concat_character_literals(arena, node%left_index, left_text, ok)
+            if (.not. ok) return
+            call concat_character_literals(arena, node%right_index, right_text, ok)
+            if (.not. ok) return
+            accumulated = left_text//right_text
+            ok = .true.
+        end select
+    end subroutine concat_character_literals
 
     subroutine normalize_character_literal(literal_text, character_length)
         character(len=:), allocatable, intent(inout) :: literal_text

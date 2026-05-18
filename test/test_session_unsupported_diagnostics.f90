@@ -81,7 +81,8 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  character(len=5) :: name'//new_line('a')// &
-                                       '  name = "he" // "llo"'//new_line('a')// &
+                                       '  name = "ab"'//new_line('a')// &
+                                       '  name = name // "x"'//new_line('a')// &
                                        'end program main'
 
         test_character_expression_diagnostic = expect_error_contains( &
@@ -428,7 +429,8 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  character(len=5) :: name'//new_line('a')// &
-                                       '  name = "he" // "llo"'//new_line('a')// &
+                                       '  name = "ab"'//new_line('a')// &
+                                       '  name = name // "x"'//new_line('a')// &
                                        'end program main'
 
         test_cli_character_expression_diagnostic = expect_cli_error_contains( &
