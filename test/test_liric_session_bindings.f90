@@ -1,5 +1,5 @@
 program test_liric_session_bindings
-    use liric_session_bindings, only: liric_session_t, liric_session_create
+    use liric_session_bindings, only: liric_session_t, liric_session_create, destroy, is_open, emit_ret_i32_main_exe
     implicit none
 
     type(liric_session_t) :: session
@@ -18,15 +18,15 @@ program test_liric_session_bindings
         print *, 'FAIL: create returned ', trim(error_msg)
         stop 1
     end if
-    if (.not. session%is_open()) then
+    if (.not. is_open(session)) then
         print *, 'FAIL: session handle was not opened'
         stop 1
     end if
 
-    ok = session%emit_ret_i32_main_exe(0, exe_path, error_msg)
+    ok = emit_ret_i32_main_exe(session, 0, exe_path, error_msg)
     if (.not. ok) then
         print *, 'FAIL: direct session emit returned ', trim(error_msg)
-        call session%destroy()
+        call destroy(session)
         stop 1
     end if
 
@@ -34,17 +34,17 @@ program test_liric_session_bindings
                               cmdstat=cmd_stat)
     if (cmd_stat /= 0) then
         print *, 'FAIL: could not run emitted executable'
-        call session%destroy()
+        call destroy(session)
         stop 1
     end if
     if (exit_stat /= 0) then
         print *, 'FAIL: executable returned ', exit_stat
-        call session%destroy()
+        call destroy(session)
         stop 1
     end if
 
-    call session%destroy()
-    if (session%is_open()) then
+    call destroy(session)
+    if (is_open(session)) then
         print *, 'FAIL: session handle was not closed'
         stop 1
     end if
