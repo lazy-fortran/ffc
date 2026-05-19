@@ -20,9 +20,23 @@ module session_program_lowering
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_declaration_node, is_module_node, is_program_node
-    use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                      lr_operand_desc_t, LR_OP_ADD, LR_OP_SREM, &
-                                      LR_OP_SUB
+   use liric_session_bindings, only: liric_session_t, liric_session_create, &
+                                       lr_operand_desc_t, LR_OP_ADD, LR_OP_SREM, &
+                                       LR_OP_SUB, i32_immediate, i32_vreg, &
+                                       reserve_i32_vreg, destroy, begin_i32_main, &
+                                       begin_i32_function, begin_void_subroutine, &
+                                       emit_i32_binary, emit_i32_binary_into, &
+                                       emit_i32_copy_to, emit_i32_alloca, &
+                                       emit_i32_load, emit_i32_store, &
+                                       emit_i32_call, emit_ret_i32_operand, &
+                                       emit_ret_void, finish_function, &
+                                       finish_and_emit_exe, finish_and_emit_object, &
+                                       emit_void_call, i64_immediate, &
+                                       emit_i64_load, emit_i64_store, &
+                                       emit_i64_binary, emit_i64_alloca, &
+                                       emit_alloca_bytes, emit_ptr_store, &
+                                       emit_memcpy, emit_i32_array_alloca, &
+                                       emit_i32_array_element_addr, ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -213,71 +227,71 @@ contains
                                               context%f64_print_format_id, &
                                               context%str_print_format_id, &
                                               error_msg)) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
         call collect_derived_type_definitions(arena, root_index, context, &
                                               error_msg)
         if (len_trim(error_msg) > 0) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
         call collect_module_exports(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
         call collect_internal_function_names(arena, root_index, context, &
                                              error_msg)
         if (len_trim(error_msg) > 0) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
-        if (.not. context%session%begin_i32_main(error_msg)) then
-            call context%session%destroy()
+        if (.not. begin_i32_main(context%session, error_msg)) then
+            call destroy(context%session)
             return
         end if
 
         call lower_program_return(arena, root_index, context, return_value, &
                                   error_msg)
         if (len_trim(error_msg) > 0) then
-            call context%session%destroy()
+            call destroy(context%session)
             return
         end if
 
         if (.not. context%current_block_terminated) then
-            if (.not. context%session%emit_ret_i32_operand(return_value, &
+            if (.not. emit_ret_i32_operand(context%session, return_value, &
                                                            error_msg)) then
-                call context%session%destroy()
+                call destroy(context%session)
                 return
             end if
         end if
 
         if (emit_executable) then
-            if (.not. context%session%finish_and_emit_exe(output_path, &
+            if (.not. finish_and_emit_exe(context%session, output_path, &
                                                           error_msg)) then
-                call context%session%destroy()
+                call destroy(context%session)
                 return
             end if
         else
-            if (.not. context%session%finish_and_emit_object(output_path, &
+            if (.not. finish_and_emit_object(context%session, output_path, &
                                                              error_msg)) then
-                call context%session%destroy()
+                call destroy(context%session)
                 return
             end if
         end if
 
-        call context%session%destroy()
+        call destroy(context%session)
         call set_empty(error_msg)
     end subroutine lower_program_to_liric_path
 
@@ -328,7 +342,7 @@ contains
         logical :: has_executable_statements
         logical :: has_nested_program
 
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         context%current_block_terminated = .false.
         has_executable_statements = .false.
         has_nested_program = .false.
@@ -384,7 +398,7 @@ contains
         character(len=:), allocatable :: node_type
 
         context%current_block_terminated = .false.
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'program body index does not reference an AST node'
             return
@@ -429,7 +443,7 @@ contains
                                            error_msg)
         type is (return_node)
             if (context%in_internal_subroutine) then
-                if (.not. context%session%emit_ret_void(error_msg)) return
+                if (.not. emit_ret_void(context%session, error_msg)) return
                 context%current_block_terminated = .true.
             else if (context%in_internal_function) then
                 call lower_function_return(node, context, error_msg)
@@ -443,7 +457,7 @@ contains
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
-                if (.not. context%session%emit_ret_i32_operand(value, &
+                if (.not. emit_ret_i32_operand(context%session, value, &
                                                                error_msg)) return
                 context%current_block_terminated = .true.
             end if
@@ -533,7 +547,7 @@ contains
         integer :: i
 
         terminated = .false.
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
 
         do i = 1, size(node_indices)
@@ -745,7 +759,7 @@ contains
             context%symbols(index)%value = liric_f64_immediate(context%session, &
                                                                0.0_c_double)
         else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
-            context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
+            context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         else
             error_msg = 'unsupported parameter declaration value kind'
             return
@@ -771,7 +785,7 @@ contains
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
-        context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
+        context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i32_symbol
@@ -818,7 +832,7 @@ contains
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_LOGICAL
-        context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
+        context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_logical_symbol
@@ -921,7 +935,7 @@ contains
         select case (context%symbols(idx)%value_kind)
         case (VALUE_I32, VALUE_LOGICAL, VALUE_F64)
             result_value = context%symbols(idx)%value
-            if (.not. context%session%emit_ret_i32_operand(result_value, &
+            if (.not. emit_ret_i32_operand(context%session, result_value, &
                                                            error_msg)) return
             context%current_block_terminated = .true.
         case default
@@ -941,7 +955,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         if (node%stop_code_index <= 0) then
-            value = context%session%i32_immediate(0_c_int64_t)
+            value = i32_immediate(context%session, 0_c_int64_t)
             call set_empty(error_msg)
         else
             call lower_i32_expression(arena, node%stop_code_index, context, &
@@ -974,7 +988,7 @@ contains
                                     args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_void_call(name, args, error_msg)) return
+        if (.not. emit_void_call(context%session, name, args, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
 
@@ -1010,14 +1024,14 @@ contains
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)
             if (len_trim(error_msg) > 0) return
-            rhs = context%session%i32_immediate(0_c_int64_t)
+            rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
         type is (identifier_node)
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)
             if (len_trim(error_msg) > 0) return
-            rhs = context%session%i32_immediate(0_c_int64_t)
+            rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
         class default

@@ -27,7 +27,7 @@
         integer :: i
         logical :: body_terminated
 
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. allocated(node%var_name)) then
             error_msg = 'direct LIRIC session DO requires a loop variable'
             return
@@ -63,7 +63,7 @@
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
-                context%session%i32_vreg(reserved_vreg)
+                i32_vreg(context%session, reserved_vreg)
         end do
 
         header_block = create_liric_block(context%session)
@@ -119,10 +119,10 @@
         context%current_block_id = latch_block
         context%current_block_terminated = .false.
 
-        step_operand = context%session%i32_immediate(step_value)
+        step_operand = i32_immediate(context%session, step_value)
         reserved_vreg = int(backedge_values(loop_symbol_index)%payload, &
                             c_int32_t)
-        if (.not. context%session%emit_i32_binary_into( &
+        if (.not. emit_i32_binary_into(context%session,  &
             LR_OP_ADD, header_values(loop_symbol_index), step_operand, &
             reserved_vreg, next_index, error_msg)) return
         do i = 1, carried_count
@@ -133,7 +133,7 @@
                             'or logical symbols'
                 return
             end if
-            if (.not. context%session%emit_i32_copy_to( &
+            if (.not. emit_i32_copy_to(context%session,  &
                 context%symbols(carried_indices(i))%value, &
                 int(backedge_values(carried_indices(i))%payload, c_int32_t), &
                 copied_value, &
@@ -148,7 +148,7 @@
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
     end subroutine lower_do_loop
 
@@ -180,8 +180,8 @@
         integer(c_int32_t), intent(out) :: vreg
         character(len=:), allocatable, intent(out) :: error_msg
 
-        vreg = context%session%reserve_i32_vreg()
-        if (vreg == 0_c_int32_t) vreg = context%session%reserve_i32_vreg()
+        vreg = reserve_i32_vreg(context%session)
+        if (vreg == 0_c_int32_t) vreg = reserve_i32_vreg(context%session)
         if (vreg <= 0_c_int32_t) then
             error_msg = 'LIRIC could not reserve a positive backedge vreg'
         else

@@ -163,7 +163,7 @@
         context%symbols(index)%array_size = array_size
         context%symbols(index)%array_lower_bound = array_lower_bound
 
-        if (.not. context%session%emit_i32_array_alloca( &
+        if (.not. emit_i32_array_alloca(context%session,  &
             array_size, context%symbols(index)%element_address, error_msg)) then
             error_msg = 'decl_array['//trim(name)//']: '//error_msg
             return
@@ -191,7 +191,7 @@
                                              'array assignment target')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_i32_store(value, element_address, &
+        if (.not. emit_i32_store(context%session, value, element_address, &
                                                  error_msg)) then
             error_msg = 'arr_assign_store: '//error_msg
             return
@@ -252,17 +252,17 @@
         if (len_trim(error_msg) > 0) return
 
         ! Declared lower bound maps to element zero in LIRIC storage.
-        lower_bound_value = context%session%i32_immediate( &
+        lower_bound_value = i32_immediate(context%session,  &
                             int(context%symbols(symbol_index)%array_lower_bound, &
                                 c_int64_t))
-        if (.not. context%session%emit_i32_binary(LR_OP_SUB, index_value, &
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, index_value, &
                                                   lower_bound_value, &
                                                   offset, error_msg)) then
             error_msg = 'arr_element_sub: '//error_msg
             return
         end if
 
-        if (.not. context%session%emit_i32_array_element_addr( &
+        if (.not. emit_i32_array_element_addr(context%session,  &
             context%symbols(symbol_index)%array_size, &
             context%symbols(symbol_index)%element_address, &
             offset, element_address, error_msg)) then

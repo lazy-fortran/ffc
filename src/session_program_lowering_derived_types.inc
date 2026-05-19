@@ -372,7 +372,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         context%symbols(index)%derived_type_index = derived_type_index
         context%symbols(index)%array_size = component_count
 
-        if (.not. context%session%emit_i32_array_alloca( &
+        if (.not. emit_i32_array_alloca(context%session,  &
             component_count, context%symbols(index)%element_address, &
             error_msg)) then
             error_msg = 'derived_alloca['//trim(name)//']: '//error_msg
@@ -402,7 +402,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
                                              'derived type component assignment target')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_i32_store(value, component_address, &
+        if (.not. emit_i32_store(context%session, value, component_address, &
                                                  error_msg)) then
             error_msg = 'component_store: '//error_msg
             return
@@ -423,7 +423,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
                                              'derived type component expression')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_i32_load(component_address, value, &
+        if (.not. emit_i32_load(context%session, component_address, value, &
                                                 error_msg)) then
             error_msg = 'component_load: '//error_msg
             return
@@ -479,8 +479,8 @@ subroutine collect_component_declaration(component_index, parent, context, &
             return
         end if
 
-        offset = context%session%i32_immediate(int(component_index - 1, c_int64_t))
-        if (.not. context%session%emit_i32_array_element_addr( &
+        offset = i32_immediate(context%session, int(component_index - 1, c_int64_t))
+        if (.not. emit_i32_array_element_addr(context%session,  &
             context%derived_types(type_index)%component_count, &
             context%symbols(symbol_index)%element_address, offset, &
             component_address, error_msg)) then
@@ -804,7 +804,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         integer :: i
 
         call set_empty(error_msg)
-        value = context%session%i32_immediate(0_c_int64_t)
+        value = i32_immediate(context%session, 0_c_int64_t)
         context%current_block_terminated = .false.
 
         if (.not. allocated(program%body_indices)) return

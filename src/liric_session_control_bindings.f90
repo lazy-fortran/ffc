@@ -6,7 +6,8 @@ module liric_session_control_bindings
     use liric_session_bindings, only: liric_session_t, lr_error_t, &
                                       lr_inst_desc_t, lr_operand_desc_t, &
                                       LR_OK, LR_OP_KIND_BLOCK, &
-                                      LR_OP_KIND_VREG, liric_session_error_message
+                                      LR_OP_KIND_VREG, liric_session_error_message, &
+                                      i32_vreg
     implicit none
     private
 
@@ -214,7 +215,7 @@ contains
         emit_liric_i32_phi = emit_liric_phi(session, lhs, lhs_block, rhs, &
                                             rhs_block, result, error_msg)
         if (.not. emit_liric_i32_phi) return
-        result = session%i32_vreg(int(result%payload, c_int32_t))
+        result = i32_vreg(session, int(result%payload, c_int32_t))
         emit_liric_i32_phi = .true.
     end function emit_liric_i32_phi
 

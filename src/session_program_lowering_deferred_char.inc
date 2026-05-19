@@ -122,10 +122,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! For self-aliasing, we need to capture the old content
         ! We do this by loading the old data pointer and length
         if (is_self_alias) then
-            if (.not. context%session%emit_i64_load( &
+            if (.not. emit_i64_load(context%session,  &
                 context%symbols(dest_symbol_index)%deferred_data, &
                 old_data, error_msg)) return
-            if (.not. context%session%emit_i64_load( &
+            if (.not. emit_i64_load(context%session,  &
                 context%symbols(dest_symbol_index)%deferred_length, &
                 old_len_val, error_msg)) return
         end if
@@ -143,10 +143,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 left_data = old_data
                 left_len = old_len_val
             else
-                if (.not. context%session%emit_i64_load( &
+                if (.not. emit_i64_load(context%session,  &
                     context%symbols(left_sym_idx)%deferred_data, &
                     left_data, error_msg)) return
-                if (.not. context%session%emit_i64_load( &
+                if (.not. emit_i64_load(context%session,  &
                     context%symbols(left_sym_idx)%deferred_length, &
                     left_len, error_msg)) return
             end if
@@ -163,10 +163,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 right_data = old_data
                 right_len = old_len_val
             else
-                if (.not. context%session%emit_i64_load( &
+                if (.not. emit_i64_load(context%session,  &
                     context%symbols(right_sym_idx)%deferred_data, &
                     right_data, error_msg)) return
-                if (.not. context%session%emit_i64_load( &
+                if (.not. emit_i64_load(context%session,  &
                     context%symbols(right_sym_idx)%deferred_length, &
                     right_len, error_msg)) return
             end if
@@ -179,14 +179,14 @@ integer function resolve_concat_operand(arena, node_index, context, &
         else
             ! Runtime concatenation: compute lengths and add
             if (left_is_literal) then
-                left_len = context%session%i64_immediate( &
+                left_len = i64_immediate(context%session,  &
                     int(len(left_text), c_int64_t))
             end if
             if (right_is_literal) then
-                right_len = context%session%i64_immediate( &
+                right_len = i64_immediate(context%session,  &
                     int(len(right_text), c_int64_t))
             end if
-            if (.not. context%session%emit_i64_binary( &
+            if (.not. emit_i64_binary(context%session,  &
                 LR_OP_ADD, left_len, right_len, total_len, error_msg)) return
         end if
 
@@ -200,11 +200,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
             if (len_trim(error_msg) > 0) return
 
             ! Store pointer and length in descriptor
-            if (.not. context%session%emit_ptr_store( &
+            if (.not. emit_ptr_store(context%session,  &
                 new_ptr, &
                 context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
-            if (.not. context%session%emit_i64_store( &
-                context%session%i64_immediate(combined_len), &
+            if (.not. emit_i64_store(context%session,  &
+                i64_immediate(context%session, combined_len), &
                 context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
 
             context%symbols(dest_symbol_index)%value = new_ptr
@@ -215,24 +215,24 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         ! Runtime concatenation: alloca (total_len + 1) for trailing null,
         ! memcpy operands, then write null byte so %s printers stay bounded.
-        if (.not. context%session%emit_i64_binary( &
+        if (.not. emit_i64_binary(context%session,  &
             LR_OP_ADD, total_len, &
-            context%session%i64_immediate(1_c_int64_t), &
+            i64_immediate(context%session, 1_c_int64_t), &
             alloca_size, error_msg)) return
 
-        if (.not. context%session%emit_alloca_bytes(alloca_size, new_ptr, &
+        if (.not. emit_alloca_bytes(context%session, alloca_size, new_ptr, &
             error_msg)) return
 
-        if (.not. context%session%emit_memcpy( &
+        if (.not. emit_memcpy(context%session,  &
             new_ptr, left_data, left_len, error_msg)) return
 
-        if (.not. context%session%emit_i64_binary( &
+        if (.not. emit_i64_binary(context%session,  &
             LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
 
-        if (.not. context%session%emit_memcpy( &
+        if (.not. emit_memcpy(context%session,  &
             running_offset, right_data, right_len, error_msg)) return
 
-        if (.not. context%session%emit_i64_binary( &
+        if (.not. emit_i64_binary(context%session,  &
             LR_OP_ADD, running_offset, right_len, null_dest, &
             error_msg)) return
 
@@ -243,15 +243,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                       '', null_byte_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_memcpy( &
+        if (.not. emit_memcpy(context%session,  &
             null_dest, null_byte_ptr, &
-            context%session%i64_immediate(1_c_int64_t), error_msg)) return
+            i64_immediate(context%session, 1_c_int64_t), error_msg)) return
 
-        if (.not. context%session%emit_i64_store( &
+        if (.not. emit_i64_store(context%session,  &
             new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
             error_msg)) return
 
-        if (.not. context%session%emit_i64_store( &
+        if (.not. emit_i64_store(context%session,  &
             total_len, context%symbols(dest_symbol_index)%deferred_length, &
             error_msg)) return
 
@@ -276,7 +276,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call materialize_liric_string(context%session, trim(string_name), &
                                       text, data_op, error_msg)
         if (len_trim(error_msg) > 0) return
-        len_op = context%session%i64_immediate(int(len(text), c_int64_t))
+        len_op = i64_immediate(context%session, int(len(text), c_int64_t))
         call set_empty(error_msg)
     end subroutine materialize_concat_literal
 
@@ -295,9 +295,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                         len_op, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_ptr_store(data_op, &
+        if (.not. emit_ptr_store(context%session, data_op, &
             context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
-        if (.not. context%session%emit_i64_store(len_op, &
+        if (.not. emit_i64_store(context%session, len_op, &
             context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
 
         context%symbols(dest_symbol_index)%value = data_op

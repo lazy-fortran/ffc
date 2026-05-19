@@ -115,7 +115,7 @@
                 return
             end if
             if (is_logical_literal(node)) then
-                value = context%session%i32_immediate(logical_i32_value(node%value))
+                value = i32_immediate(context%session, logical_i32_value(node%value))
                 if (.not. emit_liric_print_i32(context%session, &
                                                context%i32_print_format_id, &
                                                value, error_msg)) return
@@ -229,7 +229,7 @@
                 return
             end if
             if (is_logical_literal(node)) then
-                value = context%session%i32_immediate(logical_i32_value(node%value))
+                value = i32_immediate(context%session, logical_i32_value(node%value))
                 if (.not. emit_liric_print_i32_value(context%session, &
                                                      context%i32_print_format_id, &
                                                      value, error_msg)) return
@@ -273,7 +273,7 @@
                 error_msg = 'direct LIRIC session expected a logical literal'
                 return
             end if
-            value = context%session%i32_immediate(logical_i32_value(node%value))
+            value = i32_immediate(context%session, logical_i32_value(node%value))
             call set_empty(error_msg)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
@@ -289,7 +289,7 @@
             end if
             if (context%symbols(symbol_index)%has_address .and. &
                 context%symbols(symbol_index)%is_reference) then
-                if (.not. context%session%emit_i32_load( &
+                if (.not. emit_i32_load(context%session,  &
                     context%symbols(symbol_index)%address, value, &
                     error_msg)) return
             else
@@ -344,7 +344,7 @@
             allocate (copyback_indices(0))
         end if
 
-        if (.not. context%session%emit_i32_call(node%name, args, value, &
+        if (.not. emit_i32_call(context%session, node%name, args, value, &
                                                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_logical_call

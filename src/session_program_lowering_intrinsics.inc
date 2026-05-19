@@ -66,10 +66,10 @@
                                   error_msg)
         if (len_trim(error_msg) > 0) return
 
-        zero = context%session%i32_immediate(0_c_int64_t)
+        zero = i32_immediate(context%session, 0_c_int64_t)
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, arg, zero, &
                                       condition, error_msg)) return
-        if (.not. context%session%emit_i32_binary(LR_OP_SUB, zero, arg, &
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, arg, &
                                                   negative, error_msg)) return
         call select_value(context, condition, arg, negative, value, error_msg)
     end subroutine lower_i32_abs_intrinsic
@@ -117,7 +117,7 @@
                                   error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. context%session%emit_i32_binary(LR_OP_SREM, lhs, rhs, value, &
+        if (.not. emit_i32_binary(context%session, LR_OP_SREM, lhs, rhs, value, &
                                                   error_msg)) return
     end subroutine lower_i32_mod_intrinsic
 

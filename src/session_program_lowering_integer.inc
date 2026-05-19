@@ -21,7 +21,7 @@
       type is (literal_node)
           call parse_i32_literal(node%value, literal_value, error_msg)
           if (len_trim(error_msg) > 0) return
-          value = context%session%i32_immediate(literal_value)
+          value = i32_immediate(context%session, literal_value)
       type is (identifier_node)
           symbol_index = find_symbol(context, node%name)
           if (symbol_index <= 0) then
@@ -42,7 +42,7 @@
           end if
           if (context%symbols(symbol_index)%has_address .and. &
               context%symbols(symbol_index)%is_reference) then
-              if (.not. context%session%emit_i32_load( &
+              if (.not. emit_i32_load(context%session,  &
                   context%symbols(symbol_index)%address, value, &
                   error_msg)) return
           else
@@ -65,7 +65,7 @@
                                              'expressions', error_msg)
               return
           end if
-          if (.not. context%session%emit_i32_binary(opcode, lhs, rhs, value, &
+          if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
                                                     error_msg)) return
       type is (call_or_subscript_node)
           if (node%is_array_access) then
@@ -136,7 +136,7 @@
           allocate (copyback_indices(0))
       end if
 
-      if (.not. context%session%emit_i32_call(node%name, args, value, &
+      if (.not. emit_i32_call(context%session, node%name, args, value, &
                                               error_msg)) return
       call copy_back_reference_args(context, args, copyback_indices, error_msg)
   end subroutine lower_i32_call
@@ -153,7 +153,7 @@
                                            error_msg)
       if (len_trim(error_msg) > 0) return
 
-      if (.not. context%session%emit_i32_load(element_address, value, error_msg)) then
+      if (.not. emit_i32_load(context%session, element_address, value, error_msg)) then
           error_msg = 'arr_read_load: '//error_msg
           return
       end if
