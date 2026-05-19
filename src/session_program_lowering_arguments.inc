@@ -6,7 +6,7 @@
 
         select case (context%symbols(symbol_index)%value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
-            if (.not. context%session%emit_i32_store( &
+            if (.not. emit_i32_store(context%session,  &
                 value, context%symbols(symbol_index)%address, error_msg)) return
         case (VALUE_F64)
             if (.not. emit_liric_f64_store( &
@@ -195,8 +195,8 @@
             if (.not. emit_liric_f64_store(context%session, value, address, &
                                            error_msg)) return
         case (VALUE_I32, VALUE_LOGICAL)
-            if (.not. context%session%emit_i32_alloca(address, error_msg)) return
-            if (.not. context%session%emit_i32_store(value, address, error_msg)) &
+            if (.not. emit_i32_alloca(context%session, address, error_msg)) return
+            if (.not. emit_i32_store(context%session, value, address, error_msg)) &
                 return
         case default
             error_msg = 'direct LIRIC session cannot pass this scalar argument'
@@ -221,7 +221,7 @@
                 if (.not. emit_liric_f64_load(context%session, args(i), value, &
                                               error_msg)) return
             case (VALUE_I32, VALUE_LOGICAL)
-                if (.not. context%session%emit_i32_load(args(i), value, &
+                if (.not. emit_i32_load(context%session, args(i), value, &
                                                         error_msg)) return
             case default
                 error_msg = 'direct LIRIC session cannot copy back this argument'

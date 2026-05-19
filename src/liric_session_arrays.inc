@@ -1,5 +1,5 @@
-    logical function emit_i32_array_alloca(this, array_size, address, error_msg)
-        class(liric_session_t), intent(inout) :: this
+    logical function emit_i32_array_alloca(session, array_size, address, error_msg)
+        type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(out) :: address
         character(len=:), allocatable, intent(out) :: error_msg
@@ -9,10 +9,10 @@
         type(lr_inst_desc_t) :: inst
 
         emit_i32_array_alloca = .false.
-        if (.not. require_open_session(this, error_msg)) return
+        if (.not. require_open_session(session, error_msg)) return
 
-        array_type = lr_type_array_s(this%handle, &
-                                     lr_type_i32_s(this%handle), &
+        array_type = lr_type_array_s(session%handle, &
+                                     lr_type_i32_s(session%handle), &
                                      int(array_size, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return an integer array type'
@@ -33,21 +33,21 @@
         inst%call_fixed_args = 0_c_int32_t
 
         call clear_liric_error(error)
-        vreg = lr_session_emit(this%handle, inst, error)
+        vreg = lr_session_emit(session%handle, inst, error)
         if (.not. status_ok(error%code, error, error_msg)) then
             error_msg = 'array_alloca: '//error_msg
             return
         end if
 
-        address = this%ptr_vreg(vreg)
+        address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i32_array_alloca = .true.
     end function emit_i32_array_alloca
 
-    logical function emit_i32_array_element_addr(this, array_size, base_ptr, &
+    logical function emit_i32_array_element_addr(session, array_size, base_ptr, &
                                                  index_0based, element_addr, &
                                                  error_msg)
-        class(liric_session_t), intent(inout) :: this
+        type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(in) :: base_ptr
         type(lr_operand_desc_t), intent(in) :: index_0based
@@ -61,17 +61,17 @@
         integer(c_int32_t) :: vreg
 
         emit_i32_array_element_addr = .false.
-        if (.not. require_open_session(this, error_msg)) return
+        if (.not. require_open_session(session, error_msg)) return
 
-        array_type = lr_type_array_s(this%handle, &
-                                     lr_type_i32_s(this%handle), &
+        array_type = lr_type_array_s(session%handle, &
+                                     lr_type_i32_s(session%handle), &
                                      int(array_size, c_int64_t))
 
         ! First GEP index walks across the [N x i32] aggregate; second
         ! selects the element within it. Match what lr_emit_gep does in C.
         zero64%kind = LR_OP_KIND_IMM_I64
         zero64%payload = 0_c_int64_t
-        zero64%typ = lr_type_i64_s(this%handle)
+        zero64%typ = lr_type_i64_s(session%handle)
         zero64%global_offset = 0_c_int64_t
 
         operands(1) = base_ptr
@@ -93,13 +93,13 @@
         inst%call_fixed_args = 0_c_int32_t
 
         call clear_liric_error(error)
-        vreg = lr_session_emit(this%handle, inst, error)
+        vreg = lr_session_emit(session%handle, inst, error)
         if (.not. status_ok(error%code, error, error_msg)) then
             error_msg = 'gep: '//error_msg
             return
         end if
 
-        element_addr = this%ptr_vreg(vreg)
+        element_addr = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i32_array_element_addr = .true.
     end function emit_i32_array_element_addr

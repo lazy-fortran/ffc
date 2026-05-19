@@ -55,7 +55,7 @@
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
-        context%symbols(index)%value = context%session%i32_immediate(constant_value)
+        context%symbols(index)%value = i32_immediate(context%session, constant_value)
         context%symbols(index)%is_parameter = .true.
         context%symbols(index)%has_i32_constant = .true.
         context%symbols(index)%i32_constant = constant_value

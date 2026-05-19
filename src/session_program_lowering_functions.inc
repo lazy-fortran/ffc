@@ -211,7 +211,7 @@
             if (.not. begin_liric_f64_function(context%session, node%name, &
                                                param_count, error_msg)) return
         else
-            if (.not. context%session%begin_i32_function(node%name, param_count, &
+            if (.not. begin_i32_function(context%session, node%name, param_count, &
                                                          error_msg)) return
         end if
 
@@ -236,9 +236,9 @@
         end if
         value = context%symbols(result_index)%value
         if (.not. context%current_block_terminated) then
-            if (.not. context%session%emit_ret_i32_operand(value, error_msg)) return
+            if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
         end if
-        if (.not. context%session%finish_function(error_msg)) return
+        if (.not. finish_function(context%session, error_msg)) return
 
         parent_context%session = context%session
         parent_context%string_literal_count = context%string_literal_count
@@ -273,7 +273,7 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        if (.not. context%session%begin_void_subroutine(node%name, param_count, &
+        if (.not. begin_void_subroutine(context%session, node%name, param_count, &
                                                         error_msg)) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
@@ -287,9 +287,9 @@
         end if
 
         if (.not. context%current_block_terminated) then
-            if (.not. context%session%emit_ret_void(error_msg)) return
+            if (.not. emit_ret_void(context%session, error_msg)) return
         end if
-        if (.not. context%session%finish_function(error_msg)) return
+        if (.not. finish_function(context%session, error_msg)) return
 
         parent_context%session = context%session
         parent_context%string_literal_count = context%string_literal_count
@@ -358,10 +358,10 @@
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
-        context%symbols(index)%address = context%session%ptr_param(param_index)
+        context%symbols(index)%address = ptr_param(context%session, param_index)
         context%symbols(index)%has_address = .true.
         context%symbols(index)%is_reference = .true.
-        context%symbols(index)%value = context%session%i32_immediate(0_c_int64_t)
+        context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         context%symbols(index)%is_parameter = .true.
         context%symbol_count = index
         call set_empty(error_msg)
