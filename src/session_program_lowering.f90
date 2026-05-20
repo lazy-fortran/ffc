@@ -77,23 +77,20 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
   use ffc_strings, only: set_empty
     use ffc_fortfront_queries, only: node_exists, get_node_line, &
                                       get_node_column, get_node_type_at
-    use session_program_lowering_types, only: lowering_context_t, &
-                                               branch_result_t, symbol_t, &
-                                               derived_type_info_t, &
-                                               module_exports_t, &
-                                               VALUE_I32, VALUE_F64, &
-                                               VALUE_LOGICAL, VALUE_CHARACTER, &
-                                               VALUE_DERIVED, I32_INTRINSIC_NONE, &
-                                               I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
-                                               I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
-                                               F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
-                                               F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
-                                               F64_INTRINSIC_REAL, MAX_SYMBOLS, &
-                                               MAX_PROCEDURES, MAX_DERIVED_TYPES, &
-                                               MAX_DERIVED_COMPONENTS, MAX_MODULE_EXPORTS, &
-                                               MAX_MODULE_NAMES, I32_INTRINSIC_NAMES, &
-                                               I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
-                                               F64_INTRINSIC_IDS
+   use session_program_lowering_types, only: lowering_context_t, &
+                                                branch_result_t, symbol_t, &
+                                                derived_type_info_t, &
+                                                module_exports_t, &
+                                                VALUE_I32, VALUE_F64, &
+                                                VALUE_LOGICAL, VALUE_CHARACTER, &
+                                                VALUE_DERIVED, I32_INTRINSIC_NONE, &
+                                                I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
+                                                I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
+                                                F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
+                                                F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
+                                                F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
+                                                I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
+                                                F64_INTRINSIC_IDS
     implicit none
     private
     public :: lower_program_to_liric_exe
@@ -131,11 +128,11 @@ contains
         if (len_trim(error_msg) > 0) return
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
-        allocate(context%symbols(MAX_SYMBOLS))
-        allocate(context%derived_types(MAX_DERIVED_TYPES))
-        allocate(context%module_exports(MAX_MODULE_NAMES))
-        allocate(context%function_names(MAX_PROCEDURES))
-        allocate(context%function_value_kinds(MAX_PROCEDURES))
+        allocate(context%symbols(16))
+        allocate(context%derived_types(8))
+        allocate(context%module_exports(4))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         context%arena = arena
         if (.not. prepare_liric_print_runtime(context%session, &
@@ -909,8 +906,9 @@ contains
         integer :: new_size
 
         if (context%symbol_count < size(context%symbols)) return
-        allocate(old_symbols, source=context%symbols)
+        old_symbols = context%symbols
         new_size = 2 * size(context%symbols)
+        deallocate(context%symbols)
         allocate(context%symbols(new_size))
         context%symbols(1:size(old_symbols)) = old_symbols
         deallocate(old_symbols)
@@ -922,8 +920,9 @@ contains
         integer :: new_size
 
         if (context%derived_type_count < size(context%derived_types)) return
-        allocate(old_types, source=context%derived_types)
+        old_types = context%derived_types
         new_size = 2 * size(context%derived_types)
+        deallocate(context%derived_types)
         allocate(context%derived_types(new_size))
         context%derived_types(1:size(old_types)) = old_types
         deallocate(old_types)
@@ -935,8 +934,9 @@ contains
         integer :: new_size
 
         if (context%module_export_count < size(context%module_exports)) return
-        allocate(old_exports, source=context%module_exports)
+        old_exports = context%module_exports
         new_size = 2 * size(context%module_exports)
+        deallocate(context%module_exports)
         allocate(context%module_exports(new_size))
         context%module_exports(1:size(old_exports)) = old_exports
         deallocate(old_exports)
@@ -949,9 +949,11 @@ contains
         integer :: new_size
 
         if (context%function_count < size(context%function_names)) return
-        allocate(old_names, source=context%function_names)
-        allocate(old_kinds, source=context%function_value_kinds)
+        old_names = context%function_names
+        old_kinds = context%function_value_kinds
         new_size = 2 * size(context%function_names)
+        deallocate(context%function_names)
+        deallocate(context%function_value_kinds)
         allocate(context%function_names(new_size))
         allocate(context%function_value_kinds(new_size))
         context%function_names(1:size(old_names)) = old_names

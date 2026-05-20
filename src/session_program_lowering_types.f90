@@ -5,12 +5,6 @@ module session_program_lowering_types
     implicit none
     private
 
-    integer, parameter, public :: MAX_SYMBOLS = 1024
-    integer, parameter, public :: MAX_PROCEDURES = 256
-    integer, parameter, public :: MAX_DERIVED_TYPES = 256
-    integer, parameter, public :: MAX_DERIVED_COMPONENTS = 256
-    integer, parameter, public :: MAX_MODULE_EXPORTS = 64
-    integer, parameter, public :: MAX_MODULE_NAMES = 64
     integer, parameter, public :: VALUE_I32 = 1
     integer, parameter, public :: VALUE_F64 = 2
     integer, parameter, public :: VALUE_LOGICAL = 3
@@ -63,12 +57,12 @@ module session_program_lowering_types
     type, public :: derived_type_info_t
         character(len=64) :: name = ''
         integer :: component_count = 0
-        character(len=64) :: component_names(MAX_DERIVED_COMPONENTS) = ''
+        character(len=64), allocatable :: component_names(:)
     end type derived_type_info_t
 
     type, public :: module_exports_t
         character(len=64) :: module_name = ''
-        integer :: derived_type_indices(MAX_DERIVED_TYPES) = 0
+        integer, allocatable :: derived_type_indices(:)
         integer :: derived_type_count = 0
     end type module_exports_t
 

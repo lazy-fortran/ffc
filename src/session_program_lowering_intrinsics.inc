@@ -134,8 +134,8 @@
         type(lr_operand_desc_t) :: selected
         integer :: i
 
-        if (.not. require_intrinsic_arg_count(node, 2, MAX_SYMBOLS, &
-                                              error_msg)) return
+    if (.not. require_intrinsic_arg_count(node, 2, 64, &
+                                               error_msg)) return
 
         call lower_i32_expression(arena, node%arg_indices(1), context, value, &
                                   error_msg)
@@ -167,8 +167,8 @@
         type(lr_operand_desc_t) :: selected
         integer :: i
 
-        if (.not. require_intrinsic_arg_count(node, 2, MAX_SYMBOLS, &
-                                              error_msg)) return
+   if (.not. require_intrinsic_arg_count(node, 2, 64, &
+                                               error_msg)) return
 
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, &
                                      value, error_msg)

@@ -9,8 +9,8 @@
         context%function_count = 0
         if (allocated(context%function_names)) deallocate(context%function_names)
         if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
-        allocate(context%function_names(MAX_PROCEDURES))
-        allocate(context%function_value_kinds(MAX_PROCEDURES))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         call set_empty(error_msg)
 
@@ -85,12 +85,13 @@
         integer :: i
 
         if (.not. allocated(destination%function_names)) then
-            allocate(destination%function_names(MAX_PROCEDURES))
+            allocate(destination%function_names(8))
         end if
         if (.not. allocated(destination%function_value_kinds)) then
-            allocate(destination%function_value_kinds(MAX_PROCEDURES))
+            allocate(destination%function_value_kinds(8))
         end if
         do i = 1, source%function_count
+            call ensure_function_names_capacity(destination, i)
             destination%function_names(i) = source%function_names(i)
             destination%function_value_kinds(i) = source%function_value_kinds(i)
         end do
@@ -102,10 +103,8 @@
         type(lowering_context_t), intent(inout) :: destination
         integer :: i
 
-        if (.not. allocated(destination%derived_types)) then
-            allocate(destination%derived_types(source%derived_type_count))
-        end if
         do i = 1, source%derived_type_count
+            call ensure_derived_types_capacity(destination, i)
             destination%derived_types(i) = source%derived_types(i)
         end do
         destination%derived_type_count = source%derived_type_count
@@ -215,8 +214,13 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
-        context%arena = arena
-        allocate(context%symbols(MAX_SYMBOLS))
+  context%arena = arena
+        allocate(context%symbols(16))
+        allocate(context%derived_types(8))
+        allocate(context%module_exports(4))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
+        context%function_value_kinds = VALUE_I32
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
@@ -228,14 +232,14 @@
                                                param_count, error_msg)) return
         else
             if (.not. begin_i32_function(context%session, node%name, param_count, &
-                                                         error_msg)) return
+                                                          error_msg)) return
         end if
 
         call define_symbol(context, node%name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         context%current_function_result_index = find_symbol(context, node%name)
         call define_reference_parameters(arena, node%param_indices, context, &
-                                         error_msg)
+                                          error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
@@ -282,7 +286,12 @@
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
-        allocate(context%symbols(MAX_SYMBOLS))
+        allocate(context%symbols(16))
+        allocate(context%derived_types(8))
+        allocate(context%module_exports(4))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
+        context%function_value_kinds = VALUE_I32
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
@@ -380,3 +389,53 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_parameter_symbol
+
+    subroutine ensure_function_names_capacity(context, required_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: required_index
+
+        if (required_index <= size(context%function_names)) return
+        call grow_function_names(context)
+        if (required_index <= size(context%function_names)) return
+        allocate(context%function_names(required_index), &
+                 source=context%function_names)
+        allocate(context%function_value_kinds(required_index), &
+                 source=context%function_value_kinds)
+    end subroutine ensure_function_names_capacity
+
+    subroutine ensure_derived_types_capacity(context, required_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: required_index
+
+        if (required_index <= size(context%derived_types)) return
+        call grow_derived_types(context)
+        if (required_index <= size(context%derived_types)) return
+        allocate(context%derived_types(required_index), &
+                 source=context%derived_types)
+    end subroutine ensure_derived_types_capacity
+
+    subroutine ensure_all_context_arrays_allocated(context, min_symbols, &
+                                                    min_derived_types, &
+                                                    min_module_exports, &
+                                                    min_functions)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: min_symbols
+        integer, intent(in) :: min_derived_types
+        integer, intent(in) :: min_module_exports
+        integer, intent(in) :: min_functions
+
+        if (.not. allocated(context%symbols)) then
+            allocate(context%symbols(max(min_symbols, 16)))
+        end if
+        if (.not. allocated(context%derived_types)) then
+            allocate(context%derived_types(max(min_derived_types, 8)))
+        end if
+        if (.not. allocated(context%module_exports)) then
+            allocate(context%module_exports(max(min_module_exports, 4)))
+        end if
+        if (.not. allocated(context%function_names)) then
+            allocate(context%function_names(max(min_functions, 8)))
+            allocate(context%function_value_kinds(max(min_functions, 8)))
+            context%function_value_kinds = VALUE_I32
+        end if
+    end subroutine ensure_all_context_arrays_allocated
