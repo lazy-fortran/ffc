@@ -15,6 +15,7 @@ module ffc_test_support
     public :: expect_error_contains
     public :: expect_cli_error_contains
     public :: expect_object_exists
+    public :: expect_no_error
 
 contains
 
@@ -188,6 +189,22 @@ contains
 
         ok = .true.
     end function expect_object_exists
+
+    logical function expect_no_error(source, exe_path) result(ok)
+        ! Compiles source and checks that lowering succeeds without errors.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call compile_to_exe(source, exe_path, error_msg)
+        call execute_command_line('rm -f '//exe_path)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: expected no error, got: ', trim(error_msg)
+            return
+        end if
+        ok = .true.
+    end function expect_no_error
 
     logical function write_source_file(path, source)
         character(len=*), intent(in) :: path
