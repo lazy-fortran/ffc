@@ -9,6 +9,9 @@
         context%function_count = 0
         if (allocated(context%function_names)) deallocate(context%function_names)
         if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
+        allocate(context%function_names(MAX_PROCEDURES))
+        allocate(context%function_value_kinds(MAX_PROCEDURES))
+        context%function_value_kinds = VALUE_I32
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
@@ -85,7 +88,10 @@
         integer :: i
 
         if (.not. allocated(destination%function_names)) then
-            allocate(destination%function_names(source%function_count))
+            allocate(destination%function_names(MAX_PROCEDURES))
+        end if
+        if (.not. allocated(destination%function_value_kinds)) then
+            allocate(destination%function_value_kinds(MAX_PROCEDURES))
         end if
         do i = 1, source%function_count
             destination%function_names(i) = source%function_names(i)
