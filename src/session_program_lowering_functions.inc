@@ -54,9 +54,10 @@
         call set_empty(error_msg)
     end subroutine register_internal_function_name
 
-    subroutine function_value_kind(node, value_kind, error_msg)
+  subroutine function_value_kind(node, value_kind, error_msg)
         type(function_def_node), intent(in) :: node
         integer, intent(out) :: value_kind
+        integer :: char_len
         character(len=:), allocatable, intent(out) :: error_msg
 
         value_kind = VALUE_I32
@@ -71,11 +72,29 @@
         case ('logical')
             value_kind = VALUE_LOGICAL
         case default
-            call unsupported_feature_error('function result type', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session supports '// &
-                                           'integer, real, and logical '// &
-                                           'contained functions', error_msg)
+            if (is_character_type_name(node%return_type)) then
+                call parse_character_length(node%return_type, &
+                                            char_len, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (char_len <= 0) then
+                    value_kind = VALUE_DEFERRED_CHARACTER_RESULT
+                else
+                    call unsupported_feature_error('function result type', &
+                                                    node%line, node%column, &
+                                                    'direct LIRIC session '// &
+                                                    'supports deferred-length '// &
+                                                    'character, integer, real, '// &
+                                                    'and logical contained '// &
+                                                    'functions', error_msg)
+                end if
+            else
+                call unsupported_feature_error('function result type', &
+                                                node%line, node%column, &
+                                                'direct LIRIC session supports '// &
+                                                'integer, real, logical, and '// &
+                                                'deferred-length character '// &
+                                                'contained functions', error_msg)
+            end if
         end select
     end subroutine function_value_kind
 
@@ -146,7 +165,16 @@
                 return
             end if
         end do
-    end function contained_function_kind
+   end function contained_function_kind
+
+    logical function is_contained_deferred_char_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_deferred_char_function = &
+            contained_function_kind(context, name) == &
+            VALUE_DEFERRED_CHARACTER_RESULT
+    end function is_contained_deferred_char_function
 
     subroutine lower_internal_functions(arena, root_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -190,7 +218,7 @@
         end if
     end function is_internal_procedure_entry
 
-    subroutine lower_scalar_function(arena, node, parent_context, error_msg)
+   subroutine lower_scalar_function(arena, node, parent_context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
@@ -230,14 +258,42 @@
         if (value_kind == VALUE_F64) then
             if (.not. begin_liric_f64_function(context%session, node%name, &
                                                param_count, error_msg)) return
+        else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+            if (.not. begin_ptr_function(context%session, node%name, &
+                                         param_count, error_msg)) return
         else
             if (.not. begin_i32_function(context%session, node%name, param_count, &
                                                           error_msg)) return
         end if
 
-        call define_symbol(context, node%name, value_kind, error_msg)
-        if (len_trim(error_msg) > 0) return
-        context%current_function_result_index = find_symbol(context, node%name)
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+            ! Allocate fresh deferred-char descriptor storage for the result.
+            ! The deferred-char store path will fill this storage.
+            ! Note: Due to LIRIC relocation constraints with hidden parameters,
+            ! we allocate fresh storage here. The caller-side handling needs
+            ! to be updated to read from this storage (see TODO below).
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            context%symbols(context%current_function_result_index)%name = &
+                trim(node%name)
+            context%symbols(context%current_function_result_index)%value_kind = &
+                VALUE_CHARACTER
+            context%symbols(context%current_function_result_index)%&
+                is_deferred_character = .true.
+            context%symbols(context%current_function_result_index)%&
+                has_character_value = .false.
+            if (.not. emit_i64_alloca(context%session, &
+                context%symbols(context%current_function_result_index)%deferred_data, &
+                error_msg)) return
+            if (.not. emit_i64_alloca(context%session, &
+                context%symbols(context%current_function_result_index)%deferred_length, &
+                error_msg)) return
+            context%symbol_count = context%current_function_result_index
+        else
+            call define_symbol(context, node%name, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%current_function_result_index = find_symbol(context, node%name)
+        end if
         call define_reference_parameters(arena, node%param_indices, context, &
                                           error_msg)
         if (len_trim(error_msg) > 0) return
@@ -254,9 +310,13 @@
                         trim(node%name)
             return
         end if
-        value = context%symbols(result_index)%value
         if (.not. context%current_block_terminated) then
-            if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
+            if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+                if (.not. emit_ret_void(context%session, error_msg)) return
+            else
+                value = context%symbols(result_index)%value
+                if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
+            end if
         end if
         if (.not. finish_function(context%session, error_msg)) return
 

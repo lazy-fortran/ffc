@@ -89,7 +89,25 @@
             return
         end if
 
-        ! Check for deferred character with binary // operator
+       ! Check for deferred character function call result
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            if (node_exists(arena, node%value_index)) then
+                select type (val => arena%entries(node%value_index)%node)
+                type is (call_or_subscript_node)
+                    if (.not. val%is_array_access .and. &
+                        allocated(val%name)) then
+                        if (is_contained_deferred_char_function(context, &
+                            val%name)) then
+                            call lower_deferred_char_result_call(arena, node, &
+                                context, symbol_index, error_msg)
+                            return
+                        end if
+                    end if
+                end select
+            end if
+        end if
+
+        ! Check for deferred character with binary // operator or literal
         if (context%symbols(symbol_index)%is_deferred_character) then
             select type (value_node => arena%entries(node%value_index)%node)
             type is (binary_op_node)

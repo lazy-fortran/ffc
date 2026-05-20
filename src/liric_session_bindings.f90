@@ -87,7 +87,8 @@ module liric_session_bindings
     public :: status_ok, clear_liric_error, set_empty, require_open_session, &
               to_c_chars
     public :: destroy, is_open, begin_i32_main, begin_i32_function, &
-              begin_void_subroutine, emit_ret_i32_main_exe, &
+              begin_void_subroutine, begin_ptr_function, &
+              emit_ret_i32_main_exe, &
               emit_ret_i32_operand, emit_ret_void, finish_function, &
               finish_and_emit_object, finish_and_emit_exe, &
               emit_i32_call, emit_void_call
@@ -443,6 +444,55 @@ contains
         call set_empty(error_msg)
         begin_void_subroutine = .true.
     end function begin_void_subroutine
+
+    logical function begin_ptr_function(session, name, param_count, &
+                                        error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: param_count
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        type(c_ptr), allocatable, target :: params(:)
+        type(c_ptr) :: param_type
+        type(c_ptr) :: params_ptr
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: block_id
+        integer(c_int) :: status
+        integer :: i
+
+        begin_ptr_function = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        param_type = lr_type_ptr_s(session%handle)
+        if (.not. c_associated(param_type)) then
+            error_msg = 'LIRIC did not return a pointer type'
+            return
+        end if
+
+        params_ptr = c_null_ptr
+        if (param_count > 0) then
+            allocate (params(param_count))
+            do i = 1, param_count
+                params(i) = param_type
+            end do
+            params_ptr = c_loc(params)
+        end if
+
+        call clear_liric_error(error)
+        call to_c_chars(trim(name), c_name)
+        status = lr_session_func_begin(session%handle, c_name, &
+                                       lr_type_ptr_s(session%handle), &
+                                       params_ptr, int(param_count, c_int32_t), &
+                                       c_false, error)
+        if (.not. status_ok(status, error, error_msg)) return
+
+        block_id = lr_session_block(session%handle)
+        status = lr_session_set_block(session%handle, block_id, error)
+        if (.not. status_ok(status, error, error_msg)) return
+
+        call set_empty(error_msg)
+        begin_ptr_function = .true.
+    end function begin_ptr_function
 
     logical function emit_ret_i32_operand(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session

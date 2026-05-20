@@ -46,6 +46,7 @@ module liric_session_memory_bindings
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
     public :: emit_i32_alloca, emit_i64_alloca
     public :: emit_i32_load, emit_i64_load, emit_i32_store, emit_i64_store
+    public :: emit_i64_load_at, emit_i64_store_at
     public :: emit_alloca_bytes, emit_ptr_store, emit_memcpy
     public :: emit_i32_array_alloca, emit_i32_array_element_addr
     public :: emit_i64_binary
@@ -350,6 +351,149 @@ contains
         call set_empty(error_msg)
         emit_i64_store = .true.
     end function emit_i64_store
+
+    logical function emit_i64_load_at(session, base, offset, result, &
+                                      error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base
+        integer(c_int64_t), intent(in) :: offset
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t) :: offset_op
+        type(lr_inst_desc_t) :: gep_inst
+        type(lr_inst_desc_t) :: load_inst
+        integer(c_int32_t) :: vreg
+
+        emit_i64_load_at = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        offset_op%kind = LR_OP_KIND_IMM_I64
+        offset_op%payload = offset
+        offset_op%typ = lr_type_i64_s(session%handle)
+        offset_op%global_offset = 0_c_int64_t
+
+        ! GEP: gep_result = base + offset (byte offset for ptr type)
+        operands(1) = base
+        operands(2) = offset_op
+
+        gep_inst%op = LR_OP_GEP
+        gep_inst%typ = lr_type_ptr_s(session%handle)
+        gep_inst%dest = 0_c_int32_t
+        gep_inst%operands = c_loc(operands)
+        gep_inst%num_operands = 2_c_int32_t
+        gep_inst%indices = c_null_ptr
+        gep_inst%num_indices = 0_c_int32_t
+        gep_inst%align = 0_c_int32_t
+        gep_inst%icmp_pred = 0_c_int
+        gep_inst%fcmp_pred = 0_c_int
+        gep_inst%call_external_abi = c_false
+        gep_inst%call_vararg = c_false
+        gep_inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, gep_inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        ! Load i64 from the computed address
+        operands(1) = ptr_vreg(session, vreg)
+
+        load_inst%op = LR_OP_LOAD
+        load_inst%typ = lr_type_i64_s(session%handle)
+        load_inst%dest = 0_c_int32_t
+        load_inst%operands = c_loc(operands)
+        load_inst%num_operands = 1_c_int32_t
+        load_inst%indices = c_null_ptr
+        load_inst%num_indices = 0_c_int32_t
+        load_inst%align = 0_c_int32_t
+        load_inst%icmp_pred = 0_c_int
+        load_inst%fcmp_pred = 0_c_int
+        load_inst%call_external_abi = c_false
+        load_inst%call_vararg = c_false
+        load_inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, load_inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i64_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_i64_load_at = .true.
+    end function emit_i64_load_at
+
+    logical function emit_i64_store_at(session, value, base, offset, &
+                                       error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(in) :: base
+        integer(c_int64_t), intent(in) :: offset
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t) :: offset_op
+        type(lr_operand_desc_t) :: addr
+        type(lr_inst_desc_t) :: gep_inst
+        type(lr_inst_desc_t) :: store_inst
+        integer(c_int32_t) :: vreg
+
+        emit_i64_store_at = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        offset_op%kind = LR_OP_KIND_IMM_I64
+        offset_op%payload = offset
+        offset_op%typ = lr_type_i64_s(session%handle)
+        offset_op%global_offset = 0_c_int64_t
+
+        ! GEP: addr = base + offset
+        operands(1) = base
+        operands(2) = offset_op
+
+        gep_inst%op = LR_OP_GEP
+        gep_inst%typ = lr_type_ptr_s(session%handle)
+        gep_inst%dest = 0_c_int32_t
+        gep_inst%operands = c_loc(operands)
+        gep_inst%num_operands = 2_c_int32_t
+        gep_inst%indices = c_null_ptr
+        gep_inst%num_indices = 0_c_int32_t
+        gep_inst%align = 0_c_int32_t
+        gep_inst%icmp_pred = 0_c_int
+        gep_inst%fcmp_pred = 0_c_int
+        gep_inst%call_external_abi = c_false
+        gep_inst%call_vararg = c_false
+        gep_inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, gep_inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        addr = ptr_vreg(session, vreg)
+
+        ! Store value at addr
+        operands(1) = value
+        operands(2) = addr
+
+        store_inst%op = LR_OP_STORE
+        store_inst%typ = c_null_ptr
+        store_inst%dest = 0_c_int32_t
+        store_inst%operands = c_loc(operands)
+        store_inst%num_operands = 2_c_int32_t
+        store_inst%indices = c_null_ptr
+        store_inst%num_indices = 0_c_int32_t
+        store_inst%align = 0_c_int32_t
+        store_inst%icmp_pred = 0_c_int
+        store_inst%fcmp_pred = 0_c_int
+        store_inst%call_external_abi = c_false
+        store_inst%call_vararg = c_false
+        store_inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, store_inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_i64_store_at = .true.
+    end function emit_i64_store_at
 
     logical function emit_i64_binary(session, opcode, lhs, rhs, result, &
                                      error_msg)
