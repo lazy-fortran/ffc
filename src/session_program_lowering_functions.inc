@@ -7,8 +7,8 @@
         integer :: i
 
         context%function_count = 0
-        context%function_names = ''
-        context%function_value_kinds = VALUE_I32
+        if (allocated(context%function_names)) deallocate(context%function_names)
+        if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)

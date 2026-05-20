@@ -9,6 +9,7 @@
         do i = 1, MAX_DERIVED_TYPES
             context%derived_types(i)%name = ''
             context%derived_types(i)%component_count = 0
+            context%derived_types(i)%component_names = ''
         end do
         context%derived_type_count = 0
         call set_empty(error_msg)
@@ -40,6 +41,7 @@
 
         do i = 1, MAX_MODULE_NAMES
             context%module_exports(i)%module_name = ''
+            context%module_exports(i)%derived_type_indices = 0
             context%module_exports(i)%derived_type_count = 0
         end do
         context%module_export_count = 0
