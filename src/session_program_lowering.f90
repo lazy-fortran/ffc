@@ -131,6 +131,12 @@ contains
         if (len_trim(error_msg) > 0) return
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
+        allocate(context%symbols(MAX_SYMBOLS))
+        allocate(context%derived_types(MAX_DERIVED_TYPES))
+        allocate(context%module_exports(MAX_MODULE_NAMES))
+        allocate(context%function_names(MAX_PROCEDURES))
+        allocate(context%function_value_kinds(MAX_PROCEDURES))
+        context%function_value_kinds = VALUE_I32
         context%arena = arena
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &

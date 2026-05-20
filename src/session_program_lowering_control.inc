@@ -5,13 +5,14 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: condition
-        type(symbol_t) :: saved_symbols(MAX_SYMBOLS)
+        type(symbol_t), allocatable :: saved_symbols(:)
         integer :: saved_symbol_count
         integer(c_int32_t) :: then_block
         integer(c_int32_t) :: else_block
         integer(c_int32_t) :: merge_block
         type(branch_result_t) :: then_result
         type(branch_result_t) :: else_result
+        integer :: i
 
         if (node%condition_index <= 0) then
             error_msg = 'direct LIRIC session IF requires a condition index'
@@ -33,21 +34,29 @@
         if (.not. emit_liric_condbr(context%session, condition, then_block, &
                                     else_block, error_msg)) return
 
-        saved_symbols = context%symbols
+        allocate(saved_symbols(context%symbol_count))
+        do i = 1, context%symbol_count
+            saved_symbols(i) = context%symbols(i)
+        end do
         saved_symbol_count = context%symbol_count
 
         call lower_if_branch(arena, node%then_body_indices, then_block, &
                              merge_block, context, value, then_result, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        context%symbols = saved_symbols
+        do i = 1, saved_symbol_count
+            context%symbols(i) = saved_symbols(i)
+        end do
         context%symbol_count = saved_symbol_count
         call lower_if_branch(arena, node%else_body_indices, else_block, &
                              merge_block, context, value, else_result, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        context%symbols = saved_symbols
+        do i = 1, saved_symbol_count
+            context%symbols(i) = saved_symbols(i)
+        end do
         context%symbol_count = saved_symbol_count
+        deallocate(saved_symbols)
 
         if (then_result%terminated .and. else_result%terminated) then
             context%current_block_terminated = .true.
@@ -62,11 +71,15 @@
         if (.not. then_result%terminated .and. .not. else_result%terminated) then
             call merge_branch_symbols(context, then_result, else_result, error_msg)
         else if (.not. then_result%terminated) then
-            context%symbols = then_result%symbols
+            do i = 1, then_result%symbol_count
+                context%symbols(i) = then_result%symbols(i)
+            end do
             context%symbol_count = then_result%symbol_count
             call set_empty(error_msg)
         else
-            context%symbols = else_result%symbols
+            do i = 1, else_result%symbol_count
+                context%symbols(i) = else_result%symbols(i)
+            end do
             context%symbol_count = else_result%symbol_count
             call set_empty(error_msg)
         end if
@@ -82,6 +95,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         type(branch_result_t), intent(out) :: result
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
 
         if (.not. set_liric_block(context%session, block_id, error_msg)) return
         context%current_block_id = block_id
@@ -90,7 +104,12 @@
                                   result%terminated, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        result%symbols = context%symbols
+        if (.not. allocated(result%symbols)) then
+            allocate(result%symbols(context%symbol_count))
+        end if
+        do i = 1, context%symbol_count
+            result%symbols(i) = context%symbols(i)
+        end do
         result%symbol_count = context%symbol_count
         result%predecessor_block_id = context%current_block_id
 
