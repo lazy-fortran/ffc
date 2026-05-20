@@ -10,9 +10,9 @@
         type(lr_operand_desc_t) :: step_operand
         type(lr_operand_desc_t) :: next_index
         type(lr_operand_desc_t) :: copied_value
-        type(lr_operand_desc_t) :: entry_values(MAX_SYMBOLS)
-        type(lr_operand_desc_t) :: header_values(MAX_SYMBOLS)
-        type(lr_operand_desc_t) :: backedge_values(MAX_SYMBOLS)
+        type(lr_operand_desc_t), allocatable :: entry_values(:)
+        type(lr_operand_desc_t), allocatable :: header_values(:)
+        type(lr_operand_desc_t), allocatable :: backedge_values(:)
         integer(c_int64_t) :: step_value
         integer(c_int32_t) :: entry_block
         integer(c_int32_t) :: header_block
@@ -21,7 +21,7 @@
         integer(c_int32_t) :: exit_block
         integer(c_int32_t) :: reserved_vreg
         integer :: loop_symbol_index
-        integer :: carried_indices(MAX_SYMBOLS)
+        integer, allocatable :: carried_indices(:)
         integer :: carried_count
         integer :: initial_symbol_count
         integer :: i
@@ -52,11 +52,16 @@
         call parse_do_step(arena, node%step_expr_index, step_value, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        context%symbols(loop_symbol_index)%value = start_value
+      context%symbols(loop_symbol_index)%value = start_value
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
         call collect_i32_like_carried_symbols(context, carried_indices, &
-                                              carried_count)
+                                               carried_count)
+        if (carried_count > 0) then
+            allocate(entry_values(MAX_SYMBOLS))
+            allocate(header_values(MAX_SYMBOLS))
+            allocate(backedge_values(MAX_SYMBOLS))
+        end if
         do i = 1, carried_count
             entry_values(carried_indices(i)) = &
                 context%symbols(carried_indices(i))%value
@@ -149,15 +154,31 @@
                 header_values(carried_indices(i))
         end do
         value = i32_immediate(context%session, 0_c_int64_t)
+        if (carried_count > 0) then
+            deallocate(entry_values)
+            deallocate(header_values)
+            deallocate(backedge_values)
+        end if
+        if (allocated(carried_indices)) then
+            deallocate(carried_indices)
+        end if
         call set_empty(error_msg)
     end subroutine lower_do_loop
 
     subroutine collect_i32_like_carried_symbols(context, indices, count)
         type(lowering_context_t), intent(in) :: context
-        integer, intent(out) :: indices(MAX_SYMBOLS)
+        integer, intent(out), allocatable :: indices(:)
         integer, intent(out) :: count
         integer :: i
 
+        count = 0
+        do i = 1, context%symbol_count
+            if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
+                .not. context%symbols(i)%is_array) then
+                count = count + 1
+            end if
+        end do
+        allocate(indices(count))
         count = 0
         do i = 1, context%symbol_count
             if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &

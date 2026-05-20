@@ -5,12 +5,12 @@ module session_program_lowering_types
     implicit none
     private
 
-    integer, parameter, public :: MAX_SYMBOLS = 64
-    integer, parameter, public :: MAX_PROCEDURES = 32
-    integer, parameter, public :: MAX_DERIVED_TYPES = 32
-    integer, parameter, public :: MAX_DERIVED_COMPONENTS = 32
-    integer, parameter, public :: MAX_MODULE_EXPORTS = 16
-    integer, parameter, public :: MAX_MODULE_NAMES = 16
+    integer, parameter, public :: MAX_SYMBOLS = 1024
+    integer, parameter, public :: MAX_PROCEDURES = 256
+    integer, parameter, public :: MAX_DERIVED_TYPES = 256
+    integer, parameter, public :: MAX_DERIVED_COMPONENTS = 256
+    integer, parameter, public :: MAX_MODULE_EXPORTS = 64
+    integer, parameter, public :: MAX_MODULE_NAMES = 64
     integer, parameter, public :: VALUE_I32 = 1
     integer, parameter, public :: VALUE_F64 = 2
     integer, parameter, public :: VALUE_LOGICAL = 3
@@ -75,19 +75,19 @@ module session_program_lowering_types
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
-        type(symbol_t) :: symbols(MAX_SYMBOLS)
+        type(symbol_t), allocatable :: symbols(:)
         integer :: symbol_count = 0
-        type(derived_type_info_t) :: derived_types(MAX_DERIVED_TYPES)
+        type(derived_type_info_t), allocatable :: derived_types(:)
         integer :: derived_type_count = 0
-        type(module_exports_t) :: module_exports(MAX_MODULE_NAMES)
+        type(module_exports_t), allocatable :: module_exports(:)
         integer :: module_export_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
-        character(len=64) :: function_names(MAX_PROCEDURES)
-        integer :: function_value_kinds(MAX_PROCEDURES) = VALUE_I32
+        character(len=64), allocatable :: function_names(:)
+        integer, allocatable :: function_value_kinds(:)
         integer :: function_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
@@ -96,7 +96,7 @@ module session_program_lowering_types
     end type lowering_context_t
 
     type, public :: branch_result_t
-        type(symbol_t) :: symbols(MAX_SYMBOLS)
+        type(symbol_t), allocatable :: symbols(:)
         integer :: symbol_count = 0
         integer(c_int32_t) :: predecessor_block_id = 0_c_int32_t
         logical :: terminated = .false.

@@ -6,7 +6,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        context%derived_types = derived_type_info_t()
+        do i = 1, MAX_DERIVED_TYPES
+            context%derived_types(i)%name = ''
+            context%derived_types(i)%component_count = 0
+        end do
         context%derived_type_count = 0
         call set_empty(error_msg)
 
@@ -35,7 +38,10 @@
         integer :: type_idx
         integer :: comp_idx
 
-        context%module_exports = module_exports_t()
+        do i = 1, MAX_MODULE_NAMES
+            context%module_exports(i)%module_name = ''
+            context%module_exports(i)%derived_type_count = 0
+        end do
         context%module_export_count = 0
         call set_empty(error_msg)
 

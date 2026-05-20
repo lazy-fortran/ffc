@@ -82,17 +82,29 @@
     subroutine copy_internal_function_names(source, destination)
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
+        integer :: i
 
-        destination%function_names = source%function_names
-        destination%function_value_kinds = source%function_value_kinds
+        if (.not. allocated(destination%function_names)) then
+            allocate(destination%function_names(source%function_count))
+        end if
+        do i = 1, source%function_count
+            destination%function_names(i) = source%function_names(i)
+            destination%function_value_kinds(i) = source%function_value_kinds(i)
+        end do
         destination%function_count = source%function_count
     end subroutine copy_internal_function_names
 
     subroutine copy_derived_type_table(source, destination)
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
+        integer :: i
 
-        destination%derived_types = source%derived_types
+        if (.not. allocated(destination%derived_types)) then
+            allocate(destination%derived_types(source%derived_type_count))
+        end if
+        do i = 1, source%derived_type_count
+            destination%derived_types(i) = source%derived_types(i)
+        end do
         destination%derived_type_count = source%derived_type_count
     end subroutine copy_derived_type_table
 
@@ -201,6 +213,7 @@
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
+        allocate(context%symbols(MAX_SYMBOLS))
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
@@ -266,6 +279,7 @@
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
+        allocate(context%symbols(MAX_SYMBOLS))
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
