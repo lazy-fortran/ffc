@@ -9,7 +9,9 @@
         do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
             context%derived_types(i)%component_count = 0
-            context%derived_types(i)%component_names = ''
+            if (allocated(context%derived_types(i)%component_names)) then
+                deallocate(context%derived_types(i)%component_names)
+            end if
         end do
         context%derived_type_count = 0
         call set_empty(error_msg)
@@ -41,7 +43,9 @@
 
         do i = 1, size(context%module_exports)
             context%module_exports(i)%module_name = ''
-            context%module_exports(i)%derived_type_indices = 0
+            if (allocated(context%module_exports(i)%derived_type_indices)) then
+                deallocate(context%module_exports(i)%derived_type_indices)
+            end if
             context%module_exports(i)%derived_type_count = 0
         end do
         context%module_export_count = 0
@@ -61,6 +65,7 @@
                     context%module_exports(export_idx)%module_name = &
                         trim(mod_node%name)
                     context%module_exports(export_idx)%derived_type_count = 0
+                    allocate(context%module_exports(export_idx)%derived_type_indices(8))
 
                      do j = 1, size(mod_node%declaration_indices)
                         select type (decl => &
@@ -68,6 +73,7 @@
                         type is (derived_type_node)
                             if (.not. allocated(decl%name)) cycle
 
+                            call grow_module_export_derived_indices(context, export_idx)
                             context%module_exports(export_idx)% &
                                 derived_type_indices( &
                                 context%module_exports(export_idx)% &
@@ -287,11 +293,8 @@ subroutine collect_component_declaration(component_index, parent, context, &
             error_msg = 'duplicate derived type component: '//trim(name)
             return
         end if
-        if (context%derived_types(type_index)%component_count >= &
-            MAX_DERIVED_COMPONENTS) then
-            error_msg = 'too many derived type components for ffc direct-session lowering'
-            return
-        end if
+
+        call grow_derived_type_components(context, type_index)
 
         component_index = context%derived_types(type_index)%component_count + 1
         context%derived_types(type_index)%component_names(component_index) = &
@@ -299,3 +302,47 @@ subroutine collect_component_declaration(component_index, parent, context, &
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
+
+    subroutine grow_derived_type_components(context, type_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=64), allocatable :: old_names(:)
+        integer :: new_size, old_size
+
+        old_size = context%derived_types(type_index)%component_count
+        if (old_size > 0 .and. allocated(context%derived_types(type_index)%component_names)) then
+            if (old_size < size(context%derived_types(type_index)%component_names)) return
+        else
+            allocate(context%derived_types(type_index)%component_names(8))
+            context%derived_types(type_index)%component_count = 0
+            return
+        end if
+
+        allocate(old_names, source=context%derived_types(type_index)%component_names)
+        new_size = 2 * size(context%derived_types(type_index)%component_names)
+        deallocate(context%derived_types(type_index)%component_names)
+        allocate(context%derived_types(type_index)%component_names(new_size))
+        context%derived_types(type_index)%component_names(1:old_size) = old_names
+        deallocate(old_names)
+    end subroutine grow_derived_type_components
+
+    subroutine grow_module_export_derived_indices(context, export_idx)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: export_idx
+        integer, allocatable :: old_indices(:)
+        integer :: new_size, old_size
+
+        old_size = context%module_exports(export_idx)%derived_type_count
+        if (old_size > 0 .and. allocated(context%module_exports(export_idx)%derived_type_indices)) then
+            if (old_size < size(context%module_exports(export_idx)%derived_type_indices)) return
+        else
+            return
+        end if
+
+        allocate(old_indices, source=context%module_exports(export_idx)%derived_type_indices)
+        new_size = 2 * size(context%module_exports(export_idx)%derived_type_indices)
+        deallocate(context%module_exports(export_idx)%derived_type_indices)
+        allocate(context%module_exports(export_idx)%derived_type_indices(new_size))
+        context%module_exports(export_idx)%derived_type_indices(1:old_size) = old_indices
+        deallocate(old_indices)
+    end subroutine grow_module_export_derived_indices

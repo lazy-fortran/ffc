@@ -9,8 +9,8 @@
         context%function_count = 0
         if (allocated(context%function_names)) deallocate(context%function_names)
         if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
-        allocate(context%function_names(MAX_PROCEDURES))
-        allocate(context%function_value_kinds(MAX_PROCEDURES))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         call set_empty(error_msg)
 
@@ -85,10 +85,10 @@
         integer :: i
 
         if (.not. allocated(destination%function_names)) then
-            allocate(destination%function_names(MAX_PROCEDURES))
+            allocate(destination%function_names(8))
         end if
         if (.not. allocated(destination%function_value_kinds)) then
-            allocate(destination%function_value_kinds(MAX_PROCEDURES))
+            allocate(destination%function_value_kinds(8))
         end if
         do i = 1, source%function_count
             destination%function_names(i) = source%function_names(i)
@@ -215,8 +215,8 @@
         context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
-        context%arena = arena
-        allocate(context%symbols(MAX_SYMBOLS))
+  context%arena = arena
+        allocate(context%symbols(16))
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
@@ -228,14 +228,14 @@
                                                param_count, error_msg)) return
         else
             if (.not. begin_i32_function(context%session, node%name, param_count, &
-                                                         error_msg)) return
+                                                          error_msg)) return
         end if
 
         call define_symbol(context, node%name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         context%current_function_result_index = find_symbol(context, node%name)
         call define_reference_parameters(arena, node%param_indices, context, &
-                                         error_msg)
+                                          error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
@@ -282,7 +282,7 @@
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena
-        allocate(context%symbols(MAX_SYMBOLS))
+        allocate(context%symbols(16))
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         context%in_internal_function = .true.
