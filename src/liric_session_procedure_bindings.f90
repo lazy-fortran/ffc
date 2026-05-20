@@ -6,6 +6,7 @@ module liric_session_procedure_bindings
                                       liric_session_t, lr_error_t, &
                                       lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
                                       LR_OP_KIND_GLOBAL, LR_OP_KIND_VREG
+    use liric_session_memory_bindings, only: ptr_param
     implicit none
     private
 
