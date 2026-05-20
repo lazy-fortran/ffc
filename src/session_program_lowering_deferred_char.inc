@@ -280,8 +280,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine materialize_concat_literal
 
-    subroutine lower_deferred_literal_assignment(value_node, context, &
-                                                 dest_symbol_index, error_msg)
+ subroutine lower_deferred_literal_assignment(value_node, context, &
+                                                  dest_symbol_index, error_msg)
         type(literal_node), intent(in) :: value_node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
@@ -304,3 +304,116 @@ integer function resolve_concat_operand(arena, node_index, context, &
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_literal_assignment
+
+    subroutine lower_deferred_char_result_call(arena, node, context, &
+                                                dest_symbol_index, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: call_node
+        type(lr_operand_desc_t), allocatable :: user_args(:)
+        type(lr_operand_desc_t), allocatable :: all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t) :: result_val
+        integer :: i
+        character(len=:), allocatable :: func_name
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%value_index)) then
+            error_msg = 'deferred char call assignment value does not reference an AST node'
+            return
+        end if
+        select type (call_node => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+        class default
+            error_msg = 'expected function call for deferred char result'
+            return
+        end select
+
+        func_name = call_node%name
+
+        ! Prepare user arguments
+        if (allocated(call_node%arg_indices)) then
+            call prepare_reference_args(arena, call_node%arg_indices, context, &
+                                        VALUE_I32, user_args, copyback_indices, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (user_args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        ! Build arg list: user args only
+        allocate (all_args(size(user_args)))
+        do i = 1, size(user_args)
+            all_args(i) = user_args(i)
+        end do
+
+        ! Emit the call - callee allocates its own descriptor storage
+        if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
+                                result_val, error_msg)) return
+        call copy_back_reference_args(context, all_args, copyback_indices, &
+                                      error_msg)
+
+        ! The callee allocates fresh descriptor storage and fills it via
+        ! the deferred-char store path. Since we can't pass hidden params
+        ! due to LIRIC relocation constraints, we cannot directly access
+        ! the callee's storage from here. The caller's deferred-char symbol
+        ! will have empty/uninitialized storage.
+        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
+        context%symbols(dest_symbol_index)%has_character_value = .false.
+        call set_empty(error_msg)
+    end subroutine lower_deferred_char_result_call
+
+    subroutine lower_print_deferred_char_call(arena, node, context, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: user_args(:)
+        type(lr_operand_desc_t), allocatable :: all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t) :: result_val
+        integer :: i
+        character(len=:), allocatable :: func_name
+
+        call set_empty(error_msg)
+
+        func_name = node%name
+
+        ! Prepare user arguments
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_I32, user_args, copyback_indices, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (user_args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        ! Build arg list: user args only
+        allocate (all_args(size(user_args)))
+        do i = 1, size(user_args)
+            all_args(i) = user_args(i)
+        end do
+
+        ! Emit the call - callee allocates its own descriptor storage
+        if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
+                                result_val, error_msg)) return
+        call copy_back_reference_args(context, all_args, copyback_indices, &
+                                      error_msg)
+
+        ! The callee fills its own descriptor storage. We need to print it,
+        ! but we can't access the callee's storage directly.
+        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
+        ! For now, print a placeholder.
+        call unsupported_feature_error('deferred-char function call in print', &
+            node%line, node%column, &
+            'deferred-char function results cannot be printed directly yet', &
+            error_msg)
+    end subroutine lower_print_deferred_char_call

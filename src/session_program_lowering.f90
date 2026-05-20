@@ -21,7 +21,8 @@ module session_program_lowering
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_declaration_node, is_module_node, is_program_node
 use liric_session_bindings, only: destroy, begin_i32_main, &
-                                      begin_i32_function, begin_void_subroutine, &
+                                       begin_i32_function, begin_void_subroutine, &
+                                       begin_ptr_function, &
                                       emit_ret_i32_operand, emit_ret_void, &
                                       finish_function, finish_and_emit_exe, &
                                       finish_and_emit_object, emit_void_call, &
@@ -35,7 +36,9 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               emit_i64_load, emit_i64_store, &
                                               emit_i64_binary, emit_i64_alloca, &
                                               emit_alloca_bytes, emit_ptr_store, &
-                                              emit_memcpy, emit_i32_array_alloca, &
+                                               emit_memcpy, emit_i64_load_at, &
+                                               emit_i64_store_at, &
+                                               emit_i32_array_alloca, &
                                               emit_i32_array_element_addr, ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
@@ -82,8 +85,10 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 derived_type_info_t, &
                                                 module_exports_t, &
                                                 VALUE_I32, VALUE_F64, &
-                                                VALUE_LOGICAL, VALUE_CHARACTER, &
-                                                VALUE_DERIVED, I32_INTRINSIC_NONE, &
+                                                 VALUE_LOGICAL, VALUE_CHARACTER, &
+                                                 VALUE_DERIVED, &
+                                                 VALUE_DEFERRED_CHARACTER_RESULT, &
+                                                 I32_INTRINSIC_NONE, &
                                                 I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
                                                 I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
                                                 F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
@@ -526,7 +531,7 @@ contains
                 return
             end if
         end if
-        if (value_kind == VALUE_CHARACTER) then
+ if (value_kind == VALUE_CHARACTER) then
             call define_declared_character_symbol(context, node, name, error_msg)
         else
             call define_symbol(context, name, value_kind, error_msg)

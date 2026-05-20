@@ -71,6 +71,13 @@
                                                value, error_msg)) return
                 return
             end if
+            if (.not. node%is_array_access .and. allocated(node%name)) then
+                if (is_contained_deferred_char_function(context, node%name)) then
+                    call lower_print_deferred_char_call(arena, node, context, &
+                        error_msg)
+                    return
+                end if
+            end if
         type is (literal_node)
             if (is_character_literal(node)) then
                 call strip_literal_quotes(node%value, character_value)
@@ -184,6 +191,13 @@
                                                      context%f64_print_format_id, &
                                                      value, error_msg)) return
                 return
+            end if
+            if (.not. node%is_array_access .and. allocated(node%name)) then
+                if (is_contained_deferred_char_function(context, node%name)) then
+                    call lower_print_deferred_char_call(arena, node, context, &
+                        error_msg)
+                    return
+                end if
             end if
         type is (literal_node)
             if (is_character_literal(node)) then

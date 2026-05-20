@@ -10,6 +10,7 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_LOGICAL = 3
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
+    integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
     integer, parameter, public :: I32_INTRINSIC_NONE = 0
     integer, parameter, public :: I32_INTRINSIC_ABS = 1
     integer, parameter, public :: I32_INTRINSIC_MIN = 2
