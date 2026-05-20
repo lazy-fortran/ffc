@@ -20,23 +20,23 @@ module session_program_lowering
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_declaration_node, is_module_node, is_program_node
-   use liric_session_bindings, only: liric_session_t, liric_session_create, &
-                                       lr_operand_desc_t, LR_OP_ADD, LR_OP_SREM, &
-                                       LR_OP_SUB, i32_immediate, i32_vreg, &
-                                       reserve_i32_vreg, destroy, begin_i32_main, &
-                                       begin_i32_function, begin_void_subroutine, &
-                                       emit_i32_binary, emit_i32_binary_into, &
-                                       emit_i32_copy_to, emit_i32_alloca, &
-                                       emit_i32_load, emit_i32_store, &
-                                       emit_i32_call, emit_ret_i32_operand, &
-                                       emit_ret_void, finish_function, &
-                                       finish_and_emit_exe, finish_and_emit_object, &
-                                       emit_void_call, i64_immediate, &
-                                       emit_i64_load, emit_i64_store, &
-                                       emit_i64_binary, emit_i64_alloca, &
-                                       emit_alloca_bytes, emit_ptr_store, &
-                                       emit_memcpy, emit_i32_array_alloca, &
-                                       emit_i32_array_element_addr, ptr_param
+use liric_session_bindings, only: destroy, begin_i32_main, &
+                                      begin_i32_function, begin_void_subroutine, &
+                                      emit_ret_i32_operand, emit_ret_void, &
+                                      finish_function, finish_and_emit_exe, &
+                                      finish_and_emit_object, emit_void_call, &
+                                      emit_i32_call, liric_session_create, &
+                                      i32_immediate, i32_vreg, lr_operand_desc_t, &
+                                      LR_OP_ADD, LR_OP_SREM, LR_OP_SUB
+    use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
+                                              emit_i32_binary, emit_i32_binary_into, &
+                                              emit_i32_copy_to, emit_i32_alloca, &
+                                              emit_i32_load, emit_i32_store, &
+                                              emit_i64_load, emit_i64_store, &
+                                              emit_i64_binary, emit_i64_alloca, &
+                                              emit_alloca_bytes, emit_ptr_store, &
+                                              emit_memcpy, emit_i32_array_alloca, &
+                                              emit_i32_array_element_addr, ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -51,7 +51,9 @@ module session_program_lowering
                                               LR_CMP_NE, &
                                               LR_CMP_EQ, &
                                               set_liric_block
-use liric_session_io_bindings, only: emit_liric_f64_binary, &
+use liric_session_format_bindings, only: LR_OP_FSUB, &
+                                            prepare_liric_print_runtime
+    use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_print_f64, &
                                           emit_liric_print_f64_value, &
@@ -64,9 +66,7 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_print_string, &
                                           emit_liric_print_string_value, &
                                           liric_f64_immediate, &
-                                          LR_OP_FSUB, &
-                                          materialize_liric_string, &
-                                          prepare_liric_print_runtime
+                                          materialize_liric_string
     use liric_session_procedure_bindings, only: begin_liric_f64_function, &
                                                 emit_liric_f64_alloca, &
                                                 emit_liric_f64_call, &
@@ -74,136 +74,50 @@ use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                                 emit_liric_f64_store
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
-    use ffc_strings, only: set_empty
+  use ffc_strings, only: set_empty
     use ffc_fortfront_queries, only: node_exists, get_node_line, &
-                                     get_node_column, get_node_type_at
+                                      get_node_column, get_node_type_at
+    use session_program_lowering_types, only: lowering_context_t, &
+                                               branch_result_t, symbol_t, &
+                                               derived_type_info_t, &
+                                               module_exports_t, &
+                                               VALUE_I32, VALUE_F64, &
+                                               VALUE_LOGICAL, VALUE_CHARACTER, &
+                                               VALUE_DERIVED, I32_INTRINSIC_NONE, &
+                                               I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
+                                               I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
+                                               F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
+                                               F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
+                                               F64_INTRINSIC_REAL, MAX_SYMBOLS, &
+                                               MAX_PROCEDURES, MAX_DERIVED_TYPES, &
+                                               MAX_DERIVED_COMPONENTS, MAX_MODULE_EXPORTS, &
+                                               MAX_MODULE_NAMES, I32_INTRINSIC_NAMES, &
+                                               I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
+                                               F64_INTRINSIC_IDS
     implicit none
     private
-
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
-
-    integer, parameter :: MAX_SYMBOLS = 64
-    integer, parameter :: MAX_PROCEDURES = 32
-    integer, parameter :: MAX_DERIVED_TYPES = 32
-    integer, parameter :: MAX_DERIVED_COMPONENTS = 32
-    integer, parameter :: MAX_MODULE_EXPORTS = 16
-    integer, parameter :: MAX_MODULE_NAMES = 16
-    integer, parameter :: VALUE_I32 = 1
-    integer, parameter :: VALUE_F64 = 2
-    integer, parameter :: VALUE_LOGICAL = 3
-    integer, parameter :: VALUE_CHARACTER = 4
-    integer, parameter :: VALUE_DERIVED = 5
-    integer, parameter :: I32_INTRINSIC_NONE = 0
-    integer, parameter :: I32_INTRINSIC_ABS = 1
-    integer, parameter :: I32_INTRINSIC_MIN = 2
-    integer, parameter :: I32_INTRINSIC_MAX = 3
-    integer, parameter :: I32_INTRINSIC_MOD = 4
-    integer, parameter :: F64_INTRINSIC_NONE = 0
-    integer, parameter :: F64_INTRINSIC_ABS = 1
-    integer, parameter :: F64_INTRINSIC_MIN = 2
-    integer, parameter :: F64_INTRINSIC_MAX = 3
-    integer, parameter :: F64_INTRINSIC_REAL = 4
-    character(len=8), parameter :: I32_INTRINSIC_NAMES(4) = &
-                                   [character(len=8) :: 'abs', 'min', 'max', 'mod']
-    integer, parameter :: I32_INTRINSIC_IDS(4) = &
-                          [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
-                           I32_INTRINSIC_MOD]
-    character(len=8), parameter :: F64_INTRINSIC_NAMES(4) = &
-                                   [character(len=8) :: 'abs', 'min', 'max', 'real']
-    integer, parameter :: F64_INTRINSIC_IDS(4) = &
-                          [F64_INTRINSIC_ABS, F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
-                           F64_INTRINSIC_REAL]
-
-    type :: symbol_t
-        character(len=64) :: name = ''
-        integer :: value_kind = VALUE_I32
-        type(lr_operand_desc_t) :: value
-        type(lr_operand_desc_t) :: address
-        logical :: is_parameter = .false.
-        logical :: is_reference = .false.
-        logical :: has_address = .false.
-        integer :: character_length = 0
-        logical :: has_character_value = .false.
-        logical :: is_array = .false.
-        logical :: is_derived = .false.
-        integer :: derived_type_index = 0
-        integer :: array_size = 0
-        integer :: array_lower_bound = 1
-        type(lr_operand_desc_t) :: element_address
-        logical :: has_i32_constant = .false.
-        integer(c_int64_t) :: i32_constant = 0_c_int64_t
-        logical :: is_deferred_character = .false.
-        type(lr_operand_desc_t) :: deferred_data
-        type(lr_operand_desc_t) :: deferred_length
-    end type symbol_t
-
-    type :: derived_type_info_t
-        character(len=64) :: name = ''
-        integer :: component_count = 0
-        character(len=64) :: component_names(MAX_DERIVED_COMPONENTS) = ''
-    end type derived_type_info_t
-
-    type :: module_exports_t
-        character(len=64) :: module_name = ''
-        integer :: derived_type_indices(MAX_DERIVED_TYPES) = 0
-        integer :: derived_type_count = 0
-    end type module_exports_t
-
-    type :: lowering_context_t
-        type(liric_session_t) :: session
-        type(ast_arena_t) :: arena
-        type(symbol_t) :: symbols(MAX_SYMBOLS)
-        integer :: symbol_count = 0
-        type(derived_type_info_t) :: derived_types(MAX_DERIVED_TYPES)
-        integer :: derived_type_count = 0
-        type(module_exports_t) :: module_exports(MAX_MODULE_NAMES)
-        integer :: module_export_count = 0
-        integer(c_int32_t) :: current_block_id = 0_c_int32_t
-        integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
-        integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
-        integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
-        integer :: string_literal_count = 0
-        character(len=64) :: function_names(MAX_PROCEDURES)
-        integer :: function_value_kinds(MAX_PROCEDURES) = VALUE_I32
-        integer :: function_count = 0
-        logical :: in_internal_function = .false.
-        logical :: in_internal_subroutine = .false.
-        integer :: current_function_result_index = 0
-        logical :: current_block_terminated = .false.
-    end type lowering_context_t
-
-    type :: branch_result_t
-        type(symbol_t) :: symbols(MAX_SYMBOLS)
-        integer :: symbol_count = 0
-        integer(c_int32_t) :: predecessor_block_id = 0_c_int32_t
-        logical :: terminated = .false.
-    end type branch_result_t
-
 contains
-
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
                                           error_msg)
+
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
-
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .true., error_msg)
     end subroutine lower_program_to_liric_exe
-
     subroutine lower_program_to_liric_object(arena, root_index, output_path, &
                                              error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
-
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .false., error_msg)
     end subroutine lower_program_to_liric_object
-
     subroutine lower_program_to_liric_path(arena, root_index, output_path, &
                                            emit_executable, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -213,15 +127,11 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: return_value
-
         call validate_program(arena, root_index, error_msg)
         if (len_trim(error_msg) > 0) return
-
         call liric_session_create(context%session, error_msg)
         if (len_trim(error_msg) > 0) return
-
         context%arena = arena
-
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
                                               context%f64_print_format_id, &
@@ -230,45 +140,38 @@ contains
             call destroy(context%session)
             return
         end if
-
         call collect_derived_type_definitions(arena, root_index, context, &
                                               error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-
         call collect_module_exports(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-
         call collect_internal_function_names(arena, root_index, context, &
                                              error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-
         if (.not. begin_i32_main(context%session, error_msg)) then
             call destroy(context%session)
             return
         end if
-
         call lower_program_return(arena, root_index, context, return_value, &
                                   error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-
         if (.not. context%current_block_terminated) then
             if (.not. emit_ret_i32_operand(context%session, return_value, &
                                                            error_msg)) then
@@ -276,7 +179,6 @@ contains
                 return
             end if
         end if
-
         if (emit_executable) then
             if (.not. finish_and_emit_exe(context%session, output_path, &
                                                           error_msg)) then
@@ -290,26 +192,21 @@ contains
                 return
             end if
         end if
-
         call destroy(context%session)
         call set_empty(error_msg)
     end subroutine lower_program_to_liric_path
-
     subroutine validate_program(arena, root_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=:), allocatable, intent(out) :: error_msg
-
         if (root_index <= 0) then
             error_msg = 'FortFront did not return a root program index'
             return
         end if
-
         if (.not. node_exists(arena, root_index)) then
             error_msg = 'FortFront root index does not reference an AST node'
             return
         end if
-
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             continue
@@ -327,10 +224,8 @@ contains
                                            'top-level programs', error_msg)
             return
         end select
-
         call set_empty(error_msg)
     end subroutine validate_program
-
     subroutine lower_program_return(arena, root_index, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -341,14 +236,11 @@ contains
         integer :: j
         logical :: has_executable_statements
         logical :: has_nested_program
-
         value = i32_immediate(context%session, 0_c_int64_t)
         context%current_block_terminated = .false.
         has_executable_statements = .false.
         has_nested_program = .false.
-
         call set_empty(error_msg)
-
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             if (.not. allocated(program%body_indices)) return
@@ -385,9 +277,7 @@ contains
             error_msg = 'ffc direct-session lowering only supports a program node'
         end select
     end subroutine lower_program_return
-
     include 'session_program_lowering_functions.inc'
-
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -396,19 +286,16 @@ contains
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
-
         context%current_block_terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'program body index does not reference an AST node'
             return
         end if
-
         if (is_subroutine_call_statement(arena, node_index)) then
             call lower_subroutine_call(arena, node_index, context, error_msg)
             return
         end if
-
         select type (node => arena%entries(node_index)%node)
         type is (parameter_declaration_node)
             call lower_parameter_declaration(node, context, error_msg)
@@ -500,7 +387,6 @@ contains
             call unsupported_statement_node(arena, node_index, node_type, error_msg)
         end select
     end subroutine lower_statement
-
     subroutine unsupported_statement_node(arena, node_index, node_type, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -508,10 +394,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: column
         integer :: line
-
         line = get_node_line(arena, node_index)
         column = get_node_column(arena, node_index)
-
         select case (trim(node_type))
         case ('implicit_statement')
             call set_empty(error_msg)
@@ -531,11 +415,9 @@ contains
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
-
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_derived_types.inc'
-
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -545,11 +427,9 @@ contains
         logical, intent(out) :: terminated
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
-
         terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
-
         do i = 1, size(node_indices)
             call lower_statement(arena, node_indices(i), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -559,7 +439,6 @@ contains
             end if
         end do
     end subroutine lower_statement_list
-
     subroutine lower_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -569,14 +448,12 @@ contains
         integer :: derived_type_index
         integer :: i
         integer :: value_kind
-
         derived_type_index = declaration_derived_type_index(context, node)
         if (derived_type_index > 0) then
             call lower_derived_type_declaration(node, context, derived_type_index, &
                                                 error_msg)
             return
         end if
-
         if (node%is_array) then
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -606,15 +483,12 @@ contains
             end if
             return
         end if
-
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-
         if (node%is_parameter) then
             call lower_constant_declaration(node, context, value_kind, error_msg)
             return
         end if
-
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_declared_symbol(context, node, node%var_names(i), &
@@ -628,9 +502,7 @@ contains
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
-
     include 'session_program_lowering_declarations.inc'
-
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
@@ -638,7 +510,6 @@ contains
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: existing_index
-
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
             if (context%symbols(existing_index)%is_parameter .and. &
@@ -650,20 +521,17 @@ contains
                 return
             end if
         end if
-
         if (value_kind == VALUE_CHARACTER) then
             call define_declared_character_symbol(context, node, name, error_msg)
         else
             call define_symbol(context, name, value_kind, error_msg)
         end if
     end subroutine define_declared_symbol
-
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index, value_kind
-
         if (.not. allocated(node%name)) then
             error_msg = 'parameter declaration did not expose a name'
             return
@@ -690,7 +558,6 @@ contains
         else
             value_kind = VALUE_I32
         end if
-
         symbol_index = find_symbol(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'parameter declaration did not match a dummy argument: '// &
@@ -702,21 +569,17 @@ contains
                         trim(node%name)
             return
         end if
-
         call update_parameter_symbol(context, symbol_index, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
-
     include 'session_program_lowering_arrays.inc'
-
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: existing_index
-
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
             if (context%symbols(existing_index)%is_parameter) then
@@ -725,7 +588,6 @@ contains
                 return
             end if
         end if
-
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)
         else if (value_kind == VALUE_F64) then
@@ -738,13 +600,11 @@ contains
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
     end subroutine define_symbol
-
     subroutine update_parameter_symbol(context, index, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: index
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-
         if (index <= 0 .or. index > context%symbol_count) then
             error_msg = 'parameter index is outside the symbol table'
             return
@@ -753,7 +613,6 @@ contains
             error_msg = 'symbol is not a parameter: '//trim(context%symbols(index)%name)
             return
         end if
-
         context%symbols(index)%value_kind = value_kind
         if (value_kind == VALUE_F64) then
             context%symbols(index)%value = liric_f64_immediate(context%session, &
@@ -766,13 +625,11 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine update_parameter_symbol
-
     subroutine define_i32_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-
         if (find_symbol(context, name) > 0) then
             error_msg = 'duplicate integer declaration: '//trim(name)
             return
@@ -781,7 +638,6 @@ contains
             error_msg = 'too many integer symbols for ffc direct-session lowering'
             return
         end if
-
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
@@ -789,13 +645,11 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i32_symbol
-
     subroutine define_f64_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-
         if (find_symbol(context, name) > 0) then
             error_msg = 'duplicate real declaration: '//trim(name)
             return
@@ -804,7 +658,6 @@ contains
             error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
-
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_F64
@@ -813,13 +666,11 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_f64_symbol
-
     subroutine define_logical_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-
         if (find_symbol(context, name) > 0) then
             error_msg = 'duplicate logical declaration: '//trim(name)
             return
@@ -828,7 +679,6 @@ contains
             error_msg = 'too many scalar symbols for ffc direct-session lowering'
             return
         end if
-
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_LOGICAL
@@ -836,7 +686,6 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_logical_symbol
-
     subroutine lower_assignment(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
@@ -845,7 +694,6 @@ contains
         type(lr_operand_desc_t) :: value
         character(len=:), allocatable :: name
         integer :: symbol_index
-
         select type (target => arena%entries(node%target_index)%node)
         type is (call_or_subscript_node)
             if (target%is_array_access) then
@@ -858,10 +706,8 @@ contains
                                                     value, error_msg)
             return
         end select
-
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) then
             error_msg = 'assignment target was not declared: '//trim(name)
@@ -888,7 +734,6 @@ contains
                                                            error_msg)
             return
         end if
-
         if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
             call lower_f64_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -904,7 +749,6 @@ contains
                                       error_msg)
         end if
         if (len_trim(error_msg) > 0) return
-
         context%symbols(symbol_index)%value = value
         if (context%symbols(symbol_index)%has_address .and. &
             context%symbols(symbol_index)%is_reference) then
@@ -913,20 +757,15 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
-
     include 'session_program_lowering_arguments.inc'
-
     include 'session_program_lowering_character.inc'
-
     include 'session_program_lowering_deferred_char.inc'
-
     subroutine lower_function_return(node, context, error_msg)
         type(return_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: idx
         type(lr_operand_desc_t) :: result_value
-
         idx = context%current_function_result_index
         if (idx <= 0) then
             error_msg = 'function return without a tracked result symbol'
@@ -946,14 +785,12 @@ contains
                                            error_msg)
         end select
     end subroutine lower_function_return
-
     subroutine lower_stop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(stop_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-
         if (node%stop_code_index <= 0) then
             value = i32_immediate(context%session, 0_c_int64_t)
             call set_empty(error_msg)
@@ -962,12 +799,9 @@ contains
                                       value, error_msg)
         end if
     end subroutine lower_stop
-
     include 'session_program_lowering_values.inc'
-
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
-
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -977,21 +811,17 @@ contains
         integer, allocatable :: arg_indices(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
-
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
-
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                     args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
-
         if (.not. emit_void_call(context%session, name, args, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
-
     recursive subroutine lower_i1_condition(arena, node_index, context, &
                                             value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1002,12 +832,10 @@ contains
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
         integer(c_int) :: pred
-
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'condition index does not reference an AST node'
             return
         end if
-
         select type (node => arena%entries(node_index)%node)
         type is (binary_op_node)
             call lower_i32_expression(arena, node%left_index, context, lhs, &
@@ -1039,19 +867,16 @@ contains
                         'comparison or logical expression'
         end select
     end subroutine lower_i1_condition
-
     subroutine identifier_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=:), allocatable, intent(out) :: name
         character(len=:), allocatable, intent(out) :: error_msg
-
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'identifier index does not reference an AST node'
             call set_empty(name)
             return
         end if
-
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             name = node%name
@@ -1076,12 +901,10 @@ contains
             call set_empty(name)
         end select
     end subroutine identifier_name
-
     integer function find_symbol(context, name) result(index)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         integer :: i
-
         index = 0
         do i = 1, context%symbol_count
             if (trim(context%symbols(i)%name) == trim(name)) then
@@ -1090,9 +913,7 @@ contains
             end if
         end do
     end function find_symbol
-
     include 'session_program_lowering_text.inc'
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
-
 end module session_program_lowering
