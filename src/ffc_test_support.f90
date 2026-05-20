@@ -13,6 +13,7 @@ module ffc_test_support
     public :: expect_exit_status
     public :: expect_output
     public :: expect_error_contains
+    public :: expect_cli_error_contains
 
 contains
 
@@ -105,6 +106,104 @@ contains
         end if
         ok = .true.
     end function expect_error_contains
+
+    logical function expect_cli_error_contains(source, fragment, stem) result(ok)
+        ! Tests the CLI binary (ffc) directly for unsupported-source diagnostics.
+        ! Each migrated test that calls this helper uses a unique stem so the
+        ! temporary files do not collide across test programs.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: fragment
+        character(len=*), intent(in) :: stem
+        character(len=:), allocatable :: output
+        character(len=:), allocatable :: command
+        character(len=:), allocatable :: source_path
+        character(len=:), allocatable :: output_path
+        character(len=:), allocatable :: exe_path
+        integer :: exit_stat
+        integer :: cmd_stat
+
+        ok = .false.
+        source_path = stem//'.f90'
+        output_path = stem//'.out'
+        exe_path = stem//'.exe'
+        call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
+                                  exe_path)
+        if (.not. write_source_file(source_path, source)) return
+
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | "// &
+                  "head -n 1); "// &
+                  "test -n ""$exe"" && ""$exe"" "// &
+                  source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
+        call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
+        output = read_text_file(output_path)
+        call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
+                                  exe_path)
+
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: ffc CLI command could not be executed'
+            return
+        end if
+        if (exit_stat == 0) then
+            print *, 'FAIL: unsupported source CLI exited successfully'
+            return
+        end if
+        if (index(output, fragment) == 0) then
+            print *, 'FAIL: expected CLI diagnostic substring "', fragment, '"'
+            print *, '  got: ', trim(output)
+            return
+        end if
+        if (index(output, 'line ') == 0 .or. index(output, 'column ') == 0) then
+            print *, 'FAIL: expected CLI line/column diagnostic, got: ', &
+                trim(output)
+            return
+        end if
+
+        ok = .true.
+    end function expect_cli_error_contains
+
+    logical function write_source_file(path, source)
+        character(len=*), intent(in) :: path
+        character(len=*), intent(in) :: source
+        integer :: unit
+        integer :: io_stat
+
+        write_source_file = .false.
+        open (newunit=unit, file=path, status='replace', action='write', &
+              iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: could not create source file ', path
+            return
+        end if
+
+        write (unit, '(A)', iostat=io_stat) source
+        close (unit)
+        if (io_stat /= 0) then
+            print *, 'FAIL: could not write source file ', path
+            return
+        end if
+
+        write_source_file = .true.
+    end function write_source_file
+
+    function read_text_file(path) result(text)
+        character(len=*), intent(in) :: path
+        character(len=:), allocatable :: text
+        character(len=512) :: line
+        integer :: unit
+        integer :: io_stat
+
+        text = ''
+        open (newunit=unit, file=path, status='old', action='read', &
+              iostat=io_stat)
+        if (io_stat /= 0) return
+
+        do
+            read (unit, '(A)', iostat=io_stat) line
+            if (io_stat /= 0) exit
+            text = text//trim(line)//new_line('a')
+        end do
+        close (unit)
+    end function read_text_file
 
     subroutine compile_to_exe(source, exe_path, error_msg)
         character(len=*), intent(in) :: source
