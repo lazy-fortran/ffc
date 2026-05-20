@@ -418,6 +418,8 @@ contains
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_derived_types.inc'
+    include 'session_program_lowering_derived_type_ops.inc'
+    include 'session_program_lowering_derived_module_ops.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -799,7 +801,10 @@ contains
                                       value, error_msg)
         end if
     end subroutine lower_stop
-    include 'session_program_lowering_values.inc'
+    include 'session_program_lowering_print_ops.inc'
+    include 'session_program_lowering_print_expr.inc'
+    include 'session_program_lowering_expr_lowering.inc'
+    include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
