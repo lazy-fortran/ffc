@@ -151,10 +151,7 @@
             error_msg = 'duplicate array declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many symbols for ffc direct-session lowering'
-            return
-        end if
+     call grow_symbols(context)
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)

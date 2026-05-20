@@ -57,10 +57,11 @@
         initial_symbol_count = context%symbol_count
         call collect_i32_like_carried_symbols(context, carried_indices, &
                                                carried_count)
-        if (carried_count > 0) then
-            allocate(entry_values(MAX_SYMBOLS))
-            allocate(header_values(MAX_SYMBOLS))
-            allocate(backedge_values(MAX_SYMBOLS))
+      if (carried_count > 0) then
+            call grow_symbols(context)
+            allocate(entry_values(context%symbol_count))
+            allocate(header_values(context%symbol_count))
+            allocate(backedge_values(context%symbol_count))
         end if
         do i = 1, carried_count
             entry_values(carried_indices(i)) = &

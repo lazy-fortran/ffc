@@ -59,10 +59,7 @@
             error_msg = 'duplicate derived type declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many symbols for ffc direct-session lowering'
-            return
-        end if
+      call grow_symbols(context)
 
         component_count = context%derived_types(derived_type_index)%component_count
         index = context%symbol_count + 1

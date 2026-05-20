@@ -39,10 +39,7 @@
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-        if (context%function_count >= MAX_PROCEDURES) then
-            error_msg = 'too many contained functions for ffc direct-session lowering'
-            return
-        end if
+       call grow_function_names(context)
         if (contained_function_kind(context, node%name) /= 0) then
             error_msg = 'duplicate contained function: '//trim(node%name)
             return
@@ -370,10 +367,7 @@
             error_msg = 'duplicate function parameter: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for ffc direct-session lowering'
-            return
-        end if
+       call grow_symbols(context)
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)

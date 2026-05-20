@@ -6,7 +6,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        do i = 1, MAX_DERIVED_TYPES
+        do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
             context%derived_types(i)%component_count = 0
             context%derived_types(i)%component_names = ''
@@ -39,7 +39,7 @@
         integer :: type_idx
         integer :: comp_idx
 
-        do i = 1, MAX_MODULE_NAMES
+        do i = 1, size(context%module_exports)
             context%module_exports(i)%module_name = ''
             context%module_exports(i)%derived_type_indices = 0
             context%module_exports(i)%derived_type_count = 0
@@ -55,10 +55,7 @@
                 type is (module_node)
                     if (.not. allocated(mod_node%name)) cycle
                     if (.not. allocated(mod_node%declaration_indices)) cycle
-                    if (context%module_export_count >= MAX_MODULE_NAMES) then
-                        error_msg = 'too many modules for ffc direct-session lowering'
-                        return
-                    end if
+                    call grow_module_exports(context)
 
                     export_idx = context%module_export_count + 1
                     context%module_exports(export_idx)%module_name = &
@@ -151,10 +148,7 @@
             return
         end if
 
-        if (context%derived_type_count >= MAX_DERIVED_TYPES) then
-            error_msg = 'too many derived types for ffc direct-session lowering'
-            return
-        end if
+        call grow_derived_types(context)
 
         type_index = context%derived_type_count + 1
         context%derived_types(type_index)%name = trim(node%name)

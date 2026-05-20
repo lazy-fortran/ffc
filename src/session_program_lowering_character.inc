@@ -58,10 +58,7 @@
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for ffc direct-session lowering'
-            return
-        end if
+       call grow_symbols(context)
         if (character_length <= 0) then
             call define_deferred_character_symbol(context, name, error_msg)
             return
@@ -261,10 +258,7 @@
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for ffc direct-session lowering'
-            return
-        end if
+     call grow_symbols(context)
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)

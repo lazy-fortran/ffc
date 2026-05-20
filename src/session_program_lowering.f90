@@ -642,10 +642,7 @@ contains
             error_msg = 'duplicate integer declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many integer symbols for ffc direct-session lowering'
-            return
-        end if
+        call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
@@ -662,10 +659,7 @@ contains
             error_msg = 'duplicate real declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for ffc direct-session lowering'
-            return
-        end if
+        call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_F64
@@ -683,10 +677,7 @@ contains
             error_msg = 'duplicate logical declaration: '//trim(name)
             return
         end if
-        if (context%symbol_count >= MAX_SYMBOLS) then
-            error_msg = 'too many scalar symbols for ffc direct-session lowering'
-            return
-        end if
+       call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_LOGICAL
@@ -912,6 +903,63 @@ contains
             call set_empty(name)
         end select
     end subroutine identifier_name
+    subroutine grow_symbols(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(symbol_t), allocatable :: old_symbols(:)
+        integer :: new_size
+
+        if (context%symbol_count < size(context%symbols)) return
+        allocate(old_symbols, source=context%symbols)
+        new_size = 2 * size(context%symbols)
+        allocate(context%symbols(new_size))
+        context%symbols(1:size(old_symbols)) = old_symbols
+        deallocate(old_symbols)
+    end subroutine grow_symbols
+
+    subroutine grow_derived_types(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(derived_type_info_t), allocatable :: old_types(:)
+        integer :: new_size
+
+        if (context%derived_type_count < size(context%derived_types)) return
+        allocate(old_types, source=context%derived_types)
+        new_size = 2 * size(context%derived_types)
+        allocate(context%derived_types(new_size))
+        context%derived_types(1:size(old_types)) = old_types
+        deallocate(old_types)
+    end subroutine grow_derived_types
+
+    subroutine grow_module_exports(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(module_exports_t), allocatable :: old_exports(:)
+        integer :: new_size
+
+        if (context%module_export_count < size(context%module_exports)) return
+        allocate(old_exports, source=context%module_exports)
+        new_size = 2 * size(context%module_exports)
+        allocate(context%module_exports(new_size))
+        context%module_exports(1:size(old_exports)) = old_exports
+        deallocate(old_exports)
+    end subroutine grow_module_exports
+
+    subroutine grow_function_names(context)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=64), allocatable :: old_names(:)
+        integer, allocatable :: old_kinds(:)
+        integer :: new_size
+
+        if (context%function_count < size(context%function_names)) return
+        allocate(old_names, source=context%function_names)
+        allocate(old_kinds, source=context%function_value_kinds)
+        new_size = 2 * size(context%function_names)
+        allocate(context%function_names(new_size))
+        allocate(context%function_value_kinds(new_size))
+        context%function_names(1:size(old_names)) = old_names
+        context%function_value_kinds(1:size(old_kinds)) = old_kinds
+        deallocate(old_names)
+        deallocate(old_kinds)
+    end subroutine grow_function_names
+
     integer function find_symbol(context, name) result(index)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
