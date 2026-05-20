@@ -14,6 +14,7 @@ module ffc_test_support
     public :: expect_output
     public :: expect_error_contains
     public :: expect_cli_error_contains
+    public :: expect_object_exists
 
 contains
 
@@ -160,6 +161,33 @@ contains
 
         ok = .true.
     end function expect_cli_error_contains
+
+    logical function expect_object_exists(source, object_path) result(ok)
+        ! Compiles source and checks that a non-empty object file was emitted.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: object_path
+        character(len=:), allocatable :: error_msg
+        integer :: object_size
+        logical :: object_exists
+
+        ok = .false.
+        call compile_to_exe(source, object_path, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: object lowering failed: ', trim(error_msg)
+            call execute_command_line('rm -f '//object_path)
+            return
+        end if
+
+        inquire (file=object_path, exist=object_exists, size=object_size)
+        call execute_command_line('rm -f '//object_path)
+
+        if (.not. object_exists .or. object_size <= 0) then
+            print *, 'FAIL: expected non-empty object file at ', object_path
+            return
+        end if
+
+        ok = .true.
+    end function expect_object_exists
 
     logical function write_source_file(path, source)
         character(len=*), intent(in) :: path
