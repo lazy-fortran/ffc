@@ -318,7 +318,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
             return
         end if
 
-        allocate(old_names, source=context%derived_types(type_index)%component_names)
+        old_names = context%derived_types(type_index)%component_names
         new_size = 2 * size(context%derived_types(type_index)%component_names)
         deallocate(context%derived_types(type_index)%component_names)
         allocate(context%derived_types(type_index)%component_names(new_size))
@@ -339,7 +339,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
             return
         end if
 
-        allocate(old_indices, source=context%module_exports(export_idx)%derived_type_indices)
+        old_indices = context%module_exports(export_idx)%derived_type_indices
         new_size = 2 * size(context%module_exports(export_idx)%derived_type_indices)
         deallocate(context%module_exports(export_idx)%derived_type_indices)
         allocate(context%module_exports(export_idx)%derived_type_indices(new_size))

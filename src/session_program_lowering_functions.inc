@@ -91,6 +91,7 @@
             allocate(destination%function_value_kinds(8))
         end if
         do i = 1, source%function_count
+            call ensure_function_names_capacity(destination, i)
             destination%function_names(i) = source%function_names(i)
             destination%function_value_kinds(i) = source%function_value_kinds(i)
         end do
@@ -102,10 +103,8 @@
         type(lowering_context_t), intent(inout) :: destination
         integer :: i
 
-        if (.not. allocated(destination%derived_types)) then
-            allocate(destination%derived_types(source%derived_type_count))
-        end if
         do i = 1, source%derived_type_count
+            call ensure_derived_types_capacity(destination, i)
             destination%derived_types(i) = source%derived_types(i)
         end do
         destination%derived_type_count = source%derived_type_count
@@ -380,3 +379,27 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_parameter_symbol
+
+    subroutine ensure_function_names_capacity(context, required_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: required_index
+
+        if (required_index <= size(context%function_names)) return
+        call grow_function_names(context)
+        if (required_index <= size(context%function_names)) return
+        allocate(context%function_names(required_index), &
+                 source=context%function_names)
+        allocate(context%function_value_kinds(required_index), &
+                 source=context%function_value_kinds)
+    end subroutine ensure_function_names_capacity
+
+    subroutine ensure_derived_types_capacity(context, required_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: required_index
+
+        if (required_index <= size(context%derived_types)) return
+        call grow_derived_types(context)
+        if (required_index <= size(context%derived_types)) return
+        allocate(context%derived_types(required_index), &
+                 source=context%derived_types)
+    end subroutine ensure_derived_types_capacity

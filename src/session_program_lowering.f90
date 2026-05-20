@@ -906,8 +906,9 @@ contains
         integer :: new_size
 
         if (context%symbol_count < size(context%symbols)) return
-        allocate(old_symbols, source=context%symbols)
+        old_symbols = context%symbols
         new_size = 2 * size(context%symbols)
+        deallocate(context%symbols)
         allocate(context%symbols(new_size))
         context%symbols(1:size(old_symbols)) = old_symbols
         deallocate(old_symbols)
@@ -919,8 +920,9 @@ contains
         integer :: new_size
 
         if (context%derived_type_count < size(context%derived_types)) return
-        allocate(old_types, source=context%derived_types)
+        old_types = context%derived_types
         new_size = 2 * size(context%derived_types)
+        deallocate(context%derived_types)
         allocate(context%derived_types(new_size))
         context%derived_types(1:size(old_types)) = old_types
         deallocate(old_types)
@@ -932,8 +934,9 @@ contains
         integer :: new_size
 
         if (context%module_export_count < size(context%module_exports)) return
-        allocate(old_exports, source=context%module_exports)
+        old_exports = context%module_exports
         new_size = 2 * size(context%module_exports)
+        deallocate(context%module_exports)
         allocate(context%module_exports(new_size))
         context%module_exports(1:size(old_exports)) = old_exports
         deallocate(old_exports)
@@ -946,9 +949,11 @@ contains
         integer :: new_size
 
         if (context%function_count < size(context%function_names)) return
-        allocate(old_names, source=context%function_names)
-        allocate(old_kinds, source=context%function_value_kinds)
+        old_names = context%function_names
+        old_kinds = context%function_value_kinds
         new_size = 2 * size(context%function_names)
+        deallocate(context%function_names)
+        deallocate(context%function_value_kinds)
         allocate(context%function_names(new_size))
         allocate(context%function_value_kinds(new_size))
         context%function_names(1:size(old_names)) = old_names
