@@ -1,8 +1,5 @@
 program test_session_if_merge_compiler
-    use fortfront, only: compiler_frontend_options_t, &
-                         compiler_frontend_result_t, &
-                         compile_frontend_from_string, INPUT_MODE_STANDARD
-    use session_program_lowering, only: lower_program_to_liric_exe
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -33,9 +30,9 @@ contains
                                        'stop x'//new_line('a')// &
                                        'end program main'
 
-        test_integer_if_merge = compile_and_expect_exit( &
-                                source, &
-                                '/tmp/ffc_session_if_integer_merge_test', 9)
+        test_integer_if_merge = expect_exit_status( &
+                                source, 9, &
+                                '/tmp/ffc_session_if_integer_merge_test')
     end function test_integer_if_merge
 
     logical function test_real_if_merge()
@@ -50,9 +47,9 @@ contains
                                        'print *, x'//new_line('a')// &
                                        'end program main'
 
-        test_real_if_merge = compile_and_expect_output( &
-                             source, '/tmp/ffc_session_if_real_merge_test', &
-                             '4.500000')
+        test_real_if_merge = expect_output( &
+                             source, '4.500000'//new_line('a'), &
+                             '/tmp/ffc_session_if_real_merge_test')
     end function test_real_if_merge
 
     logical function test_logical_if_merge()
@@ -71,9 +68,9 @@ contains
                                        'end if'//new_line('a')// &
                                        'end program main'
 
-        test_logical_if_merge = compile_and_expect_exit( &
-                                source, &
-                                '/tmp/ffc_session_if_logical_merge_test', 7)
+        test_logical_if_merge = expect_exit_status( &
+                                source, 7, &
+                                '/tmp/ffc_session_if_logical_merge_test')
     end function test_logical_if_merge
 
     logical function test_nested_if_in_do_merge()
@@ -100,9 +97,9 @@ contains
                                        'end if'//new_line('a')// &
                                        'end program main'
 
-        test_nested_if_in_do_merge = compile_and_expect_exit( &
-                                     source, &
-                                     '/tmp/ffc_session_nested_if_do_test', 7)
+        test_nested_if_in_do_merge = expect_exit_status( &
+                                     source, 7, &
+                                     '/tmp/ffc_session_nested_if_do_test')
     end function test_nested_if_in_do_merge
 
     logical function test_do_in_if_merge()
@@ -129,103 +126,9 @@ contains
                                        'end if'//new_line('a')// &
                                        'end program main'
 
-        test_do_in_if_merge = compile_and_expect_exit( &
-                              source, '/tmp/ffc_session_do_if_test', 3)
+        test_do_in_if_merge = expect_exit_status( &
+                              source, 3, &
+                              '/tmp/ffc_session_do_if_test')
     end function test_do_in_if_merge
 
-    logical function compile_and_expect_exit(source, exe_path, expected_status)
-        character(len=*), intent(in) :: source
-        character(len=*), intent(in) :: exe_path
-        integer, intent(in) :: expected_status
-        integer :: cmd_stat
-        integer :: exit_stat
-
-        compile_and_expect_exit = .false.
-        if (.not. compile_source(source, exe_path)) return
-
-        call execute_command_line(exe_path, exitstat=exit_stat, &
-                                  cmdstat=cmd_stat)
-        call execute_command_line('rm -f '//exe_path)
-        if (cmd_stat /= 0) then
-            print *, 'FAIL: emitted executable did not run'
-            return
-        end if
-        if (exit_stat /= expected_status) then
-            print *, 'FAIL: executable exit status ', exit_stat
-            return
-        end if
-
-        compile_and_expect_exit = .true.
-    end function compile_and_expect_exit
-
-    logical function compile_and_expect_output(source, exe_path, expected_output)
-        character(len=*), intent(in) :: source
-        character(len=*), intent(in) :: exe_path
-        character(len=*), intent(in) :: expected_output
-        character(len=:), allocatable :: out_path
-        character(len=64) :: output_line
-        integer :: exit_stat
-        integer :: io_stat
-        integer :: unit
-
-        compile_and_expect_output = .false.
-        out_path = exe_path//'.out'
-        if (.not. compile_source(source, exe_path)) return
-
-        call execute_command_line(exe_path//' > '//out_path, exitstat=exit_stat)
-        if (exit_stat /= 0) then
-            print *, 'FAIL: executable exit status ', exit_stat
-            call execute_command_line('rm -f '//exe_path//' '//out_path)
-            return
-        end if
-
-        open (newunit=unit, file=out_path, status='old', action='read', &
-              iostat=io_stat)
-        if (io_stat == 0) read (unit, '(A)', iostat=io_stat) output_line
-        if (io_stat == 0) close (unit)
-        call execute_command_line('rm -f '//exe_path//' '//out_path)
-
-        if (io_stat /= 0) then
-            print *, 'FAIL: could not read executable output'
-            return
-        end if
-        if (trim(adjustl(output_line)) /= expected_output) then
-            print *, 'FAIL: expected output ', expected_output, ', got ', &
-                trim(output_line)
-            return
-        end if
-
-        compile_and_expect_output = .true.
-    end function compile_and_expect_output
-
-    logical function compile_source(source, exe_path)
-        character(len=*), intent(in) :: source
-        character(len=*), intent(in) :: exe_path
-        type(compiler_frontend_options_t) :: options
-        type(compiler_frontend_result_t) :: frontend_result
-        character(len=:), allocatable :: error_msg
-
-        compile_source = .false.
-        options = compiler_frontend_options_t()
-        options%run_semantics = .true.
-        options%input_mode = INPUT_MODE_STANDARD
-
-        call compile_frontend_from_string(source, frontend_result, options)
-        if (.not. frontend_result%success()) then
-            print *, 'FAIL: FortFront rejected source: ', &
-                trim(frontend_result%diagnostic_text)
-            return
-        end if
-
-        call execute_command_line('rm -f '//exe_path)
-        call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe_path, &
-                                        error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: direct LIRIC lowering failed: ', trim(error_msg)
-            return
-        end if
-
-        compile_source = .true.
-    end function compile_source
 end program test_session_if_merge_compiler

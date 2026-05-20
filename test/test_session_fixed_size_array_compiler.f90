@@ -1,8 +1,5 @@
 program test_session_fixed_size_array_compiler
-    use fortfront, only: compiler_frontend_options_t, &
-                         compiler_frontend_result_t, &
-                         compile_frontend_from_string, INPUT_MODE_STANDARD
-    use session_program_lowering, only: lower_program_to_liric_exe
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -35,7 +32,7 @@ contains
                                        '  print *, a(1) + a(2)'//new_line('a')// &
                                        'end program main'
 
-        test_simple_array = expect_output(source, '9', &
+        test_simple_array = expect_output(source, '9'//new_line('a'), &
                                           '/tmp/ffc_session_array_simple_test')
     end function test_simple_array
 
@@ -51,7 +48,7 @@ contains
                                        'end program main'
 
         test_array_parameter_bound = expect_output( &
-                                     source, '9', &
+                                     source, '9'//new_line('a'), &
                                      '/tmp/ffc_session_array_param_bound_test')
     end function test_array_parameter_bound
 
@@ -65,7 +62,7 @@ contains
                                        'end program main'
 
         test_array_explicit_bounds = expect_output( &
-                                     source, '9', &
+                                     source, '9'//new_line('a'), &
                                      '/tmp/ffc_session_array_explicit_bounds_test')
     end function test_array_explicit_bounds
 
@@ -82,7 +79,7 @@ contains
                                        'end program main'
 
         test_array_negative_lower_bound = expect_output( &
-                                          source, '15', &
+                                          source, '15'//new_line('a'), &
                                           '/tmp/ffc_session_array_neg_lower_test')
     end function test_array_negative_lower_bound
 
@@ -100,7 +97,7 @@ contains
                                        '  print *, sum'//new_line('a')// &
                                        'end program main'
 
-        test_array_with_loop = expect_output(source, '15', &
+        test_array_with_loop = expect_output(source, '15'//new_line('a'), &
                                              '/tmp/ffc_session_array_loop_test')
     end function test_array_with_loop
 
@@ -116,7 +113,7 @@ contains
                                        '  print *, a(idx)'//new_line('a')// &
                                        'end program main'
 
-        test_array_variable_subscript = expect_output(source, '20', &
+        test_array_variable_subscript = expect_output(source, '20'//new_line('a'), &
                                                       '/tmp/ffc_session_array_var_test')
     end function test_array_variable_subscript
 
@@ -135,7 +132,7 @@ contains
                                        'end program main'
 
         test_array_element_argument = expect_output( &
-                                      source, '5', &
+                                      source, '5'//new_line('a'), &
                                       '/tmp/ffc_session_array_element_arg_test')
     end function test_array_element_argument
 
@@ -165,7 +162,7 @@ contains
                                        'end program main'
 
         test_array_in_contained_subroutine = expect_output( &
-                                             source, '9', &
+                                             source, '9'//new_line('a'), &
                                              '/tmp/ffc_session_array_subroutine_test')
     end function test_array_in_contained_subroutine
 
@@ -183,111 +180,8 @@ contains
                                        'end program main'
 
         test_array_in_contained_function = expect_output( &
-                                           source, '9', &
+                                           source, '9'//new_line('a'), &
                                            '/tmp/ffc_session_array_function_test')
     end function test_array_in_contained_function
 
-    logical function expect_exit_status(source, expected, stem)
-        character(len=*), intent(in) :: source
-        integer, intent(in) :: expected
-        character(len=*), intent(in) :: stem
-        character(len=:), allocatable :: error_msg
-        character(len=:), allocatable :: exe_path
-        integer :: cmd_stat
-        integer :: exit_stat
-
-        expect_exit_status = .false.
-        exe_path = stem
-        call execute_command_line('rm -f '//exe_path)
-        call compile_and_lower(source, exe_path, error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: direct LIRIC lowering failed: ', trim(error_msg)
-            return
-        end if
-
-        call execute_command_line(exe_path, exitstat=exit_stat, cmdstat=cmd_stat)
-        call execute_command_line('rm -f '//exe_path)
-        if (cmd_stat /= 0) then
-            print *, 'FAIL: executable did not run'
-            return
-        end if
-        if (exit_stat /= expected) then
-            print *, 'FAIL: expected exit status ', expected, ', got ', exit_stat
-            return
-        end if
-
-        expect_exit_status = .true.
-    end function expect_exit_status
-
-    logical function expect_output(source, expected, stem)
-        character(len=*), intent(in) :: source
-        character(len=*), intent(in) :: expected
-        character(len=*), intent(in) :: stem
-        character(len=64) :: output_line
-        character(len=:), allocatable :: error_msg
-        character(len=:), allocatable :: exe_path
-        character(len=:), allocatable :: out_path
-        integer :: exit_stat
-        integer :: io_stat
-        integer :: unit
-
-        expect_output = .false.
-        exe_path = stem
-        out_path = stem//'.out'
-        call execute_command_line('rm -f '//exe_path//' '//out_path)
-        call compile_and_lower(source, exe_path, error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: direct LIRIC lowering failed: ', trim(error_msg)
-            return
-        end if
-
-        call execute_command_line(exe_path//' > '//out_path, exitstat=exit_stat)
-        if (exit_stat /= 0) then
-            print *, 'FAIL: executable exit status ', exit_stat
-            call execute_command_line('rm -f '//exe_path//' '//out_path)
-            return
-        end if
-
-        open (newunit=unit, file=out_path, status='old', action='read', &
-              iostat=io_stat)
-        if (io_stat /= 0) then
-            print *, 'FAIL: could not open captured output'
-            call execute_command_line('rm -f '//exe_path//' '//out_path)
-            return
-        end if
-        read (unit, '(A)', iostat=io_stat) output_line
-        close (unit)
-        call execute_command_line('rm -f '//exe_path//' '//out_path)
-
-        if (io_stat /= 0 .or. trim(adjustl(output_line)) /= expected) then
-            print *, 'FAIL: expected output ', expected, ', got ', &
-                trim(output_line)
-            return
-        end if
-
-        expect_output = .true.
-    end function expect_output
-
-    subroutine compile_and_lower(source, exe_path, error_msg)
-        character(len=*), intent(in) :: source
-        character(len=*), intent(in) :: exe_path
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(compiler_frontend_options_t) :: options
-        type(compiler_frontend_result_t) :: frontend_result
-
-        options = compiler_frontend_options_t()
-        options%run_semantics = .true.
-        options%input_mode = INPUT_MODE_STANDARD
-
-        call compile_frontend_from_string(source, frontend_result, options)
-        if (.not. frontend_result%success()) then
-            error_msg = 'FortFront rejected source: '// &
-                        trim(frontend_result%diagnostic_text)
-            return
-        end if
-
-        call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe_path, &
-                                        error_msg)
-    end subroutine compile_and_lower
 end program test_session_fixed_size_array_compiler
