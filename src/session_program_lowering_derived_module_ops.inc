@@ -203,10 +203,7 @@
             return
         end if
 
-        if (context%derived_type_count >= MAX_DERIVED_TYPES) then
-            error_msg = 'too many derived types for ffc direct-session lowering'
-            return
-        end if
+      call grow_derived_types(context)
 
         type_index_new = context%derived_type_count + 1
 
