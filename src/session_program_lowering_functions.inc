@@ -229,6 +229,7 @@
         integer :: result_index
         integer :: value_kind
         logical :: terminated
+        character(len=:), allocatable :: result_name
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
@@ -236,6 +237,13 @@
         end if
         call function_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
+        result_name = trim(node%name)
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .and. &
+            allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) then
+                result_name = trim(node%result_variable)
+            end if
+        end if
 
         context%session = parent_context%session
         context%i32_print_format_id = parent_context%i32_print_format_id
@@ -259,43 +267,46 @@
             if (.not. begin_liric_f64_function(context%session, node%name, &
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
-            if (.not. begin_ptr_function(context%session, node%name, &
-                                         param_count, error_msg)) return
+            if (.not. begin_void_subroutine(context%session, node%name, &
+                                            param_count + 1, error_msg)) return
         else
             if (.not. begin_i32_function(context%session, node%name, param_count, &
                                                           error_msg)) return
         end if
 
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
-            ! Allocate fresh deferred-char descriptor storage for the result.
-            ! The deferred-char store path will fill this storage.
-            ! Note: Due to LIRIC relocation constraints with hidden parameters,
-            ! we allocate fresh storage here. The caller-side handling needs
-            ! to be updated to read from this storage (see TODO below).
             call grow_symbols(context)
             context%current_function_result_index = context%symbol_count + 1
             context%symbols(context%current_function_result_index)%name = &
-                trim(node%name)
+                trim(result_name)
             context%symbols(context%current_function_result_index)%value_kind = &
                 VALUE_CHARACTER
             context%symbols(context%current_function_result_index)%&
                 is_deferred_character = .true.
             context%symbols(context%current_function_result_index)%&
                 has_character_value = .false.
-            if (.not. emit_i64_alloca(context%session, &
+            if (.not. emit_ptr_offset(context%session, &
+                ptr_param(context%session, 0), 0_c_int64_t, &
                 context%symbols(context%current_function_result_index)%deferred_data, &
                 error_msg)) return
-            if (.not. emit_i64_alloca(context%session, &
+            if (.not. emit_ptr_offset(context%session, &
+                ptr_param(context%session, 0), 8_c_int64_t, &
                 context%symbols(context%current_function_result_index)%deferred_length, &
                 error_msg)) return
             context%symbol_count = context%current_function_result_index
         else
-            call define_symbol(context, node%name, value_kind, error_msg)
+            call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            context%current_function_result_index = find_symbol(context, node%name)
+            context%current_function_result_index = find_symbol(context, &
+                                                                result_name)
         end if
-        call define_reference_parameters(arena, node%param_indices, context, &
-                                          error_msg)
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+            call define_reference_parameters(arena, node%param_indices, context, &
+                                             error_msg, 1)
+        else
+            call define_reference_parameters(arena, node%param_indices, context, &
+                                             error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
@@ -304,10 +315,10 @@
             if (len_trim(error_msg) > 0) return
         end if
 
-        result_index = find_symbol(context, node%name)
+        result_index = find_symbol(context, result_name)
         if (result_index <= 0) then
             error_msg = 'function result symbol was not declared: '// &
-                        trim(node%name)
+                        trim(result_name)
             return
         end if
         if (.not. context%current_block_terminated) then
@@ -382,20 +393,26 @@
         call set_empty(error_msg)
     end subroutine lower_void_subroutine
 
-    subroutine define_reference_parameters(arena, param_indices, context, error_msg)
+    subroutine define_reference_parameters(arena, param_indices, context, &
+                                           error_msg, param_offset)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: param_offset
         character(len=:), allocatable :: name
+        integer :: offset
         integer :: i
 
         call set_empty(error_msg)
+        offset = 0
+        if (present(param_offset)) offset = param_offset
         if (.not. allocated(param_indices)) return
         do i = 1, size(param_indices)
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            call define_parameter_symbol(context, name, i - 1, error_msg)
+            call define_parameter_symbol(context, name, i - 1 + offset, &
+                                         error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters

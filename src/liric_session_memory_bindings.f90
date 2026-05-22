@@ -45,9 +45,11 @@ module liric_session_memory_bindings
               reserve_i32_vreg, ptr_vreg, i64_vreg
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
     public :: emit_i32_alloca, emit_i64_alloca
-    public :: emit_i32_load, emit_i64_load, emit_i32_store, emit_i64_store
+    public :: emit_i32_load, emit_i64_load, emit_ptr_load
+    public :: emit_i32_store, emit_i64_store
     public :: emit_i64_load_at, emit_i64_store_at
-    public :: emit_alloca_bytes, emit_ptr_store, emit_memcpy
+    public :: emit_ptr_offset
+    public :: emit_alloca_bytes, emit_malloc, emit_ptr_store, emit_memcpy
     public :: emit_i32_array_alloca, emit_i32_array_element_addr
     public :: emit_i64_binary
 
@@ -316,6 +318,25 @@ contains
         emit_i64_load = .true.
     end function emit_i64_load
 
+    logical function emit_ptr_load(session, address, value, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: address
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_ptr_load = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_load_ptr(session%handle, address, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        value = ptr_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_ptr_load = .true.
+    end function emit_ptr_load
+
     logical function emit_i32_store(session, value, address, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: value
@@ -421,6 +442,52 @@ contains
         call set_empty(error_msg)
         emit_i64_load_at = .true.
     end function emit_i64_load_at
+
+    logical function emit_ptr_offset(session, base, offset, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base
+        integer(c_int64_t), intent(in) :: offset
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t) :: offset_op
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+
+        emit_ptr_offset = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        offset_op%kind = LR_OP_KIND_IMM_I64
+        offset_op%payload = offset
+        offset_op%typ = lr_type_i64_s(session%handle)
+        offset_op%global_offset = 0_c_int64_t
+
+        operands(1) = base
+        operands(2) = offset_op
+
+        inst%op = LR_OP_GEP
+        inst%typ = lr_type_ptr_s(session%handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = ptr_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_ptr_offset = .true.
+    end function emit_ptr_offset
 
     logical function emit_i64_store_at(session, value, base, offset, &
                                        error_msg)
@@ -535,6 +602,27 @@ contains
         call set_empty(error_msg)
         emit_alloca_bytes = .true.
     end function emit_alloca_bytes
+
+    logical function emit_malloc(session, size, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: size
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t) :: args(1)
+        integer(c_int32_t) :: vreg
+
+        emit_malloc = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        args(1) = size
+        vreg = emit_malloc_call(session%handle, args, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = ptr_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_malloc = .true.
+    end function emit_malloc
 
     logical function emit_ptr_store(session, value, address, error_msg)
         type(liric_session_t), intent(inout) :: session
@@ -878,6 +966,34 @@ contains
         vreg = lr_session_emit(handle, inst, error)
     end function emit_load_i64
 
+    function emit_load_ptr(handle, address, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: address
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+
+        operands(1) = address
+
+        inst%op = LR_OP_LOAD
+        inst%typ = lr_type_ptr_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_load_ptr
+
     function emit_store_i64(handle, value, address, error) result(vreg)
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: value
@@ -1048,6 +1164,45 @@ contains
         vreg = lr_session_emit(handle, inst, error)
     end function emit_memcpy_call
 
+    function emit_malloc_call(handle, args, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+
+        call to_c_chars('malloc', c_name)
+        symbol_id = lr_session_intern(handle, c_name)
+        if (symbol_id < 0_c_int32_t .or. size(args) /= 1) then
+            call clear_liric_error(error)
+            error%code = 1_c_int
+            return
+        end if
+
+        operands(1) = ptr_global_operand(handle, symbol_id)
+        operands(2) = args(1)
+
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_ptr_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_true
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 1_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_malloc_call
+
     function global_operand_from_id(handle, symbol_id) result(operand)
         type(c_ptr), intent(in) :: handle
         integer(c_int32_t), intent(in) :: symbol_id
@@ -1058,6 +1213,17 @@ contains
         operand%typ = lr_type_i32_s(handle)
         operand%global_offset = 0_c_int64_t
     end function global_operand_from_id
+
+    function ptr_global_operand(handle, symbol_id) result(operand)
+        type(c_ptr), intent(in) :: handle
+        integer(c_int32_t), intent(in) :: symbol_id
+        type(lr_operand_desc_t) :: operand
+
+        operand%kind = LR_OP_KIND_GLOBAL
+        operand%payload = int(symbol_id, c_int64_t)
+        operand%typ = lr_type_ptr_s(handle)
+        operand%global_offset = 0_c_int64_t
+    end function ptr_global_operand
 
     logical function require_open_session(session, error_msg)
         type(liric_session_t), intent(in) :: session

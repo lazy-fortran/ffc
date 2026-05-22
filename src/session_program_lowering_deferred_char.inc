@@ -122,7 +122,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! For self-aliasing, we need to capture the old content
         ! We do this by loading the old data pointer and length
         if (is_self_alias) then
-            if (.not. emit_i64_load(context%session,  &
+            if (.not. emit_ptr_load(context%session,  &
                 context%symbols(dest_symbol_index)%deferred_data, &
                 old_data, error_msg)) return
             if (.not. emit_i64_load(context%session,  &
@@ -143,10 +143,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 left_data = old_data
                 left_len = old_len_val
             else
-                if (.not. emit_i64_load(context%session,  &
+                if (.not. emit_ptr_load(context%session,  &
                     context%symbols(left_sym_idx)%deferred_data, &
                     left_data, error_msg)) return
-                if (.not. emit_i64_load(context%session,  &
+                if (.not. emit_ptr_load(context%session,  &
                     context%symbols(left_sym_idx)%deferred_length, &
                     left_len, error_msg)) return
             end if
@@ -220,8 +220,14 @@ integer function resolve_concat_operand(arena, node_index, context, &
             i64_immediate(context%session, 1_c_int64_t), &
             alloca_size, error_msg)) return
 
-        if (.not. emit_alloca_bytes(context%session, alloca_size, new_ptr, &
-            error_msg)) return
+        if (context%in_internal_function .and. &
+            dest_symbol_index == context%current_function_result_index) then
+            if (.not. emit_malloc(context%session, alloca_size, new_ptr, &
+                error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, alloca_size, new_ptr, &
+                error_msg)) return
+        end if
 
         if (.not. emit_memcpy(context%session,  &
             new_ptr, left_data, left_len, error_msg)) return
@@ -247,7 +253,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
             null_dest, null_byte_ptr, &
             i64_immediate(context%session, 1_c_int64_t), error_msg)) return
 
-        if (.not. emit_i64_store(context%session,  &
+        if (.not. emit_ptr_store(context%session,  &
             new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
             error_msg)) return
 
@@ -305,6 +311,128 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine lower_deferred_literal_assignment
 
+    subroutine allocate_deferred_char_descriptor(context, descriptor_ptr, &
+                                                  data_addr, len_addr, &
+                                                  error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: descriptor_ptr
+        type(lr_operand_desc_t), intent(out) :: data_addr
+        type(lr_operand_desc_t), intent(out) :: len_addr
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, 16_c_int64_t), descriptor_ptr, &
+            error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 0_c_int64_t, &
+            data_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 8_c_int64_t, &
+            len_addr, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine allocate_deferred_char_descriptor
+
+    subroutine prepare_deferred_char_actual(arena, node_index, context, arg, &
+                                            error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: arg
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_addr
+        type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: data_value
+        type(lr_operand_desc_t) :: len_value
+        character(len=:), allocatable :: literal_text
+        integer :: symbol_index
+
+        call allocate_deferred_char_descriptor(context, arg, data_addr, &
+                                               len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            call strip_literal_quotes(node%value, literal_text)
+            call materialize_concat_literal(context, literal_text, data_value, &
+                                            len_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        type is (identifier_node)
+            symbol_index = find_symbol(context, node%name)
+            if (symbol_index <= 0 .or. &
+                context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) then
+                error_msg = 'character argument is not declared: '//trim(node%name)
+                return
+            end if
+            if (context%symbols(symbol_index)%is_deferred_character) then
+                if (.not. emit_ptr_load(context%session, &
+                    context%symbols(symbol_index)%deferred_data, data_value, &
+                    error_msg)) return
+                if (.not. emit_i64_load(context%session, &
+                    context%symbols(symbol_index)%deferred_length, len_value, &
+                    error_msg)) return
+            else
+                data_value = context%symbols(symbol_index)%value
+                len_value = i64_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, c_int64_t))
+            end if
+        class default
+            error_msg = 'direct LIRIC session cannot pass this character argument'
+            return
+        end select
+
+        if (.not. emit_ptr_store(context%session, data_value, data_addr, &
+            error_msg)) return
+        if (.not. emit_i64_store(context%session, len_value, len_addr, &
+            error_msg)) return
+        call set_empty(error_msg)
+    end subroutine prepare_deferred_char_actual
+
+    subroutine prepare_deferred_char_call_args(arena, arg_indices, context, &
+                                               args, copyback_indices, &
+                                               error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
+        integer, allocatable, intent(out) :: copyback_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: handled
+        integer :: i
+        integer :: symbol_index
+
+        allocate (args(size(arg_indices)))
+        allocate (copyback_indices(size(arg_indices)))
+        copyback_indices = 0
+
+        do i = 1, size(arg_indices)
+            handled = .false.
+            select type (node => arena%entries(arg_indices(i))%node)
+            type is (literal_node)
+                if (is_character_literal(node)) then
+                    call prepare_deferred_char_actual(arena, arg_indices(i), &
+                        context, args(i), error_msg)
+                    handled = .true.
+                end if
+            type is (identifier_node)
+                symbol_index = find_symbol(context, node%name)
+                if (symbol_index > 0 .and. &
+                    context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+                    call prepare_deferred_char_actual(arena, arg_indices(i), &
+                        context, args(i), error_msg)
+                    handled = .true.
+                end if
+            end select
+            if (len_trim(error_msg) > 0) return
+            if (.not. handled) then
+                call prepare_reference_arg(arena, arg_indices(i), context, &
+                                           VALUE_I32, args(i), &
+                                           copyback_indices(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine prepare_deferred_char_call_args
+
     subroutine lower_deferred_char_result_call(arena, node, context, &
                                                 dest_symbol_index, error_msg)
         use, intrinsic :: iso_c_binding, only: c_int64_t
@@ -317,7 +445,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: user_args(:)
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
-        type(lr_operand_desc_t) :: result_val
+        type(lr_operand_desc_t) :: descriptor_ptr
+        type(lr_operand_desc_t) :: data_addr
+        type(lr_operand_desc_t) :: len_addr
         integer :: i
         character(len=:), allocatable :: func_name
 
@@ -326,8 +456,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
             error_msg = 'deferred char call assignment value does not reference an AST node'
             return
         end if
-        select type (call_node => arena%entries(node%value_index)%node)
+        select type (value_node => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
+            call_node = value_node
         class default
             error_msg = 'expected function call for deferred char result'
             return
@@ -335,36 +466,36 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         func_name = call_node%name
 
-        ! Prepare user arguments
+        call allocate_deferred_char_descriptor(context, descriptor_ptr, &
+                                               data_addr, len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(dest_symbol_index)%deferred_data = data_addr
+        context%symbols(dest_symbol_index)%deferred_length = len_addr
+
         if (allocated(call_node%arg_indices)) then
-            call prepare_reference_args(arena, call_node%arg_indices, context, &
-                                        VALUE_I32, user_args, copyback_indices, &
-                                        error_msg)
+            call prepare_deferred_char_call_args(arena, call_node%arg_indices, &
+                context, user_args, copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))
             allocate (copyback_indices(0))
         end if
 
-        ! Build arg list: user args only
-        allocate (all_args(size(user_args)))
+        allocate (all_args(size(user_args) + 1))
+        all_args(1) = descriptor_ptr
         do i = 1, size(user_args)
-            all_args(i) = user_args(i)
+            all_args(i + 1) = user_args(i)
         end do
 
-        ! Emit the call - callee allocates its own descriptor storage
-        if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
-                                result_val, error_msg)) return
-        call copy_back_reference_args(context, all_args, copyback_indices, &
+        if (.not. emit_void_call(context%session, trim(func_name), all_args, &
+                                 error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, &
                                       error_msg)
+        if (len_trim(error_msg) > 0) return
 
-        ! The callee allocates fresh descriptor storage and fills it via
-        ! the deferred-char store path. Since we can't pass hidden params
-        ! due to LIRIC relocation constraints, we cannot directly access
-        ! the callee's storage from here. The caller's deferred-char symbol
-        ! will have empty/uninitialized storage.
-        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
-        context%symbols(dest_symbol_index)%has_character_value = .false.
+        if (.not. emit_ptr_load(context%session, data_addr, &
+            context%symbols(dest_symbol_index)%value, error_msg)) return
+        context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_char_result_call
 
@@ -377,7 +508,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: user_args(:)
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
-        type(lr_operand_desc_t) :: result_val
+        type(lr_operand_desc_t) :: descriptor_ptr
+        type(lr_operand_desc_t) :: data_addr
+        type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: data_value
         integer :: i
         character(len=:), allocatable :: func_name
 
@@ -385,35 +519,34 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         func_name = node%name
 
-        ! Prepare user arguments
+        call allocate_deferred_char_descriptor(context, descriptor_ptr, &
+                                               data_addr, len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
         if (allocated(node%arg_indices)) then
-            call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_I32, user_args, copyback_indices, &
-                                        error_msg)
+            call prepare_deferred_char_call_args(arena, node%arg_indices, &
+                context, user_args, copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))
             allocate (copyback_indices(0))
         end if
 
-        ! Build arg list: user args only
-        allocate (all_args(size(user_args)))
+        allocate (all_args(size(user_args) + 1))
+        all_args(1) = descriptor_ptr
         do i = 1, size(user_args)
-            all_args(i) = user_args(i)
+            all_args(i + 1) = user_args(i)
         end do
 
-        ! Emit the call - callee allocates its own descriptor storage
-        if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
-                                result_val, error_msg)) return
-        call copy_back_reference_args(context, all_args, copyback_indices, &
+        if (.not. emit_void_call(context%session, trim(func_name), all_args, &
+                                 error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, &
                                       error_msg)
+        if (len_trim(error_msg) > 0) return
 
-        ! The callee fills its own descriptor storage. We need to print it,
-        ! but we can't access the callee's storage directly.
-        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
-        ! For now, print a placeholder.
-        call unsupported_feature_error('deferred-char function call in print', &
-            node%line, node%column, &
-            'deferred-char function results cannot be printed directly yet', &
-            error_msg)
+        if (.not. emit_ptr_load(context%session, data_addr, data_value, &
+            error_msg)) return
+        if (.not. emit_liric_print_string_operand_value(context%session, &
+            context%str_print_format_id, data_value, error_msg)) return
+        call set_empty(error_msg)
     end subroutine lower_print_deferred_char_call
