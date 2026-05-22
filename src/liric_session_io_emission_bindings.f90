@@ -332,12 +332,6 @@ contains
             return
         end if
 
-        global_id = lr_session_intern(session%handle, c_name)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern string literal'
-            return
-        end if
-
         call materialize_global_pointer(session, global_id, operand, error_msg)
     end subroutine make_string_literal_operand
 
@@ -363,16 +357,9 @@ contains
             return
         end if
 
-        global_id = lr_session_global(handle, c_name, array_type, c_true, &
-                                      c_loc(text_chars(1)), &
-                                      int(total_size, c_size_t))
-        if (global_id < 0_c_int32_t) then
-            error%code = 1_c_int
-            error%msg = c_null_char
-            return
-        end if
-
-        global_id = lr_session_intern(handle, c_name)
+       global_id = lr_session_global(handle, c_name, array_type, c_true, &
+                                       c_loc(text_chars(1)), &
+                                       int(total_size, c_size_t))
         if (global_id < 0_c_int32_t) then
             error%code = 1_c_int
             error%msg = c_null_char

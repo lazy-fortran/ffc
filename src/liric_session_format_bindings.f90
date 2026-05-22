@@ -159,12 +159,6 @@ contains
             return
         end if
 
-        global_id = lr_session_intern(session%handle, c_name)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern printf format string'
-            return
-        end if
-
         call set_empty(error_msg)
    end subroutine create_i32_format_global_no_newline
 
@@ -198,12 +192,6 @@ contains
             return
         end if
 
-        global_id = lr_session_intern(session%handle, c_name)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern printf format string'
-            return
-        end if
-
         call set_empty(error_msg)
   end subroutine create_f64_format_global_no_newline
 
@@ -234,12 +222,6 @@ contains
                                       3_c_size_t)
         if (global_id < 0_c_int32_t) then
             error_msg = 'LIRIC could not create printf format string'
-            return
-        end if
-
-        global_id = lr_session_intern(session%handle, c_name)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern printf format string'
             return
         end if
 
