@@ -8,11 +8,36 @@
 
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
+            if (context%in_internal_function .and. &
+                existing_index == context%current_function_result_index) then
+                call declaration_character_length(node, character_length, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (character_length > 0 .and. &
+                    context%symbols(existing_index)%is_deferred_character) then
+                    call unsupported_feature_error( &
+                        'character function result declaration', node%line, &
+                        node%column, 'deferred character result lowering '// &
+                        'requires character(len=:)', error_msg)
+                    return
+                end if
+                call set_empty(error_msg)
+                return
+            end if
             if (context%symbols(existing_index)%is_parameter) then
-                call unsupported_feature_error( &
-                    'character parameter declaration', node%line, node%column, &
-                    'scalar character parameters are not supported '// &
-                    'by direct LIRIC session', error_msg)
+                call declaration_character_length(node, character_length, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (character_length > 0) then
+                    call unsupported_feature_error( &
+                        'character parameter declaration', node%line, &
+                        node%column, 'only assumed-length character '// &
+                        'parameters are supported by direct LIRIC session', &
+                        error_msg)
+                    return
+                end if
+                call bind_character_parameter_symbol(context, existing_index, &
+                                                     error_msg)
                 return
             end if
         end if
@@ -293,3 +318,20 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_deferred_character_symbol
+
+    subroutine bind_character_parameter_symbol(context, symbol_index, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        context%symbols(symbol_index)%value_kind = VALUE_CHARACTER
+        context%symbols(symbol_index)%is_deferred_character = .true.
+        context%symbols(symbol_index)%has_character_value = .true.
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(symbol_index)%address, 0_c_int64_t, &
+            context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(symbol_index)%address, 8_c_int64_t, &
+            context%symbols(symbol_index)%deferred_length, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine bind_character_parameter_symbol

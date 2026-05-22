@@ -33,13 +33,16 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               emit_i32_binary, emit_i32_binary_into, &
                                               emit_i32_copy_to, emit_i32_alloca, &
                                               emit_i32_load, emit_i32_store, &
-                                              emit_i64_load, emit_i64_store, &
+                                              emit_i64_load, emit_ptr_load, &
+                                              emit_i64_store, &
                                               emit_i64_binary, emit_i64_alloca, &
-                                              emit_alloca_bytes, emit_ptr_store, &
+                                              emit_alloca_bytes, emit_malloc, &
+                                              emit_ptr_store, &
                                                emit_memcpy, emit_i64_load_at, &
                                                emit_i64_store_at, &
                                                emit_i32_array_alloca, &
-                                              emit_i32_array_element_addr, ptr_param
+                                              emit_i32_array_element_addr, &
+                                              emit_ptr_offset, ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -519,19 +522,7 @@ contains
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: existing_index
-        existing_index = find_symbol(context, name)
-        if (existing_index > 0) then
-            if (context%symbols(existing_index)%is_parameter .and. &
-                value_kind == VALUE_CHARACTER) then
-                call unsupported_feature_error( &
-                    'character parameter declaration', node%line, node%column, &
-                    'scalar character parameters are not supported '// &
-                    'by direct LIRIC session', error_msg)
-                return
-            end if
-        end if
- if (value_kind == VALUE_CHARACTER) then
+        if (value_kind == VALUE_CHARACTER) then
             call define_declared_character_symbol(context, node, name, error_msg)
         else
             call define_symbol(context, name, value_kind, error_msg)
@@ -541,7 +532,7 @@ contains
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index, value_kind
+        integer :: symbol_index, value_kind, character_length
         if (.not. allocated(node%name)) then
             error_msg = 'parameter declaration did not expose a name'
             return
@@ -557,14 +548,6 @@ contains
             call type_name_value_kind(node%type_name, node%line, node%column, &
                                       value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (value_kind == VALUE_CHARACTER) then
-                call unsupported_feature_error( &
-                    'character parameter declaration', &
-                    node%line, node%column, &
-                    'scalar character parameters are not supported '// &
-                    'by direct LIRIC session', error_msg)
-                return
-            end if
         else
             value_kind = VALUE_I32
         end if
@@ -579,7 +562,21 @@ contains
                         trim(node%name)
             return
         end if
-        call update_parameter_symbol(context, symbol_index, value_kind, error_msg)
+        if (value_kind == VALUE_CHARACTER) then
+            call parse_character_length(node%type_name, character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (character_length > 0) then
+                call unsupported_feature_error( &
+                    'character parameter declaration', node%line, node%column, &
+                    'only assumed-length character parameters are supported '// &
+                    'by direct LIRIC session', error_msg)
+                return
+            end if
+            call bind_character_parameter_symbol(context, symbol_index, error_msg)
+        else
+            call update_parameter_symbol(context, symbol_index, value_kind, &
+                                         error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
