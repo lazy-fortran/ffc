@@ -305,8 +305,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine lower_deferred_literal_assignment
 
-    subroutine lower_deferred_char_result_call(arena, node, context, &
-                                                dest_symbol_index, error_msg)
+   subroutine lower_deferred_char_result_call(arena, node, context, &
+                                                 dest_symbol_index, error_msg)
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
@@ -318,6 +318,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
         type(lr_operand_desc_t) :: result_val
+        type(lr_operand_desc_t) :: hidden_data
+        type(lr_operand_desc_t) :: hidden_len
+        type(lr_operand_desc_t) :: data_ptr
+        type(lr_operand_desc_t) :: len_val
         integer :: i
         character(len=:), allocatable :: func_name
 
@@ -335,6 +339,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         func_name = call_node%name
 
+        ! Allocate caller-side storage for the result descriptor
+        if (.not. emit_i64_alloca(context%session, hidden_data, error_msg)) return
+        if (.not. emit_i64_alloca(context%session, hidden_len, error_msg)) return
+
         ! Prepare user arguments
         if (allocated(call_node%arg_indices)) then
             call prepare_reference_args(arena, call_node%arg_indices, context, &
@@ -346,25 +354,27 @@ integer function resolve_concat_operand(arena, node_index, context, &
             allocate (copyback_indices(0))
         end if
 
-        ! Build arg list: user args only
-        allocate (all_args(size(user_args)))
+        ! Build arg list: user args + hidden data_ptr + hidden len_ptr
+        allocate (all_args(size(user_args) + 2))
         do i = 1, size(user_args)
             all_args(i) = user_args(i)
         end do
+        all_args(size(user_args) + 1) = hidden_data
+        all_args(size(user_args) + 2) = hidden_len
 
-        ! Emit the call - callee allocates its own descriptor storage
+        ! Emit the call - caller passes hidden params for result storage
         if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
                                 result_val, error_msg)) return
         call copy_back_reference_args(context, all_args, copyback_indices, &
                                       error_msg)
 
-        ! The callee allocates fresh descriptor storage and fills it via
-        ! the deferred-char store path. Since we can't pass hidden params
-        ! due to LIRIC relocation constraints, we cannot directly access
-        ! the callee's storage from here. The caller's deferred-char symbol
-        ! will have empty/uninitialized storage.
-        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
-        context%symbols(dest_symbol_index)%has_character_value = .false.
+        ! Load the result from caller-side storage
+        if (.not. emit_i64_load(context%session, hidden_data, data_ptr, error_msg)) return
+        if (.not. emit_i64_load(context%session, hidden_len, len_val, error_msg)) return
+
+        context%symbols(dest_symbol_index)%deferred_data = data_ptr
+        context%symbols(dest_symbol_index)%deferred_length = len_val
+        context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_char_result_call
 
@@ -378,12 +388,19 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
         type(lr_operand_desc_t) :: result_val
+        type(lr_operand_desc_t) :: hidden_data
+        type(lr_operand_desc_t) :: hidden_len
+        type(lr_operand_desc_t) :: data_ptr
         integer :: i
         character(len=:), allocatable :: func_name
 
         call set_empty(error_msg)
 
         func_name = node%name
+
+        ! Allocate caller-side storage for the result descriptor
+        if (.not. emit_i64_alloca(context%session, hidden_data, error_msg)) return
+        if (.not. emit_i64_alloca(context%session, hidden_len, error_msg)) return
 
         ! Prepare user arguments
         if (allocated(node%arg_indices)) then
@@ -396,24 +413,23 @@ integer function resolve_concat_operand(arena, node_index, context, &
             allocate (copyback_indices(0))
         end if
 
-        ! Build arg list: user args only
-        allocate (all_args(size(user_args)))
+        ! Build arg list: user args + hidden data_ptr + hidden len_ptr
+        allocate (all_args(size(user_args) + 2))
         do i = 1, size(user_args)
             all_args(i) = user_args(i)
         end do
+        all_args(size(user_args) + 1) = hidden_data
+        all_args(size(user_args) + 2) = hidden_len
 
-        ! Emit the call - callee allocates its own descriptor storage
+        ! Emit the call - caller passes hidden params for result storage
         if (.not. emit_i32_call(context%session, trim(func_name), all_args, &
                                 result_val, error_msg)) return
         call copy_back_reference_args(context, all_args, copyback_indices, &
                                       error_msg)
 
-        ! The callee fills its own descriptor storage. We need to print it,
-        ! but we can't access the callee's storage directly.
-        ! TODO: Implement proper hidden-parameter ABI when LIRIC supports it.
-        ! For now, print a placeholder.
-        call unsupported_feature_error('deferred-char function call in print', &
-            node%line, node%column, &
-            'deferred-char function results cannot be printed directly yet', &
-            error_msg)
+        ! Load the result from caller-side storage and print it
+        if (.not. emit_i64_load(context%session, hidden_data, data_ptr, error_msg)) return
+        if (.not. emit_liric_print_string_operand( &
+            context%session, context%str_print_format_id, &
+            data_ptr, error_msg)) return
     end subroutine lower_print_deferred_char_call

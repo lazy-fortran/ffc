@@ -260,18 +260,15 @@
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
             if (.not. begin_ptr_function(context%session, node%name, &
-                                         param_count, error_msg)) return
+                                         param_count + 2, error_msg)) return
         else
             if (.not. begin_i32_function(context%session, node%name, param_count, &
                                                           error_msg)) return
         end if
 
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
-            ! Allocate fresh deferred-char descriptor storage for the result.
-            ! The deferred-char store path will fill this storage.
-            ! Note: Due to LIRIC relocation constraints with hidden parameters,
-            ! we allocate fresh storage here. The caller-side handling needs
-            ! to be updated to read from this storage (see TODO below).
+            ! Use hidden parameters (param_count, param_count+1) as the result
+            ! storage addresses. The caller allocates and passes these.
             call grow_symbols(context)
             context%current_function_result_index = context%symbol_count + 1
             context%symbols(context%current_function_result_index)%name = &
@@ -281,13 +278,11 @@
             context%symbols(context%current_function_result_index)%&
                 is_deferred_character = .true.
             context%symbols(context%current_function_result_index)%&
-                has_character_value = .false.
-            if (.not. emit_i64_alloca(context%session, &
-                context%symbols(context%current_function_result_index)%deferred_data, &
-                error_msg)) return
-            if (.not. emit_i64_alloca(context%session, &
-                context%symbols(context%current_function_result_index)%deferred_length, &
-                error_msg)) return
+                has_character_value = .true.
+            context%symbols(context%current_function_result_index)%&
+                deferred_data = ptr_param(context%session, param_count)
+            context%symbols(context%current_function_result_index)%&
+                deferred_length = ptr_param(context%session, param_count + 1)
             context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, node%name, value_kind, error_msg)
