@@ -15,6 +15,10 @@ program test_session_select_case_compiler
     if (.not. test_select_case_multi_label_first_matches()) all_passed = .false.
     if (.not. test_select_case_multi_label_second_matches()) all_passed = .false.
     if (.not. test_select_case_multi_label_no_match()) all_passed = .false.
+    if (.not. test_select_case_closed_range()) all_passed = .false.
+    if (.not. test_select_case_unbounded_low()) all_passed = .false.
+    if (.not. test_select_case_unbounded_high()) all_passed = .false.
+    if (.not. test_select_case_mixed_labels_and_ranges()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: SELECT CASE lowers through direct LIRIC'
@@ -168,5 +172,73 @@ contains
         test_select_case_multi_label_no_match = expect_exit_status( &
             source, 99, '/tmp/ffc_session_select_multi_none_test')
     end function test_select_case_multi_label_no_match
+
+    logical function test_select_case_closed_range()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 4'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (1:5)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_closed_range = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_select_closed_range_test')
+    end function test_select_case_closed_range
+
+    logical function test_select_case_unbounded_low()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 2'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (:5)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_unbounded_low = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_select_unbounded_low_test')
+    end function test_select_case_unbounded_low
+
+    logical function test_select_case_unbounded_high()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 7'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (3:)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_unbounded_high = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_select_unbounded_high_test')
+    end function test_select_case_unbounded_high
+
+    logical function test_select_case_mixed_labels_and_ranges()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 9'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (1, 3:5, 9)'//new_line('a')// &
+            '    stop 11'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_mixed_labels_and_ranges = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_select_mixed_range_test')
+    end function test_select_case_mixed_labels_and_ranges
 
 end program test_session_select_case_compiler

@@ -8,6 +8,7 @@ module session_program_lowering
     use ast_nodes_misc, only: use_statement_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, case_block_node, &
+                         case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
                          identifier_node, if_node, literal_node, &
