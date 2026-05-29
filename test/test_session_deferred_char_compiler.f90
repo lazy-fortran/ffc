@@ -1,5 +1,5 @@
 program test_session_deferred_char_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -7,6 +7,9 @@ program test_session_deferred_char_compiler
     print *, '=== deferred-char function result compiler tests ==='
 
     all_passed = .true.
+    if (.not. test_declare_deferred_character_compiles()) all_passed = .false.
+    if (.not. test_two_deferred_characters_get_independent_descriptors()) &
+        all_passed = .false.
     if (.not. test_function_returns_concatenated_deferred_character()) &
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
@@ -16,6 +19,30 @@ program test_session_deferred_char_compiler
     print *, 'PASS: deferred-char function result ABI'
 
 contains
+
+    logical function test_declare_deferred_character_compiles()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_declare_deferred_character_compiles = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_deferred_declare_test')
+    end function test_declare_deferred_character_compiles
+
+    logical function test_two_deferred_characters_get_independent_descriptors()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(:), allocatable :: a'//new_line('a')// &
+            '  character(len=:), allocatable :: b'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_two_deferred_characters_get_independent_descriptors = &
+            expect_exit_status( &
+                source, 0, '/tmp/ffc_session_deferred_two_decl_test')
+    end function test_two_deferred_characters_get_independent_descriptors
 
     logical function test_function_returns_concatenated_deferred_character()
         character(len=*), parameter :: source = &

@@ -83,13 +83,30 @@ is closed with ABI documentation and executable tests.
   global byte array containing the fixed-length value followed by a null
   terminator. The current C `printf` shim consumes the terminator, not an
   explicit length argument. #55 owns the Fortran-aware I/O runtime.
-- Character concatenation, substring access, deferred length, nonliteral
-  character assignment, character procedure arguments, and character
-  control-flow merges are unsupported in this slice.
 - Object output may contain unresolved references such as `printf`; final
   linking is responsible for resolving the C runtime.
 - The current `printf` path is the only supported I/O surface. #55 owns the
   Fortran-aware scalar I/O runtime.
+
+## Deferred-length character
+
+A `character(len=:), allocatable` variable (and the `character(:), allocatable`
+synonym) is a 16-byte descriptor split across two 8-byte stack slots:
+
+```
+data    : i8*   heap pointer, 0 when unallocated
+length  : i64   current length in bytes, 0 when unallocated
+```
+
+- The two slots are stack allocas. On declaration both fields are zeroed, so
+  an unallocated descriptor reads as `data == 0, length == 0`.
+- Length is bytes (ASCII for now), not codepoints.
+- Assignment and concatenation allocate the result (`malloc` for a function
+  result that escapes its scope, otherwise a stack buffer), write the bytes
+  plus a trailing null, and store the new pointer and length into the
+  descriptor.
+- The same descriptor shape backs an allocatable character function result
+  and a deferred-length dummy passed by reference.
 
 ## Unsupported ABI Work
 

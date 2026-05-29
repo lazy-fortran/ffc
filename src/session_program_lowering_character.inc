@@ -309,9 +309,16 @@
         context%symbols(index)%is_deferred_character = .true.
         context%symbols(index)%has_character_value = .false.
 
-        ! Allocate stack space for descriptor: data_addr + len_addr
+        ! Allocate stack space for the 16-byte descriptor (data + length) and
+        ! zero both fields so the unallocated state is well-defined per the ABI.
         if (.not. emit_i64_alloca(context%session, data_addr, error_msg)) return
         if (.not. emit_i64_alloca(context%session, len_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                                 i64_immediate(context%session, 0_c_int64_t), &
+                                 data_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                                 i64_immediate(context%session, 0_c_int64_t), &
+                                 len_addr, error_msg)) return
 
         context%symbols(index)%deferred_data = data_addr
         context%symbols(index)%deferred_length = len_addr
