@@ -565,6 +565,92 @@
         end do
     end function dummy_is_character
 
+    logical function dummy_char_is_writable(arena, body_indices, param_name)
+        ! Whether a character dummy named param_name is allocatable with
+        ! intent(out)/intent(inout): the caller passes the actual's own
+        ! descriptor so callee writes propagate back (#171).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i, k
+        logical :: matches
+
+        dummy_char_is_writable = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. is_character_type_name(decl%type_name)) cycle
+                if (.not. decl%is_allocatable) cycle
+                if (.not. decl%has_intent) cycle
+                if (.not. allocated(decl%intent)) cycle
+                if (trim(decl%intent) /= 'out' .and. &
+                    trim(decl%intent) /= 'inout') cycle
+                matches = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) matches = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) &
+                            matches = .true.
+                    end do
+                end if
+                if (matches) then
+                    dummy_char_is_writable = .true.
+                    return
+                end if
+            end select
+        end do
+    end function dummy_char_is_writable
+
+    logical function callee_dummy_char_writable(arena, callee_name, param_pos)
+        ! Whether the callee's param_pos-th dummy is an allocatable
+        ! intent(out)/(inout) character.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: name, name_err
+
+        callee_dummy_char_writable = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (subroutine_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        if (.not. allocated(node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(node%param_indices)) return
+                        call parameter_name(arena, node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        callee_dummy_char_writable = dummy_char_is_writable(arena, &
+                            node%body_indices, name)
+                        return
+                    end if
+                end if
+            type is (function_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        if (.not. allocated(node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(node%param_indices)) return
+                        call parameter_name(arena, node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        callee_dummy_char_writable = dummy_char_is_writable(arena, &
+                            node%body_indices, name)
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function callee_dummy_char_writable
+
     logical function callee_dummy_is_character(arena, callee_name, param_pos)
         ! Whether the contained procedure named callee_name declares its
         ! param_pos-th (1-based) dummy as character(len=*). Used by the caller

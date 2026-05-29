@@ -329,6 +329,7 @@
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
+        type(lr_operand_desc_t) :: descriptor
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
 
@@ -344,10 +345,18 @@
         context%symbols(index)%is_deferred_character = .true.
         context%symbols(index)%has_character_value = .false.
 
-        ! Allocate stack space for the 16-byte descriptor (data + length) and
-        ! zero both fields so the unallocated state is well-defined per the ABI.
-        if (.not. emit_i64_alloca(context%session, data_addr, error_msg)) return
-        if (.not. emit_i64_alloca(context%session, len_addr, error_msg)) return
+        ! One contiguous 16-byte descriptor {i8* data; i64 length}, so the
+        ! data slot is at offset 0 and the length at offset 8. This matches the
+        ! parameter ABI (bind_character_parameter_symbol), so the descriptor's
+        ! address can be passed for an intent(out)/(inout) dummy. Both fields
+        ! start zeroed for a well-defined unallocated state.
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, 16_c_int64_t), descriptor, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, 0_c_int64_t, &
+                                  data_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, 8_c_int64_t, &
+                                  len_addr, error_msg)) return
         if (.not. emit_i64_store(context%session, &
                                  i64_immediate(context%session, 0_c_int64_t), &
                                  data_addr, error_msg)) return

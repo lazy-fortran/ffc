@@ -43,7 +43,14 @@
             ! character(len=*); otherwise fall through to the scalar path (which
             ! rejects an unsupported character actual).
             if (actual_is_character(arena, arg_indices(i), context) .and. &
-                callee_dummy_is_character(arena, callee_name, i)) then
+                callee_dummy_char_writable(arena, callee_name, i)) then
+                ! intent(out)/(inout) allocatable character: pass the actual's
+                ! own descriptor so the callee's writes land in the caller.
+                call char_actual_inout_descriptor(arena, arg_indices(i), &
+                                                   context, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (actual_is_character(arena, arg_indices(i), context) .and. &
+                     callee_dummy_is_character(arena, callee_name, i)) then
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -84,6 +91,42 @@
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
     end function actual_is_character
+
+    subroutine char_actual_inout_descriptor(arena, node_index, context, &
+                                             descriptor, error_msg)
+        ! For an intent(out)/(inout) allocatable character dummy, pass the
+        ! address of the actual variable's own {data, length} descriptor so
+        ! the callee writes through to the caller's variable.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+
+        if (.not. is_identifier(arena, node_index)) then
+            error_msg = 'an intent(out) allocatable character argument must '// &
+                        'be a deferred-length character variable'
+            return
+        end if
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'character argument was not declared: '//trim(id_name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_deferred_character) then
+            error_msg = 'an intent(out) allocatable character argument must '// &
+                        'be a deferred-length character variable: '//trim(id_name)
+            return
+        end if
+        ! deferred_data is the address of the descriptor's first slot, i.e. the
+        ! descriptor base pointer the callee binds against.
+        descriptor = context%symbols(symbol_index)%deferred_data
+        call set_empty(error_msg)
+    end subroutine char_actual_inout_descriptor
 
     subroutine char_actual_descriptor(arena, node_index, context, descriptor, &
                                        error_msg)
