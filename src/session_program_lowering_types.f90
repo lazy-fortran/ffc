@@ -119,6 +119,9 @@ module session_program_lowering_types
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
+        logical :: has_command_args = .false.
+        type(lr_operand_desc_t) :: argc_value
+        type(lr_operand_desc_t) :: argv_value
         character(len=64), allocatable :: function_names(:)
         integer, allocatable :: function_value_kinds(:)
         integer :: function_count = 0

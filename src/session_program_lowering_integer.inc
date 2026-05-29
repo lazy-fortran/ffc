@@ -166,6 +166,11 @@
           return
       end if
 
+      if (same_name(node%name, 'command_argument_count') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_command_argument_count(node, context, value, error_msg)
+          return
+      end if
       if (same_name(node%name, 'len') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_i32_len_intrinsic(arena, node, context, value, error_msg)

@@ -14,10 +14,19 @@ is closed with ABI documentation and executable tests.
 ## Program Entry
 
 - `ffc` emits a native `main` function through LIRIC.
-- `main` returns `i32`.
+- `main` is declared `i32 main(i32 argc, ptr argv)`. The C runtime always
+  passes argc/argv, so the parameters are present even when unused; they back
+  the command-line argument intrinsics below.
 - Falling off the end of `program main` returns zero.
 - `stop <integer expression>` returns that integer expression as the process
   exit status.
+- `command_argument_count()` lowers to `argc - 1` (argv(0) is the program
+  name). `get_command_argument(i, value)` copies `argv(i)` into the
+  fixed-length character variable `value` through the synthesized helper
+  `.ffc.get_arg`, which uses `snprintf("%-*.*s", ...)` to blank-pad or truncate
+  to the variable's declared length and rebinds the variable to the new buffer.
+  Both are supported only in the main program; the optional `length`/`status`
+  arguments and `get_command()` are not supported.
 
 ## Scalar Values
 

@@ -33,6 +33,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
                                       LR_OP_SHL, LR_OP_LSHR
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
+                                              ptr_vreg, &
                                               emit_i32_binary, emit_i32_binary_into, &
                                               emit_i32_copy_to, emit_i32_alloca, &
                                               emit_i32_load, emit_i32_store, &
@@ -65,7 +66,9 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
 use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             prepare_liric_print_runtime, &
                                             create_printf_format_global
-    use liric_session_real_print_bindings, only: synthesize_real8_printer
+    use liric_session_real_print_bindings, only: synthesize_real8_printer, &
+                                                 synthesize_get_arg_helper, &
+                                                 emit_get_arg_call
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
@@ -156,6 +159,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: return_value
+        integer(c_int32_t) :: argc_vreg
+        integer(c_int32_t) :: argv_vreg
         call validate_program(arena, root_index, error_msg)
         if (len_trim(error_msg) > 0) return
         call liric_session_create(context%session, error_msg)
@@ -175,6 +180,10 @@ contains
             return
         end if
         if (.not. synthesize_real8_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. synthesize_get_arg_helper(context%session, error_msg)) then
             call destroy(context%session)
             return
         end if
@@ -200,10 +209,14 @@ contains
             call destroy(context%session)
             return
         end if
-        if (.not. begin_i32_main(context%session, error_msg)) then
+        if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
+                                 argv_vreg)) then
             call destroy(context%session)
             return
         end if
+        context%argc_value = i32_vreg(context%session, argc_vreg)
+        context%argv_value = ptr_vreg(context%session, argv_vreg)
+        context%has_command_args = .true.
         call lower_program_return(arena, root_index, context, return_value, &
                                   error_msg)
         if (len_trim(error_msg) > 0) then
@@ -908,6 +921,10 @@ contains
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
+        if (same_name(name, 'get_command_argument')) then
+            call lower_get_command_argument(arena, arg_indices, context, error_msg)
+            return
+        end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                     args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return

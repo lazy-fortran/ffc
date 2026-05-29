@@ -647,3 +647,92 @@
                                            'atan2)', error_msg)
         end if
     end subroutine unsupported_intrinsic_error
+
+    subroutine lower_command_argument_count(node, context, value, error_msg)
+        ! command_argument_count() = argc - 1 (argv(0) is the program name).
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. context%has_command_args) then
+            call unsupported_feature_error('command_argument_count', node%line, &
+                node%column, 'command-line argument intrinsics are only '// &
+                'supported in the main program', error_msg)
+            return
+        end if
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, context%argc_value, &
+                i32_immediate(context%session, 1_c_int64_t), value, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine lower_command_argument_count
+
+    subroutine lower_get_command_argument(arena, arg_indices, context, error_msg)
+        ! get_command_argument(i, value): copy argv(i) into the character
+        ! variable value, blank-padded to its declared length. The optional
+        ! length and status arguments are not supported.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: index_value, buffer
+        character(len=:), allocatable :: var_name
+        integer :: symbol_index, length
+
+        if (.not. context%has_command_args) then
+            error_msg = 'get_command_argument is only supported in the main '// &
+                        'program'
+            return
+        end if
+        if (size(arg_indices) /= 2) then
+            error_msg = 'get_command_argument requires exactly two arguments; '// &
+                        'the optional length and status arguments are not '// &
+                        'supported'
+            return
+        end if
+
+        call lower_i32_expression(arena, arg_indices(1), context, index_value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. node_exists(arena, arg_indices(2))) then
+            error_msg = 'get_command_argument value argument is not an AST node'
+            return
+        end if
+        select type (vnode => arena%entries(arg_indices(2))%node)
+        type is (identifier_node)
+            var_name = vnode%name
+        class default
+            error_msg = 'get_command_argument value must be a character variable'
+            return
+        end select
+
+        symbol_index = find_symbol(context, var_name)
+        if (symbol_index <= 0) then
+            error_msg = 'get_command_argument value variable is not declared: '// &
+                        trim(var_name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) then
+            error_msg = 'get_command_argument value must be a character variable'
+            return
+        end if
+        length = context%symbols(symbol_index)%character_length
+        if (length <= 0) then
+            error_msg = 'get_command_argument requires a fixed-length character '// &
+                        'variable'
+            return
+        end if
+
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(length + 1, c_int64_t)), &
+                buffer, error_msg)) return
+        if (.not. emit_get_arg_call(context%session, index_value, &
+                context%argv_value, buffer, &
+                i64_immediate(context%session, int(length, c_int64_t)), &
+                error_msg)) return
+
+        context%symbols(symbol_index)%value = buffer
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_get_command_argument

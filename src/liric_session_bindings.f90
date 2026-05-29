@@ -312,12 +312,18 @@ contains
         emit_ret_i32_main_exe = finish_and_emit_exe(session, path, error_msg)
     end function emit_ret_i32_main_exe
 
-    logical function begin_i32_main(session, error_msg)
+    logical function begin_i32_main(session, error_msg, argc_vreg, argv_vreg)
+        ! main is emitted as `i32 main(i32 argc, ptr argv)`. The C runtime
+        ! always passes argc/argv, so declaring them is ABI-safe even when the
+        ! program ignores them. Their vregs are returned for the command-line
+        ! argument intrinsics.
         type(liric_session_t), intent(inout) :: session
         character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t), intent(out), optional :: argc_vreg
+        integer(c_int32_t), intent(out), optional :: argv_vreg
         character(kind=c_char), allocatable :: c_name(:)
-        type(c_ptr) :: param_type
         type(c_ptr) :: i32_type
+        type(c_ptr), target :: params(2)
         type(lr_error_t) :: error
         integer(c_int32_t) :: block_id
         integer(c_int) :: status
@@ -327,13 +333,20 @@ contains
 
         i32_type = session_i32_type(session, error_msg)
         if (len_trim(error_msg) > 0) return
+        params(1) = i32_type
+        params(2) = lr_type_ptr_s(session%handle)
 
         call clear_liric_error(error)
         call to_c_chars('main', c_name)
         status = lr_session_func_begin(session%handle, c_name, i32_type, &
-                                       c_null_ptr, 0_c_int32_t, c_false, &
+                                       c_loc(params), 2_c_int32_t, c_false, &
                                        error)
         if (.not. status_ok(status, error, error_msg)) return
+
+        if (present(argc_vreg)) argc_vreg = lr_session_param(session%handle, &
+                                                             0_c_int32_t)
+        if (present(argv_vreg)) argv_vreg = lr_session_param(session%handle, &
+                                                             1_c_int32_t)
 
         block_id = lr_session_block(session%handle)
         status = lr_session_set_block(session%handle, block_id, error)
