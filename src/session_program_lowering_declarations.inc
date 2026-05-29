@@ -65,16 +65,39 @@
         integer, intent(in) :: line, column
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base
+        character(len=:), allocatable :: kind_spec
+        integer :: paren
+
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (is_character_type_name(type_name)) then
             value_kind = VALUE_CHARACTER
             return
         end if
-        select case (trim(type_name))
+
+        ! Split "integer(kind)" into the base type and the kind spec, which may
+        ! be a numeric literal (4, 8) or an iso_c_binding kind name (c_int, ...).
+        paren = index(type_name, '(')
+        if (paren > 0) then
+            base = lowercase_text(trim(adjustl(type_name(1:paren - 1))))
+            kind_spec = lowercase_text(trim(adjustl( &
+                type_name(paren + 1:index(type_name, ')', back=.true.) - 1))))
+        else
+            base = lowercase_text(trim(adjustl(type_name)))
+            call set_empty(kind_spec)
+        end if
+
+        select case (base)
         case ('integer')
-            value_kind = VALUE_I32
-        case ('real')
+            if (integer_kind_is_i32(kind_spec)) then
+                value_kind = VALUE_I32
+            else
+                call unsupported_feature_error('integer kind', line, column, &
+                    'direct LIRIC session only supports default/c_int/'// &
+                    'c_int32_t (32-bit) integer kinds', error_msg)
+            end if
+        case ('real', 'double precision')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
@@ -85,6 +108,17 @@
                                            'scalars', error_msg)
         end select
     end subroutine type_name_value_kind
+
+    logical function integer_kind_is_i32(kind_spec)
+        character(len=*), intent(in) :: kind_spec
+
+        select case (trim(kind_spec))
+        case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char')
+            integer_kind_is_i32 = .true.
+        case default
+            integer_kind_is_i32 = .false.
+        end select
+    end function integer_kind_is_i32
 
     subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node
