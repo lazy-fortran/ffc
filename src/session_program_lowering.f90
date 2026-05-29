@@ -663,6 +663,13 @@ contains
                                              error_msg)
                 return
             end if
+            ! A re-declaration of an existing same-kind symbol is benign (e.g. a
+            ! function result variable pre-defined from the result clause and
+            ! then declared in the body). True conflicts are caught by FortFront.
+            if (context%symbols(existing_index)%value_kind == value_kind) then
+                call set_empty(error_msg)
+                return
+            end if
         end if
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)

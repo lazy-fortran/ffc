@@ -16,11 +16,15 @@ do_loop_variable_bounds.f90
 docs_character_length_inference_out.f90
 docs_fixed_length_reassignment_out.f90
 docs_string_concatenation_out.f90
+docs_type_validation_calculate_out.f90
 docs_variable_length_strings_out.f90
 implicit_none_single.f90
+intrinsic_functions_math_expr_nested.f90
+intrinsic_functions_math_expr_simple.f90
 issue_104_assignment_identifiers.f90
 issue_104_print_identifiers.f90
 issue_1093_function_result_inference.f90
+issue_1409_use_rename.f90
 issue_1547_scalar_allocatable.f90
 issue_1614_character_deferred_length.f90
 issue_1664_result_in.f90
@@ -42,6 +46,7 @@ issue_2278_return_identifier.f90
 issue_2279_identifier_select.f90
 issue_2294_identifier_format.f90
 issue_2387_whitespace_diff.f90
+issue_2394_c_f_pointer.f90
 issue_2402_missing_then_preprocessor.f90
 issue_2445_implicit_main_with_type_contains.f90
 issue_2496_quotes_in_comments.f90

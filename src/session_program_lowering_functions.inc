@@ -238,8 +238,7 @@
         call function_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         result_name = trim(node%name)
-        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .and. &
-            allocated(node%result_variable)) then
+        if (allocated(node%result_variable)) then
             if (len_trim(node%result_variable) > 0) then
                 result_name = trim(node%result_variable)
             end if
