@@ -24,3 +24,4 @@ issue_652_multi_var_init.lf
 issue_652_multi_var_simple.lf
 issue_957_parameter_attributes.lf
 string_transform_hello.lf
+basic_allocate_preservation.lf

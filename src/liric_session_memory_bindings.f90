@@ -49,7 +49,7 @@ module liric_session_memory_bindings
     public :: emit_i32_store, emit_i64_store
     public :: emit_i64_load_at, emit_i64_store_at
     public :: emit_ptr_offset
-    public :: emit_alloca_bytes, emit_malloc, emit_ptr_store, emit_memcpy
+    public :: emit_alloca_bytes, emit_malloc, emit_free, emit_ptr_store, emit_memcpy
     public :: emit_i32_array_alloca, emit_i32_array_element_addr
     public :: emit_i64_binary
 
@@ -623,6 +623,63 @@ contains
         call set_empty(error_msg)
         emit_malloc = .true.
     end function emit_malloc
+
+    logical function emit_free(session, ptr, error_msg)
+        ! free(ptr). free(NULL) is a no-op, so callers need not null-check.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_free = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_free_call(session%handle, ptr, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_free = .true.
+    end function emit_free
+
+    function emit_free_call(handle, ptr, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: ptr
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+
+        call to_c_chars('free', c_name)
+        symbol_id = lr_session_intern(handle, c_name)
+        if (symbol_id < 0_c_int32_t) then
+            call clear_liric_error(error)
+            error%code = 1_c_int
+            return
+        end if
+
+        operands(1) = ptr_global_operand(handle, symbol_id)
+        operands(2) = ptr
+
+        inst%op = LR_OP_CALL
+        inst%typ = c_null_ptr
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_true
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 1_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_free_call
 
     logical function emit_ptr_store(session, value, address, error_msg)
         type(liric_session_t), intent(inout) :: session

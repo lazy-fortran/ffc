@@ -27,7 +27,6 @@ array_slice_type_inference.lf
 array_stride_assignment.lf
 assignment_simple.lf
 assignment_with_prefix.lf
-basic_allocate_preservation.lf
 basic_function.lf
 boolean_assign_bare_false.lf
 boolean_assign_bare_true.lf

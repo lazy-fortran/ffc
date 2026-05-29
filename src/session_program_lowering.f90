@@ -30,6 +30,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                       emit_i32_call, liric_session_create, &
                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
                                       LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
+                                      LR_OP_MUL, &
                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
                                       LR_OP_SHL, LR_OP_LSHR
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
@@ -41,7 +42,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               emit_i64_store, &
                                               emit_i64_binary, emit_i64_alloca, &
                                               emit_alloca_bytes, emit_malloc, &
-                                              emit_ptr_store, &
+                                              emit_free, emit_ptr_store, &
                                                emit_memcpy, emit_i64_load_at, &
                                                emit_i64_store_at, &
                                                emit_i32_array_alloca, &
@@ -404,17 +405,9 @@ contains
                                            'direct LIRIC session only supports '// &
                                            'minimal print output', error_msg)
         type is (allocate_statement_node)
-            call unsupported_feature_error('allocate statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support dynamic allocation', &
-                                           error_msg)
+            call lower_allocate_statement(arena, node, context, error_msg)
         type is (deallocate_statement_node)
-            call unsupported_feature_error('deallocate statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support dynamic allocation', &
-                                           error_msg)
+            call lower_deallocate_statement(arena, node, context, error_msg)
         type is (return_node)
             if (context%in_internal_subroutine) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
@@ -811,6 +804,13 @@ contains
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) then
             error_msg = 'assignment target was not declared: '//trim(name)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_allocatable) then
+            call unsupported_feature_error('allocatable array assignment', &
+                node%line, node%column, 'assignment to an allocatable array '// &
+                'is not supported; element access lands in a later issue', &
+                error_msg)
             return
         end if
         if (context%symbols(symbol_index)%is_array) then

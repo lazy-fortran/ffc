@@ -54,9 +54,15 @@ struct ffc_alloc_i32_1d {
 };
 ```
 
-`data == 0` marks the array unallocated. `allocate`/`deallocate` and element
-access are lowered by later issues; until then any use beyond declaration is
-rejected with a diagnostic.
+`data == 0` marks the array unallocated. `allocate(a(N))` (N a literal or
+runtime integer) calls `malloc(N*4)`, stores the pointer in `data`, sets
+`lower = 1` and `upper = N`. `deallocate(a)` calls `free(data)` then zeroes
+`data` and `upper`. `free(NULL)` is a no-op, so deallocating an unallocated
+variable exits cleanly rather than erroring (a deliberate divergence from the
+standard, which makes it a runtime error). Element access and whole-array
+assignment on allocatables are not yet supported and are rejected with a
+diagnostic. Only single-variable, one-dimensional, default-lower-bound
+`allocate`/`deallocate` are supported.
 
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.
