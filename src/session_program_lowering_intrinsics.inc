@@ -29,6 +29,11 @@
                                              value, error_msg)
         case (I32_INTRINSIC_NOT)
             call lower_i32_not_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_ISHFT)
+            call lower_i32_ishft_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_ISHFTC)
+            call lower_i32_ishftc_intrinsic(arena, node, context, value, &
+                                            error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -78,6 +83,104 @@
         if (.not. emit_i32_binary(context%session, LR_OP_XOR, arg, all_ones, &
                                   value, error_msg)) return
     end subroutine lower_i32_not_intrinsic
+
+    subroutine lower_i32_ishft_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: shift_amount
+        integer(c_int64_t) :: shift_count
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call literal_shift_count(arena, node%arg_indices(2), shift_count, &
+                                 'ishft', error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, arg, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (shift_count == 0_c_int64_t) then
+            value = arg
+            call set_empty(error_msg)
+            return
+        end if
+        ! Positive shift -> left (shl); negative -> logical right (lshr).
+        if (shift_count > 0_c_int64_t) then
+            shift_amount = i32_immediate(context%session, shift_count)
+            if (.not. emit_i32_binary(context%session, LR_OP_SHL, arg, &
+                                      shift_amount, value, error_msg)) return
+        else
+            shift_amount = i32_immediate(context%session, -shift_count)
+            if (.not. emit_i32_binary(context%session, LR_OP_LSHR, arg, &
+                                      shift_amount, value, error_msg)) return
+        end if
+    end subroutine lower_i32_ishft_intrinsic
+
+    subroutine lower_i32_ishftc_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: left_part
+        type(lr_operand_desc_t) :: right_part
+        integer(c_int64_t) :: shift_count
+        integer(c_int64_t) :: rotate
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call literal_shift_count(arena, node%arg_indices(2), shift_count, &
+                                 'ishftc', error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, arg, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Default 32-bit circular shift: normalise the count into [0, 31].
+        rotate = modulo(shift_count, 32_c_int64_t)
+        if (rotate == 0_c_int64_t) then
+            value = arg
+            call set_empty(error_msg)
+            return
+        end if
+        ! ishftc(i, n) = (i << n) | (i >> (32 - n)) using a logical right shift.
+        if (.not. emit_i32_binary(context%session, LR_OP_SHL, arg, &
+                                  i32_immediate(context%session, rotate), &
+                                  left_part, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, arg, &
+                                  i32_immediate(context%session, 32_c_int64_t - &
+                                                rotate), &
+                                  right_part, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, left_part, &
+                                  right_part, value, error_msg)) return
+    end subroutine lower_i32_ishftc_intrinsic
+
+    subroutine literal_shift_count(arena, shift_index, shift_count, name, &
+                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shift_index
+        integer(c_int64_t), intent(out) :: shift_count
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: parse_error
+
+        call parse_i32_constant(arena, shift_index, shift_count, name, &
+                                parse_error)
+        if (len_trim(parse_error) > 0) then
+            call unsupported_feature_error(name//' shift count', &
+                                       get_node_line(arena, shift_index), &
+                                       get_node_column(arena, shift_index), &
+                                       'direct LIRIC session only supports a '// &
+                                       'literal integer shift count', error_msg)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine literal_shift_count
 
     subroutine lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                         value, error_msg)
@@ -367,12 +470,14 @@
                                            node%line, node%column, &
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, and real', error_msg)
+                                           'ieor, not, ishft, ishftc, and '// &
+                                           'real', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, and real', error_msg)
+                                           'ieor, not, ishft, ishftc, and '// &
+                                           'real', error_msg)
         end if
     end subroutine unsupported_intrinsic_error

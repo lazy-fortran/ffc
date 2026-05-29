@@ -25,6 +25,8 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_AND = 12_c_int
     integer(c_int), parameter, public :: LR_OP_OR = 13_c_int
     integer(c_int), parameter, public :: LR_OP_XOR = 14_c_int
+    integer(c_int), parameter, public :: LR_OP_SHL = 15_c_int
+    integer(c_int), parameter, public :: LR_OP_LSHR = 16_c_int
     integer(c_int), parameter, public :: LR_OP_ALLOCA = 26_c_int
     integer(c_int), parameter, public :: LR_OP_LOAD = 27_c_int
     integer(c_int), parameter, public :: LR_OP_STORE = 28_c_int
