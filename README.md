@@ -45,7 +45,8 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
 - simple derived types with scalar integer components and fixed-size
   integer array components (`integer :: a(N)`); component assignment,
   component reads, array-component element access (`x%a(i)`), `print`,
-  and `stop`;
+  and `stop`; fixed-size arrays of derived types (`type(t) :: arr(N)`)
+  with element-component access (`arr(i)%comp`);
 - `print *, expr` (list-directed, gfortran-exact bytes) for integers,
   reals, logicals, characters, plus formatted `print '(I0)'/'(Iw)'/'(A)',
   expr` with a single edit descriptor; `stop <integer expression>` returns

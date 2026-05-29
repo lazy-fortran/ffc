@@ -73,20 +73,17 @@
                                            error_msg)
             return
         end if
-        if (node%is_array) then
-            call unsupported_feature_error('derived type array declaration', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'scalar derived type variables', &
-                                           error_msg)
-            return
-        end if
         if (node%has_initializer) then
             call unsupported_feature_error('derived type constructor', &
                                            node%line, node%column, &
                                            'direct LIRIC session does not '// &
                                            'support derived type constructors', &
                                            error_msg)
+            return
+        end if
+        if (node%is_array) then
+            call lower_derived_array_declaration(node, context, &
+                                                 derived_type_index, error_msg)
             return
         end if
 
@@ -103,6 +100,56 @@
             error_msg = 'derived type declaration did not expose a variable name'
         end if
     end subroutine lower_derived_type_declaration
+
+    subroutine lower_derived_array_declaration(node, context, derived_type_index, &
+                                               error_msg)
+        ! type(t) :: arr(N): storage is N * slots(t) i32 slots.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: derived_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: lower_bound, n_elems, slots, index
+
+        if (node%is_multi_declaration) then
+            error_msg = 'multi-variable derived array declarations are not supported'
+            return
+        end if
+        if (.not. allocated(node%var_name)) then
+            error_msg = 'derived array declaration did not expose a variable name'
+            return
+        end if
+        name = node%var_name
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate derived array declaration: '//trim(name)
+            return
+        end if
+        call get_array_bounds(node, context, lower_bound, n_elems, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (n_elems <= 0) then
+            call unsupported_feature_error('derived array declaration', node%line, &
+                node%column, 'derived arrays need a positive compile-time size', &
+                error_msg)
+            return
+        end if
+
+        call grow_symbols(context)
+        slots = total_component_slots(context, derived_type_index)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_DERIVED
+        context%symbols(index)%is_derived = .true.
+        context%symbols(index)%is_array = .true.
+        context%symbols(index)%derived_type_index = derived_type_index
+        context%symbols(index)%array_size = n_elems * slots
+        if (.not. emit_i32_array_alloca(context%session, n_elems * slots, &
+                context%symbols(index)%element_address, error_msg)) then
+            error_msg = 'derived_array_alloca['//trim(name)//']: '//error_msg
+            return
+        end if
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine lower_derived_array_declaration
 
     subroutine define_derived_symbol(context, node, name, derived_type_index, &
                                      error_msg)
@@ -311,6 +358,77 @@
         call set_empty(error_msg)
     end subroutine lower_derived_component_load
 
+    subroutine resolve_component_base(arena, base_index, context, symbol_index, &
+                                      type_index, element_base, error_msg)
+        ! Resolve the base of a component access to (symbol, type, element slot
+        ! base). For a plain derived scalar `x` the element base is 0; for an
+        ! element of a derived array `arr(i)` it is (i - 1) * slots-per-element.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: base_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        integer, intent(out) :: type_index
+        type(lr_operand_desc_t), intent(out) :: element_base
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: sub_val, zero_based
+        integer :: slots
+
+        symbol_index = 0
+        type_index = 0
+        if (.not. node_exists(arena, base_index)) then
+            error_msg = 'component base index does not reference an AST node'
+            return
+        end if
+        select type (base => arena%entries(base_index)%node)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, base%name)
+            if (symbol_index <= 0) then
+                error_msg = 'component base was not declared: '//trim(base%name)
+                return
+            end if
+            element_base = i32_immediate(context%session, 0_c_int64_t)
+        type is (call_or_subscript_node)
+            if (.not. allocated(base%name) .or. .not. allocated(base%arg_indices)) &
+                then
+                error_msg = 'array component base requires arr(i) form'
+                return
+            end if
+            if (size(base%arg_indices) /= 1) then
+                error_msg = 'only one-dimensional derived arrays are supported'
+                return
+            end if
+            symbol_index = find_symbol(context, base%name)
+            if (symbol_index <= 0) then
+                error_msg = 'component base was not declared: '//trim(base%name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%is_array) then
+                error_msg = 'component base is not an array: '//trim(base%name)
+                return
+            end if
+            type_index = context%symbols(symbol_index)%derived_type_index
+            slots = total_component_slots(context, type_index)
+            call lower_i32_expression(arena, base%arg_indices(1), context, &
+                                      sub_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                    i32_immediate(context%session, int(slots, c_int64_t)), &
+                    element_base, error_msg)) return
+        class default
+            error_msg = 'nested component access is not supported'
+            return
+        end select
+        if (.not. context%symbols(symbol_index)%is_derived) then
+            error_msg = 'component base is not a derived type'
+            return
+        end if
+        type_index = context%symbols(symbol_index)%derived_type_index
+        call set_empty(error_msg)
+    end subroutine resolve_component_base
+
     subroutine lower_derived_component_address(arena, node, context, &
                                                component_address, error_msg, &
                                                feature)
@@ -318,36 +436,22 @@
         type(component_access_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: component_address
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in) :: feature
-        character(len=:), allocatable :: base_name
+        character(len=:), allocatable, intent(out) :: error_msg
         integer :: component_index
         integer :: symbol_index
         integer :: type_index
-        type(lr_operand_desc_t) :: offset
+        type(lr_operand_desc_t) :: element_base, slot
 
-        call component_base_name(arena, node%base_expr_index, base_name, error_msg)
+        call resolve_component_base(arena, node%base_expr_index, context, &
+                                    symbol_index, type_index, element_base, &
+                                    error_msg)
         if (len_trim(error_msg) > 0) then
             call unsupported_feature_error(feature, node%line, node%column, &
                                            trim(error_msg), error_msg)
             return
         end if
 
-        symbol_index = find_symbol(context, base_name)
-        if (symbol_index <= 0) then
-            call unsupported_feature_error(feature, node%line, node%column, &
-                                           'component base was not declared: '// &
-                                           trim(base_name), error_msg)
-            return
-        end if
-        if (.not. context%symbols(symbol_index)%is_derived) then
-            call unsupported_feature_error(feature, node%line, node%column, &
-                                           'component base is not a derived type: '// &
-                                           trim(base_name), error_msg)
-            return
-        end if
-
-        type_index = context%symbols(symbol_index)%derived_type_index
         component_index = find_derived_component(context, type_index, &
                                                  node%component_name)
         if (component_index <= 0) then
@@ -359,12 +463,13 @@
             return
         end if
 
-        offset = i32_immediate(context%session, &
-            int(component_start_slot(context, type_index, component_index), &
-                c_int64_t))
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, element_base, &
+                i32_immediate(context%session, &
+                    int(component_start_slot(context, type_index, component_index), &
+                        c_int64_t)), slot, error_msg)) return
         if (.not. emit_i32_array_element_addr(context%session,  &
-            total_component_slots(context, type_index), &
-            context%symbols(symbol_index)%element_address, offset, &
+            context%symbols(symbol_index)%array_size, &
+            context%symbols(symbol_index)%element_address, slot, &
             component_address, error_msg)) then
             error_msg = 'component_gep: '//error_msg
             return

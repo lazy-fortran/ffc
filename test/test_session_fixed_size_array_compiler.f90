@@ -19,6 +19,7 @@ program test_session_fixed_size_array_compiler
     if (.not. test_array_in_contained_function()) all_passed = .false.
     if (.not. test_array_constructor_literal()) all_passed = .false.
     if (.not. test_array_constructor_runtime()) all_passed = .false.
+    if (.not. test_array_of_derived_assign_and_read()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: fixed-size arrays lower through direct LIRIC'
@@ -36,6 +37,23 @@ contains
         test_array_constructor_literal = expect_exit_status( &
             source, 2, '/tmp/ffc_session_array_ctor_lit_test')
     end function test_array_constructor_literal
+
+    logical function test_array_of_derived_assign_and_read()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: point_t'//new_line('a')// &
+                                       '    integer :: x'//new_line('a')// &
+                                       '    integer :: y'//new_line('a')// &
+                                       '  end type point_t'//new_line('a')// &
+                                       '  type(point_t) :: ps(3)'//new_line('a')// &
+                                       '  ps(1)%x = 7'//new_line('a')// &
+                                       '  ps(2)%y = 8'//new_line('a')// &
+                                       '  stop ps(1)%x + ps(2)%y'//new_line('a')// &
+                                       'end program main'
+
+        test_array_of_derived_assign_and_read = expect_exit_status( &
+            source, 15, '/tmp/ffc_session_array_of_derived_test')
+    end function test_array_of_derived_assign_and_read
 
     logical function test_array_constructor_runtime()
         character(len=*), parameter :: source = &
