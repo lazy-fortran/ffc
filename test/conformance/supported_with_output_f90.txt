@@ -8,18 +8,21 @@
 # and blank lines are ignored.
 #
 # Each line is a basename resolved against ../fortfront/examples/f90/.
+call_graph_module_program_scopes.f90
 do_loop_expression_bounds.f90
 do_loop_issue_620.f90
 do_loop_simple_fixed.f90
 do_loop_variable_bounds.f90
 docs_character_length_inference_out.f90
 docs_fixed_length_reassignment_out.f90
+docs_string_concatenation_out.f90
 docs_variable_length_strings_out.f90
 implicit_none_single.f90
 issue_104_assignment_identifiers.f90
 issue_104_print_identifiers.f90
 issue_1093_function_result_inference.f90
 issue_1547_scalar_allocatable.f90
+issue_1614_character_deferred_length.f90
 issue_1664_result_in.f90
 issue_1664_result_inout.f90
 issue_1664_result_out.f90
