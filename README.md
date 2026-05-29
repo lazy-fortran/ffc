@@ -44,7 +44,8 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   logicals, characters; `stop <integer expression>` returns its argument
   as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
   `ieor`, `not`, `ishft`, `ishftc`, `sign`, integer-to-real `real()`,
-  real `**` via libm `pow`;
+  real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/
+  `atan`/`atan2` via libm;
 - CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
   consumed by lowering).
 

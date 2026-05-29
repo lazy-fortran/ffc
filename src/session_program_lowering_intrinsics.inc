@@ -207,6 +207,30 @@
                                           error_msg)
         case (F64_INTRINSIC_SIGN)
             call lower_f64_sign_intrinsic(arena, node, context, value, error_msg)
+        case (F64_INTRINSIC_SQRT)
+            call lower_f64_libm_call(arena, node, 'sqrt', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_EXP)
+            call lower_f64_libm_call(arena, node, 'exp', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG)
+            call lower_f64_libm_call(arena, node, 'log', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_SIN)
+            call lower_f64_libm_call(arena, node, 'sin', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_COS)
+            call lower_f64_libm_call(arena, node, 'cos', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_TAN)
+            call lower_f64_libm_call(arena, node, 'tan', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATAN)
+            call lower_f64_libm_call(arena, node, 'atan', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATAN2)
+            call lower_f64_libm_call(arena, node, 'atan2', 2, context, value, &
+                                     error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -434,6 +458,29 @@
                                      error_msg)
     end subroutine lower_f64_real_intrinsic
 
+    subroutine lower_f64_libm_call(arena, node, libm_name, arg_count, context, &
+                                   value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        integer, intent(in) :: arg_count
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(arg_count)
+        integer :: i
+
+        if (.not. require_intrinsic_arg_count(node, arg_count, arg_count, &
+                                              error_msg)) return
+        do i = 1, arg_count
+            call lower_f64_intrinsic_arg(arena, node%arg_indices(i), context, &
+                                         args(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        if (.not. emit_liric_f64_call(context%session, libm_name, args, value, &
+                                      error_msg)) return
+    end subroutine lower_f64_libm_call
+
     subroutine lower_f64_intrinsic_arg(arena, node_index, context, value, &
                                        error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -546,13 +593,17 @@
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
                                            'ieor, not, ishft, ishftc, sign, '// &
-                                           'and real', error_msg)
+                                           'real, and the libm reals (sqrt, '// &
+                                           'exp, log, sin, cos, tan, atan, '// &
+                                           'atan2)', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
                                            'ieor, not, ishft, ishftc, sign, '// &
-                                           'and real', error_msg)
+                                           'real, and the libm reals (sqrt, '// &
+                                           'exp, log, sin, cos, tan, atan, '// &
+                                           'atan2)', error_msg)
         end if
     end subroutine unsupported_intrinsic_error
