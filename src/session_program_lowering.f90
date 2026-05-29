@@ -982,6 +982,11 @@ contains
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
             return
         end if
+        if (external_procedure_index(context, name) > 0) then
+            call lower_external_void_call(arena, node_index, &
+                external_procedure_index(context, name), context, error_msg)
+            return
+        end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                     args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return

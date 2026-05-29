@@ -19,6 +19,8 @@ program test_session_iso_c_binding_compiler
         all_passed = .false.
     if (.not. test_non_bind_c_interface_rejected()) all_passed = .false.
     if (.not. test_call_bind_c_integer_function()) all_passed = .false.
+    if (.not. test_call_external_void_subroutine_with_c_ptr()) &
+        all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -182,5 +184,25 @@ contains
         test_call_bind_c_integer_function = expect_exit_status( &
             source, 13, '/tmp/ffc_session_call_bindc_test')
     end function test_call_bind_c_integer_function
+
+    logical function test_call_external_void_subroutine_with_c_ptr()
+        ! Void bind(c) subroutine with a c_ptr argument; passing c_null_ptr
+        ! sends a null pointer (free(NULL) is a no-op), exits 0.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    subroutine free_c(p) bind(c, name="free")'//new_line('a')// &
+            '      import :: c_ptr'//new_line('a')// &
+            '      type(c_ptr), value :: p'//new_line('a')// &
+            '    end subroutine free_c'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  call free_c(c_null_ptr)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_call_external_void_subroutine_with_c_ptr = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_extern_void_test')
+    end function test_call_external_void_subroutine_with_c_ptr
 
 end program test_session_iso_c_binding_compiler

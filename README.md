@@ -61,6 +61,9 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/
   `atan`/`atan2` via libm, real-to-integer `int`/`nint`/`floor`/`ceiling`,
   and `command_argument_count`/`get_command_argument` in the main program;
+- `bind(c)` interface blocks declaring integer functions or `void`
+  subroutines; calls lower to a direct C-symbol call with by-value
+  arguments (integer actuals as `i32`, `c_null_ptr` as a null pointer);
 - CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
   consumed by lowering).
 

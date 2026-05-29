@@ -68,18 +68,23 @@
                 error_msg = 'bind(c) interface has too many arguments'
                 return
             end if
-            call grow_external_procedures(context)
-            context%external_procedure_count = context%external_procedure_count + 1
-            associate (ep => context%external_procedures( &
-                       context%external_procedure_count))
-                ep%fortran_name = trim(proc%name)
-                ep%c_name = trim(c_name)
-                ep%return_value_kind = VALUE_I32
-                ep%arg_count = n
-                do j = 1, n
-                    ep%arg_value_kinds(j) = VALUE_I32
-                end do
-            end associate
+            call add_external_procedure(context, proc%name, c_name, VALUE_I32, n)
+        type is (subroutine_def_node)
+            if (.not. has_bind_c(proc%bind_c_clause)) then
+                call unsupported_feature_error('interface declaration', &
+                    block%line, block%column, 'only bind(c) interface '// &
+                    'procedures are supported', error_msg)
+                return
+            end if
+            call bind_c_name(proc%bind_c_clause, proc%name, c_name)
+            n = 0
+            if (allocated(proc%param_indices)) n = size(proc%param_indices)
+            if (n > MAX_PROC_ARGS) then
+                error_msg = 'bind(c) interface has too many arguments'
+                return
+            end if
+            call add_external_procedure(context, proc%name, c_name, &
+                                        VALUE_SUBROUTINE, n)
         class default
             call unsupported_feature_error('interface declaration', block%line, &
                 block%column, 'only bind(c) interface functions are supported', &
@@ -87,6 +92,27 @@
         end select
         call set_empty(error_msg)
     end subroutine register_interface_procedure
+
+    subroutine add_external_procedure(context, fortran_name, c_name, &
+                                      return_kind, arg_count)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: fortran_name, c_name
+        integer, intent(in) :: return_kind, arg_count
+        integer :: j
+
+        call grow_external_procedures(context)
+        context%external_procedure_count = context%external_procedure_count + 1
+        associate (ep => context%external_procedures( &
+                   context%external_procedure_count))
+            ep%fortran_name = trim(fortran_name)
+            ep%c_name = trim(c_name)
+            ep%return_value_kind = return_kind
+            ep%arg_count = arg_count
+            do j = 1, arg_count
+                ep%arg_value_kinds(j) = VALUE_I32
+            end do
+        end associate
+    end subroutine add_external_procedure
 
     logical function has_bind_c(clause)
         character(len=:), allocatable, intent(in) :: clause
@@ -119,6 +145,47 @@
         c_name = trim(lowercase_text(fortran_name))
     end subroutine bind_c_name
 
+    subroutine prepare_external_args(arena, arg_indices, context, args, error_msg)
+        ! Lower bind(c) call arguments by value. A c_null_ptr actual becomes a
+        ! null pointer operand (8 bytes); other actuals lower as i32 values.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, i
+
+        n = 0
+        if (allocated(arg_indices)) n = size(arg_indices)
+        allocate (args(n))
+        do i = 1, n
+            if (is_c_null_ptr_arg(arena, arg_indices(i))) then
+                args(i)%kind = LR_OP_KIND_IMM_I64
+                args(i)%payload = 0_c_int64_t
+                args(i)%typ = lr_type_ptr_s(context%session%handle)
+                args(i)%global_offset = 0_c_int64_t
+            else
+                call lower_i32_expression(arena, arg_indices(i), context, &
+                                          args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine prepare_external_args
+
+    logical function is_c_null_ptr_arg(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_c_null_ptr_arg = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (identifier_node)
+            if (allocated(node%name)) is_c_null_ptr_arg = &
+                same_name(node%name, 'c_null_ptr')
+        end select
+    end function is_c_null_ptr_arg
+
     subroutine lower_external_i32_call(arena, node, ext_idx, context, value, &
                                        error_msg)
         ! Lower a call to a registered bind(c) integer function: each argument
@@ -131,7 +198,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
-        integer :: n, i
+        integer :: n
 
         n = 0
         if (allocated(node%arg_indices)) n = size(node%arg_indices)
@@ -142,18 +209,43 @@
             return
         end if
 
-        allocate (args(n))
-        do i = 1, n
-            call lower_i32_expression(arena, node%arg_indices(i), context, &
-                                      args(i), error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
-
+        call prepare_external_args(arena, node%arg_indices, context, args, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_call(context%session, &
                 trim(context%external_procedures(ext_idx)%c_name), args, value, &
                 error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_external_i32_call
+
+    subroutine lower_external_void_call(arena, node_index, ext_idx, context, &
+                                        error_msg)
+        ! Lower a CALL to a registered bind(c) subroutine.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: arg_indices(:)
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer :: n
+
+        call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
+        n = 0
+        if (allocated(arg_indices)) n = size(arg_indices)
+        if (n /= context%external_procedures(ext_idx)%arg_count) then
+            error_msg = 'argument count does not match the bind(c) interface'
+            return
+        end if
+        call prepare_external_args(arena, arg_indices, context, args, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_void_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_external_void_call
 
     integer function external_procedure_index(context, name) result(idx)
         type(lowering_context_t), intent(in) :: context
