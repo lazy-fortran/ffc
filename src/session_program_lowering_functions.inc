@@ -31,6 +31,10 @@
                     call register_internal_subroutine_name(node, context, &
                                                            error_msg)
                     if (len_trim(error_msg) > 0) return
+                type is (module_node)
+                    call register_module_procedures(arena, node, context, &
+                                                     error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end select
             end do
         end select
@@ -319,6 +323,119 @@
         end select
     end subroutine lower_internal_functions
 
+    subroutine lower_module_procedures(arena, root_index, context, error_msg)
+        ! Emit module-defined procedures (of a module+program unit) under their
+        ! mangled symbol __<module>_MOD_<name> (#119). A procedure with nested
+        ! internal procedures is not lowered (skipped, never reached unless it
+        ! is also unsupported elsewhere); module-only units are handled by
+        ! lower_module_unit's diagnostic.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, p
+
+        call set_empty(error_msg)
+        select type (program => arena%entries(root_index)%node)
+        type is (program_node)
+            if (.not. allocated(program%body_indices)) return
+            do i = 1, size(program%body_indices)
+                select type (mod_node => arena%entries(program%body_indices(i))%node)
+                type is (module_node)
+                    if (.not. allocated(mod_node%name)) cycle
+                    if (.not. allocated(mod_node%procedure_indices)) cycle
+                    do p = 1, size(mod_node%procedure_indices)
+                        call lower_one_module_procedure(arena, &
+                            mod_node%procedure_indices(p), trim(mod_node%name), &
+                            context, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
+                end select
+            end do
+        end select
+    end subroutine lower_module_procedures
+
+    subroutine lower_one_module_procedure(arena, node_index, module_name, &
+                                          context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: module_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (function_def_node)
+            if (.not. allocated(node%name)) return
+            if (procedure_has_nested_contains(arena, node%body_indices)) return
+            call lower_scalar_function(arena, node, context, error_msg, &
+                module_procedure_mangled(module_name, node%name))
+        type is (subroutine_def_node)
+            if (.not. allocated(node%name)) return
+            if (procedure_has_nested_contains(arena, node%body_indices)) return
+            call lower_void_subroutine(arena, node, context, error_msg, &
+                module_procedure_mangled(module_name, node%name))
+        end select
+    end subroutine lower_one_module_procedure
+
+    logical function procedure_has_nested_contains(arena, body_indices)
+        ! Whether a procedure body holds an internal (nested) procedure, which
+        ! ffc does not lower; such a procedure is skipped rather than failing.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer :: i
+
+        procedure_has_nested_contains = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            if (trim(get_node_type_at(arena, body_indices(i))) == 'contains') then
+                procedure_has_nested_contains = .true.
+                return
+            end if
+            select type (node => arena%entries(body_indices(i))%node)
+            type is (function_def_node)
+                procedure_has_nested_contains = .true.
+                return
+            type is (subroutine_def_node)
+                procedure_has_nested_contains = .true.
+                return
+            end select
+        end do
+    end function procedure_has_nested_contains
+
+    subroutine register_module_procedures(arena, mod_node, context, error_msg)
+        ! Register module procedures by Fortran name for call dispatch; skip
+        ! duplicate names across modules (mangling keeps them distinct) and
+        ! procedures with nested internals (not lowered).
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: p
+
+        call set_empty(error_msg)
+        if (.not. allocated(mod_node%procedure_indices)) return
+        do p = 1, size(mod_node%procedure_indices)
+            if (.not. node_exists(arena, mod_node%procedure_indices(p))) cycle
+            select type (node => arena%entries(mod_node%procedure_indices(p))%node)
+            type is (function_def_node)
+                if (.not. allocated(node%name)) cycle
+                if (contained_function_kind(context, node%name) /= 0) cycle
+                if (procedure_has_nested_contains(arena, node%body_indices)) cycle
+                call register_internal_function_name(node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            type is (subroutine_def_node)
+                if (.not. allocated(node%name)) cycle
+                if (contained_function_kind(context, node%name) /= 0) cycle
+                if (procedure_has_nested_contains(arena, node%body_indices)) cycle
+                call register_internal_subroutine_name(node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine register_module_procedures
+
     logical function is_internal_procedure_entry(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -337,11 +454,13 @@
         end if
     end function is_internal_procedure_entry
 
-   subroutine lower_scalar_function(arena, node, parent_context, error_msg)
+   subroutine lower_scalar_function(arena, node, parent_context, error_msg, &
+                                     emit_name_override)
         type(ast_arena_t), intent(in) :: arena
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: emit_name_override
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
@@ -383,7 +502,11 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+        if (present(emit_name_override)) then
+            emit_name = trim(emit_name_override)
+        else
+            emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+        end if
         if (value_kind == VALUE_F64) then
             if (.not. begin_liric_f64_function(context%session, emit_name, &
                                                param_count, error_msg)) return
@@ -473,11 +596,13 @@
         call set_empty(error_msg)
     end subroutine lower_scalar_function
 
-    subroutine lower_void_subroutine(arena, node, parent_context, error_msg)
+    subroutine lower_void_subroutine(arena, node, parent_context, error_msg, &
+                                      emit_name_override)
         type(ast_arena_t), intent(in) :: arena
         type(subroutine_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: emit_name_override
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
@@ -507,7 +632,11 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+        if (present(emit_name_override)) then
+            emit_name = trim(emit_name_override)
+        else
+            emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+        end if
         if (.not. begin_void_subroutine(context%session, emit_name, param_count, &
                                                         error_msg)) return
 
@@ -792,14 +921,71 @@
         end if
     end function procedure_emit_name
 
-    function call_emit_name(arena, fortran_name) result(emit_name)
-        ! Resolve the LIRIC symbol to call for a contained procedure: its
-        ! bind(c) C name when the callee declares one, else the Fortran name.
+    function procedure_module(arena, fortran_name) result(module_name)
+        ! The module that defines a procedure, or empty if not module-defined.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
-        character(len=:), allocatable :: emit_name
+        character(len=:), allocatable :: module_name
+        integer :: n, p
+
+        call set_empty(module_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (mod_node => arena%entries(n)%node)
+            type is (module_node)
+                if (.not. allocated(mod_node%name)) cycle
+                if (.not. allocated(mod_node%procedure_indices)) cycle
+                do p = 1, size(mod_node%procedure_indices)
+                    if (procedure_node_named(arena, &
+                            mod_node%procedure_indices(p), fortran_name)) then
+                        module_name = trim(mod_node%name)
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function procedure_module
+
+    logical function procedure_node_named(arena, node_index, fortran_name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: fortran_name
+
+        procedure_node_named = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (function_def_node)
+            if (allocated(node%name)) procedure_node_named = &
+                same_name(node%name, fortran_name)
+        type is (subroutine_def_node)
+            if (allocated(node%name)) procedure_node_named = &
+                same_name(node%name, fortran_name)
+        end select
+    end function procedure_node_named
+
+    function module_procedure_mangled(module_name, proc_name) result(mangled)
+        ! gfortran convention: __<module>_MOD_<procedure>.
+        character(len=*), intent(in) :: module_name, proc_name
+        character(len=:), allocatable :: mangled
+
+        mangled = '__'//trim(lowercase_text(module_name))//'_MOD_'// &
+                  trim(lowercase_text(proc_name))
+    end function module_procedure_mangled
+
+    function call_emit_name(arena, fortran_name) result(emit_name)
+        ! Resolve the LIRIC symbol to call: a module-defined procedure mangles
+        ! to __<module>_MOD_<name>; a bind(c) procedure uses its C name; else
+        ! the Fortran name.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable :: emit_name, module_name
         integer :: n
 
+        module_name = procedure_module(arena, fortran_name)
+        if (len_trim(module_name) > 0) then
+            emit_name = module_procedure_mangled(module_name, fortran_name)
+            return
+        end if
         emit_name = trim(fortran_name)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle

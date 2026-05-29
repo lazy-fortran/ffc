@@ -246,6 +246,11 @@ contains
             call destroy(context%session)
             return
         end if
+        call lower_module_procedures(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
                                  argv_vreg)) then
             call destroy(context%session)
