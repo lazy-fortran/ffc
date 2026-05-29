@@ -151,6 +151,8 @@
                 arena%entries(mod_node%declaration_indices(j))%node)
             type is (derived_type_node)
                 if (.not. allocated(decl%name)) cycle
+                ! A private symbol is not exported through use (#149).
+                if (module_symbol_is_private(arena, mod_node, trim(decl%name))) cycle
                 call grow_module_export_derived_indices(context, export_idx)
                 context%module_exports(export_idx)%derived_type_indices( &
                     context%module_exports(export_idx)%derived_type_count + 1) = &
@@ -159,6 +161,9 @@
                     context%module_exports(export_idx)%derived_type_count + 1
             type is (declaration_node)
                 if (.not. decl%is_parameter) cycle
+                if (.not. allocated(decl%var_name)) cycle
+                if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                    cycle
                 call grow_module_export_parameter_indices(context, export_idx)
                 context%module_exports(export_idx)%parameter_indices( &
                     context%module_exports(export_idx)%parameter_count + 1) = &
@@ -170,6 +175,72 @@
 
         context%module_export_count = export_idx
     end subroutine collect_one_module_exports
+
+    logical function module_symbol_is_private(arena, mod_node, name)
+        ! Effective accessibility of a module symbol (#149): a name listed in
+        ! `private :: ...` is private; one listed in `public :: ...` is public;
+        ! otherwise the module default applies (public unless a bare `private`
+        ! statement flipped it). The attribute form (`integer, private ::`) is
+        ! also honoured when FortFront records it on the declaration.
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        character(len=*), intent(in) :: name
+        logical :: default_private
+        integer :: j, k
+
+        module_symbol_is_private = .false.
+        default_private = .false.
+        ! Pass 1: explicit per-name lists win regardless of position.
+        do j = 1, size(mod_node%declaration_indices)
+            if (.not. node_exists(arena, mod_node%declaration_indices(j))) cycle
+            select type (vis => arena%entries(mod_node%declaration_indices(j))%node)
+            type is (visibility_statement_node)
+                if (vis%has_list .and. allocated(vis%names)) then
+                    do k = 1, size(vis%names)
+                        if (allocated(vis%names(k)%s)) then
+                            if (trim(lowercase_text(vis%names(k)%s)) == &
+                                trim(lowercase_text(name))) then
+                                module_symbol_is_private = vis%is_private
+                                return
+                            end if
+                        end if
+                    end do
+                else if (vis%is_private) then
+                    default_private = .true.
+                else
+                    default_private = .false.
+                end if
+            type is (declaration_node)
+                ! Attribute form: integer, private, parameter :: name.
+                if (decl_names_match(vis, name)) then
+                    if (allocated(vis%accessibility)) then
+                        if (trim(lowercase_text(vis%accessibility)) == 'private') &
+                            then
+                            module_symbol_is_private = .true.
+                            return
+                        end if
+                    end if
+                end if
+            end select
+        end do
+        module_symbol_is_private = default_private
+    end function module_symbol_is_private
+
+    logical function decl_names_match(decl, name)
+        type(declaration_node), intent(in) :: decl
+        character(len=*), intent(in) :: name
+        integer :: k
+
+        decl_names_match = .false.
+        if (allocated(decl%var_name)) then
+            if (trim(decl%var_name) == trim(name)) decl_names_match = .true.
+        end if
+        if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+            do k = 1, size(decl%var_names)
+                if (trim(decl%var_names(k)) == trim(name)) decl_names_match = .true.
+            end do
+        end if
+    end function decl_names_match
 
     integer function find_module_export_index(context, module_name) &
         result(idx)

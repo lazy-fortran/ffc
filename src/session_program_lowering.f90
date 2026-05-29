@@ -5,7 +5,8 @@ module session_program_lowering
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
-    use ast_nodes_misc, only: use_statement_node, interface_block_node
+    use ast_nodes_misc, only: use_statement_node, interface_block_node, &
+                              visibility_statement_node
     use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
