@@ -101,6 +101,9 @@ module session_program_lowering_types
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)
+        ! Empty unless the binding declared pass(name); names the dummy that
+        ! receives the passed object.
+        character(len=64), allocatable :: binding_pass_names(:)
     end type derived_type_info_t
 
     type, public :: module_exports_t

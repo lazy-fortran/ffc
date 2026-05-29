@@ -311,15 +311,16 @@
     end subroutine lower_derived_component_element_assignment
 
     subroutine method_call_info(arena, node, context, base_var_index, &
-                                impl_name, found, error_msg)
+                                impl_name, pass_name, found, error_msg)
         ! For obj%m(args): resolve m to its bound implementation via obj's
-        ! derived type, returning the base variable's node index and the
-        ! implementation name.
+        ! derived type, returning the base variable's node index, the
+        ! implementation name, and the pass(name) dummy (empty for default pass).
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: base_var_index
         character(len=:), allocatable, intent(out) :: impl_name
+        character(len=:), allocatable, intent(out) :: pass_name
         logical, intent(out) :: found
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: var_name, method_name
@@ -329,6 +330,7 @@
         base_var_index = 0
         call set_empty(error_msg)
         call set_empty(impl_name)
+        call set_empty(pass_name)
         if (node%base_expr_index <= 0) return
         if (.not. node_exists(arena, node%base_expr_index)) return
         select type (ca => arena%entries(node%base_expr_index)%node)
@@ -354,36 +356,99 @@
                 method_name) then
                 impl_name = trim(context%derived_types(type_index)% &
                                  binding_target_names(b))
+                if (allocated(context%derived_types(type_index)%binding_pass_names)) &
+                    pass_name = trim(context%derived_types(type_index)% &
+                                     binding_pass_names(b))
                 found = .true.
                 return
             end if
         end do
     end subroutine method_call_info
 
+    integer function impl_pass_position(arena, impl_name, pass_name) result(pos)
+        ! 1-based position of the dummy named pass_name in impl's parameter
+        ! list; 1 (the default pass position) when pass_name is empty or absent.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: impl_name
+        character(len=*), intent(in) :: pass_name
+        integer :: n, p
+        integer, allocatable :: params(:)
+        character(len=:), allocatable :: pname, perr
+
+        pos = 1
+        if (len_trim(pass_name) == 0) return
+        call impl_param_indices(arena, impl_name, params)
+        if (.not. allocated(params)) return
+        do p = 1, size(params)
+            call parameter_name(arena, params(p), pname, perr)
+            if (len_trim(perr) > 0) cycle
+            if (trim(pname) == trim(pass_name)) then
+                pos = p
+                return
+            end if
+        end do
+    end function impl_pass_position
+
+    subroutine impl_param_indices(arena, impl_name, params)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: impl_name
+        integer, allocatable, intent(out) :: params(:)
+        integer :: n
+
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (subroutine_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, impl_name)) then
+                        if (allocated(node%param_indices)) params = node%param_indices
+                        return
+                    end if
+                end if
+            type is (function_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, impl_name)) then
+                        if (allocated(node%param_indices)) params = node%param_indices
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end subroutine impl_param_indices
+
     logical function is_type_bound_method_call(arena, node, context)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         integer :: base_var_index
-        character(len=:), allocatable :: impl_name, err
+        character(len=:), allocatable :: impl_name, pass_name, err
 
         call method_call_info(arena, node, context, base_var_index, impl_name, &
-                              is_type_bound_method_call, err)
+                              pass_name, is_type_bound_method_call, err)
         if (len_trim(err) > 0) is_type_bound_method_call = .false.
     end function is_type_bound_method_call
 
-    subroutine method_call_arg_indices(node, base_var_index, combined)
-        ! [obj, method-args...] — obj is passed first (default pass).
+    subroutine method_call_arg_indices(node, base_var_index, position, combined)
+        ! Insert obj (base_var_index) at the pass position; explicit method
+        ! arguments fill the remaining slots in order.
         type(call_or_subscript_node), intent(in) :: node
         integer, intent(in) :: base_var_index
+        integer, intent(in) :: position
         integer, allocatable, intent(out) :: combined(:)
-        integer :: n
+        integer :: n, i, k, pos
 
         n = 0
         if (allocated(node%arg_indices)) n = size(node%arg_indices)
         allocate (combined(n + 1))
-        combined(1) = base_var_index
-        if (n > 0) combined(2:) = node%arg_indices
+        pos = position
+        if (pos < 1 .or. pos > n + 1) pos = 1
+        combined(pos) = base_var_index
+        k = 0
+        do i = 1, n + 1
+            if (i == pos) cycle
+            k = k + 1
+            combined(i) = node%arg_indices(k)
+        end do
     end subroutine method_call_arg_indices
 
     logical function is_method_subroutine_call(name)
@@ -402,7 +467,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: var_name, method_name, impl_name
-        integer :: pct, symbol_index, type_index, b, n
+        character(len=:), allocatable :: pass_name
+        integer :: pct, symbol_index, type_index, b, n, position, i, k
         type(lr_operand_desc_t), allocatable :: method_args(:), all_args(:)
         integer, allocatable :: copyback_indices(:)
 
@@ -421,11 +487,15 @@
         end if
         type_index = context%symbols(symbol_index)%derived_type_index
         call set_empty(impl_name)
+        call set_empty(pass_name)
         do b = 1, context%derived_types(type_index)%binding_count
             if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
                 method_name) then
                 impl_name = trim(context%derived_types(type_index)% &
                                  binding_target_names(b))
+                if (allocated(context%derived_types(type_index)%binding_pass_names)) &
+                    pass_name = trim(context%derived_types(type_index)% &
+                                     binding_pass_names(b))
                 exit
             end if
         end do
@@ -445,8 +515,15 @@
         end if
         n = size(method_args)
         allocate (all_args(n + 1))
-        all_args(1) = context%symbols(symbol_index)%element_address
-        if (n > 0) all_args(2:) = method_args
+        position = impl_pass_position(arena, impl_name, pass_name)
+        if (position < 1 .or. position > n + 1) position = 1
+        all_args(position) = context%symbols(symbol_index)%element_address
+        k = 0
+        do i = 1, n + 1
+            if (i == position) cycle
+            k = k + 1
+            all_args(i) = method_args(k)
+        end do
         if (.not. emit_void_call(context%session, &
                 call_emit_name(arena, impl_name), all_args, error_msg)) return
         call copy_back_reference_args(context, method_args, copyback_indices, &
@@ -459,21 +536,22 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: base_var_index
-        character(len=:), allocatable :: impl_name
+        integer :: base_var_index, position
+        character(len=:), allocatable :: impl_name, pass_name
         logical :: found
         integer, allocatable :: combined(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
 
         call method_call_info(arena, node, context, base_var_index, impl_name, &
-                              found, error_msg)
+                              pass_name, found, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. found) then
             error_msg = 'not a type-bound method call'
             return
         end if
-        call method_call_arg_indices(node, base_var_index, combined)
+        position = impl_pass_position(arena, impl_name, pass_name)
+        call method_call_arg_indices(node, base_var_index, position, combined)
         call prepare_reference_args(arena, combined, context, VALUE_I32, &
                                     impl_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return

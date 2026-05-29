@@ -26,11 +26,37 @@ program test_session_derived_type_compiler
     if (.not. test_function_returns_derived_with_arg()) all_passed = .false.
     if (.not. test_type_bound_subroutine_call()) all_passed = .false.
     if (.not. test_type_bound_integer_function_call()) all_passed = .false.
+    if (.not. test_pass_name_routes_self_to_second_arg()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
 
 contains
+
+    logical function test_pass_name_routes_self_to_second_arg()
+        ! procedure, pass(other) :: m => fn; a%m(b) invokes fn(b, a).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t_t'//new_line('a')// &
+            '    integer :: v'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure, pass(other) :: m => fn'//new_line('a')// &
+            '  end type t_t'//new_line('a')// &
+            '  type(t_t) :: a'//new_line('a')// &
+            '  a%v = 4'//new_line('a')// &
+            '  stop a%m(10)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function fn(x, other)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    type(t_t), intent(in) :: other'//new_line('a')// &
+            '    fn = x + other%v'//new_line('a')// &
+            '  end function fn'//new_line('a')// &
+            'end program main'
+
+        ! 10 + 4 = 14, proving `a` landed at the `other` (second) position.
+        test_pass_name_routes_self_to_second_arg = expect_exit_status( &
+            source, 14, '/tmp/ffc_session_pass_name_test')
+    end function test_pass_name_routes_self_to_second_arg
 
     logical function test_type_bound_subroutine_call()
         ! obj%m() invokes m_impl(obj) (default pass: obj is the first arg).

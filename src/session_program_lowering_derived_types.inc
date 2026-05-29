@@ -257,6 +257,9 @@
             binding_method_names(size(node%binding_indices)))
         allocate(context%derived_types(type_index)% &
             binding_target_names(size(node%binding_indices)))
+        allocate(context%derived_types(type_index)% &
+            binding_pass_names(size(node%binding_indices)))
+        context%derived_types(type_index)%binding_pass_names = ''
 
         do i = 1, size(node%binding_indices)
             if (.not. node_exists(context%arena, node%binding_indices(i))) cycle
@@ -287,6 +290,11 @@
                 else
                     context%derived_types(type_index)% &
                         binding_target_names(slot) = trim(binding%binding_name)
+                end if
+                if (allocated(binding%pass_name)) then
+                    if (len_trim(binding%pass_name) > 0) &
+                        context%derived_types(type_index)% &
+                            binding_pass_names(slot) = trim(binding%pass_name)
                 end if
                 context%derived_types(type_index)%binding_count = slot
             end select
