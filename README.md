@@ -42,8 +42,8 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   assignment, component reads, `print`, and `stop`;
 - minimal `print *, expr` through a `printf` shim for integers, reals,
   logicals, characters; `stop <integer expression>` returns its argument
-  as the process exit status; `abs`, `min`, `max`, `mod`, integer-to-real
-  `real()`;
+  as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
+  `ieor`, `not`, integer-to-real `real()`, real `**` via libm `pow`;
 - CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
   consumed by lowering).
 

@@ -18,10 +18,66 @@
                                             value, error_msg)
         case (I32_INTRINSIC_MOD)
             call lower_i32_mod_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_IAND)
+            call lower_i32_bitwise_intrinsic(arena, node, LR_OP_AND, context, &
+                                             value, error_msg)
+        case (I32_INTRINSIC_IOR)
+            call lower_i32_bitwise_intrinsic(arena, node, LR_OP_OR, context, &
+                                             value, error_msg)
+        case (I32_INTRINSIC_IEOR)
+            call lower_i32_bitwise_intrinsic(arena, node, LR_OP_XOR, context, &
+                                             value, error_msg)
+        case (I32_INTRINSIC_NOT)
+            call lower_i32_not_intrinsic(arena, node, context, value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
     end subroutine lower_i32_intrinsic_call
+
+    subroutine lower_i32_bitwise_intrinsic(arena, node, opcode, context, value, &
+                                           error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer(c_int), intent(in) :: opcode
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, lhs, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, rhs, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+                                  error_msg)) return
+    end subroutine lower_i32_bitwise_intrinsic
+
+    subroutine lower_i32_not_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: all_ones
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, arg, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! not(x) == x xor -1 (bitwise complement)
+        all_ones = i32_immediate(context%session, -1_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_XOR, arg, all_ones, &
+                                  value, error_msg)) return
+    end subroutine lower_i32_not_intrinsic
 
     subroutine lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                         value, error_msg)
@@ -310,11 +366,13 @@
             call unsupported_feature_error('scalar intrinsic: '//trim(node%name), &
                                            node%line, node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, mod, and real', error_msg)
+                                           'abs, min, max, mod, iand, ior, '// &
+                                           'ieor, not, and real', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, mod, and real', error_msg)
+                                           'abs, min, max, mod, iand, ior, '// &
+                                           'ieor, not, and real', error_msg)
         end if
     end subroutine unsupported_intrinsic_error

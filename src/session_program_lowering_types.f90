@@ -16,16 +16,22 @@ module session_program_lowering_types
     integer, parameter, public :: I32_INTRINSIC_MIN = 2
     integer, parameter, public :: I32_INTRINSIC_MAX = 3
     integer, parameter, public :: I32_INTRINSIC_MOD = 4
+    integer, parameter, public :: I32_INTRINSIC_IAND = 5
+    integer, parameter, public :: I32_INTRINSIC_IOR = 6
+    integer, parameter, public :: I32_INTRINSIC_IEOR = 7
+    integer, parameter, public :: I32_INTRINSIC_NOT = 8
     integer, parameter, public :: F64_INTRINSIC_NONE = 0
     integer, parameter, public :: F64_INTRINSIC_ABS = 1
     integer, parameter, public :: F64_INTRINSIC_MIN = 2
     integer, parameter, public :: F64_INTRINSIC_MAX = 3
     integer, parameter, public :: F64_INTRINSIC_REAL = 4
-    character(len=8), parameter, public :: I32_INTRINSIC_NAMES(4) = &
-                                   [character(len=8) :: 'abs', 'min', 'max', 'mod']
-    integer, parameter, public :: I32_INTRINSIC_IDS(4) = &
+    character(len=8), parameter, public :: I32_INTRINSIC_NAMES(8) = &
+                                   [character(len=8) :: 'abs', 'min', 'max', 'mod', &
+                                    'iand', 'ior', 'ieor', 'not']
+    integer, parameter, public :: I32_INTRINSIC_IDS(8) = &
                           [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
-                           I32_INTRINSIC_MOD]
+                           I32_INTRINSIC_MOD, I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
+                           I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT]
     character(len=8), parameter, public :: F64_INTRINSIC_NAMES(4) = &
                                    [character(len=8) :: 'abs', 'min', 'max', 'real']
     integer, parameter, public :: F64_INTRINSIC_IDS(4) = &

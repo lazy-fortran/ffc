@@ -29,7 +29,8 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                       finish_and_emit_object, emit_void_call, &
                                       emit_i32_call, liric_session_create, &
                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
-                                      LR_OP_ADD, LR_OP_SREM, LR_OP_SUB
+                                      LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
+                                      LR_OP_AND, LR_OP_OR, LR_OP_XOR
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
                                               emit_i32_binary, emit_i32_binary_into, &
                                               emit_i32_copy_to, emit_i32_alloca, &
@@ -95,6 +96,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  I32_INTRINSIC_NONE, &
                                                 I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
                                                 I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
+                                                I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
+                                                I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, &
                                                 F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
                                                 F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                                                 F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
