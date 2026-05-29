@@ -14,6 +14,18 @@
             return
         end if
 
+        if (is_binary_op(arena, node_index)) then
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
+            ! A non-real binary op falls through to the integer print below.
+        else
+
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
@@ -49,15 +61,6 @@
                         context%symbols(symbol_index)%value, error_msg)) return
                     return
                 end if
-            end if
-        type is (binary_op_node)
-            if (is_f64_expression(arena, node_index, context)) then
-                call lower_f64_expression(arena, node_index, context, value, &
-                                          error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_print_f64(context%session, &
-                                               value, error_msg)) return
-                return
             end if
         type is (call_or_subscript_node)
             if (is_f64_expression(arena, node_index, context)) then
@@ -104,6 +107,7 @@
                 return
             end if
         end select
+        end if
 
         call lower_i32_expression(arena, node_index, context, value, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -128,6 +132,18 @@
             error_msg = 'print expression index does not reference an AST node'
             return
         end if
+
+        if (is_binary_op(arena, node_index)) then
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
+                return
+            end if
+            ! A non-real binary op falls through to the integer print below.
+        else
 
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
@@ -163,15 +179,6 @@
                         context%symbols(symbol_index)%value, error_msg)) return
                     return
                 end if
-            end if
-        type is (binary_op_node)
-            if (is_f64_expression(arena, node_index, context)) then
-                call lower_f64_expression(arena, node_index, context, value, &
-                                          error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_print_f64_value(context%session, &
-                                                     value, error_msg)) return
-                return
             end if
         type is (call_or_subscript_node)
             if (is_f64_expression(arena, node_index, context)) then
@@ -220,6 +227,7 @@
                 return
             end if
         end select
+        end if
 
         call lower_i32_expression(arena, node_index, context, value, error_msg)
         if (len_trim(error_msg) > 0) return

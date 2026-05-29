@@ -135,6 +135,11 @@
         value_kind = default_kind
         if (.not. node_exists(arena, node_index)) return
 
+        if (is_binary_op(arena, node_index)) then
+            if (is_f64_expression(arena, node_index, context)) value_kind = VALUE_F64
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
@@ -145,8 +150,6 @@
             else if (is_logical_literal(node)) then
                 value_kind = VALUE_LOGICAL
             end if
-        type is (binary_op_node)
-            if (is_f64_expression(arena, node_index, context)) value_kind = VALUE_F64
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 if (is_contained_f64_function(context, node%name)) then

@@ -333,6 +333,8 @@
         integer(c_int64_t), intent(out) :: value
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'DO loop '//trim(name)// &
@@ -340,15 +342,13 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            call parse_i32_literal(node%value, value, error_msg)
-        type is (binary_op_node)
-            if (node%operator == '-' .and. &
-                (node%left_index <= 0 .or. &
-                 is_zero_i32_literal(arena, node%left_index))) then
-                call parse_i32_constant(arena, node%right_index, value, name, &
-                                        error_msg)
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (bin_op == '-' .and. &
+                (bin_left <= 0 .or. is_zero_i32_literal(arena, bin_left))) then
+                call parse_i32_constant(arena, bin_right, value, name, error_msg)
                 if (len_trim(error_msg) > 0) return
                 value = -value
                 call set_empty(error_msg)
@@ -359,6 +359,12 @@
                                                'direct LIRIC session only '// &
                                                'supports literal steps', error_msg)
             end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (literal_node)
+            call parse_i32_literal(node%value, value, error_msg)
         class default
             call unsupported_feature_error('do loop '//trim(name), &
                                            get_node_line(arena, node_index), &

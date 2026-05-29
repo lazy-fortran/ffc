@@ -108,6 +108,8 @@
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
         logical :: fold_ok
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
@@ -139,9 +141,12 @@
 
         ! Check for deferred character with binary // operator or literal
         if (context%symbols(symbol_index)%is_deferred_character) then
-            select type (value_node => arena%entries(node%value_index)%node)
-            type is (binary_op_node)
-                if (trim(value_node%operator) == '//') then
+            if (is_binary_op(arena, node%value_index)) then
+                call get_binary_op_info(arena, node%value_index, bin_op, &
+                                        bin_left, bin_right, bin_line, bin_col, &
+                                        error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (trim(bin_op) == '//') then
                     ! An all-literal // chain (any depth) folds to one literal.
                     call concat_character_literals(arena, node%value_index, &
                                                    literal_text, fold_ok)
@@ -154,27 +159,19 @@
                         context, symbol_index, error_msg)
                     return
                 end if
-            type is (literal_node)
-                if (is_character_literal(value_node)) then
-                    call lower_deferred_literal_assignment(value_node, &
-                        context, symbol_index, error_msg)
-                    return
-                end if
-            end select
+            else
+                select type (value_node => arena%entries(node%value_index)%node)
+                type is (literal_node)
+                    if (is_character_literal(value_node)) then
+                        call lower_deferred_literal_assignment(value_node, &
+                            context, symbol_index, error_msg)
+                        return
+                    end if
+                end select
+            end if
         end if
 
-        select type (value_node => arena%entries(node%value_index)%node)
-        type is (literal_node)
-            if (.not. is_character_literal(value_node)) then
-                call unsupported_feature_error('character assignment', &
-                                               node%line, node%column, &
-                                               'only character literal '// &
-                                               'assignment is supported', &
-                                               error_msg)
-                return
-            end if
-            call strip_literal_quotes(value_node%value, literal_text)
-        type is (binary_op_node)
+        if (is_binary_op(arena, node%value_index)) then
             call concat_character_literals(arena, node%value_index, &
                                            literal_text, fold_ok)
             if (.not. fold_ok) then
@@ -185,13 +182,27 @@
                                                error_msg)
                 return
             end if
-        class default
-            call unsupported_feature_error('character assignment', &
-                                           node%line, node%column, &
-                                           'only character literal assignment '// &
-                                           'is supported', error_msg)
-            return
-        end select
+        else
+            select type (value_node => arena%entries(node%value_index)%node)
+            type is (literal_node)
+                if (.not. is_character_literal(value_node)) then
+                    call unsupported_feature_error('character assignment', &
+                                                   node%line, node%column, &
+                                                   'only character literal '// &
+                                                   'assignment is supported', &
+                                                   error_msg)
+                    return
+                end if
+                call strip_literal_quotes(value_node%value, literal_text)
+            class default
+                call unsupported_feature_error('character assignment', &
+                                               node%line, node%column, &
+                                               'only character literal '// &
+                                               'assignment is supported', &
+                                               error_msg)
+                return
+            end select
+        end if
 
         call normalize_character_literal( &
             literal_text, context%symbols(symbol_index)%character_length)
@@ -216,22 +227,30 @@
         character(len=:), allocatable, intent(out) :: accumulated
         logical, intent(out) :: ok
         character(len=:), allocatable :: left_text, right_text, piece
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         ok = .false.
         if (.not. node_exists(arena, node_index)) return
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, bin_err)
+            if (trim(bin_op) /= '//') return
+            call concat_character_literals(arena, bin_left, left_text, ok)
+            if (.not. ok) return
+            call concat_character_literals(arena, bin_right, right_text, ok)
+            if (.not. ok) return
+            accumulated = left_text//right_text
+            ok = .true.
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)
             if (.not. is_character_literal(node)) return
             call strip_literal_quotes(node%value, piece)
             accumulated = piece
-            ok = .true.
-        type is (binary_op_node)
-            if (trim(node%operator) /= '//') return
-            call concat_character_literals(arena, node%left_index, left_text, ok)
-            if (.not. ok) return
-            call concat_character_literals(arena, node%right_index, right_text, ok)
-            if (.not. ok) return
-            accumulated = left_text//right_text
             ok = .true.
         end select
     end subroutine concat_character_literals

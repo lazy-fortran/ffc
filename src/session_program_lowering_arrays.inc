@@ -82,10 +82,42 @@
         integer(c_int64_t) :: lhs
         integer(c_int64_t) :: rhs
         integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         constant_value = 0_c_int64_t
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'constant expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            select case (trim(bin_op))
+            case ('+')
+                constant_value = lhs + rhs
+            case ('-')
+                constant_value = lhs - rhs
+            case ('*')
+                constant_value = lhs*rhs
+            case ('/')
+                if (rhs == 0_c_int64_t) then
+                    error_msg = 'integer constant division by zero'
+                    return
+                end if
+                constant_value = lhs/rhs
+            case default
+                error_msg = 'unsupported integer constant operator: '// &
+                            trim(bin_op)
+                return
+            end select
+            call set_empty(error_msg)
             return
         end if
 
@@ -105,32 +137,6 @@
                 return
             end if
             constant_value = context%symbols(symbol_index)%i32_constant
-            call set_empty(error_msg)
-        type is (binary_op_node)
-            call eval_i32_constant(arena, node%left_index, context, lhs, &
-                                   error_msg)
-            if (len_trim(error_msg) > 0) return
-            call eval_i32_constant(arena, node%right_index, context, rhs, &
-                                   error_msg)
-            if (len_trim(error_msg) > 0) return
-            select case (trim(node%operator))
-            case ('+')
-                constant_value = lhs + rhs
-            case ('-')
-                constant_value = lhs - rhs
-            case ('*')
-                constant_value = lhs*rhs
-            case ('/')
-                if (rhs == 0_c_int64_t) then
-                    error_msg = 'integer constant division by zero'
-                    return
-                end if
-                constant_value = lhs/rhs
-            case default
-                error_msg = 'unsupported integer constant operator: '// &
-                            trim(node%operator)
-                return
-            end select
             call set_empty(error_msg)
         class default
             error_msg = 'array bound is not a compile-time integer expression'
@@ -319,9 +325,30 @@
         integer :: opcode
         integer :: symbol_index
         character(len=:), allocatable :: parse_error
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'array subscript index does not reference an AST node'
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call validate_i32_array_subscript(arena, bin_left, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call validate_i32_array_subscript(arena, bin_right, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_opcode(bin_op, opcode, parse_error)
+            if (len_trim(parse_error) > 0) then
+                call unsupported_array_subscript(arena, node_index, &
+                                                 'non-integer operators', &
+                                                 error_msg)
+                return
+            end if
+            call set_empty(error_msg)
             return
         end if
 
@@ -347,21 +374,6 @@
                                                      error_msg)
                     return
                 end if
-            end if
-            call set_empty(error_msg)
-        type is (binary_op_node)
-            call validate_i32_array_subscript(arena, subscript%left_index, &
-                                              context, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call validate_i32_array_subscript(arena, subscript%right_index, &
-                                              context, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call integer_opcode(subscript%operator, opcode, parse_error)
-            if (len_trim(parse_error) > 0) then
-                call unsupported_array_subscript(arena, node_index, &
-                                                 'non-integer operators', &
-                                                 error_msg)
-                return
             end if
             call set_empty(error_msg)
         class default

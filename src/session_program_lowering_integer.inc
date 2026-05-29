@@ -11,9 +11,38 @@
       type(lr_operand_desc_t) :: rhs
       integer :: opcode
       integer :: symbol_index
+      character(len=:), allocatable :: bin_op
+      integer :: bin_left, bin_right, bin_line, bin_col
 
       if (.not. node_exists(arena, node_index)) then
           error_msg = 'expression index does not reference an AST node'
+          return
+      end if
+
+      if (is_binary_op(arena, node_index)) then
+          call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                  bin_right, bin_line, bin_col, error_msg)
+          if (len_trim(error_msg) > 0) return
+          call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
+          if (len_trim(error_msg) > 0) return
+          if (trim(bin_op) == '**') then
+              call lower_i32_pow(arena, bin_right, bin_line, bin_col, &
+                                 context, lhs, value, error_msg)
+              return
+          end if
+          call lower_i32_expression(arena, bin_right, context, rhs, error_msg)
+          if (len_trim(error_msg) > 0) return
+          call integer_opcode(bin_op, opcode, error_msg)
+          if (len_trim(error_msg) > 0) then
+              call unsupported_feature_error('integer operator', &
+                                             bin_line, bin_col, &
+                                             'direct LIRIC session supports '// &
+                                             '+, -, *, and / for integer '// &
+                                             'expressions', error_msg)
+              return
+          end if
+          if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+                                                    error_msg)) return
           return
       end if
 
@@ -55,29 +84,6 @@
               value = context%symbols(symbol_index)%value
               call set_empty(error_msg)
           end if
-      type is (binary_op_node)
-          call lower_i32_expression(arena, node%left_index, context, lhs, &
-                                    error_msg)
-          if (len_trim(error_msg) > 0) return
-          if (trim(node%operator) == '**') then
-              call lower_i32_pow(arena, node%right_index, node%line, &
-                                 node%column, context, lhs, value, error_msg)
-              return
-          end if
-          call lower_i32_expression(arena, node%right_index, context, rhs, &
-                                    error_msg)
-          if (len_trim(error_msg) > 0) return
-          call integer_opcode(node%operator, opcode, error_msg)
-          if (len_trim(error_msg) > 0) then
-              call unsupported_feature_error('integer operator', &
-                                             node%line, node%column, &
-                                             'direct LIRIC session supports '// &
-                                             '+, -, *, and / for integer '// &
-                                             'expressions', error_msg)
-              return
-          end if
-          if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
-                                                    error_msg)) return
       type is (call_or_subscript_node)
           if (node%base_expr_index > 0) then
               call lower_derived_component_element_load(arena, node, context, &

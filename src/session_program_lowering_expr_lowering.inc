@@ -167,9 +167,33 @@
         type(lr_operand_desc_t) :: rhs
         integer :: opcode
         integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'real expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f64_expression(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f64_expression(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (trim(bin_op) == '**') then
+                ! Real exponentiation lowers to a libm pow(f64, f64) call.
+                if (.not. emit_liric_f64_call(context%session, 'pow', &
+                                              [lhs, rhs], value, error_msg)) &
+                    return
+                return
+            end if
+            call real_opcode(bin_op, bin_line, bin_col, opcode, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
+                                            value, error_msg)) return
             return
         end if
 
@@ -198,25 +222,6 @@
                 value = context%symbols(symbol_index)%value
                 call set_empty(error_msg)
             end if
-        type is (binary_op_node)
-            call lower_f64_expression(arena, node%left_index, context, lhs, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, node%right_index, context, rhs, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (trim(node%operator) == '**') then
-                ! Real exponentiation lowers to a libm pow(f64, f64) call.
-                if (.not. emit_liric_f64_call(context%session, 'pow', &
-                                              [lhs, rhs], value, error_msg)) &
-                    return
-                return
-            end if
-            call real_opcode(node%operator, node%line, node%column, opcode, &
-                             error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
-                                            value, error_msg)) return
         type is (call_or_subscript_node)
             call lower_f64_call(arena, node, context, value, error_msg)
         class default
@@ -297,9 +302,19 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: bin_left, bin_right, bin_line, bin_col
 
         is_f64 = .false.
         if (.not. node_exists(arena, node_index)) return
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, bin_err)
+            is_f64 = is_f64_expression(arena, bin_left, context) .or. &
+                     is_f64_expression(arena, bin_right, context)
+            return
+        end if
 
         select type (node => arena%entries(node_index)%node)
         type is (literal_node)
@@ -309,9 +324,6 @@
             if (symbol_index > 0) then
                 is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
             end if
-        type is (binary_op_node)
-            is_f64 = is_f64_expression(arena, node%left_index, context) .or. &
-                     is_f64_expression(arena, node%right_index, context)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 is_f64 = is_contained_f64_function(context, node%name)

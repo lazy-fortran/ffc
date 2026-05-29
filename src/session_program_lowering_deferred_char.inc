@@ -46,7 +46,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(binary_op_node) :: binop
+        character(len=:), allocatable :: bin_op
+        integer :: bin_line, bin_col
         integer :: left_idx
         integer :: right_idx
         type(lr_operand_desc_t) :: left_data
@@ -83,25 +84,20 @@ integer function resolve_concat_operand(arena, node_index, context, &
         right_is_literal = .false.
         is_self_alias = .false.
 
-        ! Get the binary_op_node from the assignment value
-        if (.not. node_exists(arena, node%value_index)) then
-            error_msg = 'concat assignment value does not reference an AST node'
-            return
-        end if
-        select type (binop => arena%entries(node%value_index)%node)
-        type is (binary_op_node)
-            if (trim(binop%operator) /= '//') then
-                error_msg = 'non-concat operator on deferred character: '// &
-                            trim(binop%operator)
-                return
-            end if
-            left_idx = binop%left_index
-            right_idx = binop%right_index
-        class default
+        ! Get the binary // operands from the assignment value.
+        if (.not. is_binary_op(arena, node%value_index)) then
             error_msg = 'expected binary // operator for deferred character '// &
                         'concatenation'
             return
-        end select
+        end if
+        call get_binary_op_info(arena, node%value_index, bin_op, left_idx, &
+                                right_idx, bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (trim(bin_op) /= '//') then
+            error_msg = 'non-concat operator on deferred character: '// &
+                        trim(bin_op)
+            return
+        end if
 
         ! Resolve left operand: get symbol index or mark as literal
         left_sym_idx = resolve_concat_operand(arena, left_idx, context, &

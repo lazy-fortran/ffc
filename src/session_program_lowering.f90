@@ -6,7 +6,7 @@ module session_program_lowering
     use ast_nodes_core, only: component_access_node, array_literal_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node
-    use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
+    use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
@@ -20,6 +20,7 @@ module session_program_lowering
                          allocate_statement_node, deallocate_statement_node, &
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement, &
+                         is_binary_op, get_binary_op_info, &
                          is_declaration_node, is_module_node, is_program_node
 use liric_session_bindings, only: destroy, begin_i32_main, &
                                        begin_i32_function, begin_void_subroutine, &
@@ -1036,16 +1037,20 @@ contains
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
         integer(c_int) :: pred
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'condition index does not reference an AST node'
             return
         end if
-        select type (node => arena%entries(node_index)%node)
-        type is (binary_op_node)
-            if (trim(adjustl(lowercase_text(node%operator))) == '.not.') then
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (trim(adjustl(lowercase_text(bin_op))) == '.not.') then
                 ! Unary .not. is parsed as a binary op with a virtual operand;
                 ! the real condition is the right operand. Invert it.
-                call lower_i1_condition(arena, node%right_index, context, lhs, &
+                call lower_i1_condition(arena, bin_right, context, lhs, &
                                         error_msg)
                 if (len_trim(error_msg) > 0) return
                 rhs = lhs
@@ -1056,16 +1061,17 @@ contains
                 call set_empty(error_msg)
                 return
             end if
-            call lower_i32_expression(arena, node%left_index, context, lhs, &
-                                      error_msg)
+            call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_i32_expression(arena, node%right_index, context, rhs, &
-                                      error_msg)
+            call lower_i32_expression(arena, bin_right, context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            call integer_compare_predicate(node%operator, pred, error_msg)
+            call integer_compare_predicate(bin_op, pred, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
                                           value, error_msg)) return
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
         type is (literal_node)
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)
