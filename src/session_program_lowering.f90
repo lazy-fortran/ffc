@@ -1039,6 +1039,11 @@ contains
             call lower_c_f_pointer(arena, arg_indices, context, error_msg)
             return
         end if
+        if (is_method_subroutine_call(name)) then
+            call lower_method_subroutine_call(arena, name, arg_indices, context, &
+                                              error_msg)
+            return
+        end if
         if (external_procedure_index(context, name) > 0) then
             call lower_external_void_call(arena, node_index, &
                 external_procedure_index(context, name), context, error_msg)

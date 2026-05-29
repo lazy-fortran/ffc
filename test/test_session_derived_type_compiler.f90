@@ -24,11 +24,60 @@ program test_session_derived_type_compiler
     if (.not. test_array_component_mixed_with_scalar()) all_passed = .false.
     if (.not. test_function_returns_derived()) all_passed = .false.
     if (.not. test_function_returns_derived_with_arg()) all_passed = .false.
+    if (.not. test_type_bound_subroutine_call()) all_passed = .false.
+    if (.not. test_type_bound_integer_function_call()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
 
 contains
+
+    logical function test_type_bound_subroutine_call()
+        ! obj%m() invokes m_impl(obj) (default pass: obj is the first arg).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer :: v'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: stash => box_stash'//new_line('a')// &
+            '  end type box_t'//new_line('a')// &
+            '  type(box_t) :: b'//new_line('a')// &
+            '  b%v = 3'//new_line('a')// &
+            '  call b%stash()'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine box_stash(self)'//new_line('a')// &
+            '    type(box_t), intent(in) :: self'//new_line('a')// &
+            '    stop self%v'//new_line('a')// &
+            '  end subroutine box_stash'//new_line('a')// &
+            'end program main'
+
+        test_type_bound_subroutine_call = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_tbp_sub_test')
+    end function test_type_bound_subroutine_call
+
+    logical function test_type_bound_integer_function_call()
+        ! obj%get() returns an integer via get_impl(obj).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: counter_t'//new_line('a')// &
+            '    integer :: n'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: get => counter_get'//new_line('a')// &
+            '  end type counter_t'//new_line('a')// &
+            '  type(counter_t) :: c'//new_line('a')// &
+            '  c%n = 7'//new_line('a')// &
+            '  stop c%get()'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function counter_get(self)'//new_line('a')// &
+            '    type(counter_t), intent(in) :: self'//new_line('a')// &
+            '    counter_get = self%n'//new_line('a')// &
+            '  end function counter_get'//new_line('a')// &
+            'end program main'
+
+        test_type_bound_integer_function_call = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_tbp_fn_test')
+    end function test_type_bound_integer_function_call
 
     logical function test_component_slots()
         character(len=*), parameter :: source = &

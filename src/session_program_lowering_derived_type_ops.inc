@@ -171,6 +171,20 @@
                 call set_empty(error_msg)
                 return
             end if
+            ! A derived dummy: the parameter pointer is the base address of the
+            ! caller's derived storage; component access reads through it.
+            if (context%symbols(index)%is_parameter .and. &
+                .not. context%symbols(index)%is_derived) then
+                context%symbols(index)%value_kind = VALUE_DERIVED
+                context%symbols(index)%is_derived = .true.
+                context%symbols(index)%derived_type_index = derived_type_index
+                context%symbols(index)%array_size = &
+                    total_component_slots(context, derived_type_index)
+                context%symbols(index)%element_address = &
+                    context%symbols(index)%address
+                call set_empty(error_msg)
+                return
+            end if
             error_msg = 'duplicate derived type declaration: '//trim(name)
             return
         end if
@@ -295,6 +309,178 @@
         if (.not. emit_i32_store(context%session, value, addr, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_derived_component_element_assignment
+
+    subroutine method_call_info(arena, node, context, base_var_index, &
+                                impl_name, found, error_msg)
+        ! For obj%m(args): resolve m to its bound implementation via obj's
+        ! derived type, returning the base variable's node index and the
+        ! implementation name.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: base_var_index
+        character(len=:), allocatable, intent(out) :: impl_name
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name, method_name
+        integer :: symbol_index, type_index, b
+
+        found = .false.
+        base_var_index = 0
+        call set_empty(error_msg)
+        call set_empty(impl_name)
+        if (node%base_expr_index <= 0) return
+        if (.not. node_exists(arena, node%base_expr_index)) return
+        select type (ca => arena%entries(node%base_expr_index)%node)
+        type is (component_access_node)
+            if (.not. allocated(ca%component_name)) return
+            method_name = trim(ca%component_name)
+            base_var_index = ca%base_expr_index
+        class default
+            return
+        end select
+        if (.not. is_identifier(arena, base_var_index)) return
+        call get_identifier_name(arena, base_var_index, var_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, var_name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_derived) return
+        type_index = context%symbols(symbol_index)%derived_type_index
+        if (type_index <= 0) return
+        if (.not. allocated(context%derived_types(type_index)%binding_method_names)) &
+            return
+        do b = 1, context%derived_types(type_index)%binding_count
+            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
+                method_name) then
+                impl_name = trim(context%derived_types(type_index)% &
+                                 binding_target_names(b))
+                found = .true.
+                return
+            end if
+        end do
+    end subroutine method_call_info
+
+    logical function is_type_bound_method_call(arena, node, context)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: base_var_index
+        character(len=:), allocatable :: impl_name, err
+
+        call method_call_info(arena, node, context, base_var_index, impl_name, &
+                              is_type_bound_method_call, err)
+        if (len_trim(err) > 0) is_type_bound_method_call = .false.
+    end function is_type_bound_method_call
+
+    subroutine method_call_arg_indices(node, base_var_index, combined)
+        ! [obj, method-args...] — obj is passed first (default pass).
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: base_var_index
+        integer, allocatable, intent(out) :: combined(:)
+        integer :: n
+
+        n = 0
+        if (allocated(node%arg_indices)) n = size(node%arg_indices)
+        allocate (combined(n + 1))
+        combined(1) = base_var_index
+        if (n > 0) combined(2:) = node%arg_indices
+    end subroutine method_call_arg_indices
+
+    logical function is_method_subroutine_call(name)
+        ! A type-bound subroutine call is parsed as `var%method`.
+        character(len=*), intent(in) :: name
+
+        is_method_subroutine_call = index(name, '%') > 0
+    end function is_method_subroutine_call
+
+    subroutine lower_method_subroutine_call(arena, name, arg_indices, context, &
+                                            error_msg)
+        ! call obj%m(args) -> m_impl(obj, args). obj is passed first.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name, method_name, impl_name
+        integer :: pct, symbol_index, type_index, b, n
+        type(lr_operand_desc_t), allocatable :: method_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+
+        call set_empty(error_msg)
+        pct = index(name, '%')
+        var_name = trim(name(1:pct - 1))
+        method_name = trim(name(pct + 1:))
+        symbol_index = find_symbol(context, var_name)
+        if (symbol_index <= 0) then
+            error_msg = 'type-bound call base was not declared: '//var_name
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_derived) then
+            error_msg = 'type-bound call base is not a derived type: '//var_name
+            return
+        end if
+        type_index = context%symbols(symbol_index)%derived_type_index
+        call set_empty(impl_name)
+        do b = 1, context%derived_types(type_index)%binding_count
+            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
+                method_name) then
+                impl_name = trim(context%derived_types(type_index)% &
+                                 binding_target_names(b))
+                exit
+            end if
+        end do
+        if (len_trim(impl_name) == 0) then
+            error_msg = 'no type-bound procedure "'//method_name//'" on '//var_name
+            return
+        end if
+
+        if (allocated(arg_indices)) then
+            call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
+                                        impl_name, method_args, copyback_indices, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (method_args(0))
+            allocate (copyback_indices(0))
+        end if
+        n = size(method_args)
+        allocate (all_args(n + 1))
+        all_args(1) = context%symbols(symbol_index)%element_address
+        if (n > 0) all_args(2:) = method_args
+        if (.not. emit_void_call(context%session, &
+                call_emit_name(arena, impl_name), all_args, error_msg)) return
+        call copy_back_reference_args(context, method_args, copyback_indices, &
+                                      error_msg)
+    end subroutine lower_method_subroutine_call
+
+    subroutine lower_method_call_i32(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: base_var_index
+        character(len=:), allocatable :: impl_name
+        logical :: found
+        integer, allocatable :: combined(:)
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+
+        call method_call_info(arena, node, context, base_var_index, impl_name, &
+                              found, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. found) then
+            error_msg = 'not a type-bound method call'
+            return
+        end if
+        call method_call_arg_indices(node, base_var_index, combined)
+        call prepare_reference_args(arena, combined, context, VALUE_I32, &
+                                    impl_name, args, copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_call(context%session, call_emit_name(arena, impl_name), &
+                                args, value, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_method_call_i32
 
     subroutine lower_derived_component_element_load(arena, node, context, value, &
                                                     error_msg)

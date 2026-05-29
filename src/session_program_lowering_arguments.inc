@@ -54,6 +54,12 @@
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_derived(arena, arg_indices(i), context)) then
+                ! A derived actual is passed by reference: the base address of
+                ! its component storage.
+                call derived_actual_address(arena, arg_indices(i), context, &
+                                             args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            default_kind, args(i), &
@@ -91,6 +97,46 @@
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
     end function actual_is_character
+
+    logical function actual_is_derived(arena, node_index, context)
+        ! Whether an actual argument is a derived-type variable.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_derived = .false.
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index > 0) actual_is_derived = &
+            context%symbols(symbol_index)%is_derived
+    end function actual_is_derived
+
+    subroutine derived_actual_address(arena, node_index, context, address, &
+                                      error_msg)
+        ! Pass a derived actual by reference: the base address of its component
+        ! storage (element_address).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'derived argument was not declared: '//trim(id_name)
+            return
+        end if
+        address = context%symbols(symbol_index)%element_address
+        call set_empty(error_msg)
+    end subroutine derived_actual_address
 
     subroutine char_actual_inout_descriptor(arena, node_index, context, &
                                              descriptor, error_msg)
