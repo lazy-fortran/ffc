@@ -93,6 +93,12 @@ diagnostic. Only single-variable, one-dimensional, default-lower-bound
   actual arguments are copied back after the call, and parameter assignment
   stores through the pointer.
 - Function results are represented by assignment to the function result name.
+- A contained function returning a whole derived value is emitted as a `void`
+  function taking a hidden first pointer argument to the caller's result
+  storage; the callee binds its result variable to that pointer and writes
+  components through it, and `q = make_point()` passes `q`'s storage as the
+  hidden argument (no copy). This mirrors the deferred-length character result
+  ABI. The size is known at compile time, so no runtime allocation is needed.
 - Subroutines return LIRIC `void`; explicit `CALL` statements emit `void` calls.
 - Names are emitted as source names for the current single-file subset. A
   deterministic mangling scheme is still required before broader procedure and

@@ -33,9 +33,11 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   non-terminating (merge-at-end) arms
   (including multi-label `case (a, b)`) and `case default`;
 - contained integer / real / logical functions and subroutines with
-  scalar parameters; early `return` inside contained subroutines and
-  functions; integer procedure arguments use pointer parameters with
-  copy-back for variable actuals;
+  scalar parameters, plus contained functions returning a deferred-length
+  character or a whole derived value (via a hidden result-address arg);
+  early `return` inside contained subroutines and functions; integer
+  procedure arguments use pointer parameters with copy-back for variable
+  actuals;
 - fixed-size 1-D integer arrays with compile-time bounds; element
   assignment, element reads, `print`, `stop`, counted-loop
   subscripts, and whole-array assignment from an array constructor

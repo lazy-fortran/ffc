@@ -847,6 +847,11 @@ contains
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then
+            if (is_derived_result_call(arena, node%value_index, context)) then
+                call lower_derived_result_call(arena, node%value_index, &
+                                               symbol_index, context, error_msg)
+                return
+            end if
             call lower_derived_whole_assignment_diagnostic(arena, node, &
                                                            context, symbol_index, &
                                                            error_msg)

@@ -22,6 +22,8 @@ program test_session_derived_type_compiler
     if (.not. test_array_component_assignment_and_read()) all_passed = .false.
     if (.not. test_array_component_with_parameter_size()) all_passed = .false.
     if (.not. test_array_component_mixed_with_scalar()) all_passed = .false.
+    if (.not. test_function_returns_derived()) all_passed = .false.
+    if (.not. test_function_returns_derived_with_arg()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
@@ -256,6 +258,54 @@ contains
         test_array_component_mixed_with_scalar = expect_exit_status( &
             source, 103, '/tmp/ffc_session_arraycomp_mixed_test')
     end function test_array_component_mixed_with_scalar
+
+    logical function test_function_returns_derived()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: point_t'//new_line('a')// &
+                                       '    integer :: x'//new_line('a')// &
+                                       '    integer :: y'//new_line('a')// &
+                                       '  end type point_t'//new_line('a')// &
+                                       '  type(point_t) :: q'//new_line('a')// &
+                                       '  q = make_point()'//new_line('a')// &
+                                       '  stop q%x + q%y'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  function make_point() result(p)'// &
+                                       new_line('a')// &
+                                       '    type(point_t) :: p'//new_line('a')// &
+                                       '    p%x = 1'//new_line('a')// &
+                                       '    p%y = 2'//new_line('a')// &
+                                       '  end function make_point'//new_line('a')// &
+                                       'end program main'
+
+        test_function_returns_derived = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_derived_return_test')
+    end function test_function_returns_derived
+
+    logical function test_function_returns_derived_with_arg()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: box_t'//new_line('a')// &
+                                       '    integer :: lo'//new_line('a')// &
+                                       '    integer :: hi'//new_line('a')// &
+                                       '  end type box_t'//new_line('a')// &
+                                       '  type(box_t) :: b'//new_line('a')// &
+                                       '  b = make_box(5)'//new_line('a')// &
+                                       '  stop b%lo + b%hi'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  function make_box(n) result(r)'// &
+                                       new_line('a')// &
+                                       '    integer, intent(in) :: n'//new_line('a')// &
+                                       '    type(box_t) :: r'//new_line('a')// &
+                                       '    r%lo = n'//new_line('a')// &
+                                       '    r%hi = n * 2'//new_line('a')// &
+                                       '  end function make_box'//new_line('a')// &
+                                       'end program main'
+
+        ! 5 + 10 -> 15
+        test_function_returns_derived_with_arg = expect_exit_status( &
+            source, 15, '/tmp/ffc_session_derived_return_arg_test')
+    end function test_function_returns_derived_with_arg
 
     logical function test_generic_binding_diagnostic()
         character(len=*), parameter :: source = &

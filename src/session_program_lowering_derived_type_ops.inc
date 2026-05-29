@@ -161,7 +161,16 @@
         integer :: slot_count
         integer :: index
 
-        if (find_symbol(context, name) > 0) then
+        index = find_symbol(context, name)
+        if (index > 0) then
+            ! Re-declaring the pre-bound function result variable (result(p)
+            ! with type(t) :: p inside the body) is a no-op; its storage is the
+            ! caller-supplied hidden argument.
+            if (context%symbols(index)%is_derived .and. &
+                context%symbols(index)%derived_type_index == derived_type_index) then
+                call set_empty(error_msg)
+                return
+            end if
             error_msg = 'duplicate derived type declaration: '//trim(name)
             return
         end if
@@ -357,6 +366,68 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_derived_component_load
+
+    logical function is_derived_result_call(arena, value_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_derived_result_call = .false.
+        if (.not. node_exists(arena, value_index)) return
+        select type (v => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(v%name) .and. v%base_expr_index == 0 .and. &
+                .not. v%is_array_access) &
+                is_derived_result_call = is_contained_derived_function(context, &
+                                                                       v%name)
+        end select
+    end function is_derived_result_call
+
+    subroutine lower_derived_result_call(arena, value_index, dest_symbol_index, &
+                                         context, error_msg)
+        ! q = make_point(): pass q's storage as the hidden result pointer; the
+        ! callee writes its derived result directly into it.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: dest_symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: call_node
+        type(lr_operand_desc_t), allocatable :: user_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: func_name
+        integer :: i
+
+        select type (v => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            call_node = v
+        class default
+            error_msg = 'expected function call for derived result'
+            return
+        end select
+        func_name = call_node%name
+
+        if (allocated(call_node%arg_indices)) then
+            call prepare_reference_args(arena, call_node%arg_indices, context, &
+                                        VALUE_I32, user_args, copyback_indices, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (user_args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        allocate (all_args(size(user_args) + 1))
+        all_args(1) = context%symbols(dest_symbol_index)%element_address
+        do i = 1, size(user_args)
+            all_args(i + 1) = user_args(i)
+        end do
+
+        if (.not. emit_void_call(context%session, trim(func_name), all_args, &
+                                 error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, &
+                                      error_msg)
+    end subroutine lower_derived_result_call
 
     subroutine resolve_component_base(arena, base_index, context, symbol_index, &
                                       type_index, element_base, error_msg)

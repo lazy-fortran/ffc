@@ -34,6 +34,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: next_index
         integer :: value_kind
+        integer :: derived_type_index
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
@@ -44,7 +45,8 @@
             error_msg = 'duplicate contained function: '//trim(node%name)
             return
         end if
-        call function_value_kind(node, value_kind, error_msg)
+        call function_value_kind(node, context, value_kind, derived_type_index, &
+                                 error_msg)
         if (len_trim(error_msg) > 0) return
 
         next_index = context%function_count + 1
@@ -54,13 +56,18 @@
         call set_empty(error_msg)
     end subroutine register_internal_function_name
 
-  subroutine function_value_kind(node, value_kind, error_msg)
+  subroutine function_value_kind(node, context, value_kind, derived_type_index, &
+                                   error_msg)
         type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
+        integer, intent(out) :: derived_type_index
         integer :: char_len
+        character(len=:), allocatable :: derived_name
         character(len=:), allocatable, intent(out) :: error_msg
 
         value_kind = VALUE_I32
+        derived_type_index = 0
         call set_empty(error_msg)
         if (.not. allocated(node%return_type)) return
 
@@ -87,16 +94,66 @@
                                                     'and logical contained '// &
                                                     'functions', error_msg)
                 end if
+                return
+            end if
+            call extracted_derived_type_name(node%return_type, derived_name)
+            if (len_trim(derived_name) > 0) &
+                derived_type_index = find_derived_type(context, derived_name)
+            ! The result type is often declared in the body (result(p) with
+            ! type(t) :: p), not on the function statement.
+            if (derived_type_index == 0) &
+                derived_type_index = result_var_derived_type(node, context)
+            if (derived_type_index > 0) then
+                value_kind = VALUE_DERIVED
             else
                 call unsupported_feature_error('function result type', &
                                                 node%line, node%column, &
                                                 'direct LIRIC session supports '// &
-                                                'integer, real, logical, and '// &
-                                                'deferred-length character '// &
-                                                'contained functions', error_msg)
+                                                'integer, real, logical, '// &
+                                                'deferred-length character, and '// &
+                                                'derived-type contained functions', &
+                                                error_msg)
             end if
         end select
     end subroutine function_value_kind
+
+    integer function result_var_derived_type(node, context) result(type_index)
+        ! Find the derived type of the function result variable from its body
+        ! declaration (result(p) with type(t) :: p inside the body).
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: result_name
+        integer :: i, k
+
+        type_index = 0
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        type_index = declaration_derived_type_index(context, decl)
+                        if (type_index > 0) return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            type_index = declaration_derived_type_index(context, &
+                                                                        decl)
+                            if (type_index > 0) return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function result_var_derived_type
 
     subroutine copy_internal_function_names(source, destination)
         type(lowering_context_t), intent(in) :: source
@@ -152,6 +209,14 @@
         is_contained_logical_function = &
             contained_function_kind(context, name) == VALUE_LOGICAL
     end function is_contained_logical_function
+
+    logical function is_contained_derived_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_derived_function = &
+            contained_function_kind(context, name) == VALUE_DERIVED
+    end function is_contained_derived_function
 
     integer function contained_function_kind(context, name) result(value_kind)
         type(lowering_context_t), intent(in) :: context
@@ -228,6 +293,7 @@
         integer :: param_count
         integer :: result_index
         integer :: value_kind
+        integer :: result_derived_index
         logical :: terminated
         character(len=:), allocatable :: result_name
 
@@ -235,7 +301,8 @@
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-        call function_value_kind(node, value_kind, error_msg)
+        call function_value_kind(node, parent_context, value_kind, &
+                                 result_derived_index, error_msg)
         if (len_trim(error_msg) > 0) return
         result_name = trim(node%name)
         if (allocated(node%result_variable)) then
@@ -264,7 +331,8 @@
         if (value_kind == VALUE_F64) then
             if (.not. begin_liric_f64_function(context%session, node%name, &
                                                param_count, error_msg)) return
-        else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+        else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
+                 value_kind == VALUE_DERIVED) then
             if (.not. begin_void_subroutine(context%session, node%name, &
                                             param_count + 1, error_msg)) return
         else
@@ -292,13 +360,27 @@
                 context%symbols(context%current_function_result_index)%deferred_length, &
                 error_msg)) return
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_DERIVED) then
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = VALUE_DERIVED
+                rsym%is_derived = .true.
+                rsym%derived_type_index = result_derived_index
+                rsym%array_size = total_component_slots(context, &
+                                                        result_derived_index)
+                rsym%element_address = ptr_param(context%session, 0)
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             context%current_function_result_index = find_symbol(context, &
                                                                 result_name)
         end if
-        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
+            value_kind == VALUE_DERIVED) then
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg, 1)
         else
@@ -320,7 +402,8 @@
             return
         end if
         if (.not. context%current_block_terminated) then
-            if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+            if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
+                value_kind == VALUE_DERIVED) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
             else
                 value = context%symbols(result_index)%value
