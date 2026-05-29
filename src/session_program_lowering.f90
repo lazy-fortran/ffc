@@ -360,10 +360,19 @@ contains
                 context%current_block_terminated = .true.
             end if
         type is (exit_node)
-            call unsupported_feature_error('exit statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support early loop exits', error_msg)
+            if (.not. context%in_counted_do) then
+                call unsupported_feature_error('exit statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports exit inside a counted '// &
+                                               'do', error_msg)
+                return
+            end if
+            if (.not. emit_liric_br(context%session, &
+                                    context%current_loop_exit_block, &
+                                    error_msg)) return
+            context%current_block_terminated = .true.
+            context%current_block_exited_loop = .true.
         type is (cycle_node)
             call unsupported_feature_error('cycle statement', node%line, &
                                            node%column, &

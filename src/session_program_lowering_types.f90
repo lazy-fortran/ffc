@@ -88,6 +88,9 @@ module session_program_lowering_types
         logical :: in_internal_subroutine = .false.
         integer :: current_function_result_index = 0
         logical :: current_block_terminated = .false.
+        integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
+        logical :: in_counted_do = .false.
+        logical :: current_block_exited_loop = .false.
     end type lowering_context_t
 
     type, public :: branch_result_t

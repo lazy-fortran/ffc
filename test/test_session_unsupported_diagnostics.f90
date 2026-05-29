@@ -13,7 +13,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_scalar_type_diagnostic()) all_passed = .false.
-    if (.not. test_exit_diagnostic()) all_passed = .false.
     if (.not. test_cycle_diagnostic()) all_passed = .false.
     if (.not. test_select_case_diagnostic()) all_passed = .false.
     if (.not. test_do_step_diagnostic()) all_passed = .false.
@@ -43,7 +42,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_unsupported_scalar_type_diagnostic()) &
         all_passed = .false.
-    if (.not. test_cli_exit_diagnostic()) all_passed = .false.
     if (.not. test_cli_cycle_diagnostic()) all_passed = .false.
     if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_step_diagnostic()) all_passed = .false.
@@ -143,20 +141,6 @@ contains
                                                   source, 'unsupported scalar type', &
                                                   '/tmp/ffc_session_scalar_type_test')
     end function test_unsupported_scalar_type_diagnostic
-
-    logical function test_exit_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: i'//new_line('a')// &
-                                       '  do i = 1, 3'//new_line('a')// &
-                                       '    exit'//new_line('a')// &
-                                       '  end do'//new_line('a')// &
-                                       'end program main'
-
-        test_exit_diagnostic = expect_error_contains( &
-                               source, 'unsupported exit statement', &
-                               '/tmp/ffc_session_exit_diagnostic_test')
-    end function test_exit_diagnostic
 
     logical function test_cycle_diagnostic()
         character(len=*), parameter :: source = &
@@ -491,19 +475,6 @@ contains
                                                       '/tmp/ffc_cli_scalar_type_test')
     end function test_cli_unsupported_scalar_type_diagnostic
 
-    logical function test_cli_exit_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: i'//new_line('a')// &
-                                       '  do i = 1, 3'//new_line('a')// &
-                                       '    exit'//new_line('a')// &
-                                       '  end do'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_exit_diagnostic = expect_cli_error_contains( &
-                                   source, 'unsupported exit statement', &
-                                   '/tmp/ffc_cli_exit_diagnostic_test')
-    end function test_cli_exit_diagnostic
 
     logical function test_cli_cycle_diagnostic()
         character(len=*), parameter :: source = &
