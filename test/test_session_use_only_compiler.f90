@@ -10,6 +10,8 @@ program test_session_use_only_compiler
     if (.not. test_use_only_admits_listed_constant()) all_passed = .false.
     if (.not. test_use_only_filters_to_one_constant()) all_passed = .false.
     if (.not. test_use_only_rejects_unknown_name()) all_passed = .false.
+    if (.not. test_use_only_rename()) all_passed = .false.
+    if (.not. test_use_only_rename_hides_original()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: use ... only: filters imported symbols'
@@ -61,5 +63,34 @@ contains
             source, 'not exported by module', &
             '/tmp/ffc_session_use_only_unknown_test')
     end function test_use_only_rejects_unknown_name
+
+    logical function test_use_only_rename()
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  integer, parameter :: WIDTH = 80'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: COLS => WIDTH'//new_line('a')// &
+            '  stop COLS'//new_line('a')// &
+            'end program main'
+
+        test_use_only_rename = expect_exit_status( &
+            source, 80, '/tmp/ffc_session_use_rename_test')
+    end function test_use_only_rename
+
+    logical function test_use_only_rename_hides_original()
+        ! Under the rename, the original module name is not in local scope.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  integer, parameter :: WIDTH = 80'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: COLS => WIDTH'//new_line('a')// &
+            '  stop WIDTH'//new_line('a')// &
+            'end program main'
+
+        test_use_only_rename_hides_original = expect_error_contains( &
+            source, 'WIDTH', '/tmp/ffc_session_use_rename_hide_test')
+    end function test_use_only_rename_hides_original
 
 end program test_session_use_only_compiler

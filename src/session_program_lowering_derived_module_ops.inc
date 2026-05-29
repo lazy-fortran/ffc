@@ -160,18 +160,6 @@
 
         if (.not. allocated(use_node%module_name)) return
 
-        if (use_node%has_only) then
-            if (allocated(use_node%rename_list)) then
-                if (size(use_node%rename_list) > 0) then
-                    call unsupported_feature_error('use rename', &
-                        use_node%line, use_node%column, &
-                        'direct LIRIC session does not support the '// &
-                        'use ... only: y => x rename form', error_msg)
-                    return
-                end if
-            end if
-        end if
-
         module_lowered = lowercase_text(use_node%module_name)
         export_idx = find_module_export_index(context, module_lowered)
         if (export_idx <= 0) return
@@ -206,7 +194,95 @@
         if (len_trim(error_msg) > 0) return
         call validate_use_only_names(arena, export_idx, use_node, context, &
                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+        call import_use_renames(arena, export_idx, use_node, context, error_msg)
     end subroutine import_module_derived_types
+
+    subroutine import_use_renames(arena, export_idx, use_node, context, error_msg)
+        ! use m, only: local => remote binds module symbol `remote` under the
+        ! local name. rename_list is a flat [local, remote, ...] array.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: j
+        integer :: param_idx
+        integer :: value_kind
+        logical :: found
+
+        call set_empty(error_msg)
+        if (.not. allocated(use_node%rename_list)) return
+
+        do i = 1, size(use_node%rename_list) - 1, 2
+            found = .false.
+            do j = 1, context%module_exports(export_idx)%parameter_count
+                param_idx = context%module_exports(export_idx)%parameter_indices(j)
+                if (.not. node_exists(arena, param_idx)) cycle
+                select type (decl => arena%entries(param_idx)%node)
+                type is (declaration_node)
+                    if (.not. allocated(decl%var_name)) cycle
+                    if (.not. same_name(decl%var_name, &
+                                        use_node%rename_list(i + 1)%s)) cycle
+                    call declaration_value_kind(decl, value_kind, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call import_renamed_parameter(decl, &
+                        trim(use_node%rename_list(i)%s), value_kind, context, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    found = .true.
+                end select
+                if (found) exit
+            end do
+            if (.not. found) then
+                error_msg = 'use rename target is not an exported parameter of '// &
+                    trim(use_node%module_name)//': '// &
+                    trim(use_node%rename_list(i + 1)%s)
+                return
+            end if
+        end do
+    end subroutine import_use_renames
+
+    subroutine import_renamed_parameter(decl, local_name, value_kind, context, &
+                                        error_msg)
+        type(declaration_node), intent(in) :: decl
+        character(len=*), intent(in) :: local_name
+        integer, intent(in) :: value_kind
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: constant_value
+        integer :: index
+
+        if (value_kind /= VALUE_I32) then
+            call unsupported_feature_error('renamed parameter', decl%line, &
+                decl%column, 'direct LIRIC session only supports integer '// &
+                'scalar parameters', error_msg)
+            return
+        end if
+        if (find_symbol(context, local_name) > 0) then
+            error_msg = 'duplicate use rename local name: '//trim(local_name)
+            return
+        end if
+        if (.not. decl%has_initializer .or. decl%initializer_index <= 0) then
+            error_msg = 'renamed parameter has no initializer: '//trim(decl%var_name)
+            return
+        end if
+        call eval_i32_constant(context%arena, decl%initializer_index, context, &
+                               constant_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(local_name)
+        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%value = i32_immediate(context%session, &
+                                                     constant_value)
+        context%symbols(index)%is_parameter = .true.
+        context%symbols(index)%has_i32_constant = .true.
+        context%symbols(index)%i32_constant = constant_value
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine import_renamed_parameter
 
     logical function use_only_wants(use_node, name)
         ! Whether a plain USE imports an exported name. A USE without only:
