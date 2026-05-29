@@ -293,10 +293,22 @@ integer function resolve_concat_operand(arena, node_index, context, &
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: literal_text
+
+        call strip_literal_quotes(value_node%value, literal_text)
+        call lower_deferred_folded_literal_assignment(literal_text, context, &
+                                                      dest_symbol_index, error_msg)
+    end subroutine lower_deferred_literal_assignment
+
+    subroutine lower_deferred_folded_literal_assignment(literal_text, context, &
+                                                        dest_symbol_index, &
+                                                        error_msg)
+        character(len=*), intent(in) :: literal_text
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_op
         type(lr_operand_desc_t) :: len_op
 
-        call strip_literal_quotes(value_node%value, literal_text)
         call materialize_concat_literal(context, literal_text, data_op, &
                                         len_op, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -309,7 +321,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         context%symbols(dest_symbol_index)%value = data_op
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
-    end subroutine lower_deferred_literal_assignment
+    end subroutine lower_deferred_folded_literal_assignment
 
     subroutine allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                   data_addr, len_addr, &

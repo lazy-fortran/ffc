@@ -137,6 +137,14 @@
             select type (value_node => arena%entries(node%value_index)%node)
             type is (binary_op_node)
                 if (trim(value_node%operator) == '//') then
+                    ! An all-literal // chain (any depth) folds to one literal.
+                    call concat_character_literals(arena, node%value_index, &
+                                                   literal_text, fold_ok)
+                    if (fold_ok) then
+                        call lower_deferred_folded_literal_assignment( &
+                            literal_text, context, symbol_index, error_msg)
+                        return
+                    end if
                     call lower_deferred_concat_assignment(arena, node, &
                         context, symbol_index, error_msg)
                     return

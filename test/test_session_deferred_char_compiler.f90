@@ -15,6 +15,8 @@ program test_session_deferred_char_compiler
         all_passed = .false.
     if (.not. test_deferred_freed_on_normal_exit()) all_passed = .false.
     if (.not. test_unallocated_descriptor_does_not_free()) all_passed = .false.
+    if (.not. test_deferred_literal_concat_assign()) all_passed = .false.
+    if (.not. test_deferred_three_literal_concat()) all_passed = .false.
     if (.not. test_function_returns_concatenated_deferred_character()) &
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
@@ -102,6 +104,30 @@ contains
         test_unallocated_descriptor_does_not_free = expect_exit_status( &
             source, 0, '/tmp/ffc_session_deferred_unalloc_free_test')
     end function test_unallocated_descriptor_does_not_free
+
+    logical function test_deferred_literal_concat_assign()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "he" // "llo"'//new_line('a')// &
+            '  stop len(s)'//new_line('a')// &
+            'end program main'
+
+        test_deferred_literal_concat_assign = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_deferred_concat2_test')
+    end function test_deferred_literal_concat_assign
+
+    logical function test_deferred_three_literal_concat()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "a" // "b" // "c"'//new_line('a')// &
+            '  stop len(s)'//new_line('a')// &
+            'end program main'
+
+        test_deferred_three_literal_concat = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_deferred_concat3_test')
+    end function test_deferred_three_literal_concat
 
     logical function test_function_returns_concatenated_deferred_character()
         character(len=*), parameter :: source = &
