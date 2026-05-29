@@ -101,6 +101,16 @@
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
+        case ('type')
+            ! c_ptr is an opaque pointer; ffc stores it as an integer slot and
+            ! never dereferences it (c_loc/c_associated are #139).
+            if (trim(kind_spec) == 'c_ptr') then
+                value_kind = VALUE_I32
+            else
+                call unsupported_feature_error('scalar type', line, column, &
+                    'direct LIRIC session only supports integer, real, '// &
+                    'logical, character, and c_ptr scalars', error_msg)
+            end if
         case default
             call unsupported_feature_error('scalar type', line, column, &
                                            'direct LIRIC session only supports '// &

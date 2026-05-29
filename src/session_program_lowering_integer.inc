@@ -23,6 +23,12 @@
           if (len_trim(error_msg) > 0) return
           value = i32_immediate(context%session, literal_value)
       type is (identifier_node)
+          if (same_name(node%name, 'c_null_ptr')) then
+              ! iso_c_binding null pointer constant: an opaque zero.
+              value = i32_immediate(context%session, 0_c_int64_t)
+              call set_empty(error_msg)
+              return
+          end if
           symbol_index = find_symbol(context, node%name)
           if (symbol_index <= 0) then
               error_msg = 'integer identifier was not declared: '//trim(node%name)

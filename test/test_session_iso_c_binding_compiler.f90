@@ -10,6 +10,8 @@ program test_session_iso_c_binding_compiler
     if (.not. test_use_iso_c_binding_alone_compiles()) all_passed = .false.
     if (.not. test_use_iso_c_binding_intrinsic_form()) all_passed = .false.
     if (.not. test_c_int_kind_used_in_declaration()) all_passed = .false.
+    if (.not. test_c_ptr_declaration_and_null_init()) all_passed = .false.
+    if (.not. test_c_ptr_assignment_from_other_c_ptr()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -54,5 +56,32 @@ contains
         test_c_int_kind_used_in_declaration = expect_exit_status( &
             source, 5, '/tmp/ffc_session_iso_c_c_int_test')
     end function test_c_int_kind_used_in_declaration
+
+    logical function test_c_ptr_declaration_and_null_init()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  type(c_ptr) :: p'//new_line('a')// &
+            '  p = c_null_ptr'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_c_ptr_declaration_and_null_init = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_c_ptr_null_test')
+    end function test_c_ptr_declaration_and_null_init
+
+    logical function test_c_ptr_assignment_from_other_c_ptr()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  type(c_ptr) :: a, b'//new_line('a')// &
+            '  a = c_null_ptr'//new_line('a')// &
+            '  b = a'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_c_ptr_assignment_from_other_c_ptr = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_c_ptr_copy_test')
+    end function test_c_ptr_assignment_from_other_c_ptr
 
 end program test_session_iso_c_binding_compiler
