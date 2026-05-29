@@ -139,36 +139,40 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 F64_INTRINSIC_IDS
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
                                    fmod_component_t, fmod_derived_type_t, &
-                                   write_fmod
+                                   write_fmod, read_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
 contains
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
-                                          error_msg)
+                                          error_msg, include_paths)
 
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: include_paths(:)
         call lower_program_to_liric_path(arena, root_index, output_path, &
-                                         .true., error_msg)
+                                         .true., error_msg, include_paths)
     end subroutine lower_program_to_liric_exe
     subroutine lower_program_to_liric_object(arena, root_index, output_path, &
-                                             error_msg)
+                                             error_msg, include_paths)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: include_paths(:)
         call lower_program_to_liric_path(arena, root_index, output_path, &
-                                         .false., error_msg)
+                                         .false., error_msg, include_paths)
     end subroutine lower_program_to_liric_object
     subroutine lower_program_to_liric_path(arena, root_index, output_path, &
-                                           emit_executable, error_msg)
+                                           emit_executable, error_msg, &
+                                           include_paths)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
+        character(len=*), intent(in), optional :: include_paths(:)
         logical, intent(in) :: emit_executable
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
@@ -186,6 +190,13 @@ contains
         allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         context%arena = arena
+        if (present(include_paths)) then
+            context%include_paths = include_paths
+            context%include_path_count = size(include_paths)
+        else
+            allocate (character(len=1) :: context%include_paths(0))
+            context%include_path_count = 0
+        end if
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
                                               context%str_print_format_id, &

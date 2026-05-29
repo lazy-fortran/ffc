@@ -160,7 +160,14 @@
 
         module_lowered = lowercase_text(use_node%module_name)
         export_idx = find_module_export_index(context, module_lowered)
-        if (export_idx <= 0) return
+        if (export_idx <= 0) then
+            ! A module defined in this unit but exporting nothing collectable
+            ! (empty or procedure-only) is a no-op. Otherwise resolve through a
+            ! .fmod on the include path (#189); intrinsic modules are a no-op.
+            if (module_defined_in_unit(arena, module_lowered)) return
+            call import_module_from_fmod(use_node, context, error_msg)
+            return
+        end if
 
         do i = 1, context%module_exports(export_idx)%derived_type_count
             type_idx = context%module_exports(export_idx)% &
@@ -195,6 +202,134 @@
         if (len_trim(error_msg) > 0) return
         call import_use_renames(arena, export_idx, use_node, context, error_msg)
     end subroutine import_module_derived_types
+
+    subroutine import_module_from_fmod(use_node, context, error_msg)
+        ! Resolve `use <module>` against a .fmod on the include path. Intrinsic
+        ! modules are a no-op; an unresolved non-intrinsic module is an error.
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(module_info_t) :: info
+        character(len=:), allocatable :: name, path
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(use_node%module_name)) return
+        name = trim(use_node%module_name)
+        if (is_intrinsic_module(name)) return
+
+        path = find_fmod_on_path(context, name)
+        if (len_trim(path) == 0) then
+            call unsupported_feature_error('use statement', use_node%line, &
+                use_node%column, 'module "'//name//'" was not compiled in '// &
+                'this unit and no '//name//'.fmod was found on the include '// &
+                'path', error_msg)
+            return
+        end if
+
+        call read_fmod(path, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (allocated(info%parameters)) then
+            do i = 1, size(info%parameters)
+                call import_fmod_parameter(use_node, info%parameters(i), &
+                                           context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
+    end subroutine import_module_from_fmod
+
+    logical function module_defined_in_unit(arena, module_lowered)
+        ! Whether a module of this name is defined anywhere in this arena.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_lowered
+        integer :: n
+
+        module_defined_in_unit = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (module_node)
+                if (allocated(node%name)) then
+                    if (lowercase_text(node%name) == module_lowered) then
+                        module_defined_in_unit = .true.
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function module_defined_in_unit
+
+    logical function is_intrinsic_module(name)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: lowered
+
+        lowered = lowercase_text(name)
+        is_intrinsic_module = lowered == 'iso_c_binding' .or. &
+                              lowered == 'iso_fortran_env' .or. &
+                              lowered == 'ieee_arithmetic' .or. &
+                              lowered == 'ieee_exceptions' .or. &
+                              lowered == 'ieee_features' .or. &
+                              lowered == 'omp_lib'
+    end function is_intrinsic_module
+
+    function find_fmod_on_path(context, name) result(path)
+        ! First match of <dir>/<name>.fmod across the include paths and the
+        ! current directory wins.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: path
+        character(len=:), allocatable :: candidate
+        logical :: exists
+        integer :: i
+
+        path = ''
+        do i = 1, context%include_path_count
+            candidate = trim(context%include_paths(i))//'/'//trim(name)//'.fmod'
+            inquire (file=candidate, exist=exists)
+            if (exists) then
+                path = candidate
+                return
+            end if
+        end do
+        candidate = trim(name)//'.fmod'
+        inquire (file=candidate, exist=exists)
+        if (exists) path = candidate
+    end function find_fmod_on_path
+
+    subroutine import_fmod_parameter(use_node, param, context, error_msg)
+        type(use_statement_node), intent(in) :: use_node
+        type(fmod_parameter_t), intent(in) :: param
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: constant_value
+        integer :: index, io_stat
+
+        call set_empty(error_msg)
+        if (.not. allocated(param%name)) return
+        if (len_trim(param%name) == 0) return
+        if (.not. use_only_wants(use_node, trim(param%name))) return
+        ! Only integer named constants are importable today.
+        if (.not. allocated(param%kind)) return
+        if (trim(param%kind) /= 'integer') return
+        read (param%value, *, iostat=io_stat) constant_value
+        if (io_stat /= 0) then
+            error_msg = 'malformed integer value in .fmod for parameter '// &
+                        trim(param%name)
+            return
+        end if
+        if (find_symbol(context, trim(param%name)) > 0) return
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(param%name)
+        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%value = i32_immediate(context%session, &
+                                                      constant_value)
+        context%symbols(index)%is_parameter = .true.
+        context%symbols(index)%has_i32_constant = .true.
+        context%symbols(index)%i32_constant = constant_value
+        context%symbol_count = index
+    end subroutine import_fmod_parameter
 
     subroutine import_use_renames(arena, export_idx, use_node, context, error_msg)
         ! use m, only: local => remote binds module symbol `remote` under the

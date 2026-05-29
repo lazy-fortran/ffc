@@ -12,6 +12,7 @@ module ffc_module_artefact
     public :: fmod_derived_type_t
     public :: module_info_t
     public :: write_fmod
+    public :: read_fmod
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
@@ -92,6 +93,202 @@ contains
             return
         end if
     end subroutine write_fmod
+
+    subroutine read_fmod(path, info, error_msg)
+        ! Parse a .fmod written by write_fmod back into a module_info_t. Only
+        ! the documented schema is accepted; unknown lines are ignored.
+        character(len=*), intent(in) :: path
+        type(module_info_t), intent(out) :: info
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: unit, io_stat
+        character(len=1024) :: raw
+        character(len=:), allocatable :: line, key, val
+        character(len=:), allocatable :: section
+        type(fmod_parameter_t), allocatable :: params(:)
+        type(fmod_derived_type_t), allocatable :: dtypes(:)
+        type(fmod_component_t), allocatable :: comps(:)
+        integer :: nparam, ndtype, ncomp
+        character(len=:), allocatable :: cname, ckind
+
+        allocate (character(len=0) :: error_msg)
+        info%name = ''
+        allocate (params(0))
+        allocate (dtypes(0))
+        allocate (comps(0))
+        nparam = 0
+        ndtype = 0
+        ncomp = 0
+        section = ''
+
+        open (newunit=unit, file=path, status='old', action='read', iostat=io_stat)
+        if (io_stat /= 0) then
+            error_msg = 'could not open .fmod artefact: '//trim(path)
+            return
+        end if
+
+        do
+            read (unit, '(A)', iostat=io_stat) raw
+            if (io_stat /= 0) exit
+            line = adjustl(trim(raw))
+            if (len_trim(line) == 0) cycle
+            if (line == '[module]') then
+                section = 'module'
+                cycle
+            else if (line == '[[parameter]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'parameter'
+                nparam = nparam + 1
+                call grow_params(params, nparam)
+                params(nparam)%name = ''
+                params(nparam)%kind = ''
+                params(nparam)%value = ''
+                cycle
+            else if (line == '[[derived_type]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'derived_type'
+                ndtype = ndtype + 1
+                call grow_dtypes(dtypes, ndtype)
+                dtypes(ndtype)%name = ''
+                allocate (dtypes(ndtype)%components(0))
+                deallocate (comps); allocate (comps(0)); ncomp = 0
+                cycle
+            end if
+
+            if (index(line, '{') == 1) then
+                ! A derived-type component row.
+                call parse_component_line(line, cname, ckind)
+                ncomp = ncomp + 1
+                call grow_comps(comps, ncomp)
+                comps(ncomp)%name = cname
+                comps(ncomp)%kind = ckind
+                cycle
+            end if
+
+            call split_key_value(line, key, val)
+            if (len_trim(key) == 0) cycle
+            select case (section)
+            case ('module')
+                if (key == 'name') info%name = unquote(val)
+            case ('parameter')
+                if (key == 'name') params(nparam)%name = unquote(val)
+                if (key == 'kind') params(nparam)%kind = unquote(val)
+                if (key == 'value') params(nparam)%value = unquote(val)
+            case ('derived_type')
+                if (key == 'name') dtypes(ndtype)%name = unquote(val)
+            end select
+        end do
+        close (unit)
+        call flush_component(comps, ncomp, dtypes, ndtype)
+
+        info%parameters = params
+        info%derived_types = dtypes
+        if (len_trim(info%name) == 0) error_msg = 'malformed .fmod (no module name): '// &
+            trim(path)
+    end subroutine read_fmod
+
+    subroutine flush_component(comps, ncomp, dtypes, ndtype)
+        ! Attach accumulated component rows to the current derived type.
+        type(fmod_component_t), allocatable, intent(inout) :: comps(:)
+        integer, intent(inout) :: ncomp
+        type(fmod_derived_type_t), allocatable, intent(inout) :: dtypes(:)
+        integer, intent(in) :: ndtype
+
+        if (ndtype >= 1 .and. ncomp > 0) then
+            dtypes(ndtype)%components = comps(1:ncomp)
+        end if
+        if (allocated(comps)) deallocate (comps)
+        allocate (comps(0))
+        ncomp = 0
+    end subroutine flush_component
+
+    subroutine parse_component_line(line, name, kind)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable, intent(out) :: kind
+        integer :: p
+
+        name = ''
+        kind = ''
+        p = index(line, 'name = "')
+        if (p > 0) name = take_quoted(line(p + len('name = "'):))
+        p = index(line, 'kind = "')
+        if (p > 0) kind = take_quoted(line(p + len('kind = "'):))
+    end subroutine parse_component_line
+
+    function take_quoted(text) result(out)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: out
+        integer :: q
+
+        q = index(text, '"')
+        if (q > 0) then
+            out = text(1:q - 1)
+        else
+            out = ''
+        end if
+    end function take_quoted
+
+    subroutine split_key_value(line, key, val)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: key
+        character(len=:), allocatable, intent(out) :: val
+        integer :: eq
+
+        key = ''
+        val = ''
+        eq = index(line, '=')
+        if (eq <= 0) return
+        key = trim(adjustl(line(1:eq - 1)))
+        val = trim(adjustl(line(eq + 1:)))
+    end subroutine split_key_value
+
+    function unquote(text) result(out)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: out
+        character(len=:), allocatable :: t
+
+        t = trim(adjustl(text))
+        if (len(t) >= 2) then
+            if (t(1:1) == '"' .and. t(len(t):len(t)) == '"') then
+                out = t(2:len(t) - 1)
+                return
+            end if
+        end if
+        out = t
+    end function unquote
+
+    subroutine grow_params(arr, n)
+        type(fmod_parameter_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_parameter_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_params
+
+    subroutine grow_dtypes(arr, n)
+        type(fmod_derived_type_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_derived_type_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_dtypes
+
+    subroutine grow_comps(arr, n)
+        type(fmod_component_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_component_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_comps
 
     pure function mod_name(info) result(name)
         type(module_info_t), intent(in) :: info

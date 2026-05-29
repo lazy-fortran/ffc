@@ -48,11 +48,13 @@ program ffc_main
     if (opts%emit_object) then
         call lower_program_to_liric_object(frontend_result%arena, &
                                            frontend_result%root_index, &
-                                           trim(output_file), error_msg)
+                                           trim(output_file), error_msg, &
+                                           opts%include_paths)
     else
         call lower_program_to_liric_exe(frontend_result%arena, &
                                         frontend_result%root_index, &
-                                        trim(output_file), error_msg)
+                                        trim(output_file), error_msg, &
+                                        opts%include_paths)
     end if
     if (len_trim(error_msg) > 0) then
         print '(A)', trim(error_msg)
