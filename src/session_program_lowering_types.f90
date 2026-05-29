@@ -85,6 +85,8 @@ module session_program_lowering_types
         logical :: is_deferred_character = .false.
         type(lr_operand_desc_t) :: deferred_data
         type(lr_operand_desc_t) :: deferred_length
+        logical :: is_allocatable = .false.
+        type(lr_operand_desc_t) :: allocatable_descriptor_address
     end type symbol_t
 
     type, public :: derived_type_info_t

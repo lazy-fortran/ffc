@@ -40,6 +40,24 @@ is closed with ABI documentation and executable tests.
   character literals stores exactly `N` characters by truncating long literals
   and blank-padding short literals.
 - The current lowerer keeps ordinary scalar symbols as SSA-like current values.
+
+### Allocatable array descriptor
+
+An `integer, allocatable :: a(:)` declaration lowers to a 24-byte,
+8-byte-aligned descriptor on the stack, zero-initialised at declaration:
+
+```
+struct ffc_alloc_i32_1d {
+    i32*  data;    // offset 0; 0 means unallocated
+    i64   lower;   // offset 8; the lower bound (1 once allocated)
+    i64   upper;   // offset 16; the upper bound (0 when unallocated)
+};
+```
+
+`data == 0` marks the array unallocated. `allocate`/`deallocate` and element
+access are lowered by later issues; until then any use beyond declaration is
+rejected with a diagnostic.
+
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.
 - Scalar `abs`, `min`, and `max` intrinsics are supported for integer and real

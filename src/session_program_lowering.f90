@@ -567,6 +567,10 @@ contains
                                                'supports integer arrays', error_msg)
                 return
             end if
+            if (node%is_allocatable) then
+                call lower_allocatable_declaration(node, context, error_msg)
+                return
+            end if
             call get_array_bounds(node, context, array_lower_bound, array_size, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
@@ -671,6 +675,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
     include 'session_program_lowering_arrays.inc'
+    include 'session_program_lowering_allocatable.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
