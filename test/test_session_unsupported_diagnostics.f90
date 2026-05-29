@@ -26,7 +26,6 @@ program test_session_unsupported_diagnostics
     if (.not. test_external_logical_function_call_diagnostic()) &
         all_passed = .false.
     if (.not. test_integer_exponent_operator_diagnostic()) all_passed = .false.
-    if (.not. test_real_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_read_statement_diagnostic()) all_passed = .false.
     if (.not. test_write_statement_diagnostic()) all_passed = .false.
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
@@ -55,7 +54,6 @@ program test_session_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_integer_exponent_operator_diagnostic()) &
         all_passed = .false.
-    if (.not. test_cli_real_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_cli_read_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_write_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_allocate_statement_diagnostic()) all_passed = .false.
@@ -282,18 +280,6 @@ contains
                                           source, 'unsupported negative integer exponent', &
                                       '/tmp/ffc_session_integer_exponent_operator_test')
     end function test_integer_exponent_operator_diagnostic
-
-    logical function test_real_exponent_operator_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  real :: x'//new_line('a')// &
-                                       '  x = 2.0 ** 3.0'//new_line('a')// &
-                                       'end program main'
-
-        test_real_exponent_operator_diagnostic = expect_error_contains( &
-                                                 source, 'unsupported real operator', &
-                                         '/tmp/ffc_session_real_exponent_operator_test')
-    end function test_real_exponent_operator_diagnostic
 
     logical function test_read_statement_diagnostic()
         character(len=*), parameter :: source = &
@@ -574,18 +560,6 @@ contains
                                       'unsupported negative integer exponent', &
                                       '/tmp/ffc_cli_integer_exponent_operator_test')
     end function test_cli_integer_exponent_operator_diagnostic
-
-    logical function test_cli_real_exponent_operator_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  real :: x'//new_line('a')// &
-                                       '  x = 2.0 ** 3.0'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_real_exponent_operator_diagnostic = expect_cli_error_contains( &
-                                                   source, 'unsupported real operator', &
-                                              '/tmp/ffc_cli_real_exponent_operator_test')
-    end function test_cli_real_exponent_operator_diagnostic
 
     logical function test_cli_read_statement_diagnostic()
         character(len=*), parameter :: source = &

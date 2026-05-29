@@ -144,6 +144,13 @@
             call lower_f64_expression(arena, node%right_index, context, rhs, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
+            if (trim(node%operator) == '**') then
+                ! Real exponentiation lowers to a libm pow(f64, f64) call.
+                if (.not. emit_liric_f64_call(context%session, 'pow', &
+                                              [lhs, rhs], value, error_msg)) &
+                    return
+                return
+            end if
             call real_opcode(node%operator, node%line, node%column, opcode, &
                              error_msg)
             if (len_trim(error_msg) > 0) return
