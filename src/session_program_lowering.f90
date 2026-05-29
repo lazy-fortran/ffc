@@ -239,11 +239,10 @@ contains
         type is (program_node)
             continue
         type is (module_node)
-            call unsupported_feature_error('module program unit', &
-                                           program%line, program%column, &
-                                           'direct LIRIC session only lowers '// &
-                                           'top-level programs', error_msg)
-            return
+            ! A bare module unit is accepted only when it declares no symbols;
+            ! lower_program_return walks the body and emits targeted diagnostics
+            ! for module-defined procedures, types, and constants.
+            continue
         class default
             call unsupported_feature_error('program unit', &
                                            get_node_line(arena, root_index), &
@@ -301,10 +300,46 @@ contains
                 if (context%current_block_terminated) return
                 has_executable_statements = .true.
             end do
+        type is (module_node)
+            call lower_module_unit(arena, program, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports a program node'
         end select
     end subroutine lower_program_return
+
+    subroutine lower_module_unit(arena, mod_node, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        integer :: i
+
+        ! A bare module that declares symbols is rejected with a targeted
+        ! diagnostic; the per-kind handlers land in follow-up issues (#118,
+        ! #150, #164). An empty module is a no-op: the surrounding main
+        ! wrapper returns 0.
+        if (allocated(mod_node%procedure_indices)) then
+            if (size(mod_node%procedure_indices) > 0) then
+                call unsupported_feature_error('module-defined procedure', &
+                    mod_node%line, mod_node%column, &
+                    'direct LIRIC session does not yet lower module '// &
+                    'procedures', error_msg)
+                return
+            end if
+        end if
+        if (allocated(mod_node%declaration_indices)) then
+            do i = 1, size(mod_node%declaration_indices)
+                node_type = get_node_type_at(arena, mod_node%declaration_indices(i))
+                if (trim(node_type) == 'implicit_statement') cycle
+                call unsupported_feature_error('module-defined declaration', &
+                    mod_node%line, mod_node%column, &
+                    'direct LIRIC session does not yet lower module '// &
+                    'declarations', error_msg)
+                return
+            end do
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_module_unit
     include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)

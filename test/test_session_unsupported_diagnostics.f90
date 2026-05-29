@@ -95,10 +95,13 @@ contains
     logical function test_module_diagnostic()
         character(len=*), parameter :: source = &
                                        'module m'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  subroutine s'//new_line('a')// &
+                                       '  end subroutine s'//new_line('a')// &
                                        'end module m'
 
         test_module_diagnostic = expect_error_contains( &
-                                 source, 'unsupported module program unit', &
+                                 source, 'unsupported module-defined procedure', &
                                  '/tmp/ffc_session_module_diagnostic_test')
     end function test_module_diagnostic
 
@@ -372,10 +375,13 @@ contains
     logical function test_cli_module_diagnostic()
         character(len=*), parameter :: source = &
                                        'module m'//new_line('a')// &
+                                       'contains'//new_line('a')// &
+                                       '  subroutine s'//new_line('a')// &
+                                       '  end subroutine s'//new_line('a')// &
                                        'end module m'
 
         test_cli_module_diagnostic = expect_cli_error_contains( &
-                                     source, 'unsupported module program unit', &
+                                     source, 'unsupported module-defined procedure', &
                                      '/tmp/ffc_cli_module_diagnostic_test')
     end function test_cli_module_diagnostic
 
