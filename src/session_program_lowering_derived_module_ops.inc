@@ -160,6 +160,18 @@
 
         if (.not. allocated(use_node%module_name)) return
 
+        if (use_node%has_only) then
+            if (allocated(use_node%rename_list)) then
+                if (size(use_node%rename_list) > 0) then
+                    call unsupported_feature_error('use rename', &
+                        use_node%line, use_node%column, &
+                        'direct LIRIC session does not support the '// &
+                        'use ... only: y => x rename form', error_msg)
+                    return
+                end if
+            end if
+        end if
+
         module_lowered = lowercase_text(use_node%module_name)
         export_idx = find_module_export_index(context, module_lowered)
         if (export_idx <= 0) return
@@ -179,6 +191,7 @@
             class default
                 cycle
             end select
+            if (.not. use_only_wants(use_node, trim(type_name))) cycle
             type_idx_in_context = find_derived_type(context, type_name)
             if (type_idx_in_context > 0) then
                 cycle
@@ -188,12 +201,95 @@
             if (len_trim(error_msg) > 0) return
         end do
 
-        call import_module_constants(arena, export_idx, context, error_msg)
+        call import_module_constants(arena, export_idx, use_node, context, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call validate_use_only_names(arena, export_idx, use_node, context, &
+                                     error_msg)
     end subroutine import_module_derived_types
 
-    subroutine import_module_constants(arena, export_idx, context, error_msg)
+    logical function use_only_wants(use_node, name)
+        ! Whether a plain USE imports an exported name. A USE without only:
+        ! imports everything; a USE with only: imports just the listed names.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        use_only_wants = .true.
+        if (.not. use_node%has_only) return
+        use_only_wants = .false.
+        if (.not. allocated(use_node%only_list)) return
+        do i = 1, size(use_node%only_list)
+            if (same_name(use_node%only_list(i)%s, name)) then
+                use_only_wants = .true.
+                return
+            end if
+        end do
+    end function use_only_wants
+
+    subroutine validate_use_only_names(arena, export_idx, use_node, context, &
+                                       error_msg)
+        ! Every name in only: must be a symbol the module actually exports.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: export_idx
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. use_node%has_only) return
+        if (.not. allocated(use_node%only_list)) return
+        do i = 1, size(use_node%only_list)
+            if (.not. module_exports_name(arena, export_idx, context, &
+                                          use_node%only_list(i)%s)) then
+                error_msg = 'use only: name is not exported by module '// &
+                    trim(use_node%module_name)//': '// &
+                    trim(use_node%only_list(i)%s)
+                return
+            end if
+        end do
+    end subroutine validate_use_only_names
+
+    logical function module_exports_name(arena, export_idx, context, name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        module_exports_name = .false.
+        do i = 1, context%module_exports(export_idx)%derived_type_count
+            select type (dtype => arena%entries( &
+                context%module_exports(export_idx)%derived_type_indices(i))%node)
+            type is (derived_type_node)
+                if (allocated(dtype%name)) then
+                    if (same_name(dtype%name, name)) then
+                        module_exports_name = .true.
+                        return
+                    end if
+                end if
+            end select
+        end do
+        do i = 1, context%module_exports(export_idx)%parameter_count
+            select type (decl => arena%entries( &
+                context%module_exports(export_idx)%parameter_indices(i))%node)
+            type is (declaration_node)
+                if (allocated(decl%var_name)) then
+                    if (same_name(decl%var_name, name)) then
+                        module_exports_name = .true.
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function module_exports_name
+
+    subroutine import_module_constants(arena, export_idx, use_node, context, &
+                                       error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(use_statement_node), intent(in) :: use_node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
@@ -206,6 +302,7 @@
             if (.not. node_exists(arena, param_idx)) cycle
             select type (decl => arena%entries(param_idx)%node)
             type is (declaration_node)
+                if (.not. use_only_wants(use_node, trim(decl%var_name))) cycle
                 if (find_symbol(context, decl%var_name) > 0) cycle
                 call declaration_value_kind(decl, value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
