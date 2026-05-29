@@ -20,11 +20,13 @@
     end subroutine store_reference_value
 
     subroutine prepare_reference_args(arena, arg_indices, context, default_kind, &
-                                      args, copyback_indices, error_msg)
+                                      callee_name, args, copyback_indices, &
+                                      error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: default_kind
+        character(len=*), intent(in) :: callee_name
         type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
         integer, allocatable, intent(out) :: copyback_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
@@ -35,14 +37,81 @@
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
-            call prepare_reference_arg(arena, arg_indices(i), context, &
-                                       default_kind, args(i), &
-                                       copyback_indices(i), error_msg)
-            if (len_trim(error_msg) > 0) return
+            ! A character actual passed to a character(len=*) dummy is a single
+            ! reference parameter pointing at a {data, length} descriptor. Use
+            ! that ABI only when the callee actually declares the dummy as
+            ! character(len=*); otherwise fall through to the scalar path (which
+            ! rejects an unsupported character actual).
+            if (actual_is_character(arena, arg_indices(i), context) .and. &
+                callee_dummy_is_character(arena, callee_name, i)) then
+                call char_actual_descriptor(arena, arg_indices(i), context, &
+                                            args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                call prepare_reference_arg(arena, arg_indices(i), context, &
+                                           default_kind, args(i), &
+                                           copyback_indices(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         end do
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    logical function actual_is_character(arena, node_index, context)
+        ! Whether an actual argument evaluates to a character value.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_character = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_character_literal(arena, node_index)) then
+            actual_is_character = .true.
+            return
+        end if
+        if (is_char_expr_call(arena, node_index)) then
+            actual_is_character = .true.
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            if (len_trim(id_err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index > 0) actual_is_character = &
+                context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
+        end if
+    end function actual_is_character
+
+    subroutine char_actual_descriptor(arena, node_index, context, descriptor, &
+                                       error_msg)
+        ! Lower a character actual to a stack {data pointer, i64 length}
+        ! descriptor and return its address. This matches the character(len=*)
+        ! dummy ABI bound by bind_character_parameter_symbol.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr, length, length_i64
+        type(lr_operand_desc_t) :: data_addr, len_addr
+
+        call char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call allocate_deferred_char_descriptor(context, descriptor, data_addr, &
+                                               len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, data_ptr, data_addr, &
+                                 error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, length, length_i64, &
+                                        error_msg)) return
+        if (.not. emit_i64_store(context%session, length_i64, len_addr, &
+                                 error_msg)) return
+        call set_empty(error_msg)
+    end subroutine char_actual_descriptor
 
     subroutine prepare_reference_arg(arena, node_index, context, default_kind, &
                                      arg, copyback_index, error_msg)

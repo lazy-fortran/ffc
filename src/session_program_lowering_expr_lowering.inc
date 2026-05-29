@@ -155,8 +155,8 @@
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_LOGICAL, args, copyback_indices, &
-                                        error_msg)
+                                        VALUE_LOGICAL, node%name, args, &
+                                        copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (args(0))
@@ -309,8 +309,8 @@
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_F64, args, copyback_indices, &
-                                        error_msg)
+                                        VALUE_F64, node%name, args, &
+                                        copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (args(0))

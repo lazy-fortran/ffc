@@ -990,7 +990,7 @@ contains
             return
         end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
-                                    args, copyback_indices, error_msg)
+                                    name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_call_with_optional_padding(context, name, args, error_msg)) &
             return

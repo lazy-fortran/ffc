@@ -409,8 +409,8 @@
 
         if (allocated(call_node%arg_indices)) then
             call prepare_reference_args(arena, call_node%arg_indices, context, &
-                                        VALUE_I32, user_args, copyback_indices, &
-                                        error_msg)
+                                        VALUE_I32, call_node%name, user_args, &
+                                        copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))

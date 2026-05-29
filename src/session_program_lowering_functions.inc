@@ -527,6 +527,89 @@
         call set_empty(error_msg)
     end subroutine lower_void_subroutine
 
+    logical function dummy_is_character(arena, body_indices, param_name)
+        ! A dummy is an assumed-length character when a body declaration names
+        ! it with type 'character'. ffc supports only character(len=*) dummies.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i, k
+
+        dummy_is_character = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. is_character_type_name(decl%type_name)) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) then
+                        dummy_is_character = .true.
+                        return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) then
+                            dummy_is_character = .true.
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function dummy_is_character
+
+    logical function callee_dummy_is_character(arena, callee_name, param_pos)
+        ! Whether the contained procedure named callee_name declares its
+        ! param_pos-th (1-based) dummy as character(len=*). Used by the caller
+        ! to select the character descriptor ABI.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+
+        callee_dummy_is_character = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (subroutine_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        callee_dummy_is_character = param_at_is_character(arena, &
+                            node%param_indices, node%body_indices, param_pos)
+                        return
+                    end if
+                end if
+            type is (function_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        callee_dummy_is_character = param_at_is_character(arena, &
+                            node%param_indices, node%body_indices, param_pos)
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function callee_dummy_is_character
+
+    logical function param_at_is_character(arena, param_indices, body_indices, &
+                                           param_pos) result(is_char)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable :: name, name_err
+
+        is_char = .false.
+        if (.not. allocated(param_indices)) return
+        if (param_pos < 1 .or. param_pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(param_pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        is_char = dummy_is_character(arena, body_indices, name)
+    end function param_at_is_character
+
     subroutine define_reference_parameters(arena, param_indices, context, &
                                            error_msg, param_offset)
         type(ast_arena_t), intent(in) :: arena

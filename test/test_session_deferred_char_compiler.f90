@@ -21,11 +21,52 @@ program test_session_deferred_char_compiler
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
     if (.not. test_function_result_prints_directly()) all_passed = .false.
+    if (.not. test_pass_deferred_to_assumed_length_dummy_uses_len()) &
+        all_passed = .false.
+    if (.not. test_pass_literal_to_assumed_length_dummy()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: deferred-char function result ABI'
 
 contains
+
+    logical function test_pass_deferred_to_assumed_length_dummy_uses_len()
+        ! A deferred-length character actual passed to a character(len=*)
+        ! intent(in) dummy carries its length; len_trim sees it.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "hello world"'//new_line('a')// &
+            '  call print_it(s)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine print_it(arg)'//new_line('a')// &
+            '    character(len=*), intent(in) :: arg'//new_line('a')// &
+            '    stop len_trim(arg)'//new_line('a')// &
+            '  end subroutine print_it'//new_line('a')// &
+            'end program main'
+
+        test_pass_deferred_to_assumed_length_dummy_uses_len = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_assumed_len_deferred_test')
+    end function test_pass_deferred_to_assumed_length_dummy_uses_len
+
+    logical function test_pass_literal_to_assumed_length_dummy()
+        ! A character literal actual passed to the same dummy carries its
+        ! length too.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  call print_it("hello")'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine print_it(arg)'//new_line('a')// &
+            '    character(len=*), intent(in) :: arg'//new_line('a')// &
+            '    stop len_trim(arg)'//new_line('a')// &
+            '  end subroutine print_it'//new_line('a')// &
+            'end program main'
+
+        test_pass_literal_to_assumed_length_dummy = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_assumed_len_literal_test')
+    end function test_pass_literal_to_assumed_length_dummy
 
     logical function test_declare_deferred_character_compiles()
         character(len=*), parameter :: source = &
