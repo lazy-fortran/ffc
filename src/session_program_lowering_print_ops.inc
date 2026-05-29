@@ -168,15 +168,18 @@
         character(len=64) :: string_name
         integer :: symbol_index
         type(lr_operand_desc_t) :: data_ptr, length
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'formatted print item does not reference an AST node'
             return
         end if
-        select type (item => arena%entries(node_index)%node)
-        type is (literal_node)
-            if (is_character_literal(item)) then
-                call strip_literal_quotes(item%value, character_value)
+        if (is_literal(arena, node_index)) then
+            if (is_character_literal(arena, node_index)) then
+                call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                call strip_literal_quotes(lit_value, character_value)
                 context%string_literal_count = context%string_literal_count + 1
                 write (string_name, '(A,I0)') '.ffc.str.', &
                     context%string_literal_count
@@ -184,6 +187,10 @@
                         trim(string_name), character_value, error_msg)) return
                 return
             end if
+            error_msg = 'unsupported character argument for the A edit descriptor'
+            return
+        end if
+        select type (item => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, item%name)
             if (symbol_index > 0) then
@@ -217,9 +224,11 @@
 
         is_char = .false.
         if (.not. node_exists(arena, node_index)) return
+        if (is_literal(arena, node_index)) then
+            is_char = is_character_literal(arena, node_index)
+            return
+        end if
         select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            is_char = is_character_literal(node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index > 0) &

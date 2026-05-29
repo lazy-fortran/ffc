@@ -50,39 +50,42 @@
         end select
     end subroutine real_opcode
 
-    logical function is_real_literal(node)
-        type(literal_node), intent(in) :: node
+    logical function is_real_literal(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err
 
         is_real_literal = .false.
-        if (allocated(node%literal_type)) then
-            is_real_literal = trim(node%literal_type) == 'real'
-        end if
-        is_real_literal = is_real_literal .or. index(node%value, '.') > 0 .or. &
-                          index(node%value, 'e') > 0 .or. &
-                          index(node%value, 'E') > 0
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        is_real_literal = trim(literal_type) == 'real' .or. &
+                          index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
+                          index(value, 'E') > 0
     end function is_real_literal
 
-    logical function is_character_literal(node)
-        type(literal_node), intent(in) :: node
+    logical function is_character_literal(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err
 
         is_character_literal = .false.
-        if (allocated(node%literal_type)) then
-            is_character_literal = trim(node%literal_type) == 'character'
-        end if
-        is_character_literal = is_character_literal .or. &
-                               starts_with_quote(node%value)
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        is_character_literal = trim(literal_type) == 'character' .or. &
+                               starts_with_quote(value)
     end function is_character_literal
 
-    logical function is_logical_literal(node)
-        type(literal_node), intent(in) :: node
-        character(len=:), allocatable :: value
+    logical function is_logical_literal(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err
 
-        value = trim(node%value)
-        is_logical_literal = value == '.true.' .or. value == '.false.'
-        if (allocated(node%literal_type)) then
-            is_logical_literal = is_logical_literal .or. &
-                                 trim(node%literal_type) == 'logical'
-        end if
+        is_logical_literal = .false.
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        is_logical_literal = trim(value) == '.true.' .or. &
+                             trim(value) == '.false.' .or. &
+                             trim(literal_type) == 'logical'
     end function is_logical_literal
 
     logical function starts_with_quote(text)

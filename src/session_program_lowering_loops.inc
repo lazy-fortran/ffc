@@ -335,6 +335,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'DO loop '//trim(name)// &
@@ -362,29 +363,32 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            call parse_i32_literal(node%value, value, error_msg)
-        class default
-            call unsupported_feature_error('do loop '//trim(name), &
-                                           get_node_line(arena, node_index), &
-                                           get_node_column(arena, node_index), &
-                                           'direct LIRIC session only '// &
-                                           'supports literal steps', error_msg)
-        end select
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call parse_i32_literal(lit_value, value, error_msg)
+            return
+        end if
+
+        call unsupported_feature_error('do loop '//trim(name), &
+                                       get_node_line(arena, node_index), &
+                                       get_node_column(arena, node_index), &
+                                       'direct LIRIC session only '// &
+                                       'supports literal steps', error_msg)
     end subroutine parse_i32_constant
 
     logical function is_zero_i32_literal(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
 
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
+
         is_zero_i32_literal = .false.
         if (node_index <= 0) return
         if (.not. node_exists(arena, node_index)) return
-        select type (n => arena%entries(node_index)%node)
-        type is (literal_node)
-            if (allocated(n%value)) then
-                is_zero_i32_literal = (trim(n%value) == '0')
-            end if
-        end select
+        if (.not. is_literal(arena, node_index)) return
+        call get_literal_info(arena, node_index, lit_value, lit_type, lit_err)
+        if (len_trim(lit_err) > 0) return
+        is_zero_i32_literal = (trim(lit_value) == '0')
     end function is_zero_i32_literal

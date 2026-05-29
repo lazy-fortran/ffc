@@ -1,22 +1,32 @@
 integer function resolve_concat_operand(arena, node_index, context, &
-                                           out_name, is_literal, error_msg) &
+                                           out_name, operand_is_literal, error_msg) &
       result(symbol_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: out_name
-        logical, intent(out) :: is_literal
+        logical, intent(out) :: operand_is_literal
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
+        character(len=:), allocatable :: lit_value, lit_type
         integer :: idx
 
         symbol_index = 0
-        is_literal = .false.
+        operand_is_literal = .false.
         out_name = ''
         call set_empty(error_msg)
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'concat operand index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            operand_is_literal = .true.
+            out_name = lit_value
             return
         end if
 
@@ -30,9 +40,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
             else
                 error_msg = 'concat operand not declared: '//trim(name)
             end if
-        type is (literal_node)
-            is_literal = .true.
-            out_name = node%value
         class default
             error_msg = 'expected identifier or literal in concat operand'
         end select
@@ -282,15 +289,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine materialize_concat_literal
 
- subroutine lower_deferred_literal_assignment(value_node, context, &
+ subroutine lower_deferred_literal_assignment(literal_value, context, &
                                                   dest_symbol_index, error_msg)
-        type(literal_node), intent(in) :: value_node
+        character(len=*), intent(in) :: literal_value
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: literal_text
 
-        call strip_literal_quotes(value_node%value, literal_text)
+        call strip_literal_quotes(literal_value, literal_text)
         call lower_deferred_folded_literal_assignment(literal_text, context, &
                                                       dest_symbol_index, error_msg)
     end subroutine lower_deferred_literal_assignment
@@ -352,18 +359,30 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: data_value
         type(lr_operand_desc_t) :: len_value
         character(len=:), allocatable :: literal_text
+        character(len=:), allocatable :: lit_value, lit_type
         integer :: symbol_index
 
         call allocate_deferred_char_descriptor(context, arg, data_addr, &
                                                len_addr, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            call strip_literal_quotes(node%value, literal_text)
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call strip_literal_quotes(lit_value, literal_text)
             call materialize_concat_literal(context, literal_text, data_value, &
                                             len_value, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_store(context%session, data_value, data_addr, &
+                error_msg)) return
+            if (.not. emit_i64_store(context%session, len_value, len_addr, &
+                error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index <= 0 .or. &
@@ -414,22 +433,24 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         do i = 1, size(arg_indices)
             handled = .false.
-            select type (node => arena%entries(arg_indices(i))%node)
-            type is (literal_node)
-                if (is_character_literal(node)) then
+            if (is_literal(arena, arg_indices(i))) then
+                if (is_character_literal(arena, arg_indices(i))) then
                     call prepare_deferred_char_actual(arena, arg_indices(i), &
                         context, args(i), error_msg)
                     handled = .true.
                 end if
-            type is (identifier_node)
-                symbol_index = find_symbol(context, node%name)
-                if (symbol_index > 0 .and. &
-                    context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
-                    call prepare_deferred_char_actual(arena, arg_indices(i), &
-                        context, args(i), error_msg)
-                    handled = .true.
-                end if
-            end select
+            else
+                select type (node => arena%entries(arg_indices(i))%node)
+                type is (identifier_node)
+                    symbol_index = find_symbol(context, node%name)
+                    if (symbol_index > 0 .and. &
+                        context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+                        call prepare_deferred_char_actual(arena, arg_indices(i), &
+                            context, args(i), error_msg)
+                        handled = .true.
+                    end if
+                end select
+            end if
             if (len_trim(error_msg) > 0) return
             if (.not. handled) then
                 call prepare_reference_arg(arena, arg_indices(i), context, &

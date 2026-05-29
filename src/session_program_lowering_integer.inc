@@ -13,9 +13,19 @@
       integer :: symbol_index
       character(len=:), allocatable :: bin_op
       integer :: bin_left, bin_right, bin_line, bin_col
+      character(len=:), allocatable :: lit_value, lit_type
 
       if (.not. node_exists(arena, node_index)) then
           error_msg = 'expression index does not reference an AST node'
+          return
+      end if
+
+      if (is_literal(arena, node_index)) then
+          call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+          if (len_trim(error_msg) > 0) return
+          call parse_i32_literal(lit_value, literal_value, error_msg)
+          if (len_trim(error_msg) > 0) return
+          value = i32_immediate(context%session, literal_value)
           return
       end if
 
@@ -47,10 +57,6 @@
       end if
 
       select type (node => arena%entries(node_index)%node)
-      type is (literal_node)
-          call parse_i32_literal(node%value, literal_value, error_msg)
-          if (len_trim(error_msg) > 0) return
-          value = i32_immediate(context%session, literal_value)
       type is (identifier_node)
           if (same_name(node%name, 'c_null_ptr')) then
               ! iso_c_binding null pointer constant: an opaque zero.

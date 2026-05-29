@@ -11,7 +11,7 @@ module session_program_lowering
                          case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
-                         identifier_node, if_node, literal_node, &
+                         identifier_node, if_node, &
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &
                          module_node, &
@@ -21,6 +21,7 @@ module session_program_lowering
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_binary_op, get_binary_op_info, &
+                         is_literal, get_literal_info, &
                          is_declaration_node, is_module_node, is_program_node
 use liric_session_bindings, only: destroy, begin_i32_main, &
                                        begin_i32_function, begin_void_subroutine, &
@@ -1071,14 +1072,16 @@ contains
                                           value, error_msg)) return
             return
         end if
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
+        if (is_literal(arena, node_index)) then
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)
             if (len_trim(error_msg) > 0) return
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)

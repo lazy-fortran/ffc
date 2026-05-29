@@ -67,20 +67,27 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'logical expression index does not reference an AST node'
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            if (.not. is_logical_literal(node)) then
+        if (is_literal(arena, node_index)) then
+            if (.not. is_logical_literal(arena, node_index)) then
                 error_msg = 'direct LIRIC session expected a logical literal'
                 return
             end if
-            value = i32_immediate(context%session, logical_i32_value(node%value))
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i32_immediate(context%session, logical_i32_value(lit_value))
             call set_empty(error_msg)
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index <= 0) then
@@ -169,9 +176,20 @@
         integer :: symbol_index
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'real expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call parse_f64_literal(lit_value, literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = liric_f64_immediate(context%session, literal_value)
             return
         end if
 
@@ -198,10 +216,6 @@
         end if
 
         select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            call parse_f64_literal(node%value, literal_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            value = liric_f64_immediate(context%session, literal_value)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index <= 0) then
@@ -316,9 +330,12 @@
             return
         end if
 
+        if (is_literal(arena, node_index)) then
+            is_f64 = is_real_literal(arena, node_index)
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            is_f64 = is_real_literal(node)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index > 0) then

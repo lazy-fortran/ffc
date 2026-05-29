@@ -84,6 +84,7 @@
         integer :: symbol_index
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
 
         constant_value = 0_c_int64_t
         if (.not. node_exists(arena, node_index)) then
@@ -121,9 +122,15 @@
             return
         end if
 
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call parse_i32_literal(lit_value, constant_value, error_msg)
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            call parse_i32_literal(node%value, constant_value, error_msg)
         type is (identifier_node)
             symbol_index = find_symbol(context, node%name)
             if (symbol_index <= 0) then
@@ -327,6 +334,7 @@
         character(len=:), allocatable :: parse_error
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'array subscript index does not reference an AST node'
@@ -352,18 +360,24 @@
             return
         end if
 
-        select type (subscript => arena%entries(node_index)%node)
-        type is (range_expression_node)
-            call unsupported_array_subscript(arena, node_index, &
-                                             'ranges and slices', error_msg)
-        type is (literal_node)
-            call parse_i32_literal(subscript%value, literal_value, parse_error)
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call parse_i32_literal(lit_value, literal_value, parse_error)
             if (len_trim(parse_error) > 0) then
                 call unsupported_array_subscript(arena, node_index, &
                                                  'non-integer literals', error_msg)
                 return
             end if
             call set_empty(error_msg)
+            return
+        end if
+
+        select type (subscript => arena%entries(node_index)%node)
+        type is (range_expression_node)
+            call unsupported_array_subscript(arena, node_index, &
+                                             'ranges and slices', error_msg)
         type is (identifier_node)
             symbol_index = find_symbol(context, subscript%name)
             if (symbol_index > 0) then

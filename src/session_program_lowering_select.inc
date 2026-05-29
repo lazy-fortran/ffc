@@ -217,13 +217,15 @@
 
         is_character_selector = .false.
         if (.not. node_exists(arena, node_index)) return
+        if (is_literal(arena, node_index)) then
+            is_character_selector = is_character_literal(arena, node_index)
+            return
+        end if
         select type (n => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, n%name)
             if (symbol_index > 0) is_character_selector = &
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
-        type is (literal_node)
-            is_character_selector = is_character_literal(n)
         end select
     end function is_character_selector
 

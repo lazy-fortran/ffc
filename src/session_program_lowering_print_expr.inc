@@ -8,10 +8,45 @@
         character(len=64) :: string_name
         real(c_double) :: real_value
         integer :: symbol_index
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
             return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (is_character_literal(arena, node_index)) then
+                call strip_literal_quotes(lit_value, character_value)
+                context%string_literal_count = context%string_literal_count + 1
+                write (string_name, '(A,I0)') '.ffc.str.', &
+                    context%string_literal_count
+                if (.not. emit_liric_print_string(context%session, &
+                                                  context%str_print_format_id, &
+                                                  trim(string_name), &
+                                                  character_value, &
+                                                  error_msg)) return
+                return
+            end if
+            if (is_logical_literal(arena, node_index)) then
+                value = i32_immediate(context%session, logical_i32_value(lit_value))
+                if (.not. emit_liric_print_i32(context%session, &
+                                               context%i32_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
+            if (is_real_literal(arena, node_index)) then
+                call parse_f64_literal(lit_value, real_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = liric_f64_immediate(context%session, real_value)
+                if (.not. emit_liric_print_f64(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
+            ! An integer literal falls through to the integer print below.
         end if
 
         if (is_binary_op(arena, node_index)) then
@@ -78,34 +113,6 @@
                     return
                 end if
             end if
-        type is (literal_node)
-            if (is_character_literal(node)) then
-                call strip_literal_quotes(node%value, character_value)
-                context%string_literal_count = context%string_literal_count + 1
-                write (string_name, '(A,I0)') '.ffc.str.', &
-                    context%string_literal_count
-                if (.not. emit_liric_print_string(context%session, &
-                                                  context%str_print_format_id, &
-                                                  trim(string_name), &
-                                                  character_value, &
-                                                  error_msg)) return
-                return
-            end if
-            if (is_logical_literal(node)) then
-                value = i32_immediate(context%session, logical_i32_value(node%value))
-                if (.not. emit_liric_print_i32(context%session, &
-                                               context%i32_print_format_id, &
-                                               value, error_msg)) return
-                return
-            end if
-            if (is_real_literal(node)) then
-                call parse_f64_literal(node%value, real_value, error_msg)
-                if (len_trim(error_msg) > 0) return
-                value = liric_f64_immediate(context%session, real_value)
-                if (.not. emit_liric_print_f64(context%session, &
-                                               value, error_msg)) return
-                return
-            end if
         end select
         end if
 
@@ -127,10 +134,43 @@
         character(len=64) :: string_name
         real(c_double) :: real_value
         integer :: symbol_index
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
             return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (is_character_literal(arena, node_index)) then
+                call strip_literal_quotes(lit_value, character_value)
+                context%string_literal_count = context%string_literal_count + 1
+                write (string_name, '(A,I0)') '.ffc.str.', &
+                    context%string_literal_count
+                if (.not. emit_liric_print_string_value(context%session, &
+                                                        context%str_print_format_id, &
+                                                        trim(string_name), &
+                                                        character_value, &
+                                                        error_msg)) return
+                return
+            end if
+            if (is_logical_literal(arena, node_index)) then
+                value = i32_immediate(context%session, logical_i32_value(lit_value))
+                call lower_print_logical_value(context, value, error_msg)
+                return
+            end if
+            if (is_real_literal(arena, node_index)) then
+                call parse_f64_literal(lit_value, real_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = liric_f64_immediate(context%session, real_value)
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
+                return
+            end if
+            ! An integer literal falls through to the integer print below.
         end if
 
         if (is_binary_op(arena, node_index)) then
@@ -198,32 +238,6 @@
             end if
             if (is_char_expr_call(arena, node_index)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
-                return
-            end if
-        type is (literal_node)
-            if (is_character_literal(node)) then
-                call strip_literal_quotes(node%value, character_value)
-                context%string_literal_count = context%string_literal_count + 1
-                write (string_name, '(A,I0)') '.ffc.str.', &
-                    context%string_literal_count
-                if (.not. emit_liric_print_string_value(context%session, &
-                                                        context%str_print_format_id, &
-                                                        trim(string_name), &
-                                                        character_value, &
-                                                        error_msg)) return
-                return
-            end if
-            if (is_logical_literal(node)) then
-                value = i32_immediate(context%session, logical_i32_value(node%value))
-                call lower_print_logical_value(context, value, error_msg)
-                return
-            end if
-            if (is_real_literal(node)) then
-                call parse_f64_literal(node%value, real_value, error_msg)
-                if (len_trim(error_msg) > 0) return
-                value = liric_f64_immediate(context%session, real_value)
-                if (.not. emit_liric_print_f64_value(context%session, &
-                                                     value, error_msg)) return
                 return
             end if
         end select

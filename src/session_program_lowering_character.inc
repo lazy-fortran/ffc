@@ -110,6 +110,7 @@
         logical :: fold_ok
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
@@ -159,15 +160,15 @@
                         context, symbol_index, error_msg)
                     return
                 end if
-            else
-                select type (value_node => arena%entries(node%value_index)%node)
-                type is (literal_node)
-                    if (is_character_literal(value_node)) then
-                        call lower_deferred_literal_assignment(value_node, &
-                            context, symbol_index, error_msg)
-                        return
-                    end if
-                end select
+            else if (is_literal(arena, node%value_index)) then
+                if (is_character_literal(arena, node%value_index)) then
+                    call get_literal_info(arena, node%value_index, lit_value, &
+                                          lit_type, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call lower_deferred_literal_assignment(lit_value, &
+                        context, symbol_index, error_msg)
+                    return
+                end if
             end if
         end if
 
@@ -182,26 +183,26 @@
                                                error_msg)
                 return
             end if
-        else
-            select type (value_node => arena%entries(node%value_index)%node)
-            type is (literal_node)
-                if (.not. is_character_literal(value_node)) then
-                    call unsupported_feature_error('character assignment', &
-                                                   node%line, node%column, &
-                                                   'only character literal '// &
-                                                   'assignment is supported', &
-                                                   error_msg)
-                    return
-                end if
-                call strip_literal_quotes(value_node%value, literal_text)
-            class default
+        else if (is_literal(arena, node%value_index)) then
+            if (.not. is_character_literal(arena, node%value_index)) then
                 call unsupported_feature_error('character assignment', &
                                                node%line, node%column, &
                                                'only character literal '// &
                                                'assignment is supported', &
                                                error_msg)
                 return
-            end select
+            end if
+            call get_literal_info(arena, node%value_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call strip_literal_quotes(lit_value, literal_text)
+        else
+            call unsupported_feature_error('character assignment', &
+                                           node%line, node%column, &
+                                           'only character literal '// &
+                                           'assignment is supported', &
+                                           error_msg)
+            return
         end if
 
         call normalize_character_literal( &
@@ -229,6 +230,7 @@
         character(len=:), allocatable :: left_text, right_text, piece
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
 
         ok = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -246,13 +248,14 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (literal_node)
-            if (.not. is_character_literal(node)) return
-            call strip_literal_quotes(node%value, piece)
+        if (is_literal(arena, node_index)) then
+            if (.not. is_character_literal(arena, node_index)) return
+            call get_literal_info(arena, node_index, lit_value, lit_type, lit_err)
+            if (len_trim(lit_err) > 0) return
+            call strip_literal_quotes(lit_value, piece)
             accumulated = piece
             ok = .true.
-        end select
+        end if
     end subroutine concat_character_literals
 
     subroutine normalize_character_literal(literal_text, character_length)
@@ -513,6 +516,7 @@
         type(lr_operand_desc_t), intent(out) :: length
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
+        character(len=:), allocatable :: lit_value, lit_type
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'character expression does not reference an AST node'
@@ -550,6 +554,21 @@
             end select
             return
         end if
+        if (is_literal(arena, node_index)) then
+            if (.not. is_character_literal(arena, node_index)) then
+                call unsupported_feature_error('character expression', 0, 0, &
+                    'direct LIRIC session only supports a character variable, '// &
+                    'literal, or trim() here', error_msg)
+                return
+            end if
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call char_literal_operands(context, lit_value, data_ptr, length, &
+                                       error_msg)
+            return
+        end if
+
         select type (n => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, n%name)
@@ -563,14 +582,6 @@
             end if
             call char_length_operands(context, symbol_index, data_ptr, length, &
                                       error_msg)
-        type is (literal_node)
-            if (.not. is_character_literal(n)) then
-                call unsupported_feature_error('character expression', 0, 0, &
-                    'direct LIRIC session only supports a character variable, '// &
-                    'literal, or trim() here', error_msg)
-                return
-            end if
-            call char_literal_operands(context, n, data_ptr, length, error_msg)
         class default
             call unsupported_feature_error('character expression', 0, 0, &
                 'direct LIRIC session only supports a character variable or '// &
@@ -659,16 +670,17 @@
             return
     end subroutine lower_iachar_intrinsic
 
-    subroutine char_literal_operands(context, node, data_ptr, length, error_msg)
+    subroutine char_literal_operands(context, literal_value, data_ptr, length, &
+                                      error_msg)
         type(lowering_context_t), intent(inout) :: context
-        type(literal_node), intent(in) :: node
+        character(len=*), intent(in) :: literal_value
         type(lr_operand_desc_t), intent(out) :: data_ptr
         type(lr_operand_desc_t), intent(out) :: length
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
 
-        call strip_literal_quotes(node%value, literal_text)
+        call strip_literal_quotes(literal_value, literal_text)
         context%string_literal_count = context%string_literal_count + 1
         write (string_name, '(A,I0)') '.ffc.cexpr.', context%string_literal_count
         call materialize_liric_string(context%session, trim(string_name), &
