@@ -260,6 +260,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: nested_index
+        integer :: comp_kind
 
         if (component%is_array) then
             call unsupported_feature_error('derived type component', &
@@ -281,18 +282,26 @@ subroutine collect_component_declaration(component_index, parent, context, &
         end if
 
         nested_index = declaration_derived_type_index(context, component)
-        if (nested_index > 0 .or. is_derived_type_spec(component%type_name)) then
+        if (nested_index > 0) then
             call unsupported_feature_error('nested derived type component', &
                                            component%line, component%column, &
                                            'direct LIRIC session only supports '// &
                                            'scalar integer components', error_msg)
             return
         end if
-        if (trim(lowercase_text(component%type_name)) /= 'integer') then
+        ! Accept any component that resolves to an integer-sized slot, including
+        ! interop kinds (integer(c_int32_t)) and the opaque c_ptr. Other kinds
+        ! (real, character, deferred-length) are rejected: the MVP derived-type
+        ! layout stores only i32-sized components.
+        call type_name_value_kind(component%type_name, component%line, &
+                                  component%column, comp_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (comp_kind /= VALUE_I32) then
             call unsupported_feature_error('derived type component', &
                                            component%line, component%column, &
                                            'direct LIRIC session only supports '// &
-                                           'scalar integer components', error_msg)
+                                           'scalar integer (or c_ptr) components', &
+                                           error_msg)
             return
         end if
         call set_empty(error_msg)
