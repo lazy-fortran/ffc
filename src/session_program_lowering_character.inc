@@ -847,6 +847,127 @@
         call set_empty(error_msg)
     end subroutine ptr_plus_i32
 
+    subroutine char_equals(context, a_data, a_len, b_data, b_len, result, &
+                           error_msg)
+        ! Fortran character equality with blank padding: compare the common
+        ! prefix, then require the longer value's tail to be all spaces.
+        ! result (i32) is 1 when equal, else 0. Both operands are read only
+        ! within their own lengths (no out-of-bounds load).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: a_data, a_len, b_data, b_len
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: flag_addr, idx_addr, i_val, cond, ab, bb, tmp
+        type(lr_operand_desc_t) :: a_le_b, minlen, maxlen, tail_data, byte
+        integer(c_int32_t) :: hdr, body, advance, set_zero, prefix_done
+        integer(c_int32_t) :: thdr, tbody, tadvance, done
+
+        if (.not. emit_i32_alloca(context%session, flag_addr, error_msg)) return
+        if (.not. emit_i32_alloca(context%session, idx_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 1_c_int64_t), flag_addr, &
+                error_msg)) return
+        ! minlen / maxlen and the longer operand's data pointer.
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, a_len, b_len, &
+                a_le_b, error_msg)) return
+        call select_value(context, a_le_b, a_len, b_len, minlen, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call select_value(context, a_le_b, b_len, a_len, maxlen, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call select_value(context, a_le_b, b_data, a_data, tail_data, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        hdr = create_liric_block(context%session)
+        body = create_liric_block(context%session)
+        advance = create_liric_block(context%session)
+        set_zero = create_liric_block(context%session)
+        prefix_done = create_liric_block(context%session)
+        thdr = create_liric_block(context%session)
+        tbody = create_liric_block(context%session)
+        tadvance = create_liric_block(context%session)
+        done = create_liric_block(context%session)
+
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), idx_addr, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        ! prefix: compare [0, minlen)
+        if (.not. set_liric_block(context%session, hdr, error_msg)) return
+        context%current_block_id = hdr
+        if (.not. emit_i32_load(context%session, idx_addr, i_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, i_val, minlen, &
+                cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, body, prefix_done, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, body, error_msg)) return
+        context%current_block_id = body
+        if (.not. emit_liric_char_byte_zext(context%session, a_data, i_val, ab, &
+                error_msg)) return
+        if (.not. emit_liric_char_byte_zext(context%session, b_data, i_val, bb, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, ab, bb, cond, &
+                error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, set_zero, advance, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, advance, error_msg)) return
+        context%current_block_id = advance
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, idx_addr, error_msg)) return
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        ! tail: from minlen to maxlen, the longer value must be all spaces.
+        if (.not. set_liric_block(context%session, prefix_done, error_msg)) return
+        context%current_block_id = prefix_done
+        if (.not. emit_i32_store(context%session, minlen, idx_addr, error_msg)) &
+            return
+        if (.not. emit_liric_br(context%session, thdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, thdr, error_msg)) return
+        context%current_block_id = thdr
+        if (.not. emit_i32_load(context%session, idx_addr, i_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, i_val, maxlen, &
+                cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, tbody, done, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, tbody, error_msg)) return
+        context%current_block_id = tbody
+        if (.not. emit_liric_char_byte_zext(context%session, tail_data, i_val, &
+                byte, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, byte, &
+                i32_immediate(context%session, 32_c_int64_t), cond, error_msg)) &
+            return
+        if (.not. emit_liric_condbr(context%session, cond, set_zero, tadvance, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, tadvance, error_msg)) return
+        context%current_block_id = tadvance
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, idx_addr, error_msg)) return
+        if (.not. emit_liric_br(context%session, thdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, set_zero, error_msg)) return
+        context%current_block_id = set_zero
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), flag_addr, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, done, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done, error_msg)) return
+        context%current_block_id = done
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_load(context%session, flag_addr, result, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine char_equals
+
     subroutine lower_index_intrinsic(arena, node, context, value, error_msg)
         ! index(s, sub): 1-based position of the first occurrence of sub in s,
         ! or 0. Implemented as an outer position scan with an inner byte compare,

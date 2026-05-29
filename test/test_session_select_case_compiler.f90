@@ -15,6 +15,9 @@ program test_session_select_case_compiler
     if (.not. test_select_case_multi_label_first_matches()) all_passed = .false.
     if (.not. test_select_case_multi_label_second_matches()) all_passed = .false.
     if (.not. test_select_case_multi_label_no_match()) all_passed = .false.
+    if (.not. test_select_case_character_match()) all_passed = .false.
+    if (.not. test_select_case_character_default()) all_passed = .false.
+    if (.not. test_select_case_character_blank_padded()) all_passed = .false.
     if (.not. test_select_case_closed_range()) all_passed = .false.
     if (.not. test_select_case_unbounded_low()) all_passed = .false.
     if (.not. test_select_case_unbounded_high()) all_passed = .false.
@@ -172,6 +175,60 @@ contains
         test_select_case_multi_label_no_match = expect_exit_status( &
             source, 99, '/tmp/ffc_session_select_multi_none_test')
     end function test_select_case_multi_label_no_match
+
+    logical function test_select_case_character_match()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=3) :: s'//new_line('a')// &
+            '  s = "bar"'//new_line('a')// &
+            '  select case (s)'//new_line('a')// &
+            '  case ("foo")'//new_line('a')// &
+            '    stop 1'//new_line('a')// &
+            '  case ("bar")'//new_line('a')// &
+            '    stop 2'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 9'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_character_match = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_select_char_match_test')
+    end function test_select_case_character_match
+
+    logical function test_select_case_character_default()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=3) :: s'//new_line('a')// &
+            '  s = "zzz"'//new_line('a')// &
+            '  select case (s)'//new_line('a')// &
+            '  case ("foo")'//new_line('a')// &
+            '    stop 1'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 9'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_character_default = expect_exit_status( &
+            source, 9, '/tmp/ffc_session_select_char_default_test')
+    end function test_select_case_character_default
+
+    logical function test_select_case_character_blank_padded()
+        ! A len=5 selector "bar  " matches the 3-char label "bar" (blank pad).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=5) :: s'//new_line('a')// &
+            '  s = "bar"'//new_line('a')// &
+            '  select case (s)'//new_line('a')// &
+            '  case ("bar")'//new_line('a')// &
+            '    stop 2'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    stop 9'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            'end program main'
+
+        test_select_case_character_blank_padded = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_select_char_padded_test')
+    end function test_select_case_character_blank_padded
 
     logical function test_select_case_closed_range()
         character(len=*), parameter :: source = &
