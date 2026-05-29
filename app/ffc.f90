@@ -13,6 +13,7 @@ program ffc_main
     character(len=CLI_PATH_LEN), allocatable :: argv(:)
     character(len=:), allocatable :: error_msg
     character(len=CLI_PATH_LEN) :: output_file
+    character(len=CLI_PATH_LEN), allocatable :: search_paths(:)
     integer :: nargs, i
 
     nargs = command_argument_count()
@@ -45,16 +46,23 @@ program ffc_main
     output_file = opts%output_file
     if (len_trim(output_file) == 0) output_file = default_output_name(opts%emit_object)
 
+    ! A .fmod sits beside the .o it was emitted with, so a linked object's
+    ! directory is also searched when resolving `use`.
+    search_paths = opts%include_paths
+    do i = 1, size(opts%link_inputs)
+        call append_path(search_paths, dirname(trim(opts%link_inputs(i))))
+    end do
+
     if (opts%emit_object) then
         call lower_program_to_liric_object(frontend_result%arena, &
                                            frontend_result%root_index, &
                                            trim(output_file), error_msg, &
-                                           opts%include_paths)
+                                           search_paths)
     else
         call lower_program_to_liric_exe(frontend_result%arena, &
                                         frontend_result%root_index, &
                                         trim(output_file), error_msg, &
-                                        opts%include_paths)
+                                        search_paths)
     end if
     if (len_trim(error_msg) > 0) then
         print '(A)', trim(error_msg)
@@ -69,6 +77,8 @@ contains
         print '(A)', '  -o <file>     Output file'
         print '(A)', '  -c            Emit object file'
         print '(A)', '  -I <dir>      Add module/include search directory'
+        print '(A)', '  <file>.o      Link input object (its directory is '// &
+            'searched for .fmod)'
     end subroutine print_usage
 
     function default_output_name(emit_object) result(name)
@@ -81,5 +91,32 @@ contains
             name = 'a.out'
         end if
     end function default_output_name
+
+    function dirname(path) result(dir)
+        character(len=*), intent(in) :: path
+        character(len=:), allocatable :: dir
+        integer :: slash
+
+        slash = index(path, '/', back=.true.)
+        if (slash > 0) then
+            dir = path(1:slash - 1)
+        else
+            dir = '.'
+        end if
+    end function dirname
+
+    subroutine append_path(paths, dir)
+        character(len=CLI_PATH_LEN), allocatable, intent(inout) :: paths(:)
+        character(len=*), intent(in) :: dir
+        character(len=CLI_PATH_LEN), allocatable :: tmp(:)
+        integer :: m
+
+        if (.not. allocated(paths)) allocate (paths(0))
+        m = size(paths)
+        allocate (tmp(m + 1))
+        if (m > 0) tmp(1:m) = paths(1:m)
+        tmp(m + 1) = dir
+        call move_alloc(tmp, paths)
+    end subroutine append_path
 
 end program ffc_main
