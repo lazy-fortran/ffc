@@ -101,6 +101,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, &
                                                 I32_INTRINSIC_ISHFT, &
                                                 I32_INTRINSIC_ISHFTC, &
+                                                I32_INTRINSIC_SIGN, &
+                                                F64_INTRINSIC_SIGN, &
                                                 F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
                                                 F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                                                 F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &

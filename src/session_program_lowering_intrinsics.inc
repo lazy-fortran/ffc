@@ -34,6 +34,8 @@
         case (I32_INTRINSIC_ISHFTC)
             call lower_i32_ishftc_intrinsic(arena, node, context, value, &
                                             error_msg)
+        case (I32_INTRINSIC_SIGN)
+            call lower_i32_sign_intrinsic(arena, node, context, value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -203,6 +205,8 @@
         case (F64_INTRINSIC_REAL)
             call lower_f64_real_intrinsic(arena, node, context, value, &
                                           error_msg)
+        case (F64_INTRINSIC_SIGN)
+            call lower_f64_sign_intrinsic(arena, node, context, value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -233,6 +237,41 @@
         call select_value(context, condition, arg, negative, value, error_msg)
     end subroutine lower_i32_abs_intrinsic
 
+    subroutine lower_i32_sign_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, b, zero
+        type(lr_operand_desc_t) :: a_nonneg, neg_a, magnitude
+        type(lr_operand_desc_t) :: b_nonneg, neg_magnitude
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, a, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, b, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        ! magnitude = abs(a)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, a, zero, &
+                                      a_nonneg, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, a, neg_a, &
+                                  error_msg)) return
+        call select_value(context, a_nonneg, a, neg_a, magnitude, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! result = (b >= 0) ? magnitude : -magnitude  (sign(7,0) == 7)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, b, zero, &
+                                      b_nonneg, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, magnitude, &
+                                  neg_magnitude, error_msg)) return
+        call select_value(context, b_nonneg, magnitude, neg_magnitude, value, &
+                          error_msg)
+    end subroutine lower_i32_sign_intrinsic
+
     subroutine lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -257,6 +296,42 @@
                                         arg, negative, error_msg)) return
         call select_value(context, condition, arg, negative, value, error_msg)
     end subroutine lower_f64_abs_intrinsic
+
+    subroutine lower_f64_sign_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, b, zero
+        type(lr_operand_desc_t) :: a_nonneg, neg_a, magnitude
+        type(lr_operand_desc_t) :: b_nonneg, neg_magnitude
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, a, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(2), context, b, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = liric_f64_immediate(context%session, 0.0_c_double)
+        ! magnitude = abs(a)
+        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, a, zero, &
+                                      a_nonneg, error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, LR_OP_FSUB, zero, a, &
+                                        neg_a, error_msg)) return
+        call select_value(context, a_nonneg, a, neg_a, magnitude, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! result = (b >= 0) ? magnitude : -magnitude
+        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, b, zero, &
+                                      b_nonneg, error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, LR_OP_FSUB, zero, &
+                                        magnitude, neg_magnitude, error_msg)) &
+            return
+        call select_value(context, b_nonneg, magnitude, neg_magnitude, value, &
+                          error_msg)
+    end subroutine lower_f64_sign_intrinsic
 
     subroutine lower_i32_mod_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -470,14 +545,14 @@
                                            node%line, node%column, &
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, ishft, ishftc, and '// &
-                                           'real', error_msg)
+                                           'ieor, not, ishft, ishftc, sign, '// &
+                                           'and real', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
                                            'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, ishft, ishftc, and '// &
-                                           'real', error_msg)
+                                           'ieor, not, ishft, ishftc, sign, '// &
+                                           'and real', error_msg)
         end if
     end subroutine unsupported_intrinsic_error

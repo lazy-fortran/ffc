@@ -17,6 +17,9 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_integer_ishft_left_literal()) all_passed = .false.
     if (.not. test_integer_ishft_right_literal()) all_passed = .false.
     if (.not. test_integer_ishftc_rotates()) all_passed = .false.
+    if (.not. test_integer_sign_positive()) all_passed = .false.
+    if (.not. test_integer_sign_negative()) all_passed = .false.
+    if (.not. test_integer_sign_zero_sign()) all_passed = .false.
     if (.not. test_real_intrinsic_values()) all_passed = .false.
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -151,6 +154,47 @@ contains
                                       source, 12, &
                                       '/tmp/ffc_session_integer_ishftc_test')
     end function test_integer_ishftc_rotates
+
+    logical function test_integer_sign_positive()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = sign(7, 3)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_sign_positive = expect_exit_status( &
+                                     source, 7, &
+                                     '/tmp/ffc_session_integer_sign_pos_test')
+    end function test_integer_sign_positive
+
+    logical function test_integer_sign_negative()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = sign(7, -3)'//new_line('a')// &
+                                       '  stop abs(x)'//new_line('a')// &
+                                       'end program main'
+
+        ! sign(7, -3) == -7; abs gives 7 (stop needs a non-negative code)
+        test_integer_sign_negative = expect_exit_status( &
+                                     source, 7, &
+                                     '/tmp/ffc_session_integer_sign_neg_test')
+    end function test_integer_sign_negative
+
+    logical function test_integer_sign_zero_sign()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = sign(7, 0)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        ! Fortran: a zero second argument is treated as a positive sign
+        test_integer_sign_zero_sign = expect_exit_status( &
+                                     source, 7, &
+                                     '/tmp/ffc_session_integer_sign_zero_test')
+    end function test_integer_sign_zero_sign
 
     logical function test_real_intrinsic_values()
         character(len=*), parameter :: source = &

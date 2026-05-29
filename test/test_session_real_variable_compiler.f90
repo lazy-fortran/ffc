@@ -14,5 +14,13 @@ program test_session_real_variable_compiler
          'end program main', '3.500000'//new_line('a'), &
          '/tmp/ffc_session_real_var_test')) stop 1
 
+    if (.not. expect_output( &
+         'program main'//new_line('a')// &
+         '  real :: x'//new_line('a')// &
+         '  x = sign(2.5, -4.0)'//new_line('a')// &
+         '  print *, x'//new_line('a')// &
+         'end program main', '-2.500000'//new_line('a'), &
+         '/tmp/ffc_session_real_sign_test')) stop 1
+
     print *, 'PASS: real variables and arithmetic lower through direct LIRIC'
 end program test_session_real_variable_compiler
