@@ -170,6 +170,14 @@ second writes `%-*.*s` (left-justify, blank-pad and truncate to the buffer
 length) into the variable's storage, which is then rebound to that buffer.
 Single value only; compound formats and write-to-file-unit are not supported.
 
+### Internal read
+
+`read (buf, fmt) value`, where `buf` is a character variable and `fmt` is a
+literal integer descriptor (`I0`/`Iw`), parses an integer from `buf` with
+`sscanf(buf, "%d", &slot)` into a stack slot, then loads it into the integer
+target. Integer scalar targets only; real/character reads and read-from-file
+are rejected.
+
 ## Deferred-length character
 
 A `character(len=:), allocatable` variable (and the `character(:), allocatable`

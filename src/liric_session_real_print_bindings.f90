@@ -52,6 +52,7 @@ module liric_session_real_print_bindings
     public :: synthesize_get_arg_helper
     public :: emit_get_arg_call
     public :: emit_snprintf
+    public :: emit_sscanf
 
     interface
         function lr_session_declare(handle, name, ret, params, n, vararg, &
@@ -732,6 +733,19 @@ contains
                                   lr_type_i32_s(session%handle), 3_c_int32_t, &
                                   c_true, vreg, error_msg)
     end function emit_snprintf
+
+    logical function emit_sscanf(session, args, error_msg)
+        ! Variadic sscanf(buf, fmt, ...) call. args holds buf, fmt, then the
+        ! destination pointer arguments.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_sscanf = emit_call(session, 'sscanf', args, &
+                                lr_type_i32_s(session%handle), 2_c_int32_t, &
+                                c_true, vreg, error_msg)
+    end function emit_sscanf
 
     logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
                                vararg, vreg, error_msg)

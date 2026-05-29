@@ -71,7 +71,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             printf_format_ptr
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
                                                  synthesize_get_arg_helper, &
-                                                 emit_get_arg_call, emit_snprintf
+                                                 emit_get_arg_call, emit_snprintf, &
+                                                 emit_sscanf
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
@@ -400,6 +401,10 @@ contains
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
+            if (is_internal_read(node, context)) then
+                call lower_internal_read(arena, node, context, error_msg)
+                return
+            end if
             call unsupported_feature_error('read statement', node%line, &
                                            node%column, &
                                            'direct LIRIC session does not '// &
@@ -682,6 +687,7 @@ contains
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
+    include 'session_program_lowering_internal_read.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name

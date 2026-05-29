@@ -51,9 +51,9 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   with element-component access (`arr(i)%comp`);
 - `print *, expr` (list-directed, gfortran-exact bytes) for integers,
   reals, logicals, characters, plus formatted `print '(I0)'/'(Iw)'/'(A)',
-  expr` and internal `write (buf, '(I0)'/'(Iw)'/'(A)') value` with a single
-  edit descriptor; `stop <integer expression>` returns
-  its argument
+  expr`, internal `write (buf, '(I0)'/'(Iw)'/'(A)') value`, and internal
+  `read (buf, '(I0)'/'(Iw)') value` with a single edit descriptor;
+  `stop <integer expression>` returns its argument
   as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
   `ieor`, `not`, `ishft`, `ishftc`, `sign`, integer-to-real `real()`,
   real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/
