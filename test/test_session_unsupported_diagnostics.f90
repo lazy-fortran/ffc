@@ -308,11 +308,11 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: x'//new_line('a')// &
-                                       '  x = 2 ** 3'//new_line('a')// &
+                                       '  x = 2 ** (-1)'//new_line('a')// &
                                        'end program main'
 
         test_integer_exponent_operator_diagnostic = expect_error_contains( &
-                                               source, 'unsupported integer operator', &
+                                          source, 'unsupported negative integer exponent', &
                                       '/tmp/ffc_session_integer_exponent_operator_test')
     end function test_integer_exponent_operator_diagnostic
 
@@ -628,12 +628,12 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: x'//new_line('a')// &
-                                       '  x = 2 ** 3'//new_line('a')// &
+                                       '  x = 2 ** (-1)'//new_line('a')// &
                                        'end program main'
 
         test_cli_integer_exponent_operator_diagnostic = &
             expect_cli_error_contains(source, &
-                                      'unsupported integer operator', &
+                                      'unsupported negative integer exponent', &
                                       '/tmp/ffc_cli_integer_exponent_operator_test')
     end function test_cli_integer_exponent_operator_diagnostic
 

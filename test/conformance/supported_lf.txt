@@ -12,13 +12,14 @@ error_complete_garbage.lf
 function_param_memory_safety.lf
 issue_1260_subroutine_named_end.lf
 issue_1260_subroutine_no_name.lf
+issue_1540_do_loop_procedure.lf
 issue_177_line_continuation.lf
 issue_1883_intent_result.lf
+issue_215_unary_precedence.lf
 issue_637_do_loop_simple_literals.lf
 issue_637_do_loop_with_expressions.lf
 issue_637_do_loop_with_variables.lf
 issue_652_multi_var_init.lf
 issue_652_multi_var_simple.lf
 issue_957_parameter_attributes.lf
-issue_1540_do_loop_procedure.lf
 string_transform_hello.lf

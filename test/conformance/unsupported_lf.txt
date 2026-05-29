@@ -163,7 +163,6 @@ issue_2150_reshape_variable_vs_literal_shape.lf
 issue_2151_array_function_broken.lf
 issue_2153_array_call_scalar_param.lf
 issue_2159_chained_assignment_misparse.lf
-issue_215_unary_precedence.lf
 issue_2160_global_var_and_calls.lf
 issue_2163_character_substring_lengths.lf
 issue_2165_undeclared_argument.lf

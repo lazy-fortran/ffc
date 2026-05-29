@@ -53,6 +53,11 @@
           call lower_i32_expression(arena, node%left_index, context, lhs, &
                                     error_msg)
           if (len_trim(error_msg) > 0) return
+          if (trim(node%operator) == '**') then
+              call lower_i32_pow(arena, node%right_index, node%line, &
+                                 node%column, context, lhs, value, error_msg)
+              return
+          end if
           call lower_i32_expression(arena, node%right_index, context, rhs, &
                                     error_msg)
           if (len_trim(error_msg) > 0) return
@@ -82,6 +87,55 @@
           error_msg = 'ffc direct-session lowering only supports integer expressions'
       end select
   end subroutine lower_i32_expression
+
+  subroutine lower_i32_pow(arena, exp_index, line, column, context, base, &
+                           value, error_msg)
+      use liric_session_bindings, only: LR_OP_MUL
+      type(ast_arena_t), intent(in) :: arena
+      integer, intent(in) :: exp_index
+      integer, intent(in) :: line
+      integer, intent(in) :: column
+      type(lowering_context_t), intent(inout) :: context
+      type(lr_operand_desc_t), intent(in) :: base
+      type(lr_operand_desc_t), intent(out) :: value
+      character(len=:), allocatable, intent(out) :: error_msg
+      integer(c_int64_t) :: exponent
+      character(len=:), allocatable :: parse_error
+      type(lr_operand_desc_t) :: product
+      integer(c_int64_t) :: i
+
+      call parse_i32_constant(arena, exp_index, exponent, 'exponent', &
+                              parse_error)
+      if (len_trim(parse_error) > 0) then
+          call unsupported_feature_error('integer exponent', line, column, &
+                                         'direct LIRIC session only supports '// &
+                                         'a non-negative integer literal '// &
+                                         'exponent', error_msg)
+          return
+      end if
+      if (exponent < 0_c_int64_t) then
+          call unsupported_feature_error('negative integer exponent', line, &
+                                         column, &
+                                         'direct LIRIC session only supports '// &
+                                         'a non-negative integer literal '// &
+                                         'exponent', error_msg)
+          return
+      end if
+
+      if (exponent == 0_c_int64_t) then
+          value = i32_immediate(context%session, 1_c_int64_t)
+          call set_empty(error_msg)
+          return
+      end if
+
+      value = base
+      do i = 2_c_int64_t, exponent
+          if (.not. emit_i32_binary(context%session, LR_OP_MUL, value, base, &
+                                    product, error_msg)) return
+          value = product
+      end do
+      call set_empty(error_msg)
+  end subroutine lower_i32_pow
 
   subroutine lower_i32_call(arena, node, context, value, error_msg)
       type(ast_arena_t), intent(in) :: arena
