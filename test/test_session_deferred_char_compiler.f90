@@ -24,11 +24,50 @@ program test_session_deferred_char_compiler
     if (.not. test_pass_deferred_to_assumed_length_dummy_uses_len()) &
         all_passed = .false.
     if (.not. test_pass_literal_to_assumed_length_dummy()) all_passed = .false.
+    if (.not. test_assumed_length_len_inside_callee()) all_passed = .false.
+    if (.not. test_assumed_length_len_trim()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: deferred-char function result ABI'
 
 contains
+
+    logical function test_assumed_length_len_inside_callee()
+        ! len(s) inside a callee returns the actual length of a literal actual.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  call show("hello")'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine show(s)'//new_line('a')// &
+            '    character(len=*), intent(in) :: s'//new_line('a')// &
+            '    stop len(s)'//new_line('a')// &
+            '  end subroutine show'//new_line('a')// &
+            'end program main'
+
+        test_assumed_length_len_inside_callee = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_assumed_len_call_test')
+    end function test_assumed_length_len_inside_callee
+
+    logical function test_assumed_length_len_trim()
+        ! len_trim inside a callee ignores the trailing blanks of a
+        ! fixed-length actual.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=10) :: fixed'//new_line('a')// &
+            '  fixed = "hi"'//new_line('a')// &
+            '  call show(fixed)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine show(s)'//new_line('a')// &
+            '    character(len=*), intent(in) :: s'//new_line('a')// &
+            '    stop len_trim(s)'//new_line('a')// &
+            '  end subroutine show'//new_line('a')// &
+            'end program main'
+
+        test_assumed_length_len_trim = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_assumed_len_trim_test')
+    end function test_assumed_length_len_trim
 
     logical function test_pass_deferred_to_assumed_length_dummy_uses_len()
         ! A deferred-length character actual passed to a character(len=*)
