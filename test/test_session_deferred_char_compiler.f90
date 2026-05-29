@@ -10,6 +10,9 @@ program test_session_deferred_char_compiler
     if (.not. test_declare_deferred_character_compiles()) all_passed = .false.
     if (.not. test_two_deferred_characters_get_independent_descriptors()) &
         all_passed = .false.
+    if (.not. test_deferred_literal_assignment_sets_length()) all_passed = .false.
+    if (.not. test_deferred_assignment_after_assignment_replaces()) &
+        all_passed = .false.
     if (.not. test_function_returns_concatenated_deferred_character()) &
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
@@ -43,6 +46,33 @@ contains
             expect_exit_status( &
                 source, 0, '/tmp/ffc_session_deferred_two_decl_test')
     end function test_two_deferred_characters_get_independent_descriptors
+
+    logical function test_deferred_literal_assignment_sets_length()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "hello"'//new_line('a')// &
+            '  print *, s'//new_line('a')// &
+            'end program main'
+
+        test_deferred_literal_assignment_sets_length = expect_output( &
+            source, ' hello'//new_line('a'), &
+            '/tmp/ffc_session_deferred_literal_assign_test')
+    end function test_deferred_literal_assignment_sets_length
+
+    logical function test_deferred_assignment_after_assignment_replaces()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "hi"'//new_line('a')// &
+            '  s = "world"'//new_line('a')// &
+            '  print *, s'//new_line('a')// &
+            'end program main'
+
+        test_deferred_assignment_after_assignment_replaces = expect_output( &
+            source, ' world'//new_line('a'), &
+            '/tmp/ffc_session_deferred_reassign_test')
+    end function test_deferred_assignment_after_assignment_replaces
 
     logical function test_function_returns_concatenated_deferred_character()
         character(len=*), parameter :: source = &
