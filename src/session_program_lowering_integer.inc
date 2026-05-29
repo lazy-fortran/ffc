@@ -160,6 +160,18 @@
           return
       end if
 
+      if (same_name(node%name, 'len') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_i32_len_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
+      if (same_name(node%name, 'len_trim') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_i32_len_trim_intrinsic(arena, node, context, value, &
+                                            error_msg)
+          return
+      end if
+
       intrinsic_id = i32_intrinsic_id(node%name)
       if (.not. is_contained_i32_function(context, node%name)) then
           if (intrinsic_id /= I32_INTRINSIC_NONE) then

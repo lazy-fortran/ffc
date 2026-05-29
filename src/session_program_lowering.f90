@@ -56,6 +56,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               LR_FCMP_OGE, &
                                               LR_FCMP_OLE, &
                                               LR_CMP_SGE, &
+                                              LR_CMP_SGT, &
                                               LR_CMP_SLE, &
                                               LR_CMP_NE, &
                                               LR_CMP_EQ, &
@@ -65,6 +66,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
+                                          emit_liric_char_byte_zext, &
                                           emit_liric_print_f64, &
                                           emit_liric_print_f64_value, &
                                           emit_liric_print_i32, &

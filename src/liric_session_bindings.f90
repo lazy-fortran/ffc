@@ -33,6 +33,7 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_GEP = 29_c_int
     integer(c_int), parameter, public :: LR_OP_CALL = 30_c_int
     integer(c_int), parameter, public :: LR_OP_BITCAST = 36_c_int
+    integer(c_int), parameter, public :: LR_OP_ZEXT = 34_c_int
     integer(c_int), parameter, public :: LR_OP_SITOFP = 39_c_int
     integer(c_int), parameter, public :: LR_OP_FPTOSI = 41_c_int
     integer(c_int), parameter, public :: LR_OP_FADD = 18_c_int
