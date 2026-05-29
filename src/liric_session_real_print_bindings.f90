@@ -51,6 +51,7 @@ module liric_session_real_print_bindings
     public :: emit_real8_print_call
     public :: synthesize_get_arg_helper
     public :: emit_get_arg_call
+    public :: emit_snprintf
 
     interface
         function lr_session_declare(handle, name, ret, params, n, vararg, &
@@ -717,6 +718,20 @@ contains
         call set_empty(error_msg)
         load_typed = .true.
     end function load_typed
+
+    logical function emit_snprintf(session, args, error_msg)
+        ! Variadic snprintf(dest, size, fmt, ...) call. args holds dest, size,
+        ! fmt, then the value arguments. snprintf is declared by
+        ! synthesize_real8_printer (run during runtime preparation).
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_snprintf = emit_call(session, 'snprintf', args, &
+                                  lr_type_i32_s(session%handle), 3_c_int32_t, &
+                                  c_true, vreg, error_msg)
+    end function emit_snprintf
 
     logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
                                vararg, vreg, error_msg)

@@ -4,7 +4,8 @@ module liric_session_format_bindings
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr, &
                                               c_size_t
     use liric_session_bindings, only: liric_session_t, lr_error_t, &
-                                      lr_operand_desc_t, lr_inst_desc_t
+                                      lr_operand_desc_t, lr_inst_desc_t, &
+                                      LR_OP_KIND_GLOBAL
     implicit none
     private
 
@@ -15,6 +16,7 @@ module liric_session_format_bindings
 
     public :: prepare_liric_print_runtime
     public :: create_printf_format_global
+    public :: printf_format_ptr
 
     interface
         function lr_type_i32_s(handle) result(typ) bind(c)
@@ -206,6 +208,18 @@ contains
 
         call set_empty(error_msg)
     end subroutine create_str_format_global_no_newline
+
+    function printf_format_ptr(session, global_id) result(operand)
+        ! Build a pointer operand referencing an interned format-string global.
+        type(liric_session_t), intent(in) :: session
+        integer(c_int32_t), intent(in) :: global_id
+        type(lr_operand_desc_t) :: operand
+
+        operand%kind = LR_OP_KIND_GLOBAL
+        operand%payload = int(global_id, c_int64_t)
+        operand%typ = lr_type_ptr_s(session%handle)
+        operand%global_offset = 0_c_int64_t
+    end function printf_format_ptr
 
     subroutine create_printf_format_global(session, name, text, global_id, &
                                            error_msg)

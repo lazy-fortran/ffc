@@ -67,10 +67,11 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               set_liric_block
 use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             prepare_liric_print_runtime, &
-                                            create_printf_format_global
+                                            create_printf_format_global, &
+                                            printf_format_ptr
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
                                                  synthesize_get_arg_helper, &
-                                                 emit_get_arg_call
+                                                 emit_get_arg_call, emit_snprintf
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
@@ -405,10 +406,16 @@ contains
                                            'support input runtime calls', &
                                            error_msg)
         type is (write_statement_node)
-            call unsupported_feature_error('write statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'minimal print output', error_msg)
+            if (is_internal_write(node, context)) then
+                call lower_internal_write(arena, node, context, error_msg)
+            else
+                call unsupported_feature_error('write statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports minimal print output '// &
+                                               'and internal write to a '// &
+                                               'character variable', error_msg)
+            end if
         type is (allocate_statement_node)
             call lower_allocate_statement(arena, node, context, error_msg)
         type is (deallocate_statement_node)
@@ -674,6 +681,7 @@ contains
     end subroutine lower_parameter_declaration
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
+    include 'session_program_lowering_internal_write.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name

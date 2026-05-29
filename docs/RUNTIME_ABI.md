@@ -160,6 +160,16 @@ are rejected with a diagnostic. Because ffc lowers every `real` as `real(8)`,
 no real edit descriptors are accepted yet. `print *, ...` remains the
 list-directed path described above.
 
+### Internal write
+
+`write (buf, fmt) value`, where `buf` is a fixed-length character variable and
+`fmt` is a literal single edit descriptor (`I0`/`Iw`/`A`), formats the value
+into `buf` and blank-pads it to the declared length. It uses two `snprintf`
+calls: the first formats the field (`%d`/`%wd`/`%s`) into a temporary, the
+second writes `%-*.*s` (left-justify, blank-pad and truncate to the buffer
+length) into the variable's storage, which is then rebound to that buffer.
+Single value only; compound formats and write-to-file-unit are not supported.
+
 ## Deferred-length character
 
 A `character(len=:), allocatable` variable (and the `character(:), allocatable`
