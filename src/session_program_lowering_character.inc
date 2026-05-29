@@ -114,8 +114,13 @@
             return
         end if
 
-       ! Check for deferred character function call result
+       ! Check for deferred character function call result or trim() result
         if (context%symbols(symbol_index)%is_deferred_character) then
+            if (is_trim_call(arena, node%value_index)) then
+                call lower_deferred_trim_assignment(arena, node%value_index, &
+                    context, symbol_index, error_msg)
+                return
+            end if
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
                 type is (call_or_subscript_node)
@@ -421,20 +426,151 @@
         end if
     end subroutine char_length_operands
 
+    subroutine lower_deferred_trim_assignment(arena, trim_index, context, &
+                                              dest_symbol_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: trim_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+        type(lr_operand_desc_t) :: length
+        type(lr_operand_desc_t) :: length64
+
+        call char_expr_operands(arena, trim_index, context, data_ptr, length, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
+                                        error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+            context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, length64, &
+            context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+        context%symbols(dest_symbol_index)%value = data_ptr
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_deferred_trim_assignment
+
     subroutine lower_i32_len_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index
         type(lr_operand_desc_t) :: data_ptr
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'len requires one character argument'
+            return
+        end if
+        ! len of a character expression (variable or trim()): the descriptor
+        ! length. char_expr_operands materialises trim() as a trimmed buffer.
+        call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
+                                value, error_msg)
+    end subroutine lower_i32_len_intrinsic
+
+    logical function is_trim_call(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_trim_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. n%is_array_access .and. allocated(n%name)) &
+                is_trim_call = same_name(n%name, 'trim')
+        end select
+    end function is_trim_call
+
+    subroutine char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                  error_msg)
+        ! Resolve a scalar character expression (a variable or a trim() call) to
+        ! its data pointer and i32 length. trim() materialises a fresh
+        ! null-terminated buffer holding the trimmed text.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'character expression does not reference an AST node'
+            return
+        end if
+        if (is_trim_call(arena, node_index)) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_trim_deferred(arena, n, context, data_ptr, length, &
+                                         error_msg)
+            end select
+            return
+        end if
+        select type (n => arena%entries(node_index)%node)
+        type is (identifier_node)
+            symbol_index = find_symbol(context, n%name)
+            if (symbol_index <= 0 .or. &
+                context%symbols(max(symbol_index, 1))%value_kind /= &
+                VALUE_CHARACTER) then
+                call unsupported_feature_error('character expression', 0, 0, &
+                    'direct LIRIC session only supports a character variable '// &
+                    'or trim() here', error_msg)
+                return
+            end if
+            call char_length_operands(context, symbol_index, data_ptr, length, &
+                                      error_msg)
+        class default
+            call unsupported_feature_error('character expression', 0, 0, &
+                'direct LIRIC session only supports a character variable or '// &
+                'trim() here', error_msg)
+        end select
+    end subroutine char_expr_operands
+
+    subroutine lower_trim_deferred(arena, node, context, out_data, out_length, &
+                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: out_data
+        type(lr_operand_desc_t), intent(out) :: out_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: data_ptr, length, n, n64, size64
+        type(lr_operand_desc_t) :: buf, null_pos, null_ptr
+        character(len=64) :: null_name
 
         call char_length_arg_symbol(arena, node, context, symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
-        call char_length_operands(context, symbol_index, data_ptr, value, &
+        call char_length_operands(context, symbol_index, data_ptr, length, &
                                   error_msg)
-    end subroutine lower_i32_len_intrinsic
+        if (len_trim(error_msg) > 0) return
+        call compute_len_trim(context, data_ptr, length, n, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Allocate n + 1 bytes, copy the trimmed prefix, and null-terminate.
+        if (.not. emit_liric_i32_to_i64(context%session, n, n64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, n64, &
+                i64_immediate(context%session, 1_c_int64_t), size64, &
+                error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) &
+            return
+        if (.not. emit_memcpy(context%session, buf, data_ptr, n64, error_msg)) &
+            return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, n64, &
+                null_pos, error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        write (null_name, '(A,I0)') '.ffc.trim.term.', context%string_literal_count
+        call materialize_liric_string(context%session, trim(null_name), '', &
+                                      null_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_memcpy(context%session, null_pos, null_ptr, &
+                i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+
+        out_data = buf
+        out_length = n
+        call set_empty(error_msg)
+    end subroutine lower_trim_deferred
 
     subroutine lower_i32_len_trim_intrinsic(arena, node, context, value, &
                                             error_msg)
@@ -446,17 +582,27 @@
         integer :: symbol_index
         type(lr_operand_desc_t) :: data_ptr
         type(lr_operand_desc_t) :: length
-        type(lr_operand_desc_t) :: idx_addr, res_addr
-        type(lr_operand_desc_t) :: i_value, prev_index, byte_value, cond
-        type(lr_operand_desc_t) :: space
-        integer(c_int32_t) :: header_block, body_block, found_block
-        integer(c_int32_t) :: dec_block, done_block
 
         call char_length_arg_symbol(arena, node, context, symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
         call char_length_operands(context, symbol_index, data_ptr, length, &
                                   error_msg)
         if (len_trim(error_msg) > 0) return
+        call compute_len_trim(context, data_ptr, length, value, error_msg)
+    end subroutine lower_i32_len_trim_intrinsic
+
+    subroutine compute_len_trim(context, data_ptr, length, value, error_msg)
+        ! Scan data[0:length) backward for the last non-space byte (1-based).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        type(lr_operand_desc_t), intent(in) :: length
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: idx_addr, res_addr
+        type(lr_operand_desc_t) :: i_value, prev_index, byte_value, cond
+        type(lr_operand_desc_t) :: space
+        integer(c_int32_t) :: header_block, body_block, found_block
+        integer(c_int32_t) :: dec_block, done_block
 
         ! idx = length; result = 0; scan backwards for the last non-space byte.
         if (.not. emit_i32_alloca(context%session, idx_addr, error_msg)) return
@@ -520,4 +666,4 @@
         if (.not. emit_i32_load(context%session, res_addr, value, error_msg)) &
             return
         call set_empty(error_msg)
-    end subroutine lower_i32_len_trim_intrinsic
+    end subroutine compute_len_trim

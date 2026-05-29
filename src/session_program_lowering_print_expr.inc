@@ -198,6 +198,10 @@
                     return
                 end if
             end if
+            if (is_trim_call(arena, node_index)) then
+                call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
         type is (literal_node)
             if (is_character_literal(node)) then
                 call strip_literal_quotes(node%value, character_value)
@@ -235,6 +239,24 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    subroutine lower_print_char_expr(arena, node_index, context, error_msg)
+        ! Print a character expression (e.g. trim(s)) with the gfortran
+        ! list-directed leading space.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+        type(lr_operand_desc_t) :: length
+
+        call char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_print_space(context%session, error_msg)) return
+        if (.not. emit_liric_print_string_operand_value(context%session, &
+            context%str_print_format_id, data_ptr, error_msg)) return
+    end subroutine lower_print_char_expr
 
     subroutine lower_print_logical_value(context, value, error_msg)
         type(lowering_context_t), intent(inout) :: context

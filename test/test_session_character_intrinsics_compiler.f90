@@ -1,5 +1,5 @@
 program test_session_character_intrinsics_compiler
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -11,6 +11,9 @@ program test_session_character_intrinsics_compiler
     if (.not. test_len_trim_of_padded_fixed_length()) all_passed = .false.
     if (.not. test_len_of_unallocated_is_zero()) all_passed = .false.
     if (.not. test_len_of_fixed_length()) all_passed = .false.
+    if (.not. test_trim_fixed_length_padded()) all_passed = .false.
+    if (.not. test_trim_print()) all_passed = .false.
+    if (.not. test_trim_assigned_to_deferred()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: len/len_trim lower through direct LIRIC session'
@@ -63,5 +66,45 @@ contains
         test_len_of_fixed_length = expect_exit_status( &
             source, 7, '/tmp/ffc_session_len_fixed_test')
     end function test_len_of_fixed_length
+
+    logical function test_trim_fixed_length_padded()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=10) :: s'//new_line('a')// &
+            '  s = "hi"'//new_line('a')// &
+            '  stop len(trim(s))'//new_line('a')// &
+            'end program main'
+
+        ! trim("hi" padded to 10) has length 2
+        test_trim_fixed_length_padded = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_trim_len_test')
+    end function test_trim_fixed_length_padded
+
+    logical function test_trim_print()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=10) :: s'//new_line('a')// &
+            '  s = "hi"'//new_line('a')// &
+            '  print *, trim(s)'//new_line('a')// &
+            'end program main'
+
+        test_trim_print = expect_output( &
+            source, ' hi'//new_line('a'), '/tmp/ffc_session_trim_print_test')
+    end function test_trim_print
+
+    logical function test_trim_assigned_to_deferred()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=8) :: s'//new_line('a')// &
+            '  character(len=:), allocatable :: t'//new_line('a')// &
+            '  s = "hey"'//new_line('a')// &
+            '  t = trim(s)'//new_line('a')// &
+            '  stop len(t)'//new_line('a')// &
+            'end program main'
+
+        ! trim("hey" padded to 8) assigned to t; len(t) == 3
+        test_trim_assigned_to_deferred = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_trim_assign_test')
+    end function test_trim_assigned_to_deferred
 
 end program test_session_character_intrinsics_compiler
