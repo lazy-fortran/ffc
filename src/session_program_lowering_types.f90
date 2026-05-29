@@ -91,6 +91,8 @@ module session_program_lowering_types
         character(len=64) :: name = ''
         integer :: component_count = 0
         character(len=64), allocatable :: component_names(:)
+        logical, allocatable :: component_has_default(:)
+        integer(c_int64_t), allocatable :: component_default_value(:)
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)

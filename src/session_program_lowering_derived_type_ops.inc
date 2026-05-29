@@ -1,3 +1,34 @@
+    subroutine init_derived_component_defaults(context, symbol_index, &
+                                               type_index, error_msg)
+        ! Store each component's default initialiser into a freshly declared
+        ! derived instance. The instance is an i32 array, one slot per scalar
+        ! component (slot k-1 for component k).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: c
+        integer :: count
+        type(lr_operand_desc_t) :: addr
+
+        call set_empty(error_msg)
+        count = context%derived_types(type_index)%component_count
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_has_default)) return
+        do c = 1, count
+            if (.not. context%derived_types(type_index)%component_has_default(c)) &
+                cycle
+            if (.not. emit_i32_array_element_addr(context%session, count, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, int(c - 1, c_int64_t)), addr, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, &
+                        context%derived_types(type_index)%component_default_value(c)), &
+                    addr, error_msg)) return
+        end do
+    end subroutine init_derived_component_defaults
+
     subroutine lower_derived_type_declaration(node, context, derived_type_index, &
                                               error_msg)
         type(declaration_node), intent(in) :: node
@@ -75,6 +106,10 @@
             error_msg = 'derived_alloca['//trim(name)//']: '//error_msg
             return
         end if
+
+        call init_derived_component_defaults(context, index, derived_type_index, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
 
         context%symbol_count = index
         call set_empty(error_msg)

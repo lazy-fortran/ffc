@@ -262,6 +262,8 @@ subroutine collect_component_declaration(component_index, parent, context, &
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        logical :: has_default
+        integer(c_int64_t) :: default_value
 
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
@@ -273,19 +275,36 @@ subroutine collect_component_declaration(component_index, parent, context, &
             call validate_component_declaration(component, parent, context, &
                                                 error_msg)
             if (len_trim(error_msg) > 0) return
+            ! A component default initialiser must be a compile-time integer.
+            has_default = .false.
+            default_value = 0_c_int64_t
+            if (component%has_initializer .and. component%initializer_index > 0) then
+                call parse_i32_constant(context%arena, component%initializer_index, &
+                                        default_value, 'component default', &
+                                        error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call unsupported_feature_error( &
+                        'derived type component initializer', component%line, &
+                        component%column, 'only a compile-time integer default '// &
+                        'is supported', error_msg)
+                    return
+                end if
+                has_default = .true.
+            end if
             if (component%is_multi_declaration .and. &
                 allocated(component%var_names)) then
                 do i = 1, size(component%var_names)
                     call add_derived_component(context, type_index, &
                                                component%var_names(i), &
                                                component%line, component%column, &
+                                               has_default, default_value, &
                                                error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
                 call add_derived_component(context, type_index, component%var_name, &
                                            component%line, component%column, &
-                                           error_msg)
+                                           has_default, default_value, error_msg)
             else
                 error_msg = 'derived type component declaration did not expose a name'
                 return
@@ -315,13 +334,6 @@ subroutine collect_component_declaration(component_index, parent, context, &
                                            component%line, component%column, &
                                            'direct LIRIC session only supports '// &
                                            'scalar integer components', error_msg)
-            return
-        end if
-        if (component%has_initializer) then
-            call unsupported_feature_error('derived type component initializer', &
-                                           component%line, component%column, &
-                                           'component default initialization is '// &
-                                           'not supported', error_msg)
             return
         end if
         if (.not. allocated(component%type_name)) then
@@ -356,11 +368,13 @@ subroutine collect_component_declaration(component_index, parent, context, &
     end subroutine validate_component_declaration
 
     subroutine add_derived_component(context, type_index, name, line, column, &
-                                     error_msg)
+                                     has_default, default_value, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
         integer, intent(in) :: line, column
+        logical, intent(in) :: has_default
+        integer(c_int64_t), intent(in) :: default_value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: component_index
 
@@ -374,6 +388,10 @@ subroutine collect_component_declaration(component_index, parent, context, &
         component_index = context%derived_types(type_index)%component_count + 1
         context%derived_types(type_index)%component_names(component_index) = &
             trim(name)
+        context%derived_types(type_index)%component_has_default(component_index) = &
+            has_default
+        context%derived_types(type_index)%component_default_value(component_index) = &
+            default_value
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
@@ -389,6 +407,10 @@ subroutine collect_component_declaration(component_index, parent, context, &
             if (old_size < size(context%derived_types(type_index)%component_names)) return
         else
             allocate(context%derived_types(type_index)%component_names(8))
+            allocate(context%derived_types(type_index)%component_has_default(8))
+            allocate(context%derived_types(type_index)%component_default_value(8))
+            context%derived_types(type_index)%component_has_default = .false.
+            context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_count = 0
             return
         end if
@@ -399,6 +421,22 @@ subroutine collect_component_declaration(component_index, parent, context, &
         allocate(context%derived_types(type_index)%component_names(new_size))
         context%derived_types(type_index)%component_names(1:old_size) = old_names
         deallocate(old_names)
+        block
+            logical, allocatable :: old_hd(:)
+            integer(c_int64_t), allocatable :: old_dv(:)
+            associate (dt => context%derived_types(type_index))
+                old_hd = dt%component_has_default
+                old_dv = dt%component_default_value
+                deallocate(dt%component_has_default)
+                deallocate(dt%component_default_value)
+                allocate(dt%component_has_default(new_size))
+                allocate(dt%component_default_value(new_size))
+                dt%component_has_default = .false.
+                dt%component_default_value = 0_c_int64_t
+                dt%component_has_default(1:old_size) = old_hd
+                dt%component_default_value(1:old_size) = old_dv
+            end associate
+        end block
     end subroutine grow_derived_type_components
 
     subroutine grow_module_export_derived_indices(context, export_idx)

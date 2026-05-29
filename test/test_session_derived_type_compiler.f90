@@ -17,6 +17,8 @@ program test_session_derived_type_compiler
     if (.not. test_inheritance_diagnostic()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
+    if (.not. test_component_default_initialiser()) all_passed = .false.
+    if (.not. test_component_default_overridden()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
@@ -167,6 +169,37 @@ contains
                                      source, 5, &
                                      '/tmp/ffc_session_derived_bound_test')
     end function test_type_bound_binding_compiles
+
+    logical function test_component_default_initialiser()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: x = 5'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: a'//new_line('a')// &
+                                       '  stop a%x'//new_line('a')// &
+                                       'end program main'
+
+        test_component_default_initialiser = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_comp_default_test')
+    end function test_component_default_initialiser
+
+    logical function test_component_default_overridden()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: x = 5'//new_line('a')// &
+                                       '    integer :: y = 10'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: a'//new_line('a')// &
+                                       '  a%x = 1'//new_line('a')// &
+                                       '  stop a%x + a%y'//new_line('a')// &
+                                       'end program main'
+
+        ! x overridden to 1, y keeps its default 10 -> 11
+        test_component_default_overridden = expect_exit_status( &
+            source, 11, '/tmp/ffc_session_comp_default_over_test')
+    end function test_component_default_overridden
 
     logical function test_generic_binding_diagnostic()
         character(len=*), parameter :: source = &
