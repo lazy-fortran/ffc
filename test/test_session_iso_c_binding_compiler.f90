@@ -18,6 +18,7 @@ program test_session_iso_c_binding_compiler
     if (.not. test_interface_bind_c_integer_function_compiles()) &
         all_passed = .false.
     if (.not. test_non_bind_c_interface_rejected()) all_passed = .false.
+    if (.not. test_call_bind_c_integer_function()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -158,5 +159,28 @@ contains
         test_non_bind_c_interface_rejected = expect_error_contains( &
             source, 'interface declaration', '/tmp/ffc_session_iface_plain_test')
     end function test_non_bind_c_interface_rejected
+
+    logical function test_call_bind_c_integer_function()
+        ! Calling a registered bind(c) integer function targets the C symbol
+        ! (libc abs) with by-value arguments.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  integer :: r'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer(c_int) function abs_c(x) bind(c, name="abs")'// &
+            new_line('a')// &
+            '      import :: c_int'//new_line('a')// &
+            '      integer(c_int), value :: x'//new_line('a')// &
+            '    end function abs_c'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  r = abs_c(-3) + abs_c(10)'//new_line('a')// &
+            '  stop r'//new_line('a')// &
+            'end program main'
+
+        ! abs(-3) + abs(10) = 13
+        test_call_bind_c_integer_function = expect_exit_status( &
+            source, 13, '/tmp/ffc_session_call_bindc_test')
+    end function test_call_bind_c_integer_function
 
 end program test_session_iso_c_binding_compiler

@@ -119,6 +119,42 @@
         c_name = trim(lowercase_text(fortran_name))
     end subroutine bind_c_name
 
+    subroutine lower_external_i32_call(arena, node, ext_idx, context, value, &
+                                       error_msg)
+        ! Lower a call to a registered bind(c) integer function: each argument
+        ! is passed by value (bind(c) value semantics) and the call targets the
+        ! C symbol name.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer :: n, i
+
+        n = 0
+        if (allocated(node%arg_indices)) n = size(node%arg_indices)
+        if (n /= context%external_procedures(ext_idx)%arg_count) then
+            call unsupported_feature_error('external function call', node%line, &
+                node%column, 'argument count does not match the bind(c) '// &
+                'interface for '//trim(node%name), error_msg)
+            return
+        end if
+
+        allocate (args(n))
+        do i = 1, n
+            call lower_i32_expression(arena, node%arg_indices(i), context, &
+                                      args(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+
+        if (.not. emit_i32_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, value, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_external_i32_call
+
     integer function external_procedure_index(context, name) result(idx)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name

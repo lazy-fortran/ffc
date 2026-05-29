@@ -174,6 +174,12 @@
           return
       end if
 
+      if (external_procedure_index(context, node%name) > 0) then
+          call lower_external_i32_call(arena, node, &
+              external_procedure_index(context, node%name), context, value, &
+              error_msg)
+          return
+      end if
       if (same_name(node%name, 'command_argument_count') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_command_argument_count(node, context, value, error_msg)
