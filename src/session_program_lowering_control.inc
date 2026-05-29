@@ -18,9 +18,8 @@
             error_msg = 'direct LIRIC session IF requires a condition index'
             return
         end if
-        if (.not. allocated(node%then_body_indices) .or. &
-            .not. allocated(node%else_body_indices)) then
-            error_msg = 'direct LIRIC session IF requires THEN and ELSE bodies'
+        if (.not. allocated(node%then_body_indices)) then
+            error_msg = 'direct LIRIC session IF requires a THEN body'
             return
         end if
 
@@ -48,8 +47,18 @@
             context%symbols(i) = saved_symbols(i)
         end do
         context%symbol_count = saved_symbol_count
-        call lower_if_branch(arena, node%else_body_indices, else_block, &
-                             merge_block, context, value, else_result, error_msg)
+        if (allocated(node%else_body_indices)) then
+            call lower_if_branch(arena, node%else_body_indices, else_block, &
+                                 merge_block, context, value, else_result, &
+                                 error_msg)
+        else
+            block
+                integer :: empty_else(0)
+                call lower_if_branch(arena, empty_else, else_block, &
+                                     merge_block, context, value, else_result, &
+                                     error_msg)
+            end block
+        end if
         if (len_trim(error_msg) > 0) return
 
         do i = 1, saved_symbol_count

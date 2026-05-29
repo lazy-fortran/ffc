@@ -12,6 +12,8 @@ program test_session_if_merge_compiler
     if (.not. test_logical_if_merge()) all_passed = .false.
     if (.not. test_nested_if_in_do_merge()) all_passed = .false.
     if (.not. test_do_in_if_merge()) all_passed = .false.
+    if (.not. test_if_without_else_taken()) all_passed = .false.
+    if (.not. test_if_without_else_not_taken()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: fallthrough IF merges scalar values through direct LIRIC'
@@ -34,6 +36,37 @@ contains
                                 source, 9, &
                                 '/tmp/ffc_session_if_integer_merge_test')
     end function test_integer_if_merge
+
+    logical function test_if_without_else_taken()
+        ! if (cond) stop N with no else: the then branch runs when cond holds.
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       'integer :: x'//new_line('a')// &
+                                       'x = 5'//new_line('a')// &
+                                       'if (x > 3) stop 7'//new_line('a')// &
+                                       'stop 0'//new_line('a')// &
+                                       'end program main'
+
+        test_if_without_else_taken = expect_exit_status( &
+            source, 7, '/tmp/ffc_if_noelse_taken_test')
+    end function test_if_without_else_taken
+
+    logical function test_if_without_else_not_taken()
+        ! A carried value keeps its pre-IF value when the else-less branch is
+        ! skipped (merge phi picks the baseline).
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       'integer :: x'//new_line('a')// &
+                                       'integer :: y'//new_line('a')// &
+                                       'x = 1'//new_line('a')// &
+                                       'y = 4'//new_line('a')// &
+                                       'if (x > 3) y = 9'//new_line('a')// &
+                                       'stop y'//new_line('a')// &
+                                       'end program main'
+
+        test_if_without_else_not_taken = expect_exit_status( &
+            source, 4, '/tmp/ffc_if_noelse_skip_test')
+    end function test_if_without_else_not_taken
 
     logical function test_real_if_merge()
         character(len=*), parameter :: source = &
