@@ -15,7 +15,7 @@ program test_session_integer_subroutine_compiler
          '    integer, intent(inout) :: x'//new_line('a')// &
          '    x = x + 2'//new_line('a')// &
          '  end subroutine bump'//new_line('a')// &
-         'end program main', '7'//new_line('a'), &
+         'end program main', '           7'//new_line('a'), &
          '/tmp/ffc_session_integer_sub_test')) stop 1
 
     print *, 'PASS: integer subroutine reference args lower through direct LIRIC session'

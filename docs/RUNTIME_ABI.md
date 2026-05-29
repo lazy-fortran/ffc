@@ -72,9 +72,12 @@ is closed with ABI documentation and executable tests.
 
 - Minimal scalar `print` lowers to an external C `printf` declaration.
 - The current format globals are:
-  - integer/logical: `%d\n`
-  - real: `%f\n`
-  - character: `%s\n`
+  - integer/logical: `%12d` (a trailing newline is emitted separately). The
+    field width 12 matches gfortran's default list-directed `integer(4)`
+    output, which right-justifies in 12 columns. `integer(8)` (width 22) and
+    Fortran-aware logical (`T`/`F`) output are deferred to later issues.
+  - real: `%f`
+  - character: `%s`
 - Character literal print passes a pointer to a null-terminated global byte
   array to `printf`. Scalar character variable print passes a pointer to a
   global byte array containing the fixed-length value followed by a null

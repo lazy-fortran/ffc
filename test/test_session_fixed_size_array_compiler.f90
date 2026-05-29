@@ -32,7 +32,7 @@ contains
                                        '  print *, a(1) + a(2)'//new_line('a')// &
                                        'end program main'
 
-        test_simple_array = expect_output(source, '9'//new_line('a'), &
+        test_simple_array = expect_output(source, '           9'//new_line('a'), &
                                           '/tmp/ffc_session_array_simple_test')
     end function test_simple_array
 
@@ -48,7 +48,7 @@ contains
                                        'end program main'
 
         test_array_parameter_bound = expect_output( &
-                                     source, '9'//new_line('a'), &
+                                     source, '           9'//new_line('a'), &
                                      '/tmp/ffc_session_array_param_bound_test')
     end function test_array_parameter_bound
 
@@ -62,7 +62,7 @@ contains
                                        'end program main'
 
         test_array_explicit_bounds = expect_output( &
-                                     source, '9'//new_line('a'), &
+                                     source, '           9'//new_line('a'), &
                                      '/tmp/ffc_session_array_explicit_bounds_test')
     end function test_array_explicit_bounds
 
@@ -79,7 +79,7 @@ contains
                                        'end program main'
 
         test_array_negative_lower_bound = expect_output( &
-                                          source, '15'//new_line('a'), &
+                                          source, '          15'//new_line('a'), &
                                           '/tmp/ffc_session_array_neg_lower_test')
     end function test_array_negative_lower_bound
 
@@ -97,7 +97,7 @@ contains
                                        '  print *, sum'//new_line('a')// &
                                        'end program main'
 
-        test_array_with_loop = expect_output(source, '15'//new_line('a'), &
+        test_array_with_loop = expect_output(source, '          15'//new_line('a'), &
                                              '/tmp/ffc_session_array_loop_test')
     end function test_array_with_loop
 
@@ -113,7 +113,7 @@ contains
                                        '  print *, a(idx)'//new_line('a')// &
                                        'end program main'
 
-        test_array_variable_subscript = expect_output(source, '20'//new_line('a'), &
+        test_array_variable_subscript = expect_output(source, '          20'//new_line('a'), &
                                                       '/tmp/ffc_session_array_var_test')
     end function test_array_variable_subscript
 
@@ -132,7 +132,7 @@ contains
                                        'end program main'
 
         test_array_element_argument = expect_output( &
-                                      source, '5'//new_line('a'), &
+                                      source, '           5'//new_line('a'), &
                                       '/tmp/ffc_session_array_element_arg_test')
     end function test_array_element_argument
 
@@ -162,7 +162,7 @@ contains
                                        'end program main'
 
         test_array_in_contained_subroutine = expect_output( &
-                                             source, '9'//new_line('a'), &
+                                             source, '           9'//new_line('a'), &
                                              '/tmp/ffc_session_array_subroutine_test')
     end function test_array_in_contained_subroutine
 
@@ -180,7 +180,7 @@ contains
                                        'end program main'
 
         test_array_in_contained_function = expect_output( &
-                                           source, '9'//new_line('a'), &
+                                           source, '           9'//new_line('a'), &
                                            '/tmp/ffc_session_array_function_test')
     end function test_array_in_contained_function
 

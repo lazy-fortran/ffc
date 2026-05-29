@@ -13,7 +13,7 @@ program test_session_logical_variable_compiler
          '  else'//new_line('a')// &
          '    print *, .false.'//new_line('a')// &
          '  end if'//new_line('a')// &
-         'end program main', '1'//new_line('a'), &
+         'end program main', '           1'//new_line('a'), &
          '/tmp/ffc_session_logical_var_test')) stop 1
 
     print *, 'PASS: logical variables lower through direct LIRIC session'

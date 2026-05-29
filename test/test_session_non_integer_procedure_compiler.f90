@@ -54,7 +54,7 @@ contains
                                        '  end subroutine enable'//new_line('a')// &
                                        'end program main'
 
-        test_logical_subroutine = expect_output(source, '1'//new_line('a'), &
+        test_logical_subroutine = expect_output(source, '           1'//new_line('a'), &
                                                  '/tmp/ffc_session_logical_sub_test')
     end function test_logical_subroutine
 
@@ -128,7 +128,7 @@ contains
                                        '  end function enabled'//new_line('a')// &
                                        'end program main'
 
-        test_logical_function = expect_output(source, '1'//new_line('a'), &
+        test_logical_function = expect_output(source, '           1'//new_line('a'), &
                                                '/tmp/ffc_session_logical_fn_test')
     end function test_logical_function
 

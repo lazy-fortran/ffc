@@ -7,7 +7,7 @@ program test_session_logical_literal_print_compiler
     if (.not. expect_output( &
          'program main'//new_line('a')// &
          '  print *, .true.'//new_line('a')// &
-         'end program main', '1'//new_line('a'), &
+         'end program main', '           1'//new_line('a'), &
          '/tmp/ffc_session_logical_literal_print_test')) stop 1
 
     print *, 'PASS: logical literal print lowers through direct LIRIC session'

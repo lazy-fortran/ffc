@@ -9,7 +9,7 @@ program test_session_scalar_print_compiler
          '  integer :: x'//new_line('a')// &
          '  x = 2 + 3'//new_line('a')// &
          '  print *, x'//new_line('a')// &
-         'end program main', '5'//new_line('a'), &
+         'end program main', '           5'//new_line('a'), &
          '/tmp/ffc_session_scalar_print_test')) stop 1
 
     print *, 'PASS: integer print lowers through direct LIRIC session'

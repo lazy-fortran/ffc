@@ -136,16 +136,18 @@ contains
         integer(c_int32_t), intent(out) :: global_id
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
-        character(kind=c_char), target :: format_text(3)
+        character(kind=c_char), target :: format_text(5)
         type(c_ptr) :: array_type
 
         call to_c_chars(name, c_name)
         format_text(1) = '%'
-        format_text(2) = 'd'
-        format_text(3) = c_null_char
+        format_text(2) = '1'
+        format_text(3) = '2'
+        format_text(4) = 'd'
+        format_text(5) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                      3_c_int64_t)
+                                      5_c_int64_t)
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a format string array type'
             return
@@ -153,7 +155,7 @@ contains
 
         global_id = lr_session_global(session%handle, c_name, array_type, &
                                       c_true, c_loc(format_text(1)), &
-                                      3_c_size_t)
+                                      5_c_size_t)
         if (global_id < 0_c_int32_t) then
             error_msg = 'LIRIC could not create printf format string'
             return

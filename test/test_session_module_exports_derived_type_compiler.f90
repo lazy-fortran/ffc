@@ -84,7 +84,7 @@ contains
            'end program main'
 
         test_module_derived_type_with_component_assignment = expect_output( &
-           source, '6'//new_line('a'), '/tmp/ffc_module_exports_component_test')
+           source, '           6'//new_line('a'), '/tmp/ffc_module_exports_component_test')
     end function test_module_derived_type_with_component_assignment
 
     logical function test_module_with_many_derived_types()
@@ -198,7 +198,7 @@ contains
            'end program main'
 
         test_derived_type_with_single_component = expect_output( &
-           source, '99'//new_line('a'), '/tmp/ffc_module_exports_single_comp_test')
+           source, '          99'//new_line('a'), '/tmp/ffc_module_exports_single_comp_test')
     end function test_derived_type_with_single_component
 
     logical function test_derived_type_with_many_components()
@@ -226,7 +226,7 @@ contains
            'end program main'
 
         test_derived_type_with_many_components = expect_output( &
-           source, '55'//new_line('a'), '/tmp/ffc_module_exports_many_comp_test')
+           source, '          55'//new_line('a'), '/tmp/ffc_module_exports_many_comp_test')
     end function test_derived_type_with_many_components
 
 end program test_session_module_exports_derived_type_compiler

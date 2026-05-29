@@ -38,7 +38,7 @@ contains
                                        new_line('a')// &
                                        'end program main'
 
-        test_component_slots = expect_output(source, '20'//new_line('a'), &
+        test_component_slots = expect_output(source, '          20'//new_line('a'), &
                                              '/tmp/ffc_session_derived_slots_test')
     end function test_component_slots
 
@@ -60,7 +60,7 @@ contains
                                        'end program main'
 
         test_two_variables_do_not_alias = expect_output( &
-                                          source, '16'//new_line('a'), &
+                                          source, '          16'//new_line('a'), &
                                           '/tmp/ffc_session_derived_alias_test')
     end function test_two_variables_do_not_alias
 
