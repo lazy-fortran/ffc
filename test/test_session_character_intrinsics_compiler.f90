@@ -19,6 +19,8 @@ program test_session_character_intrinsics_compiler
     if (.not. test_achar_print()) all_passed = .false.
     if (.not. test_index_found_position()) all_passed = .false.
     if (.not. test_index_not_found_returns_zero()) all_passed = .false.
+    if (.not. test_adjustl_left_justifies()) all_passed = .false.
+    if (.not. test_adjustr_right_justifies()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: len/len_trim lower through direct LIRIC session'
@@ -161,5 +163,27 @@ contains
         test_index_not_found_returns_zero = expect_exit_status( &
             source, 0, '/tmp/ffc_session_index_notfound_test')
     end function test_index_not_found_returns_zero
+
+    logical function test_adjustl_left_justifies()
+        ! adjustl("  hi") == "hi  "; print adds one leading space.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, adjustl("  hi")'//new_line('a')// &
+            'end program main'
+
+        test_adjustl_left_justifies = expect_output( &
+            source, ' hi  '//new_line('a'), '/tmp/ffc_session_adjustl_test')
+    end function test_adjustl_left_justifies
+
+    logical function test_adjustr_right_justifies()
+        ! adjustr("hi  ") == "  hi"; print adds one leading space.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, adjustr("hi  ")'//new_line('a')// &
+            'end program main'
+
+        test_adjustr_right_justifies = expect_output( &
+            source, '   hi'//new_line('a'), '/tmp/ffc_session_adjustr_test')
+    end function test_adjustr_right_justifies
 
 end program test_session_character_intrinsics_compiler

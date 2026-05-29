@@ -515,6 +515,22 @@
             end select
             return
         end if
+        if (is_named_char_call(arena, node_index, 'adjustl')) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_adjust_deferred(arena, n, context, .true., data_ptr, &
+                                           length, error_msg)
+            end select
+            return
+        end if
+        if (is_named_char_call(arena, node_index, 'adjustr')) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_adjust_deferred(arena, n, context, .false., data_ptr, &
+                                           length, error_msg)
+            end select
+            return
+        end if
         select type (n => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, n%name)
@@ -549,7 +565,9 @@
         integer, intent(in) :: node_index
 
         is_char_expr_call = is_trim_call(arena, node_index) .or. &
-                            is_named_char_call(arena, node_index, 'achar')
+                            is_named_char_call(arena, node_index, 'achar') .or. &
+                            is_named_char_call(arena, node_index, 'adjustl') .or. &
+                            is_named_char_call(arena, node_index, 'adjustr')
     end function is_char_expr_call
 
     logical function is_named_char_call(arena, node_index, name)
@@ -639,6 +657,195 @@
         if (len_trim(error_msg) > 0) return
         length = i32_immediate(context%session, int(len(literal_text), c_int64_t))
     end subroutine char_literal_operands
+
+    subroutine compute_leading_blanks(context, data_ptr, length, value, error_msg)
+        ! Count leading space bytes in data[0:length).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        type(lr_operand_desc_t), intent(in) :: length
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: idx_addr, i_val, byte_value, cond, tmp
+        integer(c_int32_t) :: hdr, body, inc, done
+
+        if (.not. emit_i32_alloca(context%session, idx_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), idx_addr, &
+                error_msg)) return
+        hdr = create_liric_block(context%session)
+        body = create_liric_block(context%session)
+        inc = create_liric_block(context%session)
+        done = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, hdr, error_msg)) return
+        context%current_block_id = hdr
+        if (.not. emit_i32_load(context%session, idx_addr, i_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, i_val, &
+                length, cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, body, done, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, body, error_msg)) return
+        context%current_block_id = body
+        if (.not. emit_liric_char_byte_zext(context%session, data_ptr, i_val, &
+                byte_value, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, byte_value, &
+                i32_immediate(context%session, 32_c_int64_t), cond, error_msg)) &
+            return
+        if (.not. emit_liric_condbr(context%session, cond, inc, done, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, inc, error_msg)) return
+        context%current_block_id = inc
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, idx_addr, error_msg)) return
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done, error_msg)) return
+        context%current_block_id = done
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_load(context%session, idx_addr, value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine compute_leading_blanks
+
+    subroutine fill_spaces(context, buf, count, error_msg)
+        ! Store `count` space bytes into buf[0:count).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: buf
+        type(lr_operand_desc_t), intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: idx_addr, i_val, cond, tmp
+        integer(c_int32_t) :: hdr, body, done
+
+        if (.not. emit_i32_alloca(context%session, idx_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), idx_addr, &
+                error_msg)) return
+        hdr = create_liric_block(context%session)
+        body = create_liric_block(context%session)
+        done = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, hdr, error_msg)) return
+        context%current_block_id = hdr
+        if (.not. emit_i32_load(context%session, idx_addr, i_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, i_val, count, &
+                cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, body, done, &
+                error_msg)) return
+
+        if (.not. set_liric_block(context%session, body, error_msg)) return
+        context%current_block_id = body
+        if (.not. emit_liric_store_char_byte(context%session, buf, i_val, &
+                i32_immediate(context%session, 32_c_int64_t), error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, idx_addr, error_msg)) return
+        if (.not. emit_liric_br(context%session, hdr, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done, error_msg)) return
+        context%current_block_id = done
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine fill_spaces
+
+    subroutine lower_adjust_deferred(arena, node, context, left, out_data, &
+                                     out_length, error_msg)
+        ! adjustl(s): move leading blanks to the end. adjustr(s): move trailing
+        ! blanks to the front. Result length equals len(s).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: left
+        type(lr_operand_desc_t), intent(out) :: out_data
+        type(lr_operand_desc_t), intent(out) :: out_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: s_data, s_len, k, content_len, dst_off
+        type(lr_operand_desc_t) :: len64, buf, src, dst, content64, null_pos
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'adjustl/adjustr requires one character argument'
+            return
+        end if
+        call char_expr_operands(arena, node%arg_indices(1), context, s_data, &
+                                s_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_i32_to_i64(context%session, s_len, len64, &
+                error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+                  emit_or_add1(context, len64), buf, error_msg)) then
+            return
+        end if
+        ! Pre-fill the whole result with spaces, then drop the content in place.
+        call fill_spaces(context, buf, s_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (left) then
+            call compute_leading_blanks(context, s_data, s_len, k, error_msg)
+            if (len_trim(error_msg) > 0) return
+            ! content = s[k:], length s_len-k, placed at offset 0
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, s_len, k, &
+                    content_len, error_msg)) return
+            call ptr_plus_i32(context, s_data, k, src, error_msg)
+            if (len_trim(error_msg) > 0) return
+            dst = buf
+        else
+            ! trailing blanks: content = s[0:len_trim], placed at offset s_len-LT
+            call compute_len_trim(context, s_data, s_len, content_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, s_len, &
+                    content_len, dst_off, error_msg)) return
+            src = s_data
+            call ptr_plus_i32(context, buf, dst_off, dst, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+
+        if (.not. emit_liric_i32_to_i64(context%session, content_len, content64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, dst, src, content64, error_msg)) &
+            return
+        ! null-terminate at buf[s_len]
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, len64, &
+                null_pos, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+        out_data = buf
+        out_length = s_len
+        call set_empty(error_msg)
+    end subroutine lower_adjust_deferred
+
+    function emit_or_add1(context, len64) result(size_op)
+        ! len64 + 1 (buffer holds the result plus a null terminator).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: len64
+        type(lr_operand_desc_t) :: size_op
+        character(len=:), allocatable :: err
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, len64, &
+                i64_immediate(context%session, 1_c_int64_t), size_op, err)) then
+            size_op = len64
+        end if
+    end function emit_or_add1
+
+    subroutine ptr_plus_i32(context, base, offset_i32, result, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base
+        type(lr_operand_desc_t), intent(in) :: offset_i32
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: off64
+
+        if (.not. emit_liric_i32_to_i64(context%session, offset_i32, off64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, base, off64, &
+                result, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine ptr_plus_i32
 
     subroutine lower_index_intrinsic(arena, node, context, value, error_msg)
         ! index(s, sub): 1-based position of the first occurrence of sub in s,
@@ -829,14 +1036,15 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index
         type(lr_operand_desc_t) :: data_ptr
         type(lr_operand_desc_t) :: length
 
-        call char_length_arg_symbol(arena, node, context, symbol_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call char_length_operands(context, symbol_index, data_ptr, length, &
-                                  error_msg)
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'len_trim requires one character argument'
+            return
+        end if
+        call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
+                                length, error_msg)
         if (len_trim(error_msg) > 0) return
         call compute_len_trim(context, data_ptr, length, value, error_msg)
     end subroutine lower_i32_len_trim_intrinsic
