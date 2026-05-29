@@ -54,6 +54,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
                                               emit_liric_phi, &
+                                              emit_liric_phi_n, &
                                               LR_FCMP_OGE, &
                                               LR_FCMP_OLE, &
                                               LR_CMP_SGE, &

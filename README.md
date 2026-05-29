@@ -29,7 +29,8 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
 - block `if` with PHI merge for scalars; array-element assignment inside
   `if` branches; counted `do` with integer bounds and literal positive
   or negative step;
-- single-arm and multi-arm `SELECT CASE` with terminating arms
+- single-arm and multi-arm `SELECT CASE` with terminating or
+  non-terminating (merge-at-end) arms
   (including multi-label `case (a, b)`) and `case default`;
 - contained integer / real / logical functions and subroutines with
   scalar parameters; early `return` inside contained subroutines and

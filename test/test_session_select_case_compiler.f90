@@ -22,11 +22,60 @@ program test_session_select_case_compiler
     if (.not. test_select_case_unbounded_low()) all_passed = .false.
     if (.not. test_select_case_unbounded_high()) all_passed = .false.
     if (.not. test_select_case_mixed_labels_and_ranges()) all_passed = .false.
+    if (.not. test_select_case_non_terminating_arms()) all_passed = .false.
+    if (.not. test_select_case_partially_terminating()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: SELECT CASE lowers through direct LIRIC'
 
 contains
+
+    logical function test_select_case_non_terminating_arms()
+        ! Three non-terminating arms each assign a carried integer; after the
+        ! construct stop x reflects the chosen arm (here case (2)).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x, s'//new_line('a')// &
+            '  s = command_argument_count() + 2'//new_line('a')// &
+            '  select case (s)'//new_line('a')// &
+            '  case (1)'//new_line('a')// &
+            '    x = 10'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    x = 20'//new_line('a')// &
+            '  case (3)'//new_line('a')// &
+            '    x = 30'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    x = 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            '  stop x'//new_line('a')// &
+            'end program main'
+
+        test_select_case_non_terminating_arms = expect_exit_status( &
+            source, 20, '/tmp/ffc_select_nonterm_test')
+    end function test_select_case_non_terminating_arms
+
+    logical function test_select_case_partially_terminating()
+        ! First arm stops, the other arm and default assign; the merge has two
+        ! predecessors. Here case (2) is chosen via a runtime selector.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x, s'//new_line('a')// &
+            '  s = command_argument_count() + 2'//new_line('a')// &
+            '  x = 0'//new_line('a')// &
+            '  select case (s)'//new_line('a')// &
+            '  case (1)'//new_line('a')// &
+            '    stop 7'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    x = 20'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    x = 99'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            '  stop x'//new_line('a')// &
+            'end program main'
+
+        test_select_case_partially_terminating = expect_exit_status( &
+            source, 20, '/tmp/ffc_select_partterm_test')
+    end function test_select_case_partially_terminating
 
     logical function test_select_case_one_arm_matches()
         character(len=*), parameter :: source = &

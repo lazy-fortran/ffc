@@ -35,6 +35,7 @@ module liric_session_control_bindings
     public :: emit_liric_condbr
     public :: emit_liric_phi
     public :: emit_liric_i32_phi
+    public :: emit_liric_phi_n
 
     interface
         function lr_type_i1_s(handle) result(typ) bind(c)
@@ -218,6 +219,48 @@ contains
         result = i32_vreg(session, int(result%payload, c_int32_t))
         emit_liric_i32_phi = .true.
     end function emit_liric_i32_phi
+
+    logical function emit_liric_phi_n(session, values, blocks, result, error_msg)
+        ! N-way PHI: result = phi [values(k), blocks(k)] for k = 1..n.
+        ! The result takes the type of values(1); all values must share it.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: values(:)
+        integer(c_int32_t), intent(in) :: blocks(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable, target :: operands(:)
+        type(lr_inst_desc_t) :: inst
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+        integer :: n, k
+
+        emit_liric_phi_n = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        n = size(values)
+        if (n < 1 .or. size(blocks) /= n) then
+            error_msg = 'emit_liric_phi_n requires matching value and block counts'
+            return
+        end if
+
+        allocate (operands(2*n))
+        do k = 1, n
+            operands(2*k - 1) = values(k)
+            operands(2*k) = block_operand(blocks(k))
+        end do
+
+        call clear_inst(inst)
+        inst%op = LR_OP_PHI
+        inst%typ = values(1)%typ
+        inst%operands = c_loc(operands)
+        inst%num_operands = int(2*n, c_int32_t)
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        result = vreg_like(vreg, values(1))
+        call set_empty(error_msg)
+        emit_liric_phi_n = .true.
+    end function emit_liric_phi_n
 
     function i1_vreg(session, vreg) result(operand)
         type(liric_session_t), intent(in) :: session
