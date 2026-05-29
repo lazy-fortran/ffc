@@ -41,8 +41,10 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   (`a = [e1, e2, ...]`);
 - simple derived types with scalar integer components; component
   assignment, component reads, `print`, and `stop`;
-- minimal `print *, expr` through a `printf` shim for integers, reals,
-  logicals, characters; `stop <integer expression>` returns its argument
+- `print *, expr` (list-directed, gfortran-exact bytes) for integers,
+  reals, logicals, characters, plus formatted `print '(I0)'/'(Iw)'/'(A)',
+  expr` with a single edit descriptor; `stop <integer expression>` returns
+  its argument
   as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
   `ieor`, `not`, `ishft`, `ishftc`, `sign`, integer-to-real `real()`,
   real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/

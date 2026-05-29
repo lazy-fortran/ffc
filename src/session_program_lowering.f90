@@ -63,7 +63,8 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               LR_CMP_EQ, &
                                               set_liric_block
 use liric_session_format_bindings, only: LR_OP_FSUB, &
-                                            prepare_liric_print_runtime
+                                            prepare_liric_print_runtime, &
+                                            create_printf_format_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &

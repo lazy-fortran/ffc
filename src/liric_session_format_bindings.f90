@@ -14,6 +14,7 @@ module liric_session_format_bindings
     integer(c_int), parameter :: LR_OK = 0_c_int
 
     public :: prepare_liric_print_runtime
+    public :: create_printf_format_global
 
     interface
         function lr_type_i32_s(handle) result(typ) bind(c)
@@ -205,6 +206,49 @@ contains
 
         call set_empty(error_msg)
     end subroutine create_str_format_global_no_newline
+
+    subroutine create_printf_format_global(session, name, text, global_id, &
+                                           error_msg)
+        ! Build an interned const [len(text)+1 x i8] global holding text plus a
+        ! null terminator, for use as a printf format string.
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        character(len=*), intent(in) :: text
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), allocatable, target :: bytes(:)
+        type(c_ptr) :: array_type
+        integer :: i, n
+
+        n = len(text) + 1
+        allocate (bytes(n))
+        do i = 1, len(text)
+            bytes(i) = text(i:i)
+        end do
+        bytes(n) = c_null_char
+
+        call to_c_chars(name, c_name)
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                     int(n, c_int64_t))
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(bytes), int(n, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create printf format string'
+            return
+        end if
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern printf format string'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine create_printf_format_global
 
     logical function require_open_session(session, error_msg)
         type(liric_session_t), intent(in) :: session

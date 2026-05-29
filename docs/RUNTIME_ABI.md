@@ -103,7 +103,23 @@ is closed with ABI documentation and executable tests.
 - Object output may contain unresolved references such as `printf`; final
   linking is responsible for resolving the C runtime.
 - This `printf`/`snprintf` path is the supported scalar I/O surface. Internal
-  and formatted I/O are owned by later issues.
+  I/O and formatted `write` to file units are owned by later issues.
+
+### Formatted print
+
+`print fmt, items` with a literal format string lowers to direct `printf`
+calls that honour the format, with no list-directed leading blank and one
+record newline at the end. The supported edit-descriptor subset is a single
+descriptor applied to every item:
+
+- `I0` maps to `%d`, `Iw` to `%wd` (for example `I5` is `%5d`).
+- `A` maps to `%s`; `Aw` maps to `%ws`. Character items pass a pointer to a
+  null-terminated buffer, so `%s` prints the variable's full declared width.
+
+Compound formats (`'(I0, " ", A)'`), repeat counts, and other edit descriptors
+are rejected with a diagnostic. Because ffc lowers every `real` as `real(8)`,
+no real edit descriptors are accepted yet. `print *, ...` remains the
+list-directed path described above.
 
 ## Deferred-length character
 

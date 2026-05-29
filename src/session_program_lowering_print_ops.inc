@@ -8,6 +8,13 @@
         logical :: prev_is_char
         logical :: cur_is_char
 
+        if (allocated(node%format_spec)) then
+            if (trim(node%format_spec) /= '*') then
+                call lower_formatted_print(arena, node, context, error_msg)
+                return
+            end if
+        end if
+
         if (.not. allocated(node%expression_indices)) then
             call set_empty(error_msg)
             return
@@ -36,6 +43,169 @@
 
         call set_empty(error_msg)
     end subroutine lower_print
+
+    subroutine lower_formatted_print(arena, node, context, error_msg)
+        ! Formatted print with an explicit literal format string: a single
+        ! edit descriptor (Iw / A[w]) applied to each item, one record newline.
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: printf_fmt
+        character :: kind_char
+        integer(c_int32_t) :: fmt_id
+        integer :: i
+        character(len=64) :: fmt_name
+
+        call parse_single_edit_descriptor(node%format_spec, kind_char, &
+                                          printf_fmt, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('formatted print', node%line, &
+                                           node%column, trim(error_msg), error_msg)
+            return
+        end if
+
+        if (.not. allocated(node%expression_indices)) then
+            if (.not. emit_liric_print_newline(context%session, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (fmt_name, '(A,I0)') '.ffc.fmt.user.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(fmt_name), &
+                                         printf_fmt, fmt_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        do i = 1, size(node%expression_indices)
+            if (kind_char == 'I') then
+                call lower_formatted_int_item(arena, node%expression_indices(i), &
+                                              context, fmt_id, error_msg)
+            else
+                call lower_formatted_char_item(arena, node%expression_indices(i), &
+                                               context, fmt_id, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+        end do
+        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_formatted_print
+
+    subroutine parse_single_edit_descriptor(spec, kind_char, printf_fmt, error_msg)
+        ! Translate a single Fortran edit descriptor to a printf conversion.
+        ! Iw -> %wd (I0 -> %d), A[w] -> %[w]s. Compound formats are rejected.
+        character(len=*), intent(in) :: spec
+        character, intent(out) :: kind_char
+        character(len=:), allocatable, intent(out) :: printf_fmt
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: s, width
+
+        call set_empty(error_msg)
+        kind_char = ' '
+        s = trim(adjustl(spec))
+        if (len(s) >= 2) then
+            if ((s(1:1) == "'" .and. s(len(s):len(s)) == "'") .or. &
+                (s(1:1) == '"' .and. s(len(s):len(s)) == '"')) s = s(2:len(s) - 1)
+        end if
+        s = trim(adjustl(s))
+        if (len(s) >= 2) then
+            if (s(1:1) == '(' .and. s(len(s):len(s)) == ')') s = s(2:len(s) - 1)
+        end if
+        s = trim(adjustl(s))
+        if (index(s, ',') > 0) then
+            error_msg = 'compound format strings are not supported'
+            return
+        end if
+        if (len(s) == 0) then
+            error_msg = 'empty format string'
+            return
+        end if
+        kind_char = s(1:1)
+        if (kind_char == 'i') kind_char = 'I'
+        if (kind_char == 'a') kind_char = 'A'
+        width = trim(adjustl(s(2:)))
+        select case (kind_char)
+        case ('I')
+            if (len(width) == 0 .or. width == '0') then
+                printf_fmt = '%d'
+            else
+                printf_fmt = '%'//width//'d'
+            end if
+        case ('A')
+            if (len(width) == 0) then
+                printf_fmt = '%s'
+            else
+                printf_fmt = '%'//width//'s'
+            end if
+        case default
+            error_msg = 'unsupported edit descriptor: '//s
+        end select
+    end subroutine parse_single_edit_descriptor
+
+    subroutine lower_formatted_int_item(arena, node_index, context, fmt_id, &
+                                        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int32_t), intent(in) :: fmt_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+
+        call lower_i32_expression(arena, node_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_print_i32_value(context%session, fmt_id, value, &
+                                             error_msg)) return
+    end subroutine lower_formatted_int_item
+
+    subroutine lower_formatted_char_item(arena, node_index, context, fmt_id, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int32_t), intent(in) :: fmt_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: character_value
+        character(len=64) :: string_name
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: data_ptr, length
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'formatted print item does not reference an AST node'
+            return
+        end if
+        select type (item => arena%entries(node_index)%node)
+        type is (literal_node)
+            if (is_character_literal(item)) then
+                call strip_literal_quotes(item%value, character_value)
+                context%string_literal_count = context%string_literal_count + 1
+                write (string_name, '(A,I0)') '.ffc.str.', &
+                    context%string_literal_count
+                if (.not. emit_liric_print_string_value(context%session, fmt_id, &
+                        trim(string_name), character_value, error_msg)) return
+                return
+            end if
+        type is (identifier_node)
+            symbol_index = find_symbol(context, item%name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
+                    .and. context%symbols(symbol_index)%has_character_value) then
+                    if (.not. emit_liric_print_string_operand_value( &
+                        context%session, fmt_id, &
+                        context%symbols(symbol_index)%value, error_msg)) return
+                    return
+                end if
+            end if
+        end select
+        if (is_char_expr_call(arena, node_index)) then
+            call char_expr_operands(arena, node_index, context, data_ptr, &
+                                    length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_string_operand_value(context%session, &
+                fmt_id, data_ptr, error_msg)) return
+            return
+        end if
+        error_msg = 'unsupported character argument for the A edit descriptor'
+    end subroutine lower_formatted_char_item
 
     logical function char_print_item(arena, node_index, context) result(is_char)
         ! Whether a print item evaluates to a character value. Used to suppress
