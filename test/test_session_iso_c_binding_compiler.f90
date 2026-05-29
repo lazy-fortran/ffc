@@ -29,6 +29,7 @@ program test_session_iso_c_binding_compiler
         all_passed = .false.
     if (.not. test_c_associated_on_null_returns_false()) all_passed = .false.
     if (.not. test_c_f_pointer_assigns_storage()) all_passed = .false.
+    if (.not. test_interface_bind_c_with_import_compiles()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -311,5 +312,28 @@ contains
         test_c_f_pointer_assigns_storage = &
             expect_exit_status(source, 3, '/tmp/ffc_session_c_f_pointer_test')
     end function test_c_f_pointer_assigns_storage
+
+    logical function test_interface_bind_c_with_import_compiles()
+        ! An interface body may carry import :: of a host-scope type used as a
+        ! value argument; it parses and registers without error.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  type, bind(c) :: my_type'//new_line('a')// &
+            '    integer(c_int) :: a'//new_line('a')// &
+            '  end type my_type'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer(c_int) function use_it(v) bind(c, name="use_it")'// &
+            new_line('a')// &
+            '      import :: my_type, c_int'//new_line('a')// &
+            '      type(my_type), value :: v'//new_line('a')// &
+            '    end function use_it'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_interface_bind_c_with_import_compiles = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_iface_import_test')
+    end function test_interface_bind_c_with_import_compiles
 
 end program test_session_iso_c_binding_compiler
