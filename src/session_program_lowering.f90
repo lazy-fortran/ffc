@@ -384,11 +384,7 @@ contains
         type is (do_loop_node)
             call lower_do_loop(arena, node, context, value, error_msg)
         type is (do_while_node)
-            call unsupported_feature_error('do while statement', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'literal-bound counted do loops', &
-                                           error_msg)
+            call lower_do_while(arena, node, context, value, error_msg)
         type is (select_case_node)
             call lower_select_case(arena, node, context, error_msg)
         type is (derived_type_node)
@@ -437,6 +433,7 @@ contains
     end subroutine unsupported_statement_node
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
+    include 'session_program_lowering_do_while.inc'
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
