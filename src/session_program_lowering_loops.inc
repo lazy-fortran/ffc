@@ -30,6 +30,7 @@
         integer(c_int32_t) :: saved_loop_exit_block
         integer(c_int32_t) :: saved_loop_latch_block
         logical :: saved_in_counted_do
+        logical :: step_is_runtime
 
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. allocated(node%var_name)) then
@@ -53,7 +54,8 @@
         call lower_i32_expression(arena, node%end_expr_index, context, &
                                   end_value, error_msg)
         if (len_trim(error_msg) > 0) return
-        call parse_do_step(arena, node%step_expr_index, step_value, error_msg)
+        call resolve_do_step(arena, node%step_expr_index, context, step_value, &
+                             step_operand, step_is_runtime, error_msg)
         if (len_trim(error_msg) > 0) return
 
       context%symbols(loop_symbol_index)%value = start_value
@@ -97,8 +99,14 @@
                 header_values(carried_indices(i))
         end do
 
-        call lower_do_condition(context, loop_symbol_index, end_value, &
-                                step_value, condition, error_msg)
+        if (step_is_runtime) then
+            call lower_do_condition_runtime(context, loop_symbol_index, &
+                                            end_value, step_operand, condition, &
+                                            error_msg)
+        else
+            call lower_do_condition(context, loop_symbol_index, end_value, &
+                                    step_value, condition, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
                                     exit_block, error_msg)) return
@@ -143,7 +151,9 @@
         context%current_block_id = latch_block
         context%current_block_terminated = .false.
 
-        step_operand = i32_immediate(context%session, step_value)
+        if (.not. step_is_runtime) then
+            step_operand = i32_immediate(context%session, step_value)
+        end if
         reserved_vreg = int(backedge_values(loop_symbol_index)%payload, &
                             c_int32_t)
         if (.not. emit_i32_binary_into(context%session,  &
@@ -249,29 +259,73 @@
                                       end_value, condition, error_msg)) return
     end subroutine lower_do_condition
 
-    subroutine parse_do_step(arena, step_expr_index, step_value, error_msg)
+    subroutine resolve_do_step(arena, step_expr_index, context, step_value, &
+                               step_operand, step_is_runtime, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: step_expr_index
+        type(lowering_context_t), intent(inout) :: context
         integer(c_int64_t), intent(out) :: step_value
+        type(lr_operand_desc_t), intent(out) :: step_operand
+        logical, intent(out) :: step_is_runtime
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: parse_error
 
+        step_is_runtime = .false.
+        step_value = 1_c_int64_t
         if (step_expr_index <= 0) then
-            step_value = 1_c_int64_t
             call set_empty(error_msg)
             return
         end if
 
         call parse_i32_constant(arena, step_expr_index, step_value, 'step', &
-                                error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (step_value == 0_c_int64_t) then
-            call unsupported_feature_error('do loop step', &
-                                           get_node_line(arena, step_expr_index), &
-                                           get_node_column(arena, step_expr_index), &
-                                           'direct LIRIC session requires a '// &
-                                           'nonzero literal step', error_msg)
+                                parse_error)
+        if (len_trim(parse_error) == 0) then
+            if (step_value == 0_c_int64_t) then
+                call unsupported_feature_error('do loop step', &
+                                          get_node_line(arena, step_expr_index), &
+                                          get_node_column(arena, step_expr_index), &
+                                          'direct LIRIC session requires a '// &
+                                          'nonzero literal step', error_msg)
+                return
+            end if
+            call set_empty(error_msg)
+            return
         end if
-    end subroutine parse_do_step
+
+        ! Non-literal step: evaluate at runtime in the entry block (Fortran
+        ! evaluates the step once at loop entry). Runtime zero is undefined per
+        ! the standard; ffc does not insert a runtime zero trap.
+        step_is_runtime = .true.
+        call lower_i32_expression(arena, step_expr_index, context, step_operand, &
+                                  error_msg)
+    end subroutine resolve_do_step
+
+    subroutine lower_do_condition_runtime(context, loop_symbol_index, &
+                                          end_value, step_operand, condition, &
+                                          error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: loop_symbol_index
+        type(lr_operand_desc_t), intent(in) :: end_value
+        type(lr_operand_desc_t), intent(in) :: step_operand
+        type(lr_operand_desc_t), intent(out) :: condition
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: step_nonneg
+        type(lr_operand_desc_t) :: zero
+        type(lr_operand_desc_t) :: ascending_cond
+        type(lr_operand_desc_t) :: descending_cond
+
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, step_operand, &
+                                      zero, step_nonneg, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, &
+                                  context%symbols(loop_symbol_index)%value, &
+                                  end_value, ascending_cond, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, &
+                                  context%symbols(loop_symbol_index)%value, &
+                                  end_value, descending_cond, error_msg)) return
+        call select_value(context, step_nonneg, ascending_cond, &
+                          descending_cond, condition, error_msg)
+    end subroutine lower_do_condition_runtime
 
     recursive subroutine parse_i32_constant(arena, node_index, value, name, error_msg)
         type(ast_arena_t), intent(in) :: arena

@@ -16,6 +16,7 @@ issue_1540_do_loop_procedure.lf
 issue_177_line_continuation.lf
 issue_1883_intent_result.lf
 issue_215_unary_precedence.lf
+issue_637_do_loop_complex_expressions.lf
 issue_637_do_loop_simple_literals.lf
 issue_637_do_loop_with_expressions.lf
 issue_637_do_loop_with_variables.lf
