@@ -91,6 +91,9 @@ module session_program_lowering_types
         character(len=64) :: name = ''
         integer :: component_count = 0
         character(len=64), allocatable :: component_names(:)
+        integer :: binding_count = 0
+        character(len=64), allocatable :: binding_method_names(:)
+        character(len=64), allocatable :: binding_target_names(:)
     end type derived_type_info_t
 
     type, public :: module_exports_t

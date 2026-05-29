@@ -4,7 +4,7 @@ module session_program_lowering
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
     use ast_nodes_core, only: component_access_node
-    use ast_nodes_data, only: derived_type_node
+    use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_misc, only: use_statement_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, case_block_node, &

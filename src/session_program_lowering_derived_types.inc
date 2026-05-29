@@ -156,14 +156,6 @@
                                            error_msg)
             return
         end if
-        if (node%has_contains .or. allocated(node%binding_indices)) then
-            call unsupported_feature_error('type-bound procedure', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support type-bound procedures', &
-                                           error_msg)
-            return
-        end if
         if (.not. allocated(node%component_indices)) then
             call unsupported_feature_error('derived type definition', &
                                            node%line, node%column, &
@@ -176,12 +168,68 @@
 
         type_index = context%derived_type_count + 1
         context%derived_types(type_index)%name = trim(node%name)
+        context%derived_types(type_index)%binding_count = 0
         call collect_derived_components(node, context, type_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call collect_type_bindings(node, context, type_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
         context%derived_type_count = type_index
         call set_empty(error_msg)
     end subroutine lower_derived_type_definition
+
+    subroutine collect_type_bindings(node, context, type_index, error_msg)
+        ! Record non-overridable type-bound procedure bindings (procedure :: m
+        ! => fn) as compile-time aliases. Calls are not lowered yet (#146).
+        type(derived_type_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: slot
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%binding_indices)) return
+
+        allocate(context%derived_types(type_index)% &
+            binding_method_names(size(node%binding_indices)))
+        allocate(context%derived_types(type_index)% &
+            binding_target_names(size(node%binding_indices)))
+
+        do i = 1, size(node%binding_indices)
+            if (.not. node_exists(context%arena, node%binding_indices(i))) cycle
+            select type (binding => &
+                context%arena%entries(node%binding_indices(i))%node)
+            type is (type_binding_node)
+                if (binding%is_generic .or. binding%is_final .or. &
+                    binding%is_deferred) then
+                    call unsupported_feature_error('type-bound procedure', &
+                        node%line, node%column, &
+                        'direct LIRIC session only supports plain '// &
+                        '(procedure :: m => fn) bindings, not generic, '// &
+                        'final, or deferred', error_msg)
+                    return
+                end if
+                if (.not. allocated(binding%binding_name)) cycle
+                slot = context%derived_types(type_index)%binding_count + 1
+                context%derived_types(type_index)%binding_method_names(slot) = &
+                    trim(binding%binding_name)
+                if (allocated(binding%implementation)) then
+                    if (len_trim(binding%implementation) > 0) then
+                        context%derived_types(type_index)% &
+                            binding_target_names(slot) = trim(binding%implementation)
+                    else
+                        context%derived_types(type_index)% &
+                            binding_target_names(slot) = trim(binding%binding_name)
+                    end if
+                else
+                    context%derived_types(type_index)% &
+                        binding_target_names(slot) = trim(binding%binding_name)
+                end if
+                context%derived_types(type_index)%binding_count = slot
+            end select
+        end do
+    end subroutine collect_type_bindings
 
     subroutine collect_derived_components(node, context, type_index, error_msg)
         type(derived_type_node), intent(in) :: node

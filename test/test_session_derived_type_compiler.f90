@@ -15,7 +15,8 @@ program test_session_derived_type_compiler
     if (.not. test_nested_component_diagnostic()) all_passed = .false.
     if (.not. test_constructor_diagnostic()) all_passed = .false.
     if (.not. test_inheritance_diagnostic()) all_passed = .false.
-    if (.not. test_type_bound_diagnostic()) all_passed = .false.
+    if (.not. test_type_bound_binding_compiles()) all_passed = .false.
+    if (.not. test_generic_binding_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
@@ -141,23 +142,48 @@ contains
                                       '/tmp/ffc_session_derived_extends_test')
     end function test_inheritance_diagnostic
 
-    logical function test_type_bound_diagnostic()
+    logical function test_type_bound_binding_compiles()
+        ! A plain procedure binding is recorded (not yet lowered as a call,
+        ! #146), so a type carrying one compiles and its data is usable.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
-                                       '  type :: bound_t'//new_line('a')// &
-                                       '    integer :: code'//new_line('a')// &
+                                       '  type :: counter_t'//new_line('a')// &
+                                       '    integer :: n'//new_line('a')// &
                                        '  contains'//new_line('a')// &
-                                       '    procedure :: show'//new_line('a')// &
-                                       '  end type bound_t'//new_line('a')// &
+                                       '    procedure :: bump => bump_impl'// &
+                                       new_line('a')// &
+                                       '  end type counter_t'//new_line('a')// &
+                                       '  type(counter_t) :: c'//new_line('a')// &
+                                       '  c%n = 5'//new_line('a')// &
+                                       '  stop c%n'//new_line('a')// &
                                        'contains'//new_line('a')// &
-                                       '  subroutine show(self)'//new_line('a')// &
-                                       '    type(bound_t) :: self'//new_line('a')// &
-                                       '  end subroutine show'//new_line('a')// &
+                                       '  subroutine bump_impl(x)'//new_line('a')// &
+                                       '    integer :: x'//new_line('a')// &
+                                       '    x = x + 1'//new_line('a')// &
+                                       '  end subroutine bump_impl'//new_line('a')// &
                                        'end program main'
 
-        test_type_bound_diagnostic = expect_error_contains( &
-                                     source, 'unsupported type-bound procedure', &
+        test_type_bound_binding_compiles = expect_exit_status( &
+                                     source, 5, &
                                      '/tmp/ffc_session_derived_bound_test')
-    end function test_type_bound_diagnostic
+    end function test_type_bound_binding_compiles
+
+    logical function test_generic_binding_diagnostic()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: n'//new_line('a')// &
+                                       '  contains'//new_line('a')// &
+                                       '    generic :: g => f1, f2'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: x'//new_line('a')// &
+                                       '  x%n = 1'//new_line('a')// &
+                                       '  stop x%n'//new_line('a')// &
+                                       'end program main'
+
+        test_generic_binding_diagnostic = expect_error_contains( &
+                                     source, 'type-bound procedure', &
+                                     '/tmp/ffc_session_generic_bound_test')
+    end function test_generic_binding_diagnostic
 
 end program test_session_derived_type_compiler
