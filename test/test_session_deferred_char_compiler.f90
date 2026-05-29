@@ -13,6 +13,8 @@ program test_session_deferred_char_compiler
     if (.not. test_deferred_literal_assignment_sets_length()) all_passed = .false.
     if (.not. test_deferred_assignment_after_assignment_replaces()) &
         all_passed = .false.
+    if (.not. test_deferred_freed_on_normal_exit()) all_passed = .false.
+    if (.not. test_unallocated_descriptor_does_not_free()) all_passed = .false.
     if (.not. test_function_returns_concatenated_deferred_character()) &
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
@@ -73,6 +75,33 @@ contains
             source, ' world'//new_line('a'), &
             '/tmp/ffc_session_deferred_reassign_test')
     end function test_deferred_assignment_after_assignment_replaces
+
+    logical function test_deferred_freed_on_normal_exit()
+        ! Local deferred-char data is static (literal) or stack (concat), so
+        ! normal scope exit reclaims it without an explicit free; just verify
+        ! the program runs to completion without crashing.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "hello"'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_deferred_freed_on_normal_exit = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_deferred_free_exit_test')
+    end function test_deferred_freed_on_normal_exit
+
+    logical function test_unallocated_descriptor_does_not_free()
+        ! An unallocated descriptor (data == 0) must not be freed at exit.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_unallocated_descriptor_does_not_free = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_deferred_unalloc_free_test')
+    end function test_unallocated_descriptor_does_not_free
 
     logical function test_function_returns_concatenated_deferred_character()
         character(len=*), parameter :: source = &

@@ -107,6 +107,12 @@ length  : i64   current length in bytes, 0 when unallocated
   descriptor.
 - The same descriptor shape backs an allocatable character function result
   and a deferred-length dummy passed by reference.
+- Storage for a local deferred-length character is chosen so scope exit needs
+  no explicit free: a literal assignment points `data` at a static global, and
+  a concatenation result is a stack buffer. Only a deferred-length function
+  result that must outlive its frame is `malloc`'d, and its owner is the
+  caller. Because a local never owns heap memory, no `free` is emitted at
+  scope exit and an unallocated descriptor is never freed.
 
 ## Unsupported ABI Work
 
