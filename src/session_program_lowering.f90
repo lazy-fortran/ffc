@@ -3,10 +3,12 @@ module session_program_lowering
                                                                               c_int64_t
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
-    use ast_nodes_core, only: component_access_node, array_literal_node
+    use ast_nodes_core, only: component_access_node, array_literal_node, &
+                              pointer_assignment_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               visibility_statement_node
+    use ast_nodes_conditional, only: select_type_node, type_guard_block_node
     use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
@@ -118,6 +120,9 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
                                                  VALUE_SUBROUTINE, VALUE_C_PTR, &
+                                                 VALUE_CLASS_STAR, &
+                                                 TYPE_ID_INTEGER, TYPE_ID_REAL, &
+                                                 TYPE_ID_LOGICAL, &
                                                  I32_INTRINSIC_NONE, &
                                                 I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
                                                 I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
@@ -546,6 +551,8 @@ contains
             call lower_do_while(arena, node, context, value, error_msg)
         type is (select_case_node)
             call lower_select_case(arena, node, context, error_msg)
+        type is (select_type_node)
+            call lower_select_type(arena, node, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
         type is (module_node)
@@ -696,10 +703,42 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         if (value_kind == VALUE_CHARACTER) then
             call define_declared_character_symbol(context, node, name, error_msg)
+        else if (value_kind == VALUE_CLASS_STAR) then
+            call define_declared_class_star_symbol(context, name, error_msg)
         else
             call define_symbol(context, name, value_kind, error_msg)
         end if
     end subroutine define_declared_symbol
+
+    subroutine define_declared_class_star_symbol(context, name, error_msg)
+        ! A class(*) dummy: the parameter pointer addresses a 16-byte
+        ! {void* data; i64 type_id} descriptor (#141). data is at offset 0 and
+        ! the runtime type id at offset 8.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        index = find_symbol(context, name)
+        if (index <= 0) then
+            error_msg = 'class(*) is only supported as a dummy argument: '// &
+                        trim(name)
+            return
+        end if
+        if (.not. context%symbols(index)%is_parameter) then
+            error_msg = 'class(*) is only supported as a dummy argument: '// &
+                        trim(name)
+            return
+        end if
+        context%symbols(index)%value_kind = VALUE_CLASS_STAR
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 0_c_int64_t, &
+            context%symbols(index)%deferred_data, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 8_c_int64_t, &
+            context%symbols(index)%deferred_length, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine define_declared_class_star_symbol
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context

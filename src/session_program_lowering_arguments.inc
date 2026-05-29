@@ -60,6 +60,12 @@
                 call derived_actual_address(arena, arg_indices(i), context, &
                                              args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (callee_dummy_is_class_star(arena, callee_name, i)) then
+                ! Box the actual into a {data, type_id} descriptor for a
+                ! class(*) dummy (#141).
+                call box_class_star_actual(arena, arg_indices(i), context, &
+                                           args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            default_kind, args(i), &
@@ -97,6 +103,51 @@
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
     end function actual_is_character
+
+    subroutine box_class_star_actual(arena, node_index, context, descriptor, &
+                                      error_msg)
+        ! Box a scalar actual into a stack {void* data; i64 type_id} descriptor
+        ! and return its address (the class(*) ABI).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, data_addr_slot, type_slot, value_addr
+        integer :: value_kind
+        integer(c_int64_t) :: type_id
+
+        value_kind = expression_value_kind(arena, node_index, context, VALUE_I32)
+        select case (value_kind)
+        case (VALUE_F64)
+            type_id = int(TYPE_ID_REAL, c_int64_t)
+        case (VALUE_LOGICAL)
+            type_id = int(TYPE_ID_LOGICAL, c_int64_t)
+        case (VALUE_I32)
+            type_id = int(TYPE_ID_INTEGER, c_int64_t)
+        case default
+            error_msg = 'class(*) actual must be a scalar integer, real, or '// &
+                        'logical value'
+            return
+        end select
+
+        call lower_expression_by_kind(arena, node_index, context, value_kind, &
+                                      value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! Materialise the value in memory so the descriptor can point at it.
+        call make_reference_argument(context, value_kind, value, value_addr, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call allocate_deferred_char_descriptor(context, descriptor, &
+                                               data_addr_slot, type_slot, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, value_addr, data_addr_slot, &
+                                 error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, type_id), type_slot, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine box_class_star_actual
 
     logical function actual_is_derived(arena, node_index, context)
         ! Whether an actual argument is a derived-type variable.

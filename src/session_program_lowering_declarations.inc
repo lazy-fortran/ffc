@@ -120,6 +120,16 @@
                     'direct LIRIC session only supports integer, real, '// &
                     'logical, character, and c_ptr scalars', error_msg)
             end if
+        case ('class')
+            ! Unlimited polymorphic class(*); other class(name) forms are not
+            ! supported yet (#141).
+            if (trim(kind_spec) == '*') then
+                value_kind = VALUE_CLASS_STAR
+            else
+                call unsupported_feature_error('scalar type', line, column, &
+                    'direct LIRIC session supports class(*) but not '// &
+                    'class('//trim(kind_spec)//')', error_msg)
+            end if
         case default
             call unsupported_feature_error('scalar type', line, column, &
                                            'direct LIRIC session only supports '// &

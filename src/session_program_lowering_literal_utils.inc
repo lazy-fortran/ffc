@@ -58,6 +58,9 @@
         is_real_literal = .false.
         call get_literal_info(arena, node_index, value, literal_type, err)
         if (len_trim(err) > 0) return
+        ! A logical literal (.true./.false.) contains a '.' but is not real.
+        if (trim(literal_type) == 'logical') return
+        if (trim(value) == '.true.' .or. trim(value) == '.false.') return
         is_real_literal = trim(literal_type) == 'real' .or. &
                           index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
                           index(value, 'E') > 0

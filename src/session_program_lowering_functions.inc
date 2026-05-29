@@ -651,6 +651,84 @@
         end do
     end function callee_dummy_char_writable
 
+    logical function dummy_is_class_star(arena, body_indices, param_name)
+        ! A dummy is class(*) when a body declaration names it with a type
+        ! beginning 'class'.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i, k
+        logical :: matches
+
+        dummy_is_class_star = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (index(lowercase_text(decl%type_name), 'class') /= 1) cycle
+                matches = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) matches = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) &
+                            matches = .true.
+                    end do
+                end if
+                if (matches) then
+                    dummy_is_class_star = .true.
+                    return
+                end if
+            end select
+        end do
+    end function dummy_is_class_star
+
+    logical function callee_dummy_is_class_star(arena, callee_name, param_pos)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: name, name_err
+
+        callee_dummy_is_class_star = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (subroutine_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        if (.not. allocated(node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(node%param_indices)) return
+                        call parameter_name(arena, node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        callee_dummy_is_class_star = dummy_is_class_star(arena, &
+                            node%body_indices, name)
+                        return
+                    end if
+                end if
+            type is (function_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, callee_name)) then
+                        if (.not. allocated(node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(node%param_indices)) return
+                        call parameter_name(arena, node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        callee_dummy_is_class_star = dummy_is_class_star(arena, &
+                            node%body_indices, name)
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function callee_dummy_is_class_star
+
     logical function callee_dummy_is_character(arena, callee_name, param_pos)
         ! Whether the contained procedure named callee_name declares its
         ! param_pos-th (1-based) dummy as character(len=*). Used by the caller

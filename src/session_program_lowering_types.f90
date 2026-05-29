@@ -13,6 +13,13 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
     integer, parameter, public :: VALUE_SUBROUTINE = 7
     integer, parameter, public :: VALUE_C_PTR = 8
+    integer, parameter, public :: VALUE_CLASS_STAR = 9
+    ! Runtime type ids carried in a class(*) descriptor's type slot. Intrinsic
+    ! ids are fixed and disjoint from derived-type ids (a derived type's id is
+    ! its 1-based table index, always small).
+    integer, parameter, public :: TYPE_ID_INTEGER = 1000001
+    integer, parameter, public :: TYPE_ID_REAL = 1000002
+    integer, parameter, public :: TYPE_ID_LOGICAL = 1000003
     integer, parameter, public :: I32_INTRINSIC_NONE = 0
     integer, parameter, public :: I32_INTRINSIC_ABS = 1
     integer, parameter, public :: I32_INTRINSIC_MIN = 2

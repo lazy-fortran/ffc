@@ -613,3 +613,299 @@
                                     no_match_block, error_msg)) return
         call set_empty(error_msg)
     end subroutine emit_case_bound
+
+    subroutine lower_select_type(arena, node, context, error_msg)
+        ! Lower select type on a class(*) selector: load the descriptor's
+        ! runtime type id and branch to the matching `type is` arm; within the
+        ! arm the selector is rebound to its concrete typed value (#142, #143).
+        type(ast_arena_t), intent(in) :: arena
+        type(select_type_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: sel_name, assoc_name
+        integer :: sel_index, g, i
+        type(lr_operand_desc_t) :: sel_type_id, data_ptr, cond, guard_id
+        integer(c_int32_t) :: arm_block, next_block, merge_block
+        type(symbol_t), allocatable :: saved(:)
+        integer :: saved_count
+        type(lr_operand_desc_t) :: value
+        logical :: terminated
+
+        call set_empty(error_msg)
+        ! Two forms: select type (var) and select type (assoc => var). The
+        ! latter is parsed as an assignment node {target = assoc, value = var}.
+        call select_type_selector(arena, node%selector_index, sel_name, &
+                                  assoc_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sel_index = find_symbol(context, sel_name)
+        if (sel_index <= 0) then
+            error_msg = 'select type selector was not declared: '//trim(sel_name)
+            return
+        end if
+        if (context%symbols(sel_index)%value_kind /= VALUE_CLASS_STAR) then
+            error_msg = 'select type selector is not class(*): '//trim(sel_name)
+            return
+        end if
+
+        ! type id (low word of the i64 type slot) and the boxed data pointer.
+        if (.not. emit_i32_load(context%session, &
+            context%symbols(sel_index)%deferred_length, sel_type_id, error_msg)) &
+            return
+        if (.not. emit_ptr_load(context%session, &
+            context%symbols(sel_index)%deferred_data, data_ptr, error_msg)) return
+
+        merge_block = create_liric_block(context%session)
+        allocate (saved(context%symbol_count))
+        do i = 1, context%symbol_count
+            saved(i) = context%symbols(i)
+        end do
+        saved_count = context%symbol_count
+
+        if (allocated(node%guard_indices)) then
+            do g = 1, size(node%guard_indices)
+                call select_type_guard_id(arena, node%guard_indices(g), context, &
+                                          guard_id, error_msg)
+                if (len_trim(error_msg) > 0) return
+                arm_block = create_liric_block(context%session)
+                next_block = create_liric_block(context%session)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, &
+                        sel_type_id, guard_id, cond, error_msg)) return
+                if (.not. emit_liric_condbr(context%session, cond, arm_block, &
+                                            next_block, error_msg)) return
+                if (.not. set_liric_block(context%session, arm_block, &
+                                          error_msg)) return
+                context%current_block_terminated = .false.
+                call restore_select_symbols(context, saved, saved_count)
+                call lower_select_type_arm(arena, node%guard_indices(g), &
+                    assoc_name, data_ptr, context, terminated, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. terminated) then
+                    if (.not. emit_liric_br(context%session, merge_block, &
+                                            error_msg)) return
+                end if
+                if (.not. set_liric_block(context%session, next_block, &
+                                          error_msg)) return
+                context%current_block_terminated = .false.
+            end do
+        end if
+
+        call restore_select_symbols(context, saved, saved_count)
+        if (node%default_index > 0) then
+            call lower_select_type_default(arena, node%default_index, context, &
+                                           terminated, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. terminated) then
+                if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                    return
+            end if
+        else
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+        end if
+
+        call restore_select_symbols(context, saved, saved_count)
+        deallocate (saved)
+        if (.not. set_liric_block(context%session, merge_block, &
+                                  error_msg)) return
+        context%current_block_terminated = .false.
+    end subroutine lower_select_type
+
+    subroutine select_type_selector(arena, selector_index, sel_name, &
+                                    assoc_name, error_msg)
+        ! Resolve the class(*) variable name and the associate name.
+        ! select type (v)        -> sel_name = v, assoc_name = v
+        ! select type (a => v)   -> sel_name = v, assoc_name = a (parsed as an
+        !                           assignment node {target=a, value=v})
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: selector_index
+        character(len=:), allocatable, intent(out) :: sel_name
+        character(len=:), allocatable, intent(out) :: assoc_name
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (is_identifier(arena, selector_index)) then
+            call get_identifier_name(arena, selector_index, sel_name, error_msg)
+            assoc_name = sel_name
+            return
+        end if
+        if (.not. node_exists(arena, selector_index)) then
+            error_msg = 'select type selector does not reference an AST node'
+            return
+        end if
+        select type (sel => arena%entries(selector_index)%node)
+        type is (pointer_assignment_node)
+            ! name => variable: pointer_index is the associate name, target_index
+            ! the selector variable.
+            call get_identifier_name(arena, sel%pointer_index, assoc_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call get_identifier_name(arena, sel%target_index, sel_name, error_msg)
+        type is (assignment_node)
+            call get_identifier_name(arena, sel%target_index, assoc_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call get_identifier_name(arena, sel%value_index, sel_name, error_msg)
+        class default
+            error_msg = 'select type selector must be a class(*) variable or '// &
+                        'an associate (name => variable)'
+        end select
+    end subroutine select_type_selector
+
+    subroutine restore_select_symbols(context, saved, saved_count)
+        type(lowering_context_t), intent(inout) :: context
+        type(symbol_t), intent(in) :: saved(:)
+        integer, intent(in) :: saved_count
+        integer :: i
+
+        do i = 1, saved_count
+            context%symbols(i) = saved(i)
+        end do
+        context%symbol_count = saved_count
+    end subroutine restore_select_symbols
+
+    subroutine select_type_guard_id(arena, guard_index, context, guard_id, &
+                                    error_msg)
+        ! The runtime type id constant for a `type is (X)` guard.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: guard_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: guard_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: value_kind
+        integer(c_int64_t) :: id
+
+        call select_type_guard_kind(arena, guard_index, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (value_kind)
+        case (VALUE_I32)
+            id = int(TYPE_ID_INTEGER, c_int64_t)
+        case (VALUE_F64)
+            id = int(TYPE_ID_REAL, c_int64_t)
+        case (VALUE_LOGICAL)
+            id = int(TYPE_ID_LOGICAL, c_int64_t)
+        case default
+            error_msg = 'select type supports type is (integer|real|logical)'
+            return
+        end select
+        guard_id = i32_immediate(context%session, id)
+    end subroutine select_type_guard_id
+
+    subroutine select_type_guard_kind(arena, guard_index, value_kind, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: guard_index
+        integer, intent(out) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: type_name, terr
+        integer :: tname_index
+
+        call set_empty(error_msg)
+        value_kind = VALUE_I32
+        if (.not. node_exists(arena, guard_index)) then
+            error_msg = 'select type guard does not reference an AST node'
+            return
+        end if
+        select type (guard => arena%entries(guard_index)%node)
+        type is (type_guard_block_node)
+            if (trim(guard%guard_type) /= 'type_is') then
+                error_msg = 'select type supports type is guards only'
+                return
+            end if
+            tname_index = guard%type_name_index
+        class default
+            error_msg = 'expected a select type guard block'
+            return
+        end select
+        if (is_identifier(arena, tname_index)) then
+            call get_identifier_name(arena, tname_index, type_name, terr)
+        else if (is_literal(arena, tname_index)) then
+            block
+                character(len=:), allocatable :: lit_type
+                call get_literal_info(arena, tname_index, type_name, lit_type, terr)
+            end block
+        else
+            error_msg = 'select type guard type name is not resolvable'
+            return
+        end if
+        select case (trim(lowercase_text(type_name)))
+        case ('integer')
+            value_kind = VALUE_I32
+        case ('real', 'double precision')
+            value_kind = VALUE_F64
+        case ('logical')
+            value_kind = VALUE_LOGICAL
+        case default
+            error_msg = 'select type supports type is (integer|real|logical)'
+        end select
+    end subroutine select_type_guard_kind
+
+    subroutine lower_select_type_arm(arena, guard_index, assoc_name, data_ptr, &
+                                     context, terminated, error_msg)
+        ! Bind the associate name to the selector's concrete typed value (loaded
+        ! from the boxed data pointer), then lower the arm body.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: guard_index
+        character(len=*), intent(in) :: assoc_name
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: terminated
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: value_kind, idx
+        type(lr_operand_desc_t) :: typed_value, value
+        integer, allocatable :: body(:)
+
+        terminated = .false.
+        call select_type_guard_kind(arena, guard_index, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (value_kind == VALUE_F64) then
+            if (.not. emit_liric_f64_load(context%session, data_ptr, &
+                                          typed_value, error_msg)) return
+        else
+            if (.not. emit_i32_load(context%session, data_ptr, typed_value, &
+                                    error_msg)) return
+        end if
+        idx = find_symbol(context, assoc_name)
+        if (idx <= 0) then
+            call grow_symbols(context)
+            idx = context%symbol_count + 1
+            context%symbol_count = idx
+        end if
+        context%symbols(idx)%name = trim(assoc_name)
+        context%symbols(idx)%value_kind = value_kind
+        context%symbols(idx)%value = typed_value
+        context%symbols(idx)%has_address = .false.
+        context%symbols(idx)%is_reference = .false.
+        context%symbols(idx)%is_derived = .false.
+        context%symbols(idx)%is_deferred_character = .false.
+
+        call select_type_guard_body(arena, guard_index, body)
+        call lower_statement_list(arena, body, context, value, terminated, &
+                                  error_msg)
+    end subroutine lower_select_type_arm
+
+    subroutine select_type_guard_body(arena, guard_index, body)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: guard_index
+        integer, allocatable, intent(out) :: body(:)
+
+        allocate (body(0))
+        if (.not. node_exists(arena, guard_index)) return
+        select type (guard => arena%entries(guard_index)%node)
+        type is (type_guard_block_node)
+            if (allocated(guard%body_indices)) then
+                if (size(guard%body_indices) > 0) body = guard%body_indices
+            end if
+        end select
+    end subroutine select_type_guard_body
+
+    subroutine lower_select_type_default(arena, default_index, context, &
+                                         terminated, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: default_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: terminated
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: body(:)
+        type(lr_operand_desc_t) :: value
+
+        terminated = .false.
+        call select_type_guard_body(arena, default_index, body)
+        call lower_statement_list(arena, body, context, value, terminated, &
+                                  error_msg)
+    end subroutine lower_select_type_default
