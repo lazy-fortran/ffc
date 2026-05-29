@@ -8,8 +8,9 @@ module liric_session_io_emission_bindings
                                       lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
                                       LR_OP_KIND_VREG, LR_OP_KIND_GLOBAL, &
                                       LR_OP_CALL, LR_OP_BITCAST, LR_OP_SITOFP, &
-                                      LR_OP_FPTOSI, LR_OP_ZEXT, &
-                                      LR_OP_GEP, LR_OP_LOAD, LR_OP_KIND_IMM_I64, &
+                                      LR_OP_FPTOSI, LR_OP_ZEXT, LR_OP_TRUNC, &
+                                      LR_OP_GEP, LR_OP_LOAD, LR_OP_STORE, &
+                                      LR_OP_KIND_IMM_I64, &
                                       LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
                                       liric_session_error_message, &
                                       lr_type_i32_s, lr_type_f64_s, lr_type_i64_s, &
@@ -34,6 +35,7 @@ module liric_session_io_emission_bindings
     public :: emit_liric_f64_to_i32
     public :: emit_liric_char_byte_zext
     public :: emit_liric_i32_to_i64
+    public :: emit_liric_store_char_byte
     public :: emit_liric_print_f64
     public :: emit_liric_print_f64_value
     public :: emit_liric_print_i32
@@ -741,6 +743,68 @@ contains
         call set_empty(error_msg)
         emit_liric_char_byte_zext = .true.
     end function emit_liric_char_byte_zext
+
+    logical function emit_liric_store_char_byte(session, base, index_op, value, &
+                                                error_msg)
+        ! Store the low byte of value (i32) at base[index].
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base
+        type(lr_operand_desc_t), intent(in) :: index_op
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t) :: byte_value
+        type(lr_operand_desc_t) :: addr
+
+        emit_liric_store_char_byte = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        ! index widened to i64 for pointer arithmetic
+        operands(1) = index_op
+        inst%op = LR_OP_ZEXT
+        inst%typ = lr_type_i64_s(session%handle)
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        operands(1) = base
+        operands(2) = i64_vreg(session, vreg)
+        inst%op = LR_OP_GEP
+        inst%typ = lr_type_i8_s(session%handle)
+        inst%num_operands = 2_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        addr = ptr_vreg(session, vreg)
+
+        ! truncate value to i8
+        operands(1) = value
+        inst%op = LR_OP_TRUNC
+        inst%typ = lr_type_i8_s(session%handle)
+        inst%num_operands = 1_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        byte_value = i8_vreg(session, vreg)
+
+        ! store i8
+        operands(1) = byte_value
+        operands(2) = addr
+        inst%op = LR_OP_STORE
+        inst%typ = c_null_ptr
+        inst%num_operands = 2_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_store_char_byte = .true.
+    end function emit_liric_store_char_byte
 
     logical function emit_liric_i32_to_i64(session, source, result, error_msg)
         type(liric_session_t), intent(inout) :: session

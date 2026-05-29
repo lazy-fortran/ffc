@@ -14,6 +14,9 @@ program test_session_character_intrinsics_compiler
     if (.not. test_trim_fixed_length_padded()) all_passed = .false.
     if (.not. test_trim_print()) all_passed = .false.
     if (.not. test_trim_assigned_to_deferred()) all_passed = .false.
+    if (.not. test_iachar_of_literal()) all_passed = .false.
+    if (.not. test_achar_iachar_roundtrip()) all_passed = .false.
+    if (.not. test_achar_print()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: len/len_trim lower through direct LIRIC session'
@@ -106,5 +109,35 @@ contains
         test_trim_assigned_to_deferred = expect_exit_status( &
             source, 3, '/tmp/ffc_session_trim_assign_test')
     end function test_trim_assigned_to_deferred
+
+    logical function test_iachar_of_literal()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop iachar("A")'//new_line('a')// &
+            'end program main'
+
+        test_iachar_of_literal = expect_exit_status( &
+            source, 65, '/tmp/ffc_session_iachar_test')
+    end function test_iachar_of_literal
+
+    logical function test_achar_iachar_roundtrip()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop iachar(achar(67))'//new_line('a')// &
+            'end program main'
+
+        test_achar_iachar_roundtrip = expect_exit_status( &
+            source, 67, '/tmp/ffc_session_achar_roundtrip_test')
+    end function test_achar_iachar_roundtrip
+
+    logical function test_achar_print()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, achar(66)'//new_line('a')// &
+            'end program main'
+
+        test_achar_print = expect_output( &
+            source, ' B'//new_line('a'), '/tmp/ffc_session_achar_print_test')
+    end function test_achar_print
 
 end program test_session_character_intrinsics_compiler

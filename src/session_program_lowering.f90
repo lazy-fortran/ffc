@@ -68,6 +68,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                           emit_liric_f64_to_i32, &
                                           emit_liric_char_byte_zext, &
                                           emit_liric_i32_to_i64, &
+                                          emit_liric_store_char_byte, &
                                           emit_liric_print_f64, &
                                           emit_liric_print_f64_value, &
                                           emit_liric_print_i32, &

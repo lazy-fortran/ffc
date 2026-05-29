@@ -198,7 +198,7 @@
                     return
                 end if
             end if
-            if (is_trim_call(arena, node_index)) then
+            if (is_char_expr_call(arena, node_index)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return
             end if

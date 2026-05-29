@@ -116,7 +116,7 @@
 
        ! Check for deferred character function call result or trim() result
         if (context%symbols(symbol_index)%is_deferred_character) then
-            if (is_trim_call(arena, node%value_index)) then
+            if (is_char_expr_call(arena, node%value_index)) then
                 call lower_deferred_trim_assignment(arena, node%value_index, &
                     context, symbol_index, error_msg)
                 return
@@ -507,6 +507,14 @@
             end select
             return
         end if
+        if (is_named_char_call(arena, node_index, 'achar')) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_achar_deferred(arena, n, context, data_ptr, length, &
+                                          error_msg)
+            end select
+            return
+        end if
         select type (n => arena%entries(node_index)%node)
         type is (identifier_node)
             symbol_index = find_symbol(context, n%name)
@@ -520,12 +528,117 @@
             end if
             call char_length_operands(context, symbol_index, data_ptr, length, &
                                       error_msg)
+        type is (literal_node)
+            if (.not. is_character_literal(n)) then
+                call unsupported_feature_error('character expression', 0, 0, &
+                    'direct LIRIC session only supports a character variable, '// &
+                    'literal, or trim() here', error_msg)
+                return
+            end if
+            call char_literal_operands(context, n, data_ptr, length, error_msg)
         class default
             call unsupported_feature_error('character expression', 0, 0, &
                 'direct LIRIC session only supports a character variable or '// &
                 'trim() here', error_msg)
         end select
     end subroutine char_expr_operands
+
+    logical function is_char_expr_call(arena, node_index)
+        ! A call that produces a character value usable in print/assign/len.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_char_expr_call = is_trim_call(arena, node_index) .or. &
+                            is_named_char_call(arena, node_index, 'achar')
+    end function is_char_expr_call
+
+    logical function is_named_char_call(arena, node_index, name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
+
+        is_named_char_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. n%is_array_access .and. allocated(n%name)) &
+                is_named_char_call = same_name(n%name, name)
+        end select
+    end function is_named_char_call
+
+    subroutine lower_achar_deferred(arena, node, context, out_data, out_length, &
+                                    error_msg)
+        ! achar(i): a length-1 character whose byte is the low 8 bits of i.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: out_data
+        type(lr_operand_desc_t), intent(out) :: out_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: code
+        type(lr_operand_desc_t) :: buf
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'achar requires one integer argument'
+            return
+        end if
+        call lower_i32_expression(arena, node%arg_indices(1), context, code, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! 2 bytes: the character plus a null terminator.
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, 2_c_int64_t), buf, error_msg)) &
+            return
+        if (.not. emit_liric_store_char_byte(context%session, buf, &
+                i32_immediate(context%session, 0_c_int64_t), code, error_msg)) &
+            return
+        if (.not. emit_liric_store_char_byte(context%session, buf, &
+                i32_immediate(context%session, 1_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+        out_data = buf
+        out_length = i32_immediate(context%session, 1_c_int64_t)
+        call set_empty(error_msg)
+    end subroutine lower_achar_deferred
+
+    subroutine lower_iachar_intrinsic(arena, node, context, value, error_msg)
+        ! iachar(c): the ASCII code of the first byte of c.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+        type(lr_operand_desc_t) :: length
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'iachar requires one character argument'
+            return
+        end if
+        call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
+                                length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_char_byte_zext(context%session, data_ptr, &
+                i32_immediate(context%session, 0_c_int64_t), value, error_msg)) &
+            return
+    end subroutine lower_iachar_intrinsic
+
+    subroutine char_literal_operands(context, node, data_ptr, length, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(literal_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: literal_text
+        character(len=64) :: string_name
+
+        call strip_literal_quotes(node%value, literal_text)
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.cexpr.', context%string_literal_count
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      literal_text, data_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        length = i32_immediate(context%session, int(len(literal_text), c_int64_t))
+    end subroutine char_literal_operands
 
     subroutine lower_trim_deferred(arena, node, context, out_data, out_length, &
                                    error_msg)
@@ -535,15 +648,16 @@
         type(lr_operand_desc_t), intent(out) :: out_data
         type(lr_operand_desc_t), intent(out) :: out_length
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index
         type(lr_operand_desc_t) :: data_ptr, length, n, n64, size64
         type(lr_operand_desc_t) :: buf, null_pos, null_ptr
         character(len=64) :: null_name
 
-        call char_length_arg_symbol(arena, node, context, symbol_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call char_length_operands(context, symbol_index, data_ptr, length, &
-                                  error_msg)
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'trim requires one character argument'
+            return
+        end if
+        call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
+                                length, error_msg)
         if (len_trim(error_msg) > 0) return
         call compute_len_trim(context, data_ptr, length, n, error_msg)
         if (len_trim(error_msg) > 0) return
