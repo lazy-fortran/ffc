@@ -30,9 +30,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            name = node%name
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
             idx = find_symbol(context, trim(name))
             if (idx > 0) then
                 symbol_index = idx
@@ -40,6 +40,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
             else
                 error_msg = 'concat operand not declared: '//trim(name)
             end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         class default
             error_msg = 'expected identifier or literal in concat operand'
         end select
@@ -382,12 +386,13 @@ integer function resolve_concat_operand(arena, node_index, context, &
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, lit_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, lit_value)
             if (symbol_index <= 0 .or. &
                 context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) then
-                error_msg = 'character argument is not declared: '//trim(node%name)
+                error_msg = 'character argument is not declared: '//trim(lit_value)
                 return
             end if
             if (context%symbols(symbol_index)%is_deferred_character) then
@@ -402,10 +407,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 len_value = i64_immediate(context%session, &
                     int(context%symbols(symbol_index)%character_length, c_int64_t))
             end if
-        class default
+        else
             error_msg = 'direct LIRIC session cannot pass this character argument'
             return
-        end select
+        end if
 
         if (.not. emit_ptr_store(context%session, data_value, data_addr, &
             error_msg)) return
@@ -426,6 +431,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         logical :: handled
         integer :: i
         integer :: symbol_index
+        character(len=:), allocatable :: id_name
 
         allocate (args(size(arg_indices)))
         allocate (copyback_indices(size(arg_indices)))
@@ -439,17 +445,16 @@ integer function resolve_concat_operand(arena, node_index, context, &
                         context, args(i), error_msg)
                     handled = .true.
                 end if
-            else
-                select type (node => arena%entries(arg_indices(i))%node)
-                type is (identifier_node)
-                    symbol_index = find_symbol(context, node%name)
-                    if (symbol_index > 0 .and. &
-                        context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
-                        call prepare_deferred_char_actual(arena, arg_indices(i), &
-                            context, args(i), error_msg)
-                        handled = .true.
-                    end if
-                end select
+            else if (is_identifier(arena, arg_indices(i))) then
+                call get_identifier_name(arena, arg_indices(i), id_name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                symbol_index = find_symbol(context, id_name)
+                if (symbol_index > 0 .and. &
+                    context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+                    call prepare_deferred_char_actual(arena, arg_indices(i), &
+                        context, args(i), error_msg)
+                    handled = .true.
+                end if
             end if
             if (len_trim(error_msg) > 0) return
             if (.not. handled) then

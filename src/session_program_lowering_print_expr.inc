@@ -9,6 +9,7 @@
         real(c_double) :: real_value
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
@@ -59,11 +60,10 @@
                 return
             end if
             ! A non-real binary op falls through to the integer print below.
-        else
-
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        else if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
                     call lower_f64_expression(arena, node_index, context, &
@@ -85,7 +85,9 @@
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
                     if (.not. context%symbols(symbol_index)%has_character_value) then
                         call unsupported_feature_error( &
-                            'character variable print', node%line, node%column, &
+                            'character variable print', &
+                            get_node_line(arena, node_index), &
+                            get_node_column(arena, node_index), &
                             'direct LIRIC session requires character variables '// &
                             'to be assigned from a literal before printing', &
                             error_msg)
@@ -97,6 +99,9 @@
                     return
                 end if
             end if
+        else
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &
@@ -135,6 +140,7 @@
         real(c_double) :: real_value
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'print expression index does not reference an AST node'
@@ -183,11 +189,10 @@
                 return
             end if
             ! A non-real binary op falls through to the integer print below.
-        else
-
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        else if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
                     call lower_f64_expression(arena, node_index, context, &
@@ -208,7 +213,9 @@
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
                     if (.not. context%symbols(symbol_index)%has_character_value) then
                         call unsupported_feature_error( &
-                            'character variable print', node%line, node%column, &
+                            'character variable print', &
+                            get_node_line(arena, node_index), &
+                            get_node_column(arena, node_index), &
                             'direct LIRIC session requires character variables '// &
                             'to be assigned from a literal before printing', &
                             error_msg)
@@ -220,6 +227,9 @@
                     return
                 end if
             end if
+        else
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &

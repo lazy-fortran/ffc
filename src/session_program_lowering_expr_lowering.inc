@@ -68,6 +68,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'logical expression index does not reference an AST node'
@@ -87,17 +88,18 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'logical identifier was not declared: '// &
-                            trim(node%name)
+                            trim(id_name)
                 return
             end if
             if (context%symbols(symbol_index)%value_kind /= VALUE_LOGICAL) then
                 error_msg = 'logical expression used non-logical identifier: '// &
-                            trim(node%name)
+                            trim(id_name)
                 return
             end if
             if (context%symbols(symbol_index)%has_address .and. &
@@ -109,6 +111,10 @@
                 value = context%symbols(symbol_index)%value
                 call set_empty(error_msg)
             end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_logical_call(arena, node, context, value, error_msg)
         class default
@@ -177,6 +183,7 @@
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'real expression index does not reference an AST node'
@@ -215,16 +222,17 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
-                error_msg = 'real identifier was not declared: '//trim(node%name)
+                error_msg = 'real identifier was not declared: '//trim(id_name)
                 return
             end if
             if (context%symbols(symbol_index)%value_kind /= VALUE_F64) then
                 error_msg = 'real expression used non-real identifier: '// &
-                            trim(node%name)
+                            trim(id_name)
                 return
             end if
             if (context%symbols(symbol_index)%has_address .and. &
@@ -236,6 +244,10 @@
                 value = context%symbols(symbol_index)%value
                 call set_empty(error_msg)
             end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_f64_call(arena, node, context, value, error_msg)
         class default
@@ -318,6 +330,7 @@
         integer :: symbol_index
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: id_name, id_err
 
         is_f64 = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -335,12 +348,16 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
                 is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
             end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 is_f64 = is_contained_f64_function(context, node%name)

@@ -11,7 +11,7 @@ module session_program_lowering
                          case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
-                         identifier_node, if_node, &
+                         if_node, &
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &
                          module_node, &
@@ -22,6 +22,7 @@ module session_program_lowering
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_binary_op, get_binary_op_info, &
                          is_literal, get_literal_info, &
+                         is_identifier, get_identifier_name, &
                          is_declaration_node, is_module_node, is_program_node
 use liric_session_bindings, only: destroy, begin_i32_main, &
                                        begin_i32_function, begin_void_subroutine, &
@@ -870,18 +871,17 @@ contains
                     return
                 end select
             end if
-            select type (target => arena%entries(node%target_index)%node)
-            type is (identifier_node)
+            if (is_identifier(arena, node%target_index)) then
                 call unsupported_feature_error('array assignment target', &
-                                               target%line, target%column, &
-                                               'whole-array assignment is not '// &
-                                               'supported', error_msg)
-            class default
+                    get_node_line(arena, node%target_index), &
+                    get_node_column(arena, node%target_index), &
+                    'whole-array assignment is not supported', error_msg)
+            else
                 call unsupported_feature_error('array assignment target', &
                                                node%line, node%column, &
                                                'whole-array assignment is not '// &
                                                'supported', error_msg)
-            end select
+            end if
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then
@@ -1081,14 +1081,16 @@ contains
                                           rhs, value, error_msg)) return
             return
         end if
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
+        if (is_identifier(arena, node_index)) then
             call lower_logical_expression(arena, node_index, context, lhs, &
                                           error_msg)
             if (len_trim(error_msg) > 0) return
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (is_present_call(arena, node_index)) then
                 call lower_present_condition(arena, node_index, context, value, &
@@ -1112,10 +1114,11 @@ contains
             call set_empty(name)
             return
         end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            return
+        end if
         select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            name = node%name
-            call set_empty(error_msg)
         type is (call_or_subscript_node)
             if (allocated(node%arg_indices)) then
                 error_msg = 'expected scalar assignment target'

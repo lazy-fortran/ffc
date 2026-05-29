@@ -14,6 +14,7 @@
       character(len=:), allocatable :: bin_op
       integer :: bin_left, bin_right, bin_line, bin_col
       character(len=:), allocatable :: lit_value, lit_type
+      character(len=:), allocatable :: id_name
 
       if (.not. node_exists(arena, node_index)) then
           error_msg = 'expression index does not reference an AST node'
@@ -56,29 +57,31 @@
           return
       end if
 
-      select type (node => arena%entries(node_index)%node)
-      type is (identifier_node)
-          if (same_name(node%name, 'c_null_ptr')) then
+      if (is_identifier(arena, node_index)) then
+          call get_identifier_name(arena, node_index, id_name, error_msg)
+          if (len_trim(error_msg) > 0) return
+          if (same_name(id_name, 'c_null_ptr')) then
               ! iso_c_binding null pointer constant: an opaque zero.
               value = i32_immediate(context%session, 0_c_int64_t)
               call set_empty(error_msg)
               return
           end if
-          symbol_index = find_symbol(context, node%name)
+          symbol_index = find_symbol(context, id_name)
           if (symbol_index <= 0) then
-              error_msg = 'integer identifier was not declared: '//trim(node%name)
+              error_msg = 'integer identifier was not declared: '//trim(id_name)
               return
           end if
           if (context%symbols(symbol_index)%is_array) then
               call unsupported_feature_error('array expression', &
-                                             node%line, node%column, &
+                                             get_node_line(arena, node_index), &
+                                             get_node_column(arena, node_index), &
                                              'array reads require exactly one '// &
                                              'subscript', error_msg)
               return
           end if
           if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
               error_msg = 'integer expression used non-integer identifier: '// &
-                          trim(node%name)
+                          trim(id_name)
               return
           end if
           if (context%symbols(symbol_index)%has_address .and. &
@@ -90,6 +93,10 @@
               value = context%symbols(symbol_index)%value
               call set_empty(error_msg)
           end if
+          return
+      end if
+
+      select type (node => arena%entries(node_index)%node)
       type is (call_or_subscript_node)
           if (node%base_expr_index > 0) then
               call lower_derived_component_element_load(arena, node, context, &

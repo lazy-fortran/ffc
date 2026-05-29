@@ -10,14 +10,12 @@
             return
         end if
 
-        select type (base => arena%entries(node_index)%node)
-        type is (identifier_node)
-            name = base%name
-            call set_empty(error_msg)
-        class default
-            error_msg = 'nested component access is not supported'
-            call set_empty(name)
-        end select
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            return
+        end if
+        error_msg = 'nested component access is not supported'
+        call set_empty(name)
     end subroutine component_base_name
 
     subroutine lower_derived_whole_assignment_diagnostic(arena, node, context, &

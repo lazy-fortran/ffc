@@ -214,6 +214,7 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
+        character(len=:), allocatable :: id_name, id_err
 
         is_character_selector = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -221,12 +222,12 @@
             is_character_selector = is_character_literal(arena, node_index)
             return
         end if
-        select type (n => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, n%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) is_character_selector = &
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
-        end select
+        end if
     end function is_character_selector
 
     subroutine lower_select_case_character(arena, node, context, error_msg)

@@ -563,11 +563,13 @@
             return
         end if
 
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            return
+        end if
+
         select type (node => arena%entries(node_index)%node)
         type is (parameter_declaration_node)
-            name = node%name
-            call set_empty(error_msg)
-        type is (identifier_node)
             name = node%name
             call set_empty(error_msg)
         class default

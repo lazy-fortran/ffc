@@ -699,13 +699,13 @@
             error_msg = 'get_command_argument value argument is not an AST node'
             return
         end if
-        select type (vnode => arena%entries(arg_indices(2))%node)
-        type is (identifier_node)
-            var_name = vnode%name
-        class default
+        if (is_identifier(arena, arg_indices(2))) then
+            call get_identifier_name(arena, arg_indices(2), var_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
             error_msg = 'get_command_argument value must be a character variable'
             return
-        end select
+        end if
 
         symbol_index = find_symbol(context, var_name)
         if (symbol_index <= 0) then

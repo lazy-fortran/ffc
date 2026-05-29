@@ -190,9 +190,10 @@
             error_msg = 'unsupported character argument for the A edit descriptor'
             return
         end if
-        select type (item => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, item%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, lit_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, lit_value)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
                     .and. context%symbols(symbol_index)%has_character_value) then
@@ -202,7 +203,7 @@
                     return
                 end if
             end if
-        end select
+        end if
         if (is_char_expr_call(arena, node_index)) then
             call char_expr_operands(arena, node_index, context, data_ptr, &
                                     length, error_msg)
@@ -221,6 +222,7 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
+        character(len=:), allocatable :: id_name, id_err
 
         is_char = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -228,11 +230,14 @@
             is_char = is_character_literal(arena, node_index)
             return
         end if
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) &
                 is_char = context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (.not. node%is_array_access .and. allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then

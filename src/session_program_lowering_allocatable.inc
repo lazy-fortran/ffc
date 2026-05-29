@@ -76,6 +76,17 @@
             error_msg = 'allocate target is not an AST node'
             return
         end if
+        if (is_identifier(arena, node%var_indices(1))) then
+            call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. allocated(node%shape_indices) .or. &
+                size(node%shape_indices) /= 1) then
+                error_msg = 'only one-dimensional allocate is supported'
+                return
+            end if
+            size_index = node%shape_indices(1)
+            return
+        end if
         select type (v => arena%entries(node%var_indices(1))%node)
         type is (call_or_subscript_node)
             if (.not. allocated(v%name) .or. .not. allocated(v%arg_indices)) then
@@ -88,14 +99,6 @@
             end if
             name = v%name
             size_index = v%arg_indices(1)
-        type is (identifier_node)
-            name = v%name
-            if (.not. allocated(node%shape_indices) .or. &
-                size(node%shape_indices) /= 1) then
-                error_msg = 'only one-dimensional allocate is supported'
-                return
-            end if
-            size_index = node%shape_indices(1)
         class default
             error_msg = 'allocate target must be a scalar array name'
         end select
@@ -155,15 +158,15 @@
             error_msg = 'deallocate target is not an AST node'
             return
         end if
-        select type (v => arena%entries(node%var_indices(1))%node)
-        type is (identifier_node)
-            name = v%name
-        class default
+        if (is_identifier(arena, node%var_indices(1))) then
+            call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
             call unsupported_feature_error('deallocate statement', node%line, &
                 node%column, 'deallocate target must be a scalar array name', &
                 error_msg)
             return
-        end select
+        end if
 
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) then

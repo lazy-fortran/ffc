@@ -85,6 +85,7 @@
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         constant_value = 0_c_int64_t
         if (.not. node_exists(arena, node_index)) then
@@ -130,21 +131,26 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'compile-time integer parameter was not declared: '// &
-                            trim(node%name)
+                            trim(id_name)
                 return
             end if
             if (.not. context%symbols(symbol_index)%has_i32_constant) then
                 error_msg = 'integer identifier is not a compile-time parameter: '// &
-                            trim(node%name)
+                            trim(id_name)
                 return
             end if
             constant_value = context%symbols(symbol_index)%i32_constant
             call set_empty(error_msg)
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         class default
             error_msg = 'array bound is not a compile-time integer expression'
         end select
@@ -335,6 +341,7 @@
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'array subscript index does not reference an AST node'
@@ -374,12 +381,10 @@
             return
         end if
 
-        select type (subscript => arena%entries(node_index)%node)
-        type is (range_expression_node)
-            call unsupported_array_subscript(arena, node_index, &
-                                             'ranges and slices', error_msg)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, subscript%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_array .or. &
                     context%symbols(symbol_index)%value_kind /= VALUE_I32) then
@@ -390,6 +395,13 @@
                 end if
             end if
             call set_empty(error_msg)
+            return
+        end if
+
+        select type (subscript => arena%entries(node_index)%node)
+        type is (range_expression_node)
+            call unsupported_array_subscript(arena, node_index, &
+                                             'ranges and slices', error_msg)
         class default
             call set_empty(error_msg)
         end select

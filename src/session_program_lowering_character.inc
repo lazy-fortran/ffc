@@ -385,6 +385,7 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
 
         symbol_index = 0
         if (.not. allocated(node%arg_indices)) then
@@ -399,15 +400,17 @@
             error_msg = 'len/len_trim argument does not reference an AST node'
             return
         end if
-        select type (arg => arena%entries(node%arg_indices(1))%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, arg%name)
-        class default
+        if (is_identifier(arena, node%arg_indices(1))) then
+            call get_identifier_name(arena, node%arg_indices(1), id_name, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+        else
             call unsupported_feature_error('len/len_trim argument', node%line, &
                 node%column, 'direct LIRIC session only supports len/len_trim '// &
                 'of a character variable', error_msg)
             return
-        end select
+        end if
         if (symbol_index <= 0) then
             error_msg = 'len/len_trim argument is not a declared character: '// &
                         trim(node%name)
@@ -517,6 +520,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'character expression does not reference an AST node'
@@ -569,9 +573,10 @@
             return
         end if
 
-        select type (n => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, n%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0 .or. &
                 context%symbols(max(symbol_index, 1))%value_kind /= &
                 VALUE_CHARACTER) then
@@ -582,11 +587,12 @@
             end if
             call char_length_operands(context, symbol_index, data_ptr, length, &
                                       error_msg)
-        class default
-            call unsupported_feature_error('character expression', 0, 0, &
-                'direct LIRIC session only supports a character variable or '// &
-                'trim() here', error_msg)
-        end select
+            return
+        end if
+
+        call unsupported_feature_error('character expression', 0, 0, &
+            'direct LIRIC session only supports a character variable or '// &
+            'trim() here', error_msg)
     end subroutine char_expr_operands
 
     logical function is_char_expr_call(arena, node_index)

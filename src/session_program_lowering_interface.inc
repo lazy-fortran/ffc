@@ -176,14 +176,13 @@
     logical function is_c_null_ptr_arg(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        character(len=:), allocatable :: id_name, id_err
 
         is_c_null_ptr_arg = .false.
-        if (.not. node_exists(arena, node_index)) return
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            if (allocated(node%name)) is_c_null_ptr_arg = &
-                same_name(node%name, 'c_null_ptr')
-        end select
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        is_c_null_ptr_arg = same_name(id_name, 'c_null_ptr')
     end function is_c_null_ptr_arg
 
     subroutine lower_external_i32_call(arena, node, ext_idx, context, value, &

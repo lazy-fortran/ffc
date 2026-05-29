@@ -443,6 +443,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: sub_val, zero_based
         integer :: slots
+        character(len=:), allocatable :: id_name
 
         symbol_index = 0
         type_index = 0
@@ -450,14 +451,17 @@
             error_msg = 'component base index does not reference an AST node'
             return
         end if
-        select type (base => arena%entries(base_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, base%name)
+        if (is_identifier(arena, base_index)) then
+            call get_identifier_name(arena, base_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
-                error_msg = 'component base was not declared: '//trim(base%name)
+                error_msg = 'component base was not declared: '//trim(id_name)
                 return
             end if
             element_base = i32_immediate(context%session, 0_c_int64_t)
+        else
+        select type (base => arena%entries(base_index)%node)
         type is (call_or_subscript_node)
             if (.not. allocated(base%name) .or. .not. allocated(base%arg_indices)) &
                 then
@@ -492,6 +496,7 @@
             error_msg = 'nested component access is not supported'
             return
         end select
+        end if
         if (.not. context%symbols(symbol_index)%is_derived) then
             error_msg = 'component base is not a derived type'
             return

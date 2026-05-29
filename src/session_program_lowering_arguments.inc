@@ -63,19 +63,21 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            call prepare_identifier_reference_arg(node, context, arg, &
-                                                  copyback_index, handled, &
+        if (is_identifier(arena, node_index)) then
+            call prepare_identifier_reference_arg(arena, node_index, context, &
+                                                  arg, copyback_index, handled, &
                                                   error_msg)
             if (len_trim(error_msg) > 0 .or. handled) return
-        type is (call_or_subscript_node)
-            if (node%is_array_access) then
-                call lower_i32_array_element_address(arena, node, context, arg, &
-                                                     error_msg)
-                return
-            end if
-        end select
+        else
+            select type (node => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                if (node%is_array_access) then
+                    call lower_i32_array_element_address(arena, node, context, &
+                                                         arg, error_msg)
+                    return
+                end if
+            end select
+        end if
 
         value_kind = expression_value_kind(arena, node_index, context, default_kind)
         call lower_expression_by_kind(arena, node_index, context, value_kind, value, &
@@ -84,27 +86,32 @@
         call make_reference_argument(context, value_kind, value, arg, error_msg)
     end subroutine prepare_reference_arg
 
-    subroutine prepare_identifier_reference_arg(node, context, arg, copyback_index, &
-                                                handled, error_msg)
-        type(identifier_node), intent(in) :: node
+    subroutine prepare_identifier_reference_arg(arena, node_index, context, arg, &
+                                                copyback_index, handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: arg
         integer, intent(out) :: copyback_index
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
+        character(len=:), allocatable :: id_name
 
         copyback_index = 0
         handled = .false.
-        symbol_index = find_symbol(context, node%name)
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
         if (symbol_index <= 0) then
             call set_empty(error_msg)
             return
         end if
         handled = .true.
         if (context%symbols(symbol_index)%is_array) then
-            call unsupported_feature_error('array argument', node%line, &
-                                           node%column, &
+            call unsupported_feature_error('array argument', &
+                                           get_node_line(arena, node_index), &
+                                           get_node_column(arena, node_index), &
                                            'whole-array procedure arguments '// &
                                            'are not supported', error_msg)
             return
@@ -131,6 +138,7 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: default_kind
         integer :: symbol_index
+        character(len=:), allocatable :: id_name, id_err
 
         value_kind = default_kind
         if (.not. node_exists(arena, node_index)) return
@@ -149,10 +157,14 @@
             return
         end if
 
-        select type (node => arena%entries(node_index)%node)
-        type is (identifier_node)
-            symbol_index = find_symbol(context, node%name)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) value_kind = context%symbols(symbol_index)%value_kind
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 if (is_contained_f64_function(context, node%name)) then
