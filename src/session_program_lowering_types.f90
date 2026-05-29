@@ -110,6 +110,16 @@ module session_program_lowering_types
         integer :: parameter_count = 0
     end type module_exports_t
 
+    integer, parameter, public :: MAX_PROC_ARGS = 16
+
+    type, public :: external_procedure_t
+        character(len=64) :: fortran_name = ''
+        character(len=64) :: c_name = ''
+        integer :: return_value_kind = VALUE_I32
+        integer :: arg_value_kinds(MAX_PROC_ARGS) = VALUE_I32
+        integer :: arg_count = 0
+    end type external_procedure_t
+
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
@@ -130,6 +140,8 @@ module session_program_lowering_types
         integer, allocatable :: function_value_kinds(:)
         integer, allocatable :: function_param_counts(:)
         integer :: function_count = 0
+        type(external_procedure_t), allocatable :: external_procedures(:)
+        integer :: external_procedure_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
         integer :: current_function_result_index = 0

@@ -5,7 +5,7 @@ module session_program_lowering
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
-    use ast_nodes_misc, only: use_statement_node
+    use ast_nodes_misc, only: use_statement_node, interface_block_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
@@ -106,6 +106,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 branch_result_t, symbol_t, &
                                                 derived_type_info_t, &
                                                 module_exports_t, &
+                                                external_procedure_t, &
+                                                MAX_PROC_ARGS, &
                                                 VALUE_I32, VALUE_F64, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
@@ -508,6 +510,8 @@ contains
         
         type is (use_statement_node)
             call import_module_derived_types(arena, node, context, error_msg)
+        type is (interface_block_node)
+            call lower_interface_block(arena, node, context, error_msg)
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'
@@ -545,6 +549,7 @@ contains
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_do_while.inc'
+    include 'session_program_lowering_interface.inc'
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'

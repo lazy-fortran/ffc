@@ -15,6 +15,9 @@ program test_session_iso_c_binding_compiler
     if (.not. test_bind_c_derived_type_with_int_and_ptr()) all_passed = .false.
     if (.not. test_bind_c_derived_type_rejects_deferred_character()) &
         all_passed = .false.
+    if (.not. test_interface_bind_c_integer_function_compiles()) &
+        all_passed = .false.
+    if (.not. test_non_bind_c_interface_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -120,5 +123,40 @@ contains
             expect_error_contains(source, 'derived type component', &
             '/tmp/ffc_session_bind_c_bad_test')
     end function test_bind_c_derived_type_rejects_deferred_character
+
+    logical function test_interface_bind_c_integer_function_compiles()
+        ! A bind(c) integer interface is registered; declaring it without
+        ! calling it compiles and runs.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer(c_int) function abs_c(x) bind(c, name="abs")'// &
+            new_line('a')// &
+            '      import :: c_int'//new_line('a')// &
+            '      integer(c_int), value :: x'//new_line('a')// &
+            '    end function abs_c'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_interface_bind_c_integer_function_compiles = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_iface_bindc_test')
+    end function test_interface_bind_c_integer_function_compiles
+
+    logical function test_non_bind_c_interface_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer function plain(x)'//new_line('a')// &
+            '      integer :: x'//new_line('a')// &
+            '    end function plain'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_non_bind_c_interface_rejected = expect_error_contains( &
+            source, 'interface declaration', '/tmp/ffc_session_iface_plain_test')
+    end function test_non_bind_c_interface_rejected
 
 end program test_session_iso_c_binding_compiler

@@ -30,15 +30,19 @@ contains
     end function test_use_intrinsic_module_no_error
 
     logical function test_interface_block_diagnostic()
+        ! A non-bind(c) interface is rejected (only bind(c) interfaces lower).
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  interface'//new_line('a')// &
+                                       '    integer function plain(x)'//new_line('a')// &
+                                       '      integer :: x'//new_line('a')// &
+                                       '    end function plain'//new_line('a')// &
                                        '  end interface'//new_line('a')// &
                                        'end program main'
 
         test_interface_block_diagnostic = expect_error_contains( &
                                           source, &
-                                          'unsupported interface block', &
+                                          'interface declaration', &
                                           '/tmp/ffc_session_interface_block_test')
     end function test_interface_block_diagnostic
 
@@ -46,12 +50,15 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  interface'//new_line('a')// &
+                                       '    integer function plain(x)'//new_line('a')// &
+                                       '      integer :: x'//new_line('a')// &
+                                       '    end function plain'//new_line('a')// &
                                        '  end interface'//new_line('a')// &
                                        'end program main'
 
         test_cli_interface_block_diagnostic = expect_cli_error_contains( &
                                               source, &
-                                              'unsupported interface block', &
+                                              'interface declaration', &
                                               '/tmp/ffc_cli_interface_block_test')
     end function test_cli_interface_block_diagnostic
 
