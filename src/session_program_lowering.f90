@@ -72,7 +72,8 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
 use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             prepare_liric_print_runtime, &
                                             create_printf_format_global, &
-                                            printf_format_ptr
+                                            printf_format_ptr, &
+                                            create_type_info_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &

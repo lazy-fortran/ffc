@@ -204,6 +204,25 @@ length  : i64   current length in bytes, 0 when unallocated
   caller. Because a local never owns heap memory, no `free` is emitted at
   scope exit and an unallocated descriptor is never freed.
 
+## Derived-type info
+
+Each `type ... end type` definition emits a compile-time constant describing
+the type, the foundation for polymorphic dispatch (`select type`). It is a
+compiler-private layout, not a Fortran-visible type.
+
+```
+struct ffc_type_info_t {
+    i64 id;          // dense per-compilation-unit type index
+    i64 size_bytes;  // storage size (each component is a 4-byte i32 slot)
+};
+```
+
+The instance is a 16-byte const global named `__ffc_type_info_<typename>` (a
+module prefix is added once module-scope types export type info). The `id` is
+assigned monotonically as types are collected. Nothing references these
+constants yet; later polymorphism slices compare a value's type pointer
+against them.
+
 ## Module artefact format
 
 `ffc -c <source>.f90` writes one `<modulename>.fmod` next to the object file

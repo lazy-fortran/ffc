@@ -58,10 +58,34 @@
                 type is (derived_type_node)
                     call lower_derived_type_definition(node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    call emit_type_info_constant(context, &
+                                                 context%derived_type_count, &
+                                                 error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end select
             end do
         end select
     end subroutine collect_derived_type_definitions
+
+    subroutine emit_type_info_constant(context, type_index, error_msg)
+        ! Emit the per-derived-type compile-time type_info_t constant (#140).
+        ! The id is the dense per-unit type index; size is the storage in bytes
+        ! (each component occupies a 4-byte i32 slot in the MVP layout).
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (type_index <= 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        call create_type_info_global(context%session, &
+            '__ffc_type_info_'//trim(context%derived_types(type_index)%name), &
+            int(type_index, c_int64_t), &
+            int(total_component_slots(context, type_index) * 4, c_int64_t), &
+            error_msg)
+    end subroutine emit_type_info_constant
 
     subroutine collect_module_exports(arena, root_index, context, &
                                       error_msg)

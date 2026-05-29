@@ -17,6 +17,7 @@ module liric_session_format_bindings
     public :: prepare_liric_print_runtime
     public :: create_printf_format_global
     public :: printf_format_ptr
+    public :: create_type_info_global
 
     interface
         function lr_type_i32_s(handle) result(typ) bind(c)
@@ -263,6 +264,47 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine create_printf_format_global
+
+    subroutine create_type_info_global(session, name, type_id, size_bytes, &
+                                        error_msg)
+        ! Emit a compile-time ffc_type_info_t constant {i64 id; i64 size_bytes}
+        ! as a 16-byte const global under the given (already-mangled) symbol.
+        ! Not interned, so it keeps its symbol name for cross-unit comparison.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(in) :: type_id
+        integer(c_int64_t), intent(in) :: size_bytes
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), allocatable, target :: bytes(:)
+        type(c_ptr) :: array_type
+        integer :: k
+        integer(c_int32_t) :: global_id
+
+        allocate (bytes(16))
+        do k = 0, 7
+            bytes(1 + k) = char(int(iand(ishft(type_id, -8 * k), &
+                255_c_int64_t)), kind=c_char)
+            bytes(9 + k) = char(int(iand(ishft(size_bytes, -8 * k), &
+                255_c_int64_t)), kind=c_char)
+        end do
+
+        call to_c_chars(name, c_name)
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                     16_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a type-info array type'
+            return
+        end if
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(bytes), 16_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create type-info global '//trim(name)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine create_type_info_global
 
     logical function require_open_session(session, error_msg)
         type(liric_session_t), intent(in) :: session
