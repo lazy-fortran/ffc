@@ -47,6 +47,10 @@
                 deallocate(context%module_exports(i)%derived_type_indices)
             end if
             context%module_exports(i)%derived_type_count = 0
+            if (allocated(context%module_exports(i)%parameter_indices)) then
+                deallocate(context%module_exports(i)%parameter_indices)
+            end if
+            context%module_exports(i)%parameter_count = 0
         end do
         context%module_export_count = 0
         call set_empty(error_msg)
@@ -66,6 +70,8 @@
                         trim(mod_node%name)
                     context%module_exports(export_idx)%derived_type_count = 0
                     allocate(context%module_exports(export_idx)%derived_type_indices(8))
+                    context%module_exports(export_idx)%parameter_count = 0
+                    allocate(context%module_exports(export_idx)%parameter_indices(8))
 
                      do j = 1, size(mod_node%declaration_indices)
                         select type (decl => &
@@ -82,6 +88,18 @@
                                 derived_type_count = &
                                 context%module_exports(export_idx)% &
                                 derived_type_count + 1
+                        type is (declaration_node)
+                            if (.not. decl%is_parameter) cycle
+                            call grow_module_export_parameter_indices(context, &
+                                                                      export_idx)
+                            context%module_exports(export_idx)% &
+                                parameter_indices( &
+                                context%module_exports(export_idx)% &
+                                parameter_count + 1) = mod_node%declaration_indices(j)
+                            context%module_exports(export_idx)% &
+                                parameter_count = &
+                                context%module_exports(export_idx)% &
+                                parameter_count + 1
                         end select
                     end do
 
@@ -346,3 +364,26 @@ subroutine collect_component_declaration(component_index, parent, context, &
         context%module_exports(export_idx)%derived_type_indices(1:old_size) = old_indices
         deallocate(old_indices)
     end subroutine grow_module_export_derived_indices
+
+    subroutine grow_module_export_parameter_indices(context, export_idx)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: export_idx
+        integer, allocatable :: old_indices(:)
+        integer :: new_size, old_size
+
+        old_size = context%module_exports(export_idx)%parameter_count
+        if (old_size > 0 .and. &
+            allocated(context%module_exports(export_idx)%parameter_indices)) then
+            if (old_size < &
+                size(context%module_exports(export_idx)%parameter_indices)) return
+        else
+            return
+        end if
+
+        old_indices = context%module_exports(export_idx)%parameter_indices
+        new_size = 2 * size(context%module_exports(export_idx)%parameter_indices)
+        deallocate(context%module_exports(export_idx)%parameter_indices)
+        allocate(context%module_exports(export_idx)%parameter_indices(new_size))
+        context%module_exports(export_idx)%parameter_indices(1:old_size) = old_indices
+        deallocate(old_indices)
+    end subroutine grow_module_export_parameter_indices

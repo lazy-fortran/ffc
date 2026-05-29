@@ -187,7 +187,36 @@
                 error_msg)
             if (len_trim(error_msg) > 0) return
         end do
+
+        call import_module_constants(arena, export_idx, context, error_msg)
     end subroutine import_module_derived_types
+
+    subroutine import_module_constants(arena, export_idx, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: param_idx
+        integer :: value_kind
+
+        call set_empty(error_msg)
+        do i = 1, context%module_exports(export_idx)%parameter_count
+            param_idx = context%module_exports(export_idx)%parameter_indices(i)
+            if (.not. node_exists(arena, param_idx)) cycle
+            select type (decl => arena%entries(param_idx)%node)
+            type is (declaration_node)
+                if (find_symbol(context, decl%var_name) > 0) cycle
+                call declaration_value_kind(decl, value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+                ! lower_constant_declaration rejects non-integer parameters with
+                ! a targeted diagnostic (real/character exports are follow-ups).
+                call lower_constant_declaration(decl, context, value_kind, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine import_module_constants
 
     subroutine add_derived_type_from_arena(arena, type_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena

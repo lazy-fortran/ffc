@@ -97,6 +97,8 @@ module session_program_lowering_types
         character(len=64) :: module_name = ''
         integer, allocatable :: derived_type_indices(:)
         integer :: derived_type_count = 0
+        integer, allocatable :: parameter_indices(:)
+        integer :: parameter_count = 0
     end type module_exports_t
 
     type, public :: lowering_context_t
