@@ -17,11 +17,40 @@ program test_session_fixed_size_array_compiler
     if (.not. test_array_stop_code()) all_passed = .false.
     if (.not. test_array_in_contained_subroutine()) all_passed = .false.
     if (.not. test_array_in_contained_function()) all_passed = .false.
+    if (.not. test_array_constructor_literal()) all_passed = .false.
+    if (.not. test_array_constructor_runtime()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: fixed-size arrays lower through direct LIRIC'
 
 contains
+
+    logical function test_array_constructor_literal()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: a(3)'//new_line('a')// &
+                                       '  a = [1, 2, 3]'//new_line('a')// &
+                                       '  stop a(2)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_constructor_literal = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_array_ctor_lit_test')
+    end function test_array_constructor_literal
+
+    logical function test_array_constructor_runtime()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: a(3)'//new_line('a')// &
+                                       '  integer :: n'//new_line('a')// &
+                                       '  n = 5'//new_line('a')// &
+                                       '  a = [n, n * 2, n + 1]'//new_line('a')// &
+                                       '  stop a(1) + a(2) + a(3)'//new_line('a')// &
+                                       'end program main'
+
+        ! [5, 10, 6] -> 21
+        test_array_constructor_runtime = expect_exit_status( &
+            source, 21, '/tmp/ffc_session_array_ctor_rt_test')
+    end function test_array_constructor_runtime
 
     logical function test_simple_array()
         character(len=*), parameter :: source = &

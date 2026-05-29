@@ -170,6 +170,45 @@
         call set_empty(error_msg)
     end subroutine define_declared_array_symbol
 
+    subroutine lower_array_constructor_assignment(arena, ctor, symbol_index, &
+                                                  context, error_msg)
+        ! arr = [a, b, c] for a fixed-size integer 1D array: lower each element
+        ! and store it at the matching slot.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: addr
+        integer :: i
+        integer :: n
+
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'array constructor has no elements'
+            return
+        end if
+        n = size(ctor%element_indices)
+        if (n /= context%symbols(symbol_index)%array_size) then
+            error_msg = 'array constructor element count does not match the '// &
+                'declared size of '//trim(context%symbols(symbol_index)%name)
+            return
+        end if
+        do i = 1, n
+            call lower_i32_expression(arena, ctor%element_indices(i), context, &
+                                      value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
+                return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_array_constructor_assignment
+
     subroutine lower_array_element_assignment(arena, node, target, context, value, &
                                               error_msg)
         type(ast_arena_t), intent(in) :: arena

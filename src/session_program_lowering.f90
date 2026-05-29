@@ -3,7 +3,7 @@ module session_program_lowering
                                                                               c_int64_t
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, range_expression_node
-    use ast_nodes_core, only: component_access_node
+    use ast_nodes_core, only: component_access_node, array_literal_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_misc, only: use_statement_node
     use fortfront, only: assignment_node, ast_arena_t, binary_op_node, &
@@ -790,6 +790,14 @@ contains
             return
         end if
         if (context%symbols(symbol_index)%is_array) then
+            if (node_exists(arena, node%value_index)) then
+                select type (val => arena%entries(node%value_index)%node)
+                type is (array_literal_node)
+                    call lower_array_constructor_assignment(arena, val, &
+                        symbol_index, context, error_msg)
+                    return
+                end select
+            end if
             select type (target => arena%entries(node%target_index)%node)
             type is (identifier_node)
                 call unsupported_feature_error('array assignment target', &

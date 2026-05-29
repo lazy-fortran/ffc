@@ -36,8 +36,9 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   functions; integer procedure arguments use pointer parameters with
   copy-back for variable actuals;
 - fixed-size 1-D integer arrays with compile-time bounds; element
-  assignment, element reads, `print`, `stop`, and counted-loop
-  subscripts;
+  assignment, element reads, `print`, `stop`, counted-loop
+  subscripts, and whole-array assignment from an array constructor
+  (`a = [e1, e2, ...]`);
 - simple derived types with scalar integer components; component
   assignment, component reads, `print`, and `stop`;
 - minimal `print *, expr` through a `printf` shim for integers, reals,
