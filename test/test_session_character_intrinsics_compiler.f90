@@ -17,6 +17,8 @@ program test_session_character_intrinsics_compiler
     if (.not. test_iachar_of_literal()) all_passed = .false.
     if (.not. test_achar_iachar_roundtrip()) all_passed = .false.
     if (.not. test_achar_print()) all_passed = .false.
+    if (.not. test_index_found_position()) all_passed = .false.
+    if (.not. test_index_not_found_returns_zero()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: len/len_trim lower through direct LIRIC session'
@@ -139,5 +141,25 @@ contains
         test_achar_print = expect_output( &
             source, ' B'//new_line('a'), '/tmp/ffc_session_achar_print_test')
     end function test_achar_print
+
+    logical function test_index_found_position()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop index("hello", "ll")'//new_line('a')// &
+            'end program main'
+
+        test_index_found_position = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_index_found_test')
+    end function test_index_found_position
+
+    logical function test_index_not_found_returns_zero()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop index("hello", "x")'//new_line('a')// &
+            'end program main'
+
+        test_index_not_found_returns_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_index_notfound_test')
+    end function test_index_not_found_returns_zero
 
 end program test_session_character_intrinsics_compiler

@@ -182,6 +182,11 @@
           call lower_iachar_intrinsic(arena, node, context, value, error_msg)
           return
       end if
+      if (same_name(node%name, 'index') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_index_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
 
       intrinsic_id = i32_intrinsic_id(node%name)
       if (.not. is_contained_i32_function(context, node%name)) then

@@ -58,6 +58,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               LR_CMP_SGE, &
                                               LR_CMP_SGT, &
                                               LR_CMP_SLE, &
+                                              LR_CMP_SLT, &
                                               LR_CMP_NE, &
                                               LR_CMP_EQ, &
                                               set_liric_block

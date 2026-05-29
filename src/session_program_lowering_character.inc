@@ -640,6 +640,142 @@
         length = i32_immediate(context%session, int(len(literal_text), c_int64_t))
     end subroutine char_literal_operands
 
+    subroutine lower_index_intrinsic(arena, node, context, value, error_msg)
+        ! index(s, sub): 1-based position of the first occurrence of sub in s,
+        ! or 0. Implemented as an outer position scan with an inner byte compare,
+        ! both driven by stack counters (no SSA phi).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: s_data, s_len, sub_data, sub_len
+        type(lr_operand_desc_t) :: i_addr, j_addr, res_addr, max_start
+        type(lr_operand_desc_t) :: i_val, j_val, cond, sb, tb, sum_ij, tmp
+        integer(c_int32_t) :: outer_hdr, outer_body, inner_hdr, inner_body
+        integer(c_int32_t) :: matched, advance, done
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'index requires two character arguments'
+            return
+        end if
+        if (size(node%arg_indices) < 2) then
+            error_msg = 'index requires two character arguments'
+            return
+        end if
+        call char_expr_operands(arena, node%arg_indices(1), context, s_data, &
+                                s_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_expr_operands(arena, node%arg_indices(2), context, sub_data, &
+                                sub_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_alloca(context%session, i_addr, error_msg)) return
+        if (.not. emit_i32_alloca(context%session, j_addr, error_msg)) return
+        if (.not. emit_i32_alloca(context%session, res_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), i_addr, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), res_addr, &
+                error_msg)) return
+        ! max_start = s_len - sub_len (last 0-based start to try)
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, s_len, sub_len, &
+                max_start, error_msg)) return
+
+        outer_hdr = create_liric_block(context%session)
+        outer_body = create_liric_block(context%session)
+        inner_hdr = create_liric_block(context%session)
+        inner_body = create_liric_block(context%session)
+        matched = create_liric_block(context%session)
+        advance = create_liric_block(context%session)
+        done = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, outer_hdr, error_msg)) return
+
+        ! outer_hdr: if i <= max_start goto outer_body else done
+        if (.not. set_liric_block(context%session, outer_hdr, error_msg)) return
+        context%current_block_id = outer_hdr
+        if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, i_val, &
+                max_start, cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, outer_body, done, &
+                error_msg)) return
+
+        ! outer_body: j = 0; goto inner_hdr
+        if (.not. set_liric_block(context%session, outer_body, error_msg)) return
+        context%current_block_id = outer_body
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), j_addr, error_msg)) &
+            return
+        if (.not. emit_liric_br(context%session, inner_hdr, error_msg)) return
+
+        ! inner_hdr: if j < sub_len goto inner_body else matched
+        if (.not. set_liric_block(context%session, inner_hdr, error_msg)) return
+        context%current_block_id = inner_hdr
+        if (.not. emit_i32_load(context%session, j_addr, j_val, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, j_val, &
+                sub_len, cond, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, inner_body, matched, &
+                error_msg)) return
+
+        ! inner_body: if s[i+j] == sub[j] then j=j+1; inner_hdr else advance
+        if (.not. set_liric_block(context%session, inner_body, error_msg)) return
+        context%current_block_id = inner_body
+        if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, j_val, &
+                sum_ij, error_msg)) return
+        if (.not. emit_liric_char_byte_zext(context%session, s_data, sum_ij, sb, &
+                error_msg)) return
+        if (.not. emit_liric_char_byte_zext(context%session, sub_data, j_val, &
+                tb, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, sb, tb, cond, &
+                error_msg)) return
+        block
+            integer(c_int32_t) :: bump
+            bump = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, cond, bump, advance, &
+                    error_msg)) return
+            if (.not. set_liric_block(context%session, bump, error_msg)) return
+            context%current_block_id = bump
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, j_val, &
+                    i32_immediate(context%session, 1_c_int64_t), tmp, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, tmp, j_addr, error_msg)) &
+                return
+            if (.not. emit_liric_br(context%session, inner_hdr, error_msg)) return
+        end block
+
+        ! matched: result = i + 1; goto done
+        if (.not. set_liric_block(context%session, matched, error_msg)) return
+        context%current_block_id = matched
+        if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, res_addr, error_msg)) &
+            return
+        if (.not. emit_liric_br(context%session, done, error_msg)) return
+
+        ! advance: i = i + 1; goto outer_hdr
+        if (.not. set_liric_block(context%session, advance, error_msg)) return
+        context%current_block_id = advance
+        if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_val, &
+                i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, tmp, i_addr, error_msg)) &
+            return
+        if (.not. emit_liric_br(context%session, outer_hdr, error_msg)) return
+
+        ! done: value = load result
+        if (.not. set_liric_block(context%session, done, error_msg)) return
+        context%current_block_id = done
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_load(context%session, res_addr, value, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine lower_index_intrinsic
+
     subroutine lower_trim_deferred(arena, node, context, out_data, out_length, &
                                    error_msg)
         type(ast_arena_t), intent(in) :: arena
