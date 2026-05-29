@@ -95,53 +95,57 @@
             do i = 1, size(program%body_indices)
                 select type (mod_node => arena%entries(program%body_indices(i))%node)
                 type is (module_node)
-                    if (.not. allocated(mod_node%name)) cycle
-                    if (.not. allocated(mod_node%declaration_indices)) cycle
-                    call grow_module_exports(context)
-
-                    export_idx = context%module_export_count + 1
-                    context%module_exports(export_idx)%module_name = &
-                        trim(mod_node%name)
-                    context%module_exports(export_idx)%derived_type_count = 0
-                    allocate(context%module_exports(export_idx)%derived_type_indices(8))
-                    context%module_exports(export_idx)%parameter_count = 0
-                    allocate(context%module_exports(export_idx)%parameter_indices(8))
-
-                     do j = 1, size(mod_node%declaration_indices)
-                        select type (decl => &
-                            arena%entries(mod_node%declaration_indices(j))%node)
-                        type is (derived_type_node)
-                            if (.not. allocated(decl%name)) cycle
-
-                            call grow_module_export_derived_indices(context, export_idx)
-                            context%module_exports(export_idx)% &
-                                derived_type_indices( &
-                                context%module_exports(export_idx)% &
-                                derived_type_count + 1) = mod_node%declaration_indices(j)
-                            context%module_exports(export_idx)% &
-                                derived_type_count = &
-                                context%module_exports(export_idx)% &
-                                derived_type_count + 1
-                        type is (declaration_node)
-                            if (.not. decl%is_parameter) cycle
-                            call grow_module_export_parameter_indices(context, &
-                                                                      export_idx)
-                            context%module_exports(export_idx)% &
-                                parameter_indices( &
-                                context%module_exports(export_idx)% &
-                                parameter_count + 1) = mod_node%declaration_indices(j)
-                            context%module_exports(export_idx)% &
-                                parameter_count = &
-                                context%module_exports(export_idx)% &
-                                parameter_count + 1
-                        end select
-                    end do
-
-                    context%module_export_count = export_idx
+                    call collect_one_module_exports(arena, mod_node, context)
                 end select
             end do
+        type is (module_node)
+            ! A module-only compilation unit (ffc -c <module>.f90).
+            call collect_one_module_exports(arena, program, context)
         end select
     end subroutine collect_module_exports
+
+    subroutine collect_one_module_exports(arena, mod_node, context)
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        type(lowering_context_t), intent(inout) :: context
+        integer :: j
+        integer :: export_idx
+
+        if (.not. allocated(mod_node%name)) return
+        if (.not. allocated(mod_node%declaration_indices)) return
+        call grow_module_exports(context)
+
+        export_idx = context%module_export_count + 1
+        context%module_exports(export_idx)%module_name = trim(mod_node%name)
+        context%module_exports(export_idx)%derived_type_count = 0
+        allocate(context%module_exports(export_idx)%derived_type_indices(8))
+        context%module_exports(export_idx)%parameter_count = 0
+        allocate(context%module_exports(export_idx)%parameter_indices(8))
+
+        do j = 1, size(mod_node%declaration_indices)
+            select type (decl => &
+                arena%entries(mod_node%declaration_indices(j))%node)
+            type is (derived_type_node)
+                if (.not. allocated(decl%name)) cycle
+                call grow_module_export_derived_indices(context, export_idx)
+                context%module_exports(export_idx)%derived_type_indices( &
+                    context%module_exports(export_idx)%derived_type_count + 1) = &
+                    mod_node%declaration_indices(j)
+                context%module_exports(export_idx)%derived_type_count = &
+                    context%module_exports(export_idx)%derived_type_count + 1
+            type is (declaration_node)
+                if (.not. decl%is_parameter) cycle
+                call grow_module_export_parameter_indices(context, export_idx)
+                context%module_exports(export_idx)%parameter_indices( &
+                    context%module_exports(export_idx)%parameter_count + 1) = &
+                    mod_node%declaration_indices(j)
+                context%module_exports(export_idx)%parameter_count = &
+                    context%module_exports(export_idx)%parameter_count + 1
+            end select
+        end do
+
+        context%module_export_count = export_idx
+    end subroutine collect_one_module_exports
 
     integer function find_module_export_index(context, module_name) &
         result(idx)

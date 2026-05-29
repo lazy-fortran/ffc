@@ -137,6 +137,9 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
                                                 I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
                                                 F64_INTRINSIC_IDS
+    use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
+                                   fmod_component_t, fmod_derived_type_t, &
+                                   write_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe
@@ -258,6 +261,15 @@ contains
                 call destroy(context%session)
                 return
             end if
+            ! Emit a sibling .fmod for each module compiled with -c.
+            if (context%module_export_count > 0) then
+                call emit_module_fmod_artifacts(arena, context, output_path, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call destroy(context%session)
+                    return
+                end if
+            end if
         end if
         call destroy(context%session)
         call set_empty(error_msg)
@@ -353,10 +365,11 @@ contains
         character(len=:), allocatable :: node_type
         integer :: i
 
-        ! A bare module that declares symbols is rejected with a targeted
-        ! diagnostic; the per-kind handlers land in follow-up issues (#118,
-        ! #150, #164). An empty module is a no-op: the surrounding main
-        ! wrapper returns 0.
+        ! A module of compile-time exports (named constants and derived-type
+        ! definitions) lowers to no runtime code: the constants are folded at
+        ! use sites and the types are layout-only. Module variables that need
+        ! storage and module procedures land in follow-up issues (#150, #164,
+        ! #119). An empty module is a no-op.
         if (allocated(mod_node%procedure_indices)) then
             if (size(mod_node%procedure_indices) > 0) then
                 call unsupported_feature_error('module-defined procedure', &
@@ -370,15 +383,32 @@ contains
             do i = 1, size(mod_node%declaration_indices)
                 node_type = get_node_type_at(arena, mod_node%declaration_indices(i))
                 if (trim(node_type) == 'implicit_statement') cycle
+                if (trim(node_type) == 'derived_type_def' .or. &
+                    trim(node_type) == 'derived_type') cycle
+                if (module_declaration_is_parameter(arena, &
+                        mod_node%declaration_indices(i))) cycle
                 call unsupported_feature_error('module-defined declaration', &
                     mod_node%line, mod_node%column, &
-                    'direct LIRIC session does not yet lower module '// &
-                    'declarations', error_msg)
+                    'direct LIRIC session lowers only module named constants '// &
+                    'and derived-type definitions; module variables are not '// &
+                    'yet supported', error_msg)
                 return
             end do
         end if
         call set_empty(error_msg)
     end subroutine lower_module_unit
+
+    logical function module_declaration_is_parameter(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        module_declaration_is_parameter = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            module_declaration_is_parameter = decl%is_parameter
+        end select
+    end function module_declaration_is_parameter
     include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)
@@ -974,6 +1004,7 @@ contains
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_c_ptr.inc'
+    include 'session_program_lowering_fmod.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

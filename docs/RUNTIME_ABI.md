@@ -204,6 +204,39 @@ length  : i64   current length in bytes, 0 when unallocated
   caller. Because a local never owns heap memory, no `free` is emitted at
   scope exit and an unallocated descriptor is never freed.
 
+## Module artefact format
+
+`ffc -c <source>.f90` writes one `<modulename>.fmod` next to the object file
+for each module the source defines. The file records the module's exported
+interface so a later unit can resolve `use <module>` without the source. It is
+a line-oriented subset of TOML, with no source locations or comments.
+
+```toml
+[module]
+name = "shapes"
+ffc_version = "0.1.0"
+
+[[parameter]]
+name = "max_pts"
+kind = "integer"
+value = 10
+
+[[derived_type]]
+name = "point_t"
+components = [
+    { name = "x", kind = "integer" },
+    { name = "y", kind = "integer" },
+]
+```
+
+- `[module]` carries the module name and the emitting `ffc` version.
+- Each `[[parameter]]` is a named constant: `name`, `kind` (the normalised
+  scalar type token), and the literal `value`.
+- Each `[[derived_type]]` is a type definition with its `components`, each a
+  `{ name, kind }` pair.
+- `kind` is `integer`, `real`, `logical`, `character`, or `type(<name>)`.
+- Module variables and module procedures are not yet exported.
+
 ## Unsupported ABI Work
 
 - #53: array descriptors, allocatables, and pointer representation.
