@@ -27,7 +27,7 @@ contains
             'end program main'
 
         test_distinct_pair = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_distinct_deferred_concat_test')
     end function test_distinct_pair
 

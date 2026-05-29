@@ -33,7 +33,7 @@ contains
             'end program main'
 
         test_function_returns_concatenated_deferred_character = expect_output( &
-            source, 'abcd'//new_line('a'), &
+            source, ' abcd'//new_line('a'), &
             '/tmp/ffc_deferred_char_func_concat')
     end function test_function_returns_concatenated_deferred_character
 
@@ -54,7 +54,7 @@ contains
             'end program main'
 
         test_function_returns_input_with_suffix = expect_output( &
-            source, 'hi!x'//new_line('a'), &
+            source, ' hi!x'//new_line('a'), &
             '/tmp/ffc_deferred_char_func_suffix')
     end function test_function_returns_input_with_suffix
 
@@ -72,7 +72,7 @@ contains
             'end program main'
 
         test_function_result_prints_directly = expect_output( &
-            source, 'hello, world'//new_line('a'), &
+            source, ' hello, world'//new_line('a'), &
             '/tmp/ffc_deferred_char_func_print')
     end function test_function_result_prints_directly
 

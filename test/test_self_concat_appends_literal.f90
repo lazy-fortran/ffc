@@ -24,7 +24,7 @@ contains
             'end program main'
 
         test_self_concat_appends_literal_case = expect_output( &
-            source, 'hi!'//new_line('a'), &
+            source, ' hi!'//new_line('a'), &
             '/tmp/ffc_self_concat_literal_test')
     end function test_self_concat_appends_literal_case
 

@@ -26,7 +26,7 @@ contains
             'end program main'
 
         test_var_then_literal = expect_output( &
-            source, 'hi!'//new_line('a'), &
+            source, ' hi!'//new_line('a'), &
             '/tmp/ffc_var_then_literal_test')
     end function test_var_then_literal
 
@@ -41,7 +41,7 @@ contains
             'end program main'
 
         test_literal_then_var = expect_output( &
-            source, 'hello world'//new_line('a'), &
+            source, ' hello world'//new_line('a'), &
             '/tmp/ffc_literal_then_var_test')
     end function test_literal_then_var
 

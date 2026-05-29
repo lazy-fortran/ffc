@@ -546,6 +546,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         if (.not. emit_ptr_load(context%session, data_addr, data_value, &
             error_msg)) return
+        ! gfortran list-directed character output carries one leading space.
+        if (.not. emit_liric_print_space(context%session, error_msg)) return
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_value, error_msg)) return
         call set_empty(error_msg)

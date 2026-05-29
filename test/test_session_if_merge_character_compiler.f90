@@ -37,7 +37,7 @@ contains
             'end program main'
 
         test_deferred_char_then_branch = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_if_def_char_then_test')
     end function test_deferred_char_then_branch
 
@@ -57,7 +57,7 @@ contains
             'end program main'
 
         test_deferred_char_else_branch = expect_output( &
-            source, 'world'//new_line('a'), &
+            source, ' world'//new_line('a'), &
             '/tmp/ffc_session_if_def_char_else_test')
     end function test_deferred_char_else_branch
 
@@ -76,7 +76,7 @@ contains
             'end program main'
 
         test_fixed_char_then_branch = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_if_fix_char_then_test')
     end function test_fixed_char_then_branch
 
@@ -95,7 +95,7 @@ contains
             'end program main'
 
         test_fixed_char_else_branch = expect_output( &
-            source, 'world'//new_line('a'), &
+            source, ' world'//new_line('a'), &
             '/tmp/ffc_session_if_fix_char_else_test')
     end function test_fixed_char_else_branch
 

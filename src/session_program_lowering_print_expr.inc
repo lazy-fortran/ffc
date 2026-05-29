@@ -151,10 +151,7 @@
                     call lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)
                     if (len_trim(error_msg) > 0) return
-                    if (.not. emit_liric_print_i32_value(context%session, &
-                                                         context%i32_print_format_id, &
-                                                         value, error_msg)) &
-                        return
+                    call lower_print_logical_value(context, value, error_msg)
                     return
                 end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
@@ -166,6 +163,8 @@
                             error_msg)
                         return
                     end if
+                    if (.not. emit_liric_print_space(context%session, &
+                                                     error_msg)) return
                     if (.not. emit_liric_print_string_operand_value( &
                         context%session, context%str_print_format_id, &
                         context%symbols(symbol_index)%value, error_msg)) return
@@ -205,6 +204,8 @@
                 context%string_literal_count = context%string_literal_count + 1
                 write (string_name, '(A,I0)') '.ffc.str.', &
                     context%string_literal_count
+                if (.not. emit_liric_print_space(context%session, &
+                                                 error_msg)) return
                 if (.not. emit_liric_print_string_value(context%session, &
                                                         context%str_print_format_id, &
                                                         trim(string_name), &
@@ -214,9 +215,7 @@
             end if
             if (is_logical_literal(node)) then
                 value = i32_immediate(context%session, logical_i32_value(node%value))
-                if (.not. emit_liric_print_i32_value(context%session, &
-                                                     context%i32_print_format_id, &
-                                                     value, error_msg)) return
+                call lower_print_logical_value(context, value, error_msg)
                 return
             end if
             if (is_real_literal(node)) then
@@ -236,3 +235,52 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    subroutine lower_print_logical_value(context, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cond
+        type(lr_operand_desc_t) :: zero
+        integer(c_int32_t) :: true_block
+        integer(c_int32_t) :: false_block
+        integer(c_int32_t) :: merge_block
+        character(len=64) :: true_name
+        character(len=64) :: false_name
+
+        ! gfortran list-directed logical output is " T" / " F" (leading space).
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, value, zero, &
+                                      cond, error_msg)) return
+
+        true_block = create_liric_block(context%session)
+        false_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, true_block, &
+                                    false_block, error_msg)) return
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (true_name, '(A,I0)') '.ffc.logical.', context%string_literal_count
+        if (.not. set_liric_block(context%session, true_block, error_msg)) return
+        context%current_block_id = true_block
+        if (.not. emit_liric_print_string_value(context%session, &
+                                                context%str_print_format_id, &
+                                                trim(true_name), ' T', &
+                                                error_msg)) return
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (false_name, '(A,I0)') '.ffc.logical.', context%string_literal_count
+        if (.not. set_liric_block(context%session, false_block, error_msg)) return
+        context%current_block_id = false_block
+        if (.not. emit_liric_print_string_value(context%session, &
+                                                context%str_print_format_id, &
+                                                trim(false_name), ' F', &
+                                                error_msg)) return
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_print_logical_value

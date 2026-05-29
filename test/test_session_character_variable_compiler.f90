@@ -29,7 +29,7 @@ contains
             'end program main'
 
         test_exact_length_character_print = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_char_exact_test')
     end function test_exact_length_character_print
 
@@ -42,7 +42,7 @@ contains
             'end program main'
 
         test_short_character_assignment_pads = expect_output( &
-            source, 'hi   '//new_line('a'), &
+            source, ' hi   '//new_line('a'), &
             '/tmp/ffc_session_char_pad_test')
     end function test_short_character_assignment_pads
 
@@ -55,7 +55,7 @@ contains
             'end program main'
 
         test_long_character_assignment_truncates = expect_output( &
-            source, 'hel'//new_line('a'), &
+            source, ' hel'//new_line('a'), &
             '/tmp/ffc_session_char_trunc_test')
     end function test_long_character_assignment_truncates
 
@@ -68,7 +68,7 @@ contains
             'end program main'
 
         test_character_concat_two_literals = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_char_concat_two_test')
     end function test_character_concat_two_literals
 
@@ -81,7 +81,7 @@ contains
             'end program main'
 
         test_character_concat_three_literals = expect_output( &
-            source, 'abc'//new_line('a'), &
+            source, ' abc'//new_line('a'), &
             '/tmp/ffc_session_char_concat_three_test')
     end function test_character_concat_three_literals
 
@@ -94,7 +94,7 @@ contains
             'end program main'
 
         test_character_concat_pads_short_result = expect_output( &
-            source, 'hi!  '//new_line('a'), &
+            source, ' hi!  '//new_line('a'), &
             '/tmp/ffc_session_char_concat_pad_test')
     end function test_character_concat_pads_short_result
 
@@ -107,7 +107,7 @@ contains
             'end program main'
 
         test_character_concat_truncates_long_result = expect_output( &
-            source, 'hello'//new_line('a'), &
+            source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_char_concat_trunc_test')
     end function test_character_concat_truncates_long_result
 

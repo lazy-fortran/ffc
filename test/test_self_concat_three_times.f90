@@ -26,7 +26,7 @@ contains
             'end program main'
 
         test_self_concat_three_times_case = expect_output( &
-            source, 'x...'//new_line('a'), &
+            source, ' x...'//new_line('a'), &
             '/tmp/ffc_self_concat_triple_test')
     end function test_self_concat_three_times_case
 
