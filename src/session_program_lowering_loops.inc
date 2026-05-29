@@ -28,6 +28,7 @@
         logical :: body_terminated
         logical :: body_exited
         integer(c_int32_t) :: saved_loop_exit_block
+        integer(c_int32_t) :: saved_loop_latch_block
         logical :: saved_in_counted_do
 
         value = i32_immediate(context%session, 0_c_int64_t)
@@ -106,8 +107,10 @@
         context%current_block_id = body_block
         body_terminated = .false.
         saved_loop_exit_block = context%current_loop_exit_block
+        saved_loop_latch_block = context%current_loop_latch_block
         saved_in_counted_do = context%in_counted_do
         context%current_loop_exit_block = exit_block
+        context%current_loop_latch_block = latch_block
         context%in_counted_do = .true.
         context%current_block_exited_loop = .false.
         if (allocated(node%body_indices)) then
@@ -117,6 +120,7 @@
         end if
         body_exited = context%current_block_exited_loop
         context%current_loop_exit_block = saved_loop_exit_block
+        context%current_loop_latch_block = saved_loop_latch_block
         context%in_counted_do = saved_in_counted_do
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then

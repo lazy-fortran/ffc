@@ -374,11 +374,19 @@ contains
             context%current_block_terminated = .true.
             context%current_block_exited_loop = .true.
         type is (cycle_node)
-            call unsupported_feature_error('cycle statement', node%line, &
-                                           node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support early loop backedges', &
-                                           error_msg)
+            if (.not. context%in_counted_do) then
+                call unsupported_feature_error('cycle statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports cycle inside a counted '// &
+                                               'do', error_msg)
+                return
+            end if
+            if (.not. emit_liric_br(context%session, &
+                                    context%current_loop_latch_block, &
+                                    error_msg)) return
+            context%current_block_terminated = .true.
+            context%current_block_exited_loop = .true.
         type is (if_node)
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
