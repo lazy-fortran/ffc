@@ -39,7 +39,16 @@
         end if
 
         name = node%var_name
-        if (find_symbol(context, name) > 0) then
+        index = find_symbol(context, name)
+        if (index > 0) then
+            ! Already collected by the parameter pre-pass (used for derived-type
+            ! array component bounds). Re-declaring the same integer parameter is
+            ! a no-op; a genuine clash is a different symbol kind.
+            if (context%symbols(index)%is_parameter .and. &
+                context%symbols(index)%has_i32_constant) then
+                call set_empty(error_msg)
+                return
+            end if
             error_msg = 'duplicate parameter declaration: '//trim(name)
             return
         end if

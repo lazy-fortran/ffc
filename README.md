@@ -42,8 +42,10 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   (`a = [e1, e2, ...]`);
 - `integer, allocatable :: a(:)` with `allocate(a(N))` and
   `deallocate(a)` (element access not yet supported);
-- simple derived types with scalar integer components; component
-  assignment, component reads, `print`, and `stop`;
+- simple derived types with scalar integer components and fixed-size
+  integer array components (`integer :: a(N)`); component assignment,
+  component reads, array-component element access (`x%a(i)`), `print`,
+  and `stop`;
 - `print *, expr` (list-directed, gfortran-exact bytes) for integers,
   reals, logicals, characters, plus formatted `print '(I0)'/'(Iw)'/'(A)',
   expr` with a single edit descriptor; `stop <integer expression>` returns

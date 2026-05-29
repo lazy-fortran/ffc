@@ -19,6 +19,9 @@ program test_session_derived_type_compiler
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
     if (.not. test_component_default_initialiser()) all_passed = .false.
     if (.not. test_component_default_overridden()) all_passed = .false.
+    if (.not. test_array_component_assignment_and_read()) all_passed = .false.
+    if (.not. test_array_component_with_parameter_size()) all_passed = .false.
+    if (.not. test_array_component_mixed_with_scalar()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived types lower through direct LIRIC'
@@ -200,6 +203,59 @@ contains
         test_component_default_overridden = expect_exit_status( &
             source, 11, '/tmp/ffc_session_comp_default_over_test')
     end function test_component_default_overridden
+
+    logical function test_array_component_assignment_and_read()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: a(3)'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: x'//new_line('a')// &
+                                       '  x%a(1) = 7'//new_line('a')// &
+                                       '  x%a(2) = 8'//new_line('a')// &
+                                       '  x%a(3) = 9'//new_line('a')// &
+                                       '  stop x%a(2)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_component_assignment_and_read = expect_exit_status( &
+            source, 8, '/tmp/ffc_session_arraycomp_test')
+    end function test_array_component_assignment_and_read
+
+    logical function test_array_component_with_parameter_size()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer, parameter :: n = 3'// &
+                                       new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: a(n)'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: x'//new_line('a')// &
+                                       '  x%a(1) = 4'//new_line('a')// &
+                                       '  x%a(3) = 6'//new_line('a')// &
+                                       '  stop x%a(1) + x%a(3)'//new_line('a')// &
+                                       'end program main'
+
+        test_array_component_with_parameter_size = expect_exit_status( &
+            source, 10, '/tmp/ffc_session_arraycomp_param_test')
+    end function test_array_component_with_parameter_size
+
+    logical function test_array_component_mixed_with_scalar()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  type :: t'//new_line('a')// &
+                                       '    integer :: a(2)'//new_line('a')// &
+                                       '    integer :: s'//new_line('a')// &
+                                       '  end type t'//new_line('a')// &
+                                       '  type(t) :: x'//new_line('a')// &
+                                       '  x%a(1) = 1'//new_line('a')// &
+                                       '  x%a(2) = 2'//new_line('a')// &
+                                       '  x%s = 100'//new_line('a')// &
+                                       '  stop x%a(1) + x%a(2) + x%s'//new_line('a')// &
+                                       'end program main'
+
+        test_array_component_mixed_with_scalar = expect_exit_status( &
+            source, 103, '/tmp/ffc_session_arraycomp_mixed_test')
+    end function test_array_component_mixed_with_scalar
 
     logical function test_generic_binding_diagnostic()
         character(len=*), parameter :: source = &

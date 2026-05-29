@@ -189,6 +189,11 @@ contains
             call destroy(context%session)
             return
         end if
+        call collect_program_parameters(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call collect_derived_type_definitions(arena, root_index, context, &
                                               error_msg)
         if (len_trim(error_msg) > 0) then
@@ -789,6 +794,11 @@ contains
         integer :: symbol_index
         select type (target => arena%entries(node%target_index)%node)
         type is (call_or_subscript_node)
+            if (target%base_expr_index > 0) then
+                call lower_derived_component_element_assignment(arena, node, &
+                    target, context, error_msg)
+                return
+            end if
             if (target%is_array_access) then
                 call lower_array_element_assignment(arena, node, target, context, &
                                                     value, error_msg)

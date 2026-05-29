@@ -79,7 +79,10 @@
           if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
                                                     error_msg)) return
       type is (call_or_subscript_node)
-          if (node%is_array_access) then
+          if (node%base_expr_index > 0) then
+              call lower_derived_component_element_load(arena, node, context, &
+                                                        value, error_msg)
+          else if (node%is_array_access) then
               call lower_i32_array_element(arena, node, context, value, error_msg)
           else
               call lower_i32_call(arena, node, context, value, error_msg)
@@ -153,6 +156,11 @@
       integer, allocatable :: copyback_indices(:)
       integer :: intrinsic_id
 
+      if (node%base_expr_index > 0) then
+          call lower_derived_component_element_load(arena, node, context, value, &
+                                                    error_msg)
+          return
+      end if
       if (node%is_array_access) then
           call unsupported_feature_error('array expression', &
                                          node%line, node%column, &
