@@ -33,33 +33,34 @@ contains
     end function check
 
     logical function test_sqrt_four()
-        test_sqrt_four = check('sqrt(4.0)', '2.000000', &
+        test_sqrt_four = check('sqrt(4.0)', '   2.0000000000000000     ', &
                                '/tmp/ffc_session_sqrt_test')
     end function test_sqrt_four
 
     logical function test_sin_zero()
-        test_sin_zero = check('sin(0.0)', '0.000000', &
+        test_sin_zero = check('sin(0.0)', '   0.0000000000000000     ', &
                               '/tmp/ffc_session_sin_test')
     end function test_sin_zero
 
     logical function test_cos_zero()
-        test_cos_zero = check('cos(0.0)', '1.000000', &
+        test_cos_zero = check('cos(0.0)', '   1.0000000000000000     ', &
                               '/tmp/ffc_session_cos_test')
     end function test_cos_zero
 
     logical function test_exp_zero()
-        test_exp_zero = check('exp(0.0)', '1.000000', &
+        test_exp_zero = check('exp(0.0)', '   1.0000000000000000     ', &
                               '/tmp/ffc_session_exp_test')
     end function test_exp_zero
 
     logical function test_log_one()
-        test_log_one = check('log(1.0)', '0.000000', &
+        test_log_one = check('log(1.0)', '   0.0000000000000000     ', &
                              '/tmp/ffc_session_log_test')
     end function test_log_one
 
     logical function test_atan2_one_one()
-        ! atan2(1.0, 1.0) == pi/4 == 0.785398... (truncated to %f width)
-        test_atan2_one_one = check('atan2(1.0, 1.0)', '0.785398', &
+        ! atan2(1.0, 1.0) == pi/4, printed in gfortran real(8) list-directed form
+        test_atan2_one_one = check('atan2(1.0, 1.0)', &
+                                   '  0.78539816339744828     ', &
                                    '/tmp/ffc_session_atan2_test')
     end function test_atan2_one_one
 

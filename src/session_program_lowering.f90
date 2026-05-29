@@ -64,6 +64,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               set_liric_block
 use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             prepare_liric_print_runtime
+    use liric_session_real_print_bindings, only: synthesize_real8_printer
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
@@ -167,9 +168,12 @@ contains
         context%arena = arena
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
-                                              context%f64_print_format_id, &
                                               context%str_print_format_id, &
                                               error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. synthesize_real8_printer(context%session, error_msg)) then
             call destroy(context%session)
             return
         end if

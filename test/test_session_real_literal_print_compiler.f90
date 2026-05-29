@@ -7,7 +7,7 @@ program test_session_real_literal_print_compiler
     if (.not. expect_output( &
          'program main'//new_line('a')// &
          '  print *, 2.5'//new_line('a')// &
-         'end program main', '2.500000'//new_line('a'), &
+         'end program main', '   2.5000000000000000     '//new_line('a'), &
          '/tmp/ffc_session_real_literal_print_test')) stop 1
 
     print *, 'PASS: real literal print lowers through direct LIRIC session'

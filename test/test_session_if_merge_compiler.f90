@@ -48,7 +48,7 @@ contains
                                        'end program main'
 
         test_real_if_merge = expect_output( &
-                             source, '4.500000'//new_line('a'), &
+                             source, '   4.5000000000000000     '//new_line('a'), &
                              '/tmp/ffc_session_if_real_merge_test')
     end function test_real_if_merge
 

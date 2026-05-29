@@ -23,7 +23,6 @@
                                               value, error_msg)
                     if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_print_f64(context%session, &
-                                                   context%f64_print_format_id, &
                                                    value, error_msg)) return
                     return
                 end if
@@ -57,7 +56,6 @@
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_print_f64(context%session, &
-                                               context%f64_print_format_id, &
                                                value, error_msg)) return
                 return
             end if
@@ -67,7 +65,6 @@
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_print_f64(context%session, &
-                                               context%f64_print_format_id, &
                                                value, error_msg)) return
                 return
             end if
@@ -103,7 +100,6 @@
                 if (len_trim(error_msg) > 0) return
                 value = liric_f64_immediate(context%session, real_value)
                 if (.not. emit_liric_print_f64(context%session, &
-                                               context%f64_print_format_id, &
                                                value, error_msg)) return
                 return
             end if
@@ -142,7 +138,6 @@
                                               value, error_msg)
                     if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_print_f64_value(context%session, &
-                                                         context%f64_print_format_id, &
                                                          value, error_msg)) &
                         return
                     return
@@ -163,8 +158,6 @@
                             error_msg)
                         return
                     end if
-                    if (.not. emit_liric_print_space(context%session, &
-                                                     error_msg)) return
                     if (.not. emit_liric_print_string_operand_value( &
                         context%session, context%str_print_format_id, &
                         context%symbols(symbol_index)%value, error_msg)) return
@@ -177,7 +170,6 @@
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_print_f64_value(context%session, &
-                                                     context%f64_print_format_id, &
                                                      value, error_msg)) return
                 return
             end if
@@ -187,7 +179,6 @@
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_print_f64_value(context%session, &
-                                                     context%f64_print_format_id, &
                                                      value, error_msg)) return
                 return
             end if
@@ -208,8 +199,6 @@
                 context%string_literal_count = context%string_literal_count + 1
                 write (string_name, '(A,I0)') '.ffc.str.', &
                     context%string_literal_count
-                if (.not. emit_liric_print_space(context%session, &
-                                                 error_msg)) return
                 if (.not. emit_liric_print_string_value(context%session, &
                                                         context%str_print_format_id, &
                                                         trim(string_name), &
@@ -227,7 +216,6 @@
                 if (len_trim(error_msg) > 0) return
                 value = liric_f64_immediate(context%session, real_value)
                 if (.not. emit_liric_print_f64_value(context%session, &
-                                                     context%f64_print_format_id, &
                                                      value, error_msg)) return
                 return
             end if
@@ -241,8 +229,8 @@
     end subroutine lower_print_expression_value
 
     subroutine lower_print_char_expr(arena, node_index, context, error_msg)
-        ! Print a character expression (e.g. trim(s)) with the gfortran
-        ! list-directed leading space.
+        ! Print a character expression (e.g. trim(s)). The list-directed
+        ! leading blank is emitted by the print statement loop.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -253,7 +241,6 @@
         call char_expr_operands(arena, node_index, context, data_ptr, length, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_print_space(context%session, error_msg)) return
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_ptr, error_msg)) return
     end subroutine lower_print_char_expr
@@ -270,7 +257,8 @@
         character(len=64) :: true_name
         character(len=64) :: false_name
 
-        ! gfortran list-directed logical output is " T" / " F" (leading space).
+        ! gfortran list-directed logical output is " T" / " F"; the leading
+        ! blank is the list separator, so the field itself is "T" / "F".
         zero = i32_immediate(context%session, 0_c_int64_t)
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, value, zero, &
                                       cond, error_msg)) return
@@ -287,7 +275,7 @@
         context%current_block_id = true_block
         if (.not. emit_liric_print_string_value(context%session, &
                                                 context%str_print_format_id, &
-                                                trim(true_name), ' T', &
+                                                trim(true_name), 'T', &
                                                 error_msg)) return
         if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
 
@@ -297,7 +285,7 @@
         context%current_block_id = false_block
         if (.not. emit_liric_print_string_value(context%session, &
                                                 context%str_print_format_id, &
-                                                trim(false_name), ' F', &
+                                                trim(false_name), 'F', &
                                                 error_msg)) return
         if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
 

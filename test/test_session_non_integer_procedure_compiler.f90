@@ -32,7 +32,8 @@ contains
                                        '  end subroutine bump'//new_line('a')// &
                                        'end program main'
 
-        test_real_subroutine = expect_output(source, '2.500000'//new_line('a'), &
+        test_real_subroutine = expect_output(source, &
+                                  '   2.5000000000000000     '//new_line('a'), &
                                               '/tmp/ffc_session_real_sub_test')
     end function test_real_subroutine
 
@@ -72,7 +73,8 @@ contains
                                        '  end function add'//new_line('a')// &
                                        'end program main'
 
-        test_real_function = expect_output(source, '4.500000'//new_line('a'), &
+        test_real_function = expect_output(source, &
+                                  '   4.5000000000000000     '//new_line('a'), &
                                             '/tmp/ffc_session_real_fn_test')
     end function test_real_function
 
@@ -101,7 +103,7 @@ contains
                                        'end program main'
 
         test_mixed_real_logical_function = expect_output( &
-                                            source, '2.000000'//new_line('a'), &
+                              source, '   2.0000000000000000     '//new_line('a'), &
                                             '/tmp/ffc_session_mixed_fn_test')
     end function test_mixed_real_logical_function
 

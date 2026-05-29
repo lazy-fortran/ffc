@@ -78,11 +78,9 @@ module liric_session_format_bindings
 contains
 
     logical function prepare_liric_print_runtime(session, i32_format_id, &
-                                                 f64_format_id, str_format_id, &
-                                                 error_msg)
+                                                 str_format_id, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(out) :: i32_format_id
-        integer(c_int32_t), intent(out) :: f64_format_id
         integer(c_int32_t), intent(out) :: str_format_id
         character(len=:), allocatable, intent(out) :: error_msg
 
@@ -91,10 +89,6 @@ contains
         call create_i32_format_global_no_newline(session, &
                                                  '.ffc.fmt.i32', &
                                                  i32_format_id, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call create_f64_format_global_no_newline(session, &
-                                                 '.ffc.fmt.f64', &
-                                                 f64_format_id, error_msg)
         if (len_trim(error_msg) > 0) return
         call create_str_format_global_no_newline(session, &
                                                  '.ffc.fmt.str', &
@@ -140,9 +134,12 @@ contains
         type(c_ptr) :: array_type
 
         call to_c_chars(name, c_name)
+        ! gfortran list-directed default integer field is I12 including its
+        ! one leading blank. That blank is emitted as the list separator, so
+        ! the field itself is I11.
         format_text(1) = '%'
         format_text(2) = '1'
-        format_text(3) = '2'
+        format_text(3) = '1'
         format_text(4) = 'd'
         format_text(5) = c_null_char
 
@@ -169,45 +166,6 @@ contains
 
         call set_empty(error_msg)
    end subroutine create_i32_format_global_no_newline
-
-    subroutine create_f64_format_global_no_newline(session, name, global_id, &
-                                                   error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        integer(c_int32_t), intent(out) :: global_id
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(kind=c_char), allocatable :: c_name(:)
-        character(kind=c_char), target :: format_text(3)
-        type(c_ptr) :: array_type
-
-        call to_c_chars(name, c_name)
-        format_text(1) = '%'
-        format_text(2) = 'f'
-        format_text(3) = c_null_char
-
-        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                      3_c_int64_t)
-        if (.not. c_associated(array_type)) then
-            error_msg = 'LIRIC did not return a format string array type'
-            return
-        end if
-
-        global_id = lr_session_global(session%handle, c_name, array_type, &
-                                      c_true, c_loc(format_text(1)), &
-                                      3_c_size_t)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not create printf format string'
-            return
-        end if
-
-        global_id = lr_session_intern(session%handle, c_name)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern printf format string'
-            return
-        end if
-
-        call set_empty(error_msg)
-  end subroutine create_f64_format_global_no_newline
 
     subroutine create_str_format_global_no_newline(session, name, global_id, &
                                                    error_msg)

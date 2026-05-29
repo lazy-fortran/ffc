@@ -246,7 +246,6 @@
 
         context%session = parent_context%session
         context%i32_print_format_id = parent_context%i32_print_format_id
-        context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
   context%arena = arena
@@ -352,7 +351,6 @@
 
         context%session = parent_context%session
         context%i32_print_format_id = parent_context%i32_print_format_id
-        context%f64_print_format_id = parent_context%f64_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
         context%arena = arena

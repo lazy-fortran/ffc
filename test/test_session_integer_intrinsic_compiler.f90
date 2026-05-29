@@ -266,7 +266,7 @@ contains
                                        'end program main'
 
         test_real_intrinsic_values = expect_output( &
-                                     source, '8.000000'//new_line('a'), &
+                              source, '   8.0000000000000000     '//new_line('a'), &
                                      '/tmp/ffc_session_real_intrinsic_test')
     end function test_real_intrinsic_values
 
@@ -281,7 +281,7 @@ contains
                                        'end program main'
 
         test_real_conversion_intrinsic = expect_output( &
-                                        source, '5.500000'//new_line('a'), &
+                              source, '   5.5000000000000000     '//new_line('a'), &
                                         '/tmp/ffc_session_real_conversion_test')
     end function test_real_conversion_intrinsic
 

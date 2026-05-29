@@ -117,7 +117,6 @@ module session_program_lowering_types
         integer :: module_export_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
-        integer(c_int32_t) :: f64_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
         character(len=64), allocatable :: function_names(:)

@@ -23,9 +23,9 @@ is closed with ABI documentation and executable tests.
 
 - `integer` values use LIRIC `i32` values.
 - `real` values use LIRIC `f64` values.
-- `logical` values currently use the MVP `i32` representation: zero is false,
-  nonzero is true. Printed logicals therefore use the same integer `printf`
-  path and currently print `0` or `1`.
+- `logical` values use an `i32` representation: zero is false, nonzero is
+  true. Printed logicals branch on that value and emit `T` or `F` (gfortran's
+  list-directed ` T`/` F` once the separating blank is added).
 - Scalar `character(len=N)` variables keep an `i8*` pointer to literal-backed
   storage plus the declared length `N` in the lowering symbol. Assignment from
   character literals stores exactly `N` characters by truncating long literals
@@ -70,23 +70,40 @@ is closed with ABI documentation and executable tests.
 
 ## Runtime Calls
 
-- Minimal scalar `print` lowers to an external C `printf` declaration.
-- The current format globals are:
-  - integer/logical: `%12d` (a trailing newline is emitted separately). The
-    field width 12 matches gfortran's default list-directed `integer(4)`
-    output, which right-justifies in 12 columns. `integer(8)` (width 22) and
-    Fortran-aware logical (`T`/`F`) output are deferred to later issues.
-  - real: `%f`
-  - character: `%s`
+- Scalar `print` lowers to external C `printf`/`snprintf` calls.
+- List-directed record layout: one separating blank is written before every
+  value. The first blank also serves as the record's carriage control. No
+  blank is written between two consecutive character values, so they print
+  concatenated (matching gfortran). Each value field below carries no leading
+  blank of its own; a trailing newline closes the record.
+- The per-value format globals are:
+  - integer/logical: `%11d` for integers. The field plus its leading separator
+    blank reproduce gfortran's default list-directed `integer(4)` width of 12.
+    `integer(8)` (width 22) is deferred. Logicals print `T`/`F` (the leading
+    blank is the separator, so gfortran's ` T`/` F` is reproduced).
+  - real: emitted through the synthesized helper `.ffc.print_real8` (see
+    below), not a single `printf` format.
+  - character: `%s`.
+- `real(8)` list-directed output is produced by a helper function
+  `.ffc.print_real8(double)` synthesized once into the module. It reproduces
+  gfortran exactly: 17 significant digits, fixed (F) notation for a decimal
+  exponent in `[-1, 16]` (right-justified in 20 columns, five trailing
+  blanks) and exponential notation otherwise (one digit before the point, 16
+  after, an uppercase `E`, a sign, a three-digit exponent, right-justified in
+  25 columns). `Infinity`/`-Infinity`/`NaN` are printed for non-finite values.
+  The helper builds the digits with `snprintf("%.16e", ...)`, reads the
+  decimal exponent with `atoi`, and formats the field accordingly. ffc lowers
+  every Fortran `real` as `real(8)`, so `real(4)` literals also use this form;
+  a kind-parametrised format is deferred until ffc lowers `real(4)` distinctly.
 - Character literal print passes a pointer to a null-terminated global byte
   array to `printf`. Scalar character variable print passes a pointer to a
   global byte array containing the fixed-length value followed by a null
-  terminator. The current C `printf` shim consumes the terminator, not an
-  explicit length argument. #55 owns the Fortran-aware I/O runtime.
+  terminator. The C `printf` shim consumes the terminator, not an explicit
+  length argument.
 - Object output may contain unresolved references such as `printf`; final
   linking is responsible for resolving the C runtime.
-- The current `printf` path is the only supported I/O surface. #55 owns the
-  Fortran-aware scalar I/O runtime.
+- This `printf`/`snprintf` path is the supported scalar I/O surface. Internal
+  and formatted I/O are owned by later issues.
 
 ## Deferred-length character
 

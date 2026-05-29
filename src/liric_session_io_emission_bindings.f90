@@ -23,6 +23,7 @@ module liric_session_io_emission_bindings
                                       to_c_chars, i32_vreg
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg
     use liric_session_format_bindings, only: LR_OP_FSUB
+    use liric_session_real_print_bindings, only: emit_real8_print_call
     implicit none
     private
 
@@ -78,16 +79,13 @@ contains
         emit_liric_print_i32 = .true.
     end function emit_liric_print_i32
 
-    logical function emit_liric_print_f64(session, format_global_id, value, &
-                                          error_msg)
+    logical function emit_liric_print_f64(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session
-        integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: value
         character(len=:), allocatable, intent(out) :: error_msg
 
         emit_liric_print_f64 = .false.
-        if (.not. emit_liric_print_f64_value(session, format_global_id, value, &
-                                             error_msg)) return
+        if (.not. emit_liric_print_f64_value(session, value, error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_f64 = .true.
@@ -154,31 +152,14 @@ contains
         emit_liric_print_i32_value = .true.
     end function emit_liric_print_i32_value
 
-    logical function emit_liric_print_f64_value(session, format_global_id, &
-                                                value, error_msg)
+    logical function emit_liric_print_f64_value(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session
-        integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: callee
-        type(lr_operand_desc_t) :: format_ptr
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: unused_vreg
 
         emit_liric_print_f64_value = .false.
         if (.not. require_open_session(session, error_msg)) return
-
-        call make_printf_operand(session, callee, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        unused_vreg = emit_call_f64(session%handle, callee, format_ptr, value, &
-                                    error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
+        if (.not. emit_real8_print_call(session, value, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_f64_value = .true.
     end function emit_liric_print_f64_value
@@ -443,36 +424,6 @@ contains
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_i32
-
-    function emit_call_f64(handle, callee, format_ptr, value, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(lr_operand_desc_t), intent(in) :: callee
-        type(lr_operand_desc_t), intent(in) :: format_ptr
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(3)
-        type(lr_inst_desc_t) :: inst
-
-        operands = [callee, format_ptr, value]
-
-        inst%op = LR_OP_CALL
-        inst%typ = lr_type_i32_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = 3_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_true
-        inst%call_vararg = c_true
-        inst%call_fixed_args = 1_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_call_f64
 
     function emit_call_ptr(handle, callee, format_ptr, value, error) result(vreg)
         type(c_ptr), intent(in) :: handle
