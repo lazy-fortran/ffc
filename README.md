@@ -35,9 +35,11 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
 - contained integer / real / logical functions and subroutines with
   scalar parameters, plus contained functions returning a deferred-length
   character or a whole derived value (via a hidden result-address arg);
-  early `return` inside contained subroutines and functions; integer
+  early `return` inside contained subroutines and functions; `stop` inside
+  a contained procedure terminates the program via `exit`; integer
   procedure arguments use pointer parameters with copy-back for variable
-  actuals;
+  actuals; `optional` integer dummies with `present(arg)` (absent actuals
+  pass a null pointer);
 - fixed-size 1-D integer arrays with compile-time bounds; element
   assignment, element reads, `print`, `stop`, counted-loop
   subscripts, and whole-array assignment from an array constructor

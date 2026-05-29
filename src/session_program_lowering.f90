@@ -29,10 +29,11 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                       finish_and_emit_object, emit_void_call, &
                                       emit_i32_call, liric_session_create, &
                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
+                                      lr_type_ptr_s, &
                                       LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
                                       LR_OP_MUL, &
                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
-                                      LR_OP_SHL, LR_OP_LSHR
+                                      LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
                                               ptr_vreg, &
                                               emit_i32_binary, emit_i32_binary_into, &
@@ -109,6 +110,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
+                                                 VALUE_SUBROUTINE, &
                                                  I32_INTRINSIC_NONE, &
                                                 I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
                                                 I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
@@ -441,8 +443,23 @@ contains
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
-                if (.not. emit_ret_i32_operand(context%session, value, &
-                                                               error_msg)) return
+                if (context%in_internal_function .or. &
+                    context%in_internal_subroutine) then
+                    ! stop terminates the whole program. From a contained
+                    ! procedure, call libc exit() rather than returning the
+                    ! code (which would only return from the procedure).
+                    if (.not. emit_void_call(context%session, 'exit', [value], &
+                                             error_msg)) return
+                    if (context%in_internal_subroutine) then
+                        if (.not. emit_ret_void(context%session, error_msg)) return
+                    else
+                        if (.not. emit_ret_i32_operand(context%session, value, &
+                                                       error_msg)) return
+                    end if
+                else
+                    if (.not. emit_ret_i32_operand(context%session, value, &
+                                                                   error_msg)) return
+                end if
                 context%current_block_terminated = .true.
             end if
         type is (exit_node)
@@ -963,9 +980,42 @@ contains
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                     args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_void_call(context%session, name, args, error_msg)) return
+        if (.not. emit_call_with_optional_padding(context, name, args, error_msg)) &
+            return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
+
+    logical function emit_call_with_optional_padding(context, name, args, &
+                                                     error_msg) result(ok)
+        ! Emit a void call to a contained subroutine, padding omitted trailing
+        ! optional dummies with null pointers up to the callee's declared
+        ! parameter count.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: padded(:)
+        type(lr_operand_desc_t) :: nullptr
+        integer :: pcount, j
+
+        ok = .false.
+        pcount = proc_param_count(context, name)
+        if (pcount <= size(args)) then
+            ok = emit_void_call(context%session, name, args, error_msg)
+            return
+        end if
+
+        nullptr%kind = LR_OP_KIND_IMM_I64
+        nullptr%payload = 0_c_int64_t
+        nullptr%typ = lr_type_ptr_s(context%session%handle)
+        nullptr%global_offset = 0_c_int64_t
+        allocate (padded(pcount))
+        if (size(args) > 0) padded(1:size(args)) = args
+        do j = size(args) + 1, pcount
+            padded(j) = nullptr
+        end do
+        ok = emit_void_call(context%session, name, padded, error_msg)
+    end function emit_call_with_optional_padding
     recursive subroutine lower_i1_condition(arena, node_index, context, &
                                             value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -982,6 +1032,20 @@ contains
         end if
         select type (node => arena%entries(node_index)%node)
         type is (binary_op_node)
+            if (trim(adjustl(lowercase_text(node%operator))) == '.not.') then
+                ! Unary .not. is parsed as a binary op with a virtual operand;
+                ! the real condition is the right operand. Invert it.
+                call lower_i1_condition(arena, node%right_index, context, lhs, &
+                                        error_msg)
+                if (len_trim(error_msg) > 0) return
+                rhs = lhs
+                rhs%kind = LR_OP_KIND_IMM_I64
+                rhs%payload = 0_c_int64_t
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, lhs, &
+                                              rhs, value, error_msg)) return
+                call set_empty(error_msg)
+                return
+            end if
             call lower_i32_expression(arena, node%left_index, context, lhs, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1006,6 +1070,14 @@ contains
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
                                           rhs, value, error_msg)) return
+        type is (call_or_subscript_node)
+            if (is_present_call(arena, node_index)) then
+                call lower_present_condition(arena, node_index, context, value, &
+                                             error_msg)
+            else
+                error_msg = 'direct LIRIC session IF condition supports '// &
+                            'comparisons, logicals, and present()'
+            end if
         class default
             error_msg = 'direct LIRIC session IF requires an integer '// &
                         'comparison or logical expression'
@@ -1091,20 +1163,27 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=64), allocatable :: old_names(:)
         integer, allocatable :: old_kinds(:)
+        integer, allocatable :: old_counts(:)
         integer :: new_size
 
         if (context%function_count < size(context%function_names)) return
         old_names = context%function_names
         old_kinds = context%function_value_kinds
+        old_counts = context%function_param_counts
         new_size = 2 * size(context%function_names)
         deallocate(context%function_names)
         deallocate(context%function_value_kinds)
+        deallocate(context%function_param_counts)
         allocate(context%function_names(new_size))
         allocate(context%function_value_kinds(new_size))
+        allocate(context%function_param_counts(new_size))
+        context%function_param_counts = 0
         context%function_names(1:size(old_names)) = old_names
         context%function_value_kinds(1:size(old_kinds)) = old_kinds
+        context%function_param_counts(1:size(old_counts)) = old_counts
         deallocate(old_names)
         deallocate(old_kinds)
+        deallocate(old_counts)
     end subroutine grow_function_names
 
     integer function find_symbol(context, name) result(index)

@@ -11,6 +11,7 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
+    integer, parameter, public :: VALUE_SUBROUTINE = 7
     integer, parameter, public :: I32_INTRINSIC_NONE = 0
     integer, parameter, public :: I32_INTRINSIC_ABS = 1
     integer, parameter, public :: I32_INTRINSIC_MIN = 2
@@ -127,6 +128,7 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: argv_value
         character(len=64), allocatable :: function_names(:)
         integer, allocatable :: function_value_kinds(:)
+        integer, allocatable :: function_param_counts(:)
         integer :: function_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.

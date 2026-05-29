@@ -9,9 +9,13 @@
         context%function_count = 0
         if (allocated(context%function_names)) deallocate(context%function_names)
         if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
+        if (allocated(context%function_param_counts)) &
+            deallocate(context%function_param_counts)
         allocate(context%function_names(8))
         allocate(context%function_value_kinds(8))
+        allocate(context%function_param_counts(8))
         context%function_value_kinds = VALUE_I32
+        context%function_param_counts = 0
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
@@ -23,10 +27,50 @@
                     call register_internal_function_name(node, context, &
                                                          error_msg)
                     if (len_trim(error_msg) > 0) return
+                type is (subroutine_def_node)
+                    call register_internal_subroutine_name(node, context, &
+                                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end select
             end do
         end select
     end subroutine collect_internal_function_names
+
+    subroutine register_internal_subroutine_name(node, context, error_msg)
+        type(subroutine_def_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: next_index
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%name)) return
+        call grow_function_names(context)
+        if (contained_function_kind(context, node%name) /= 0) return
+        next_index = context%function_count + 1
+        context%function_names(next_index) = trim(node%name)
+        context%function_value_kinds(next_index) = VALUE_SUBROUTINE
+        if (allocated(node%param_indices)) then
+            context%function_param_counts(next_index) = size(node%param_indices)
+        else
+            context%function_param_counts(next_index) = 0
+        end if
+        context%function_count = next_index
+    end subroutine register_internal_subroutine_name
+
+    integer function proc_param_count(context, name) result(count)
+        ! Declared parameter count of a contained procedure, or -1 if unknown.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        count = -1
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), name)) then
+                count = context%function_param_counts(i)
+                return
+            end if
+        end do
+    end function proc_param_count
 
     subroutine register_internal_function_name(node, context, error_msg)
         type(function_def_node), intent(in) :: node
@@ -52,6 +96,11 @@
         next_index = context%function_count + 1
         context%function_names(next_index) = trim(node%name)
         context%function_value_kinds(next_index) = value_kind
+        if (allocated(node%param_indices)) then
+            context%function_param_counts(next_index) = size(node%param_indices)
+        else
+            context%function_param_counts(next_index) = 0
+        end if
         context%function_count = next_index
         call set_empty(error_msg)
     end subroutine register_internal_function_name
@@ -166,10 +215,15 @@
         if (.not. allocated(destination%function_value_kinds)) then
             allocate(destination%function_value_kinds(8))
         end if
+        if (.not. allocated(destination%function_param_counts)) then
+            allocate(destination%function_param_counts(8))
+            destination%function_param_counts = 0
+        end if
         do i = 1, source%function_count
             call ensure_function_names_capacity(destination, i)
             destination%function_names(i) = source%function_names(i)
             destination%function_value_kinds(i) = source%function_value_kinds(i)
+            destination%function_param_counts(i) = source%function_param_counts(i)
         end do
         destination%function_count = source%function_count
     end subroutine copy_internal_function_names
@@ -558,6 +612,8 @@
                  source=context%function_names)
         allocate(context%function_value_kinds(required_index), &
                  source=context%function_value_kinds)
+        allocate(context%function_param_counts(required_index), &
+                 source=context%function_param_counts)
     end subroutine ensure_function_names_capacity
 
     subroutine ensure_derived_types_capacity(context, required_index)
@@ -593,6 +649,8 @@
         if (.not. allocated(context%function_names)) then
             allocate(context%function_names(max(min_functions, 8)))
             allocate(context%function_value_kinds(max(min_functions, 8)))
+            allocate(context%function_param_counts(max(min_functions, 8)))
             context%function_value_kinds = VALUE_I32
+            context%function_param_counts = 0
         end if
     end subroutine ensure_all_context_arrays_allocated

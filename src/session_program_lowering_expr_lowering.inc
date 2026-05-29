@@ -1,3 +1,64 @@
+    logical function is_present_call(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_present_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(node%name)) is_present_call = same_name(node%name, &
+                                                                  'present')
+        end select
+    end function is_present_call
+
+    subroutine lower_present_condition(arena, node_index, context, value, &
+                                       error_msg)
+        ! present(arg) (i1) = the dummy's reference pointer is non-null.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+        type(lr_operand_desc_t) :: nullptr
+        integer :: symbol_index
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) then
+                error_msg = 'present requires one argument'
+                return
+            end if
+            if (size(node%arg_indices) /= 1) then
+                error_msg = 'present takes exactly one argument'
+                return
+            end if
+            call identifier_name(arena, node%arg_indices(1), arg_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'present requires a dummy argument'
+            return
+        end select
+
+        symbol_index = find_symbol(context, arg_name)
+        if (symbol_index <= 0) then
+            error_msg = 'present argument is not a dummy: '//trim(arg_name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%has_address) then
+            error_msg = 'present requires an optional reference dummy: '// &
+                        trim(arg_name)
+            return
+        end if
+        nullptr = context%symbols(symbol_index)%address
+        nullptr%kind = LR_OP_KIND_IMM_I64
+        nullptr%payload = 0_c_int64_t
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                context%symbols(symbol_index)%address, nullptr, value, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_present_condition
+
     recursive subroutine lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)
         type(ast_arena_t), intent(in) :: arena
