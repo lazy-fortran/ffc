@@ -45,7 +45,7 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
   as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
   `ieor`, `not`, `ishft`, `ishftc`, `sign`, integer-to-real `real()`,
   real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/
-  `atan`/`atan2` via libm;
+  `atan`/`atan2` via libm, real-to-integer `int`/`nint`/`floor`/`ceiling`;
 - CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
   consumed by lowering).
 

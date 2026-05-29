@@ -20,6 +20,10 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_integer_sign_positive()) all_passed = .false.
     if (.not. test_integer_sign_negative()) all_passed = .false.
     if (.not. test_integer_sign_zero_sign()) all_passed = .false.
+    if (.not. test_int_truncates_toward_zero()) all_passed = .false.
+    if (.not. test_nint_rounds_half_away()) all_passed = .false.
+    if (.not. test_floor_negative()) all_passed = .false.
+    if (.not. test_ceiling_positive()) all_passed = .false.
     if (.not. test_real_intrinsic_values()) all_passed = .false.
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
@@ -196,6 +200,61 @@ contains
                                      '/tmp/ffc_session_integer_sign_zero_test')
     end function test_integer_sign_zero_sign
 
+    logical function test_int_truncates_toward_zero()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = int(5.7) - int(-5.7)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        ! int(5.7) == 5, int(-5.7) == -5, difference == 10
+        test_int_truncates_toward_zero = expect_exit_status( &
+                                     source, 10, &
+                                     '/tmp/ffc_session_int_trunc_test')
+    end function test_int_truncates_toward_zero
+
+    logical function test_nint_rounds_half_away()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = nint(2.5) - nint(-2.5)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        ! nint(2.5) == 3, nint(-2.5) == -3, difference == 6
+        test_nint_rounds_half_away = expect_exit_status( &
+                                     source, 6, &
+                                     '/tmp/ffc_session_nint_test')
+    end function test_nint_rounds_half_away
+
+    logical function test_floor_negative()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = abs(floor(-1.5))'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        ! floor(-1.5) == -2, abs == 2
+        test_floor_negative = expect_exit_status( &
+                                     source, 2, &
+                                     '/tmp/ffc_session_floor_test')
+    end function test_floor_negative
+
+    logical function test_ceiling_positive()
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = ceiling(1.5)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_ceiling_positive = expect_exit_status( &
+                                     source, 2, &
+                                     '/tmp/ffc_session_ceiling_test')
+    end function test_ceiling_positive
+
     logical function test_real_intrinsic_values()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
@@ -229,11 +288,11 @@ contains
     logical function test_unsupported_intrinsic_diagnostic()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
-                                       '  stop int(5.5)'//new_line('a')// &
+                                       '  stop modulo(7, 3)'//new_line('a')// &
                                        'end program main'
 
         test_unsupported_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar intrinsic: int', &
+            source, 'unsupported scalar intrinsic: modulo', &
             '/tmp/ffc_session_unsupported_intrinsic_test')
     end function test_unsupported_intrinsic_diagnostic
 
@@ -241,11 +300,11 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  real :: x'//new_line('a')// &
-                                       '  x = sqrt(4.0)'//new_line('a')// &
+                                       '  x = asin(0.5)'//new_line('a')// &
                                        'end program main'
 
         test_unsupported_real_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar intrinsic: sqrt', &
+            source, 'unsupported scalar intrinsic: asin', &
             '/tmp/ffc_session_unsupported_real_intrinsic_test')
     end function test_unsupported_real_intrinsic_diagnostic
 

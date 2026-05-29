@@ -64,6 +64,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             prepare_liric_print_runtime
     use liric_session_io_bindings, only: emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
+                                          emit_liric_f64_to_i32, &
                                           emit_liric_print_f64, &
                                           emit_liric_print_f64_value, &
                                           emit_liric_print_i32, &
@@ -102,6 +103,9 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 I32_INTRINSIC_ISHFT, &
                                                 I32_INTRINSIC_ISHFTC, &
                                                 I32_INTRINSIC_SIGN, &
+                                                I32_INTRINSIC_INT, I32_INTRINSIC_NINT, &
+                                                I32_INTRINSIC_FLOOR, &
+                                                I32_INTRINSIC_CEILING, &
                                                 F64_INTRINSIC_SIGN, &
                                                 F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
                                                 F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &

@@ -36,6 +36,18 @@
                                             error_msg)
         case (I32_INTRINSIC_SIGN)
             call lower_i32_sign_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_INT)
+            call lower_i32_from_f64_intrinsic(arena, node, '', context, value, &
+                                              error_msg)
+        case (I32_INTRINSIC_NINT)
+            call lower_i32_from_f64_intrinsic(arena, node, 'round', context, &
+                                              value, error_msg)
+        case (I32_INTRINSIC_FLOOR)
+            call lower_i32_from_f64_intrinsic(arena, node, 'floor', context, &
+                                              value, error_msg)
+        case (I32_INTRINSIC_CEILING)
+            call lower_i32_from_f64_intrinsic(arena, node, 'ceil', context, &
+                                              value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -295,6 +307,34 @@
         call select_value(context, b_nonneg, magnitude, neg_magnitude, value, &
                           error_msg)
     end subroutine lower_i32_sign_intrinsic
+
+    subroutine lower_i32_from_f64_intrinsic(arena, node, libm_name, context, &
+                                            value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: rounded
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! int(x) truncates toward zero, which fptosi already does directly.
+        ! nint/floor/ceiling apply the libm rounding first, then convert.
+        if (len_trim(libm_name) > 0) then
+            if (.not. emit_liric_f64_call(context%session, libm_name, [arg], &
+                                          rounded, error_msg)) return
+        else
+            rounded = arg
+        end if
+        if (.not. emit_liric_f64_to_i32(context%session, rounded, value, &
+                                        error_msg)) return
+    end subroutine lower_i32_from_f64_intrinsic
 
     subroutine lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
