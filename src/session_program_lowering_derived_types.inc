@@ -398,7 +398,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
         call type_name_value_kind(component%type_name, component%line, &
                                   component%column, comp_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (comp_kind /= VALUE_I32) then
+        if (comp_kind /= VALUE_I32 .and. comp_kind /= VALUE_C_PTR) then
             call unsupported_feature_error('derived type component', &
                                            component%line, component%column, &
                                            'direct LIRIC session only supports '// &

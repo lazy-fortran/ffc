@@ -12,6 +12,7 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
     integer, parameter, public :: VALUE_SUBROUTINE = 7
+    integer, parameter, public :: VALUE_C_PTR = 8
     integer, parameter, public :: I32_INTRINSIC_NONE = 0
     integer, parameter, public :: I32_INTRINSIC_ABS = 1
     integer, parameter, public :: I32_INTRINSIC_MIN = 2

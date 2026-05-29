@@ -144,6 +144,12 @@
             error_msg = 'direct LIRIC session logical function call requires a name'
             return
         end if
+        if (same_name(node%name, 'c_associated') .and. .not. &
+            is_contained_logical_function(context, node%name)) then
+            call lower_c_associated(arena, node%arg_indices, context, value, &
+                                    error_msg)
+            return
+        end if
         if (.not. is_contained_logical_function(context, node%name)) then
             call unsupported_feature_error('scalar logical function call', &
                                            node%line, node%column, &

@@ -25,6 +25,10 @@ program test_session_iso_c_binding_compiler
     if (.not. test_internal_function_bind_c_emits_named_symbol()) &
         all_passed = .false.
     if (.not. test_internal_bind_c_function_is_callable()) all_passed = .false.
+    if (.not. test_c_loc_of_integer_round_trip_with_c_associated()) &
+        all_passed = .false.
+    if (.not. test_c_associated_on_null_returns_false()) all_passed = .false.
+    if (.not. test_c_f_pointer_assigns_storage()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -248,5 +252,64 @@ contains
         test_internal_bind_c_function_is_callable = expect_exit_status( &
             source, 5, '/tmp/ffc_session_bindc_call_test')
     end function test_internal_bind_c_function_is_callable
+
+    logical function test_c_loc_of_integer_round_trip_with_c_associated()
+        ! c_loc(x) returns a non-null pointer; c_associated reports it true.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  integer, target :: x'//new_line('a')// &
+            '  type(c_ptr) :: p'//new_line('a')// &
+            '  x = 42'//new_line('a')// &
+            '  p = c_loc(x)'//new_line('a')// &
+            '  if (c_associated(p)) then'//new_line('a')// &
+            '    stop 1'//new_line('a')// &
+            '  else'//new_line('a')// &
+            '    stop 2'//new_line('a')// &
+            '  end if'//new_line('a')// &
+            'end program main'
+
+        test_c_loc_of_integer_round_trip_with_c_associated = &
+            expect_exit_status(source, 1, '/tmp/ffc_session_c_loc_test')
+    end function test_c_loc_of_integer_round_trip_with_c_associated
+
+    logical function test_c_associated_on_null_returns_false()
+        ! c_associated(c_null_ptr) is false.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  type(c_ptr) :: p'//new_line('a')// &
+            '  p = c_null_ptr'//new_line('a')// &
+            '  if (c_associated(p)) then'//new_line('a')// &
+            '    stop 1'//new_line('a')// &
+            '  else'//new_line('a')// &
+            '    stop 2'//new_line('a')// &
+            '  end if'//new_line('a')// &
+            'end program main'
+
+        test_c_associated_on_null_returns_false = &
+            expect_exit_status(source, 2, '/tmp/ffc_session_c_assoc_null_test')
+    end function test_c_associated_on_null_returns_false
+
+    logical function test_c_f_pointer_assigns_storage()
+        ! c_f_pointer(p, q) crosses p into q; q then reports associated.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use iso_c_binding'//new_line('a')// &
+            '  integer, target :: x'//new_line('a')// &
+            '  type(c_ptr) :: p, q'//new_line('a')// &
+            '  x = 7'//new_line('a')// &
+            '  p = c_loc(x)'//new_line('a')// &
+            '  call c_f_pointer(p, q)'//new_line('a')// &
+            '  if (c_associated(q)) then'//new_line('a')// &
+            '    stop 3'//new_line('a')// &
+            '  else'//new_line('a')// &
+            '    stop 4'//new_line('a')// &
+            '  end if'//new_line('a')// &
+            'end program main'
+
+        test_c_f_pointer_assigns_storage = &
+            expect_exit_status(source, 3, '/tmp/ffc_session_c_f_pointer_test')
+    end function test_c_f_pointer_assigns_storage
 
 end program test_session_iso_c_binding_compiler

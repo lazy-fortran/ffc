@@ -115,7 +115,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
-                                                 VALUE_SUBROUTINE, &
+                                                 VALUE_SUBROUTINE, VALUE_C_PTR, &
                                                  I32_INTRINSIC_NONE, &
                                                 I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
                                                 I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
@@ -742,6 +742,8 @@ contains
             call define_logical_symbol(context, name, error_msg)
         else if (value_kind == VALUE_CHARACTER) then
             call define_character_symbol(context, name, 1, error_msg)
+        else if (value_kind == VALUE_C_PTR) then
+            call define_c_ptr_symbol(context, name, error_msg)
         else
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
@@ -765,6 +767,8 @@ contains
                                                                0.0_c_double)
         else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
             context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
+        else if (value_kind == VALUE_C_PTR) then
+            context%symbols(index)%value = null_ptr_operand(context)
         else
             error_msg = 'unsupported parameter declaration value kind'
             return
@@ -905,6 +909,9 @@ contains
             call lower_character_assignment(arena, node, context, symbol_index, &
                                             error_msg)
             return
+        else if (context%symbols(symbol_index)%value_kind == VALUE_C_PTR) then
+            call lower_c_ptr_expression(arena, node%value_index, context, value, &
+                                        error_msg)
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -966,6 +973,7 @@ contains
     include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
+    include 'session_program_lowering_c_ptr.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -982,6 +990,10 @@ contains
         if (len_trim(error_msg) > 0) return
         if (same_name(name, 'get_command_argument')) then
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
+            return
+        end if
+        if (same_name(name, 'c_f_pointer')) then
+            call lower_c_f_pointer(arena, arg_indices, context, error_msg)
             return
         end if
         if (external_procedure_index(context, name) > 0) then
@@ -1096,6 +1108,14 @@ contains
             if (is_present_call(arena, node_index)) then
                 call lower_present_condition(arena, node_index, context, value, &
                                              error_msg)
+            else if (allocated(node%name)) then
+                if (same_name(node%name, 'c_associated')) then
+                    call lower_c_associated(arena, node%arg_indices, context, &
+                                            value, error_msg)
+                else
+                    error_msg = 'direct LIRIC session IF condition supports '// &
+                                'comparisons, logicals, and present()'
+                end if
             else
                 error_msg = 'direct LIRIC session IF condition supports '// &
                             'comparisons, logicals, and present()'
