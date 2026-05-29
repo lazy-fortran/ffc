@@ -1,5 +1,6 @@
 program test_session_iso_c_binding_compiler
-    use ffc_test_support, only: expect_exit_status, expect_error_contains
+    use ffc_test_support, only: expect_exit_status, expect_error_contains, &
+                                expect_exe_has_symbol
     implicit none
 
     logical :: all_passed
@@ -21,6 +22,9 @@ program test_session_iso_c_binding_compiler
     if (.not. test_call_bind_c_integer_function()) all_passed = .false.
     if (.not. test_call_external_void_subroutine_with_c_ptr()) &
         all_passed = .false.
+    if (.not. test_internal_function_bind_c_emits_named_symbol()) &
+        all_passed = .false.
+    if (.not. test_internal_bind_c_function_is_callable()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: iso_c_binding kind constants lower through direct LIRIC'
@@ -204,5 +208,45 @@ contains
         test_call_external_void_subroutine_with_c_ptr = expect_exit_status( &
             source, 0, '/tmp/ffc_session_extern_void_test')
     end function test_call_external_void_subroutine_with_c_ptr
+
+    logical function test_internal_function_bind_c_emits_named_symbol()
+        ! A contained function with bind(c, name="...") is emitted under the
+        ! unmangled C symbol so other languages can link against it.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: r'//new_line('a')// &
+            '  r = my_add(2, 3)'//new_line('a')// &
+            '  stop r'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function my_add(a, b) bind(c, name="my_add")'// &
+            new_line('a')// &
+            '    integer, intent(in) :: a, b'//new_line('a')// &
+            '    my_add = a + b'//new_line('a')// &
+            '  end function my_add'//new_line('a')// &
+            'end program main'
+
+        test_internal_function_bind_c_emits_named_symbol = &
+            expect_exe_has_symbol(source, '/tmp/ffc_session_bindc_sym_test', &
+                                  'my_add')
+    end function test_internal_function_bind_c_emits_named_symbol
+
+    logical function test_internal_bind_c_function_is_callable()
+        ! The bind(c) function is still callable internally under its C name.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: r'//new_line('a')// &
+            '  r = my_add(2, 3)'//new_line('a')// &
+            '  stop r'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function my_add(a, b) bind(c, name="my_add")'// &
+            new_line('a')// &
+            '    integer, intent(in) :: a, b'//new_line('a')// &
+            '    my_add = a + b'//new_line('a')// &
+            '  end function my_add'//new_line('a')// &
+            'end program main'
+
+        test_internal_bind_c_function_is_callable = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_bindc_call_test')
+    end function test_internal_bind_c_function_is_callable
 
 end program test_session_iso_c_binding_compiler

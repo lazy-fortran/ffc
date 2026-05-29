@@ -256,8 +256,8 @@
           allocate (copyback_indices(0))
       end if
 
-      if (.not. emit_i32_call(context%session, node%name, args, value, &
-                                              error_msg)) return
+      if (.not. emit_i32_call(context%session, call_emit_name(arena, node%name), &
+                              args, value, error_msg)) return
       call copy_back_reference_args(context, args, copyback_indices, error_msg)
   end subroutine lower_i32_call
 

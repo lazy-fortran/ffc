@@ -350,6 +350,7 @@
         integer :: result_derived_index
         logical :: terminated
         character(len=:), allocatable :: result_name
+        character(len=:), allocatable :: emit_name
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
@@ -382,15 +383,16 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
+        emit_name = procedure_emit_name(node%name, node%bind_c_clause)
         if (value_kind == VALUE_F64) then
-            if (.not. begin_liric_f64_function(context%session, node%name, &
+            if (.not. begin_liric_f64_function(context%session, emit_name, &
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                  value_kind == VALUE_DERIVED) then
-            if (.not. begin_void_subroutine(context%session, node%name, &
+            if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
         else
-            if (.not. begin_i32_function(context%session, node%name, param_count, &
+            if (.not. begin_i32_function(context%session, emit_name, param_count, &
                                                           error_msg)) return
         end if
 
@@ -480,6 +482,7 @@
         type(lr_operand_desc_t) :: value
         integer :: param_count
         logical :: terminated
+        character(len=:), allocatable :: emit_name
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session subroutine requires a name'
@@ -504,7 +507,8 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        if (.not. begin_void_subroutine(context%session, node%name, param_count, &
+        emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+        if (.not. begin_void_subroutine(context%session, emit_name, param_count, &
                                                         error_msg)) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
@@ -609,6 +613,52 @@
         if (len_trim(name_err) > 0) return
         is_char = dummy_is_character(arena, body_indices, name)
     end function param_at_is_character
+
+    function procedure_emit_name(fortran_name, bind_c_clause) result(emit_name)
+        ! The LIRIC symbol a contained procedure is emitted under: its
+        ! bind(c, name="...") C name when present, otherwise its Fortran name.
+        character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable, intent(in) :: bind_c_clause
+        character(len=:), allocatable :: emit_name
+
+        if (has_bind_c(bind_c_clause)) then
+            call bind_c_name(bind_c_clause, fortran_name, emit_name)
+        else
+            emit_name = trim(fortran_name)
+        end if
+    end function procedure_emit_name
+
+    function call_emit_name(arena, fortran_name) result(emit_name)
+        ! Resolve the LIRIC symbol to call for a contained procedure: its
+        ! bind(c) C name when the callee declares one, else the Fortran name.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable :: emit_name
+        integer :: n
+
+        emit_name = trim(fortran_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (subroutine_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, fortran_name)) then
+                        emit_name = procedure_emit_name(fortran_name, &
+                                                        node%bind_c_clause)
+                        return
+                    end if
+                end if
+            type is (function_def_node)
+                if (allocated(node%name)) then
+                    if (same_name(node%name, fortran_name)) then
+                        emit_name = procedure_emit_name(fortran_name, &
+                                                        node%bind_c_clause)
+                        return
+                    end if
+                end if
+            end select
+        end do
+    end function call_emit_name
 
     subroutine define_reference_parameters(arena, param_indices, context, &
                                            error_msg, param_offset)

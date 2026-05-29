@@ -6,7 +6,8 @@ module ffc_test_support
     use fortfront, only: compiler_frontend_options_t, &
                          compiler_frontend_result_t, &
                          compile_frontend_from_string, INPUT_MODE_STANDARD
-    use session_program_lowering, only: lower_program_to_liric_exe
+    use session_program_lowering, only: lower_program_to_liric_exe, &
+                                        lower_program_to_liric_object
     implicit none
     private
 
@@ -16,8 +17,54 @@ module ffc_test_support
     public :: expect_cli_error_contains
     public :: expect_object_exists
     public :: expect_no_error
+    public :: expect_exe_has_symbol
 
 contains
+
+    logical function expect_exe_has_symbol(source, object_path, symbol) result(ok)
+        ! Compiles source to an object file and checks it defines the named
+        ! symbol (via nm), used to verify bind(c, name="...") emission.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: object_path
+        character(len=*), intent(in) :: symbol
+        character(len=:), allocatable :: error_msg
+        type(compiler_frontend_options_t) :: options
+        type(compiler_frontend_result_t) :: frontend_result
+        integer :: stat, cmd_stat
+
+        ok = .false.
+        options = compiler_frontend_options_t()
+        options%run_semantics = .true.
+        options%input_mode = INPUT_MODE_STANDARD
+        call compile_frontend_from_string(source, frontend_result, options)
+        if (.not. frontend_result%success()) then
+            print *, 'FAIL: FortFront rejected source: ', &
+                trim(frontend_result%diagnostic_text)
+            return
+        end if
+        call execute_command_line('rm -f '//object_path)
+        call lower_program_to_liric_object(frontend_result%arena, &
+                                           frontend_result%root_index, &
+                                           object_path, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: object lowering failed: ', trim(error_msg)
+            call execute_command_line('rm -f '//object_path)
+            return
+        end if
+
+        call execute_command_line('nm '//object_path//' | grep -qw '//symbol, &
+                                  exitstat=stat, cmdstat=cmd_stat)
+        call execute_command_line('rm -f '//object_path)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: could not run nm on ', object_path
+            return
+        end if
+        if (stat /= 0) then
+            print *, 'FAIL: symbol not found in object: ', symbol
+            return
+        end if
+        ok = .true.
+    end function expect_exe_has_symbol
 
     logical function expect_exit_status(source, expected, exe_path) result(ok)
         character(len=*), intent(in) :: source
