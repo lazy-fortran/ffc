@@ -1,13 +1,14 @@
 module liric_session_control_bindings
-    use, intrinsic :: iso_c_binding, only: c_associated
     use, intrinsic :: iso_c_binding, only: c_bool
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_ptr, c_ptr
-    use liric_session_bindings, only: liric_session_t, lr_error_t, &
-                                      lr_inst_desc_t, lr_operand_desc_t, &
-                                      LR_OK, LR_OP_KIND_BLOCK, &
-                                      LR_OP_KIND_VREG, liric_session_error_message, &
-                                      i32_vreg
+    use liric_session_common, only: require_open_session, status_ok, &
+                                    clear_liric_error, set_empty, &
+                                    liric_session_error_message, lr_error_t, &
+                                    lr_inst_desc_t, lr_operand_desc_t, &
+                                    liric_session_t, LR_OK, LR_OP_KIND_BLOCK, &
+                                    LR_OP_KIND_VREG
+    use liric_session_bindings, only: i32_vreg
     implicit none
     private
 
@@ -420,43 +421,5 @@ contains
         inst%call_vararg = c_false
         inst%call_fixed_args = 0_c_int32_t
     end subroutine clear_inst
-
-    logical function require_open_session(session, error_msg)
-        type(liric_session_t), intent(in) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        require_open_session = c_associated(session%handle)
-        if (require_open_session) then
-            call set_empty(error_msg)
-        else
-            error_msg = 'LIRIC session handle is not open'
-        end if
-    end function require_open_session
-
-    logical function status_ok(status, error, error_msg)
-        integer(c_int), intent(in) :: status
-        type(lr_error_t), intent(in) :: error
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        status_ok = status == LR_OK
-        if (status_ok) then
-            call set_empty(error_msg)
-        else
-            error_msg = liric_session_error_message(error)
-        end if
-    end function status_ok
-
-    subroutine clear_liric_error(error)
-        type(lr_error_t), intent(out) :: error
-
-        error%code = LR_OK
-        error%msg = char(0)
-    end subroutine clear_liric_error
-
-    subroutine set_empty(value)
-        character(len=:), allocatable, intent(out) :: value
-
-        allocate (character(len=0) :: value)
-    end subroutine set_empty
 
 end module liric_session_control_bindings
