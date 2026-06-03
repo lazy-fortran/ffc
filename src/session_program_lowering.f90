@@ -107,8 +107,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
   use ffc_strings, only: set_empty
-    use ffc_fortfront_queries, only: node_exists, get_node_line, &
-                                      get_node_column, get_node_type_at
+    use fortfront, only: node_exists, get_node_line, get_node_column, &
+                         get_node_type_at
    use session_program_lowering_types, only: lowering_context_t, &
                                                 branch_result_t, symbol_t, &
                                                 derived_type_info_t, &
@@ -1334,7 +1334,30 @@ contains
             end if
         end do
     end function find_symbol
-    include 'session_program_lowering_text.inc'
+
+    logical function same_name(lhs, rhs)
+        character(len=*), intent(in) :: lhs
+        character(len=*), intent(in) :: rhs
+
+        same_name = lowercase_text(lhs) == lowercase_text(rhs)
+    end function same_name
+
+    function lowercase_text(text) result(lowered)
+        character(len=*), intent(in) :: text
+        character(len=len_trim(text)) :: lowered
+        integer :: code
+        integer :: i
+
+        do i = 1, len(lowered)
+            code = iachar(text(i:i))
+            if (code >= iachar('A') .and. code <= iachar('Z')) then
+                lowered(i:i) = achar(code + 32)
+            else
+                lowered(i:i) = text(i:i)
+            end if
+        end do
+    end function lowercase_text
+
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 end module session_program_lowering
