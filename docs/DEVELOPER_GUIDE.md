@@ -55,7 +55,7 @@ follow) is:
 12. Early `return` inside contained subroutines and functions.
 13. CLI `-I <dir>` accepted (storage only; consumption is future work).
 
-The remaining roadmap is the self-hosting tracker (#167) plus open
+The remaining work is the self-hosting tracker (#167) plus open
 issues for individual slices.
 
 ## Verification
@@ -75,5 +75,3 @@ LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 /tmp/empty
 LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -c -o /tmp/empty.o
 ```
-
-CI runs the same workflow on every push and pull request.

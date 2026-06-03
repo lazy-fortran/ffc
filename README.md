@@ -16,62 +16,11 @@ FortFront stays backend-neutral. `ffc` owns lowering, ABI, runtime calls,
 LIRIC bindings, and object/exe emission. The retired MLIR/HLFIR
 experiment lives only in git history.
 
-## Current support claim
+## Supported features
 
-The public contract is `docs/SUPPORT_CONTRACT.md`. Today's surface:
-
-- `program main`, scalar `integer` / `real` / `logical`, character
-  literals, fixed-length `character(len=N)` variables;
-- deferred-length `character(len=:), allocatable` including
-  self-aliasing and three-way `//` concatenation; compile-time `//`
-  folding for character literal chains;
-- arithmetic, comparisons, scalar logical conditions;
-- block `if` with PHI merge for scalars; array-element assignment inside
-  `if` branches; counted `do` with integer bounds and literal positive
-  or negative step;
-- single-arm and multi-arm `SELECT CASE` with terminating or
-  non-terminating (merge-at-end) arms
-  (including multi-label `case (a, b)`) and `case default`;
-- contained integer / real / logical functions and subroutines with
-  scalar parameters, plus contained functions returning a deferred-length
-  character or a whole derived value (via a hidden result-address arg);
-  early `return` inside contained subroutines and functions; `stop` inside
-  a contained procedure terminates the program via `exit`; integer
-  procedure arguments use pointer parameters with copy-back for variable
-  actuals; `optional` integer dummies with `present(arg)` (absent actuals
-  pass a null pointer);
-- fixed-size 1-D integer arrays with compile-time bounds; element
-  assignment, element reads, `print`, `stop`, counted-loop
-  subscripts, and whole-array assignment from an array constructor
-  (`a = [e1, e2, ...]`);
-- `integer, allocatable :: a(:)` with `allocate(a(N))` and
-  `deallocate(a)` (element access not yet supported);
-- simple derived types with scalar integer components and fixed-size
-  integer array components (`integer :: a(N)`); component assignment,
-  component reads, array-component element access (`x%a(i)`), `print`,
-  and `stop`; fixed-size arrays of derived types (`type(t) :: arr(N)`)
-  with element-component access (`arr(i)%comp`);
-- `print *, expr` (list-directed, gfortran-exact bytes) for integers,
-  reals, logicals, characters, plus formatted `print '(I0)'/'(Iw)'/'(A)',
-  expr`, internal `write (buf, '(I0)'/'(Iw)'/'(A)') value`, and internal
-  `read (buf, '(I0)'/'(Iw)') value` with a single edit descriptor;
-  `stop <integer expression>` returns its argument
-  as the process exit status; `abs`, `min`, `max`, `mod`, `iand`, `ior`,
-  `ieor`, `not`, `ishft`, `ishftc`, `sign`, integer-to-real `real()`,
-  real `**` via libm `pow`, real `sqrt`/`exp`/`log`/`sin`/`cos`/`tan`/
-  `atan`/`atan2` via libm, real-to-integer `int`/`nint`/`floor`/`ceiling`,
-  and `command_argument_count`/`get_command_argument` in the main program;
-- `bind(c)` interface blocks declaring integer functions or `void`
-  subroutines; calls lower to a direct C-symbol call with by-value
-  arguments (integer actuals as `i32`, `c_null_ptr` as a null pointer);
-- CLI: `-o <file>`, `-c`, `-I <dir>` (`-I` accepted and stored, not yet
-  consumed by lowering).
-
-Allocatable arrays, multidimensional arrays, modules and separate
-compilation, polymorphism, full runtime I/O, generics, and most
-intrinsics are unsupported today and tracked as GitHub issues. The
-self-hosting dependency map is in
-[#167](https://github.com/lazy-fortran/ffc/issues/167).
+The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
+supported construct, its ABI, and every tracked gap with issue links.
+Refer to that document instead of this README for the feature list.
 
 ## Build
 
@@ -86,8 +35,7 @@ fpm test
 ```
 
 `fpm build` produces the `ffc` binary; `fpm test` runs the behavioural
-test suite (currently 40 programs). CI runs the same workflow on every
-push and pull request.
+test suite.
 
 Compile a minimal program:
 
@@ -100,13 +48,13 @@ echo $?
 
 ## Layout
 
-- `app/ffc.f90` — CLI entry.
-- `src/` — lowering, LIRIC bindings, CLI options (fpm auto-discovers).
-- `test/` — behavioural tests; each file is a standalone `program test_*`
+- `app/ffc.f90` - CLI entry.
+- `src/` - lowering, LIRIC bindings, CLI options (fpm auto-discovers).
+- `test/` - behavioural tests; each file is a standalone `program test_*`
   picked up by fpm auto-discovery.
-- `docs/` — `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
+- `docs/` - `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
   `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`.
-- `ROADMAP.md`, `BACKLOG.md`, `DESIGN.md` — high-level direction.
+- `BACKLOG.md`, `DESIGN.md` - planning docs.
 
 ## Conventions
 
@@ -121,8 +69,8 @@ echo $?
 
 ## Related repositories
 
-- [fortfront](https://github.com/lazy-fortran/fortfront) — frontend,
+- [fortfront](https://github.com/lazy-fortran/fortfront) - frontend,
   transformation, typed AST.
-- [liric](https://github.com/lazy-fortran/liric) — backend C API target.
-- [standard](https://github.com/lazy-fortran/standard) — intended
+- [liric](https://github.com/lazy-fortran/liric) - backend C API target.
+- [standard](https://github.com/lazy-fortran/standard) - intended
   LFortran Standard and Infer behaviour.

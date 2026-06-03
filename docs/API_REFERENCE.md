@@ -54,8 +54,8 @@ Today the CLI accepts:
 - positional: input source file.
 - `-o <file>`: output path. Default is `a.out` (or `a.o` with `-c`).
 - `-c`: emit an object file instead of an executable.
-- `-I <dir>`: append a module/include search directory. Repeatable.
-  Stored but not yet consumed by lowering.
+- `-I <dir>`: append a module search directory. Repeatable. Used to
+  locate `.fmod` artefacts on `use`.
 
 ## Supported direct-session subset
 
