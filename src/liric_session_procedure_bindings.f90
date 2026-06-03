@@ -8,7 +8,8 @@ module liric_session_procedure_bindings
                                     lr_error_t, lr_inst_desc_t, lr_operand_desc_t, &
                                     LR_OK, LR_OP_KIND_GLOBAL, LR_OP_KIND_VREG
     use liric_session_bindings, only: liric_session_t
-    use liric_session_memory_bindings, only: ptr_param
+    use liric_session_memory_bindings, only: ptr_param, &
+              emit_alloca_typed, emit_load_typed, emit_store_typed
     implicit none
     private
 
@@ -208,89 +209,6 @@ contains
         call set_empty(error_msg)
         emit_liric_f64_call = .true.
     end function emit_liric_f64_call
-
-    function emit_alloca_typed(handle, typ, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(c_ptr), intent(in) :: typ
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_inst_desc_t) :: inst
-
-        inst%op = LR_OP_ALLOCA
-        inst%typ = typ
-        inst%dest = 0_c_int32_t
-        inst%operands = c_null_ptr
-        inst%num_operands = 0_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_alloca_typed
-
-    function emit_load_typed(handle, typ, address, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(c_ptr), intent(in) :: typ
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(1)
-        type(lr_inst_desc_t) :: inst
-
-        operands(1) = address
-
-        inst%op = LR_OP_LOAD
-        inst%typ = typ
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = 1_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_load_typed
-
-    function emit_store_typed(handle, value, address, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
-        type(lr_inst_desc_t) :: inst
-
-        operands = [value, address]
-
-        inst%op = LR_OP_STORE
-        inst%typ = c_null_ptr
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_store_typed
 
     function emit_call_f64_function(handle, name, args, error) result(vreg)
         type(c_ptr), intent(in) :: handle
