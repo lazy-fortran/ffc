@@ -3,9 +3,9 @@ module ffc_test_support
     ! drives FortFront + the direct-session lowerer end to end so individual
     ! test programs only describe the source they want compiled and the
     ! expected behaviour of the resulting executable.
-    use fortfront, only: compiler_frontend_options_t, &
-                         compiler_frontend_result_t, &
-                         compile_frontend_from_string, INPUT_MODE_STANDARD
+    use fortfront_compiler, only: compiler_frontend_options_t, &
+                                 compiler_frontend_result_t, &
+                                 compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
                                         lower_program_to_liric_object
     implicit none

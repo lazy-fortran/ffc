@@ -107,8 +107,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
   use ffc_strings, only: set_empty
-    use fortfront, only: node_exists, get_node_line, get_node_column, &
-                         get_node_type_at
+    use ffc_fortfront_queries, only: node_exists, get_node_type_at
+    use fortfront, only: get_node_line, get_node_column
    use session_program_lowering_types, only: lowering_context_t, &
                                                 branch_result_t, symbol_t, &
                                                 derived_type_info_t, &

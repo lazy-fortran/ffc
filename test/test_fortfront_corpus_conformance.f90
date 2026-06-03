@@ -1,8 +1,8 @@
 program test_fortfront_corpus_conformance
-    use fortfront, only: compiler_frontend_options_t, &
-                         compiler_frontend_result_t, &
-                         compile_frontend_from_file, INPUT_MODE_STANDARD, &
-                         INPUT_MODE_LAZY
+    use fortfront_compiler, only: compiler_frontend_options_t, &
+                                  compiler_frontend_result_t, &
+                                  compile_frontend_from_file, INPUT_MODE_STANDARD, &
+                                  INPUT_MODE_LAZY
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 

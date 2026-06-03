@@ -1,7 +1,7 @@
 program test_session_read_fmod_compiler
-    use fortfront, only: compiler_frontend_options_t, &
-                         compiler_frontend_result_t, &
-                         compile_frontend_from_string, INPUT_MODE_STANDARD
+    use fortfront_compiler, only: compiler_frontend_options_t, &
+                                  compiler_frontend_result_t, &
+                                  compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
                                    fmod_derived_type_t, write_fmod
