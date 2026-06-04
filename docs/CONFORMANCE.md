@@ -123,6 +123,49 @@ Current xfail manifests:
 - `test/conformance/xfail_fortfront_f90.txt`
 - `test/conformance/xfail_fortfront_lf.txt`
 
+## gfortran.dg testsuite
+
+The `gfortran-dg` suite reads `$FFC_GFORTRAN_DG_DIR/*.f90` from a local
+GCC checkout. The runner evaluates each file with `ffc -c` (compile) or
+checks rejection of negative tests (`dg-error`/`dg-warning`). Files that
+use `dg-do run` are not yet supported.
+
+### Local checkout
+
+The runner expects a local GCC source checkout, typically acquired via
+sparse checkout to minimize disk usage. The directory must contain the
+`gfortran.dg` subdirectory with `.f90` test files. Set
+`FFC_GFORTRAN_DG_DIR` to point at that directory.
+
+### Directive subset
+
+The runner models these gfortran.dg directives:
+
+- `dg-do compile` (default): compile with `ffc -c`
+- `dg-do run`: not yet supported (treated as compile)
+- `dg-error` / `dg-warning`: negative tests; ffc must reject compilation
+- `dg-additional-sources`: multifile tests (skipped)
+- `dg-options` / `dg-add-options`: compiler flag tests (skipped)
+- `dg-require`, `dg-skip-if`, `dg-final`, `dg-prune-output`,
+  `dg-excess-errors`, `dg-shouldfail`: directive tests (skipped)
+
+Files with unlisted skip reasons are marked FAIL until added to the skip
+manifest.
+
+### Skip manifest
+
+`test/conformance/skip_gfortran_dg.txt` lists files the runner skips.
+Lines use the format `basename.f90 # reason`. Reasons are `multifile`,
+`flags`, or `directive`. The runner exits nonzero for files that trigger
+a skip reason but are not listed in the manifest.
+
+### Seed baseline
+
+Full run against local GCC checkout: `PASS=1173`, `XFAIL=0`,
+`XPASS=0`, `FAIL=2395`, `NOREF=0`, `SKIP=2299`, `TOTAL=5867`.
+The xfail manifest (`test/conformance/xfail_gfortran_dg.txt`) is seeded
+from the FAIL records of this run.
+
 ## LFortran integration tests
 
 The `lfortran` suite reads `$FFC_LFORTRAN_DIR/integration_tests/*.f90`.

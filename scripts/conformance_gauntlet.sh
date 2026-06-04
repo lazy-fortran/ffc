@@ -117,6 +117,42 @@ is_lazy_suite() {
     [ "$SUITE" = "fortfront-lf" ]
 }
 
+dg_skip_reason() {
+    local source="$1"
+    if grep -Eq 'dg-additional-sources' "$source"; then
+        echo "multifile"
+        return 0
+    fi
+    if grep -Eq 'dg-(options|add-options)' "$source"; then
+        echo "flags"
+        return 0
+    fi
+    if grep -Eq 'dg-(require|skip-if|final|prune-output|excess-errors|shouldfail)' "$source"; then
+        echo "directive"
+        return 0
+    fi
+    local dg_do
+    dg_do=$(grep -E 'dg-do[[:space:]]+' "$source" | head -1) || true
+    case "$dg_do" in
+        *"dg-do run"*|*"dg-do compile"*|"") return 1 ;;
+        *) echo "directive"; return 0 ;;
+    esac
+}
+
+dg_test_kind() {
+    local source="$1"
+    if grep -Eq 'dg-(error|warning)' "$source"; then
+        echo "negative"
+        return
+    fi
+    local dg_do
+    dg_do=$(grep -E 'dg-do[[:space:]]+' "$source" | head -1) || true
+    case "$dg_do" in
+        *"dg-do run"*) echo "run" ;;
+        *) echo "compile" ;;
+    esac
+}
+
 # Resolve ffc
 if [ -z "$FFC_BIN" ]; then
     FFC_BIN=$(find_ffc) || exit 1
@@ -134,6 +170,7 @@ normalize_manifest() {
 }
 
 # Setup
+export FFC_COMPILE_TIMEOUT="$TIMEOUT"
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
 SKIP_MANIFEST=$(resolve_skip_manifest)
@@ -205,17 +242,102 @@ while IFS= read -r full_path; do
         continue
     fi
 
+    if [ "$SUITE" = "gfortran-dg" ]; then
+        skip_reason=$(dg_skip_reason "$full_path") || skip_reason=""
+        if [ -n "$skip_reason" ]; then
+            status="FAIL"
+            note="directive requires skip manifest entry: $skip_reason"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            HAS_FAIL=1
+            printf '{"suite":"%s","file":"%s","status":"%s","note":"%s"}\n' \
+                "$SUITE" "$(json_escape "$rel_path")" "$status" "$(json_escape "$note")" >> "$REPORT"
+            echo "  FAIL: $rel_path (unlisted skip: $skip_reason)"
+            continue
+        fi
+    fi
+
     ffc_exe="$TMPDIR_WORK/ffc_${TOTAL_COUNT}"
+    ffc_obj="$TMPDIR_WORK/ffc_${TOTAL_COUNT}.o"
     ref_exe="$TMPDIR_WORK/ref_${TOTAL_COUNT}"
     ffc_out="$TMPDIR_WORK/ffc_out_${TOTAL_COUNT}"
     ref_out="$TMPDIR_WORK/ref_out_${TOTAL_COUNT}"
 
-    rm -f "$ffc_exe" "$ref_exe" "$ffc_out" "$ref_out"
+    rm -f "$ffc_exe" "$ffc_obj" "$ref_exe" "$ffc_out" "$ref_out"
 
     ffc_exit=-1
     ref_exit=-1
     status=""
     note=""
+
+    if [ "$SUITE" = "gfortran-dg" ]; then
+        dg_kind=$(dg_test_kind "$full_path")
+        if [ "$dg_kind" = "compile" ]; then
+            if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
+                ffc_exit=0
+                if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+                    status="XPASS"
+                    note="listed in xfail manifest but ffc -c succeeded"
+                    XPASS_COUNT=$((XPASS_COUNT + 1))
+                    echo "  XPASS: $rel_path (compile now succeeds)"
+                else
+                    status="PASS"
+                    note="ffc -c succeeded"
+                    PASS_COUNT=$((PASS_COUNT + 1))
+                fi
+            else
+                ffc_exit=1
+                if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+                    status="XFAIL"
+                    note="listed in xfail manifest"
+                    XFAIL_COUNT=$((XFAIL_COUNT + 1))
+                else
+                    status="FAIL"
+                    note="ffc -c failed"
+                    FAIL_COUNT=$((FAIL_COUNT + 1))
+                    HAS_FAIL=1
+                    echo "  FAIL: $rel_path (ffc -c failed)"
+                fi
+            fi
+            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
+                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            continue
+        fi
+
+        if [ "$dg_kind" = "negative" ]; then
+            if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN"; then
+                ffc_exit=0
+            else
+                ffc_exit=1
+            fi
+            if [ "$ffc_exit" -ne 0 ]; then
+                if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+                    status="XPASS"
+                    note="listed in xfail manifest but ffc rejected negative test"
+                    XPASS_COUNT=$((XPASS_COUNT + 1))
+                    echo "  XPASS: $rel_path (negative test now rejects)"
+                else
+                    status="PASS"
+                    note="negative test rejected"
+                    PASS_COUNT=$((PASS_COUNT + 1))
+                fi
+            else
+                if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+                    status="XFAIL"
+                    note="negative test accepted; listed in xfail manifest"
+                    XFAIL_COUNT=$((XFAIL_COUNT + 1))
+                else
+                    status="FAIL"
+                    note="negative test accepted by ffc"
+                    FAIL_COUNT=$((FAIL_COUNT + 1))
+                    HAS_FAIL=1
+                    echo "  FAIL: $rel_path (negative test accepted)"
+                fi
+            fi
+            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
+                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            continue
+        fi
+    fi
 
     # Step 1: compile with ffc
     if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN"; then

@@ -5,6 +5,7 @@
 # Public functions:
 #   find_ffc               resolve ffc binary path
 #   compile_with_ffc       compile a source file through ffc
+#   compile_object_with_ffc  compile a source file through ffc -c
 #   compile_with_gfortran  compile a source file with gfortran -w
 #   run_capture            run an executable with timeout, capture stdout+stderr
 #   compare_outputs        compare stdout files and exit statuses
@@ -37,7 +38,15 @@ find_ffc() {
 # Returns 0 on success, non-zero on failure.
 compile_with_ffc() {
     local source="$1" exe="$2" ffc="$3"
-    "$ffc" "$source" -o "$exe" 2>/dev/null
+    timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -o "$exe" 2>/dev/null
+    return $?
+}
+
+# compile_object_with_ffc <source> <object> <ffc_path>
+# Returns 0 on success, non-zero on failure.
+compile_object_with_ffc() {
+    local source="$1" object="$2" ffc="$3"
+    timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -c -o "$object" 2>/dev/null
     return $?
 }
 
@@ -45,7 +54,8 @@ compile_with_ffc() {
 # Returns 0 on success, non-zero on failure.
 compile_with_gfortran() {
     local source="$1" exe="$2"
-    gfortran -w "$source" -o "$exe" 2>/dev/null
+    timeout "${GFORTRAN_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+        gfortran -w "$source" -o "$exe" 2>/dev/null
     return $?
 }
 
