@@ -48,6 +48,9 @@
         case (I32_INTRINSIC_CEILING)
             call lower_i32_from_f64_intrinsic(arena, node, 'ceil', context, &
                                               value, error_msg)
+        case (I32_INTRINSIC_DOT_PRODUCT)
+            call lower_i32_dot_product_intrinsic(arena, node, context, value, &
+                                                 error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -622,6 +625,89 @@
             end if
         end do
     end function f64_intrinsic_id
+
+    subroutine lower_i32_dot_product_intrinsic(arena, node, context, value, &
+                                                error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: a_name, b_name
+        integer :: a_index, b_index
+        integer :: n
+        type(lr_operand_desc_t) :: a_elem, b_elem
+        type(lr_operand_desc_t) :: product, sum
+        integer :: i
+        integer(c_int64_t) :: addr_offset
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+
+        if (allocated(node%arg_indices) .and. size(node%arg_indices) == 2) then
+            call get_identifier_name(arena, node%arg_indices(1), a_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call get_identifier_name(arena, node%arg_indices(2), b_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            error_msg = 'dot_product requires exactly two array arguments'
+            return
+        end if
+
+        a_index = find_symbol(context, a_name)
+        if (a_index <= 0) then
+            error_msg = 'dot_product first argument was not declared: '//trim(a_name)
+            return
+        end if
+        b_index = find_symbol(context, b_name)
+        if (b_index <= 0) then
+            error_msg = 'dot_product second argument was not declared: '//trim(b_name)
+            return
+        end if
+        if (.not. context%symbols(a_index)%is_array) then
+            error_msg = 'dot_product requires array arguments: '//trim(a_name)
+            return
+        end if
+        if (.not. context%symbols(b_index)%is_array) then
+            error_msg = 'dot_product requires array arguments: '//trim(b_name)
+            return
+        end if
+        if (context%symbols(a_index)%array_rank /= 1) then
+            error_msg = 'dot_product requires rank-1 array arguments'
+            return
+        end if
+        if (context%symbols(b_index)%array_rank /= 1) then
+            error_msg = 'dot_product requires rank-1 array arguments'
+            return
+        end if
+        if (context%symbols(a_index)%array_size /= &
+            context%symbols(b_index)%array_size) then
+            error_msg = 'dot_product requires conforming array arguments'
+            return
+        end if
+
+        n = context%symbols(a_index)%array_size
+        if (n <= 0) then
+            error_msg = 'dot_product requires non-empty arrays'
+            return
+        end if
+
+        sum = i32_immediate(context%session, 0_c_int64_t)
+        do i = 0, n - 1
+            addr_offset = int(i, c_int64_t)
+            call load_array_linear_element(context, a_index, addr_offset, &
+                                           a_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, b_index, addr_offset, &
+                                           b_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, a_elem, &
+                                      b_elem, product, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, sum, &
+                                      product, value, error_msg)) return
+            sum = value
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_i32_dot_product_intrinsic
 
     subroutine unsupported_intrinsic_error(node, error_msg)
         type(call_or_subscript_node), intent(in) :: node

@@ -17,9 +17,13 @@ contains
     logical function test_rank2_array_intrinsics()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
-                                       '  integer :: a(0:1, 2:3)'//new_line('a')// &
+                                       '  integer :: a(1:2, 1:2)'//new_line('a')// &
+                                       '  integer :: r(1:4)'//new_line('a')// &
+                                       '  integer :: w(1:4)'//new_line('a')// &
+                                       '  integer :: s'//new_line('a')// &
                                        '  integer :: dims(2)'//new_line('a')// &
                                        '  a = [1, 2, 3, 4]'//new_line('a')// &
+                                       '  w = [1, 1, 1, 1]'//new_line('a')// &
                                        '  dims = shape(a)'//new_line('a')// &
                                        '  print *, dims(1)'//new_line('a')// &
                                        '  print *, dims(2)'//new_line('a')// &
@@ -27,6 +31,11 @@ contains
                                        '  print *, sum(a)'//new_line('a')// &
                                        '  print *, maxval(a)'//new_line('a')// &
                                        '  print *, minval(a)'//new_line('a')// &
+                                       '  r = reshape(a, [4])'//new_line('a')// &
+                                       '  s = dot_product(r, w)'//new_line('a')// &
+                                       '  print *, r(1)'//new_line('a')// &
+                                       '  print *, r(4)'//new_line('a')// &
+                                       '  print *, s'//new_line('a')// &
                                        'end program main'
 
         test_rank2_array_intrinsics = expect_output( &
@@ -35,7 +44,10 @@ contains
                     '           4'//new_line('a')// &
                     '          10'//new_line('a')// &
                     '           4'//new_line('a')// &
-                    '           1'//new_line('a'), &
+                    '           1'//new_line('a')// &
+                    '           1'//new_line('a')// &
+                    '           4'//new_line('a')// &
+                    '          10'//new_line('a'), &
             '/tmp/ffc_session_array_intrinsics_test')
     end function test_rank2_array_intrinsics
 

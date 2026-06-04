@@ -101,6 +101,7 @@ contains
         character(len=:), allocatable :: error_msg
         character(len=:), allocatable :: actual
         integer :: cmd_stat
+        integer :: exit_stat
         character(len=:), allocatable :: stdout_path
 
         ok = .false.
@@ -113,15 +114,18 @@ contains
 
         stdout_path = exe_path//'.out'
         call execute_command_line(exe_path//' > '//stdout_path, &
-                                  cmdstat=cmd_stat)
+                                  exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0) then
             print *, 'FAIL: emitted executable did not run: ', exe_path
             call execute_command_line('rm -f '//exe_path//' '//stdout_path)
             return
         end if
+        if (exit_stat /= 0) then
+            print *, 'FAIL: emitted executable exited with status ', exit_stat
+            return
+        end if
 
         call read_file(stdout_path, actual)
-        call execute_command_line('rm -f '//exe_path//' '//stdout_path)
         if (.not. allocated(actual)) then
             print *, 'FAIL: could not read output of ', exe_path
             return
@@ -132,6 +136,7 @@ contains
             print *, '  actual:   ', actual
             return
         end if
+        call execute_command_line('rm -f '//exe_path//' '//stdout_path)
         ok = .true.
     end function expect_output
 

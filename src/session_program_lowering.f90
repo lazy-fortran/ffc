@@ -149,7 +149,11 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 I32_INTRINSIC_INT, I32_INTRINSIC_NINT, &
                                                 I32_INTRINSIC_FLOOR, &
                                                 I32_INTRINSIC_CEILING, &
-                                                F64_INTRINSIC_SIGN, &
+                                                 I32_INTRINSIC_MATMUL, &
+                                                 I32_INTRINSIC_TRANSPOSE, &
+                                                 I32_INTRINSIC_DOT_PRODUCT, &
+                                                 I32_INTRINSIC_RESHAPE, &
+                                                 F64_INTRINSIC_SIGN, &
                                                 F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
                                                 F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
                                                 F64_INTRINSIC_COS, F64_INTRINSIC_TAN, &
