@@ -382,7 +382,8 @@
         context%derived_types(type_index)%component_count = 0
         do i = 1, size(node%component_indices)
             call collect_component_declaration( &
-                node%component_indices(i), node, context, type_index, error_msg)
+                node%component_indices(i), node%line, node%column, context, &
+                type_index, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         if (context%derived_types(type_index)%component_count <= 0) then
@@ -395,10 +396,12 @@
         call set_empty(error_msg)
     end subroutine collect_derived_components
 
-subroutine collect_component_declaration(component_index, parent, context, &
+subroutine collect_component_declaration(component_index, parent_line, &
+                                              parent_column, context, &
                                               type_index, error_msg)
         integer, intent(in) :: component_index
-        type(derived_type_node), intent(in) :: parent
+        integer, intent(in) :: parent_line
+        integer, intent(in) :: parent_column
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: error_msg
@@ -414,7 +417,8 @@ subroutine collect_component_declaration(component_index, parent, context, &
 
         select type (component => context%arena%entries(component_index)%node)
         type is (declaration_node)
-            call validate_component_declaration(component, parent, context, &
+            call validate_component_declaration(component, parent_line, &
+                                                parent_column, context, &
                                                 error_msg)
             if (len_trim(error_msg) > 0) return
             ! A component default initialiser must be a compile-time integer.
@@ -467,7 +471,7 @@ subroutine collect_component_declaration(component_index, parent, context, &
             end if
         class default
             call unsupported_feature_error('derived type component', &
-                                           parent%line, parent%column, &
+                                           parent_line, parent_column, &
                                            'direct LIRIC session only supports '// &
                                            'integer component declarations', &
                                            error_msg)
@@ -476,10 +480,12 @@ subroutine collect_component_declaration(component_index, parent, context, &
         call set_empty(error_msg)
     end subroutine collect_component_declaration
 
-    subroutine validate_component_declaration(component, parent, context, &
+    subroutine validate_component_declaration(component, parent_line, &
+                                              parent_column, context, &
                                               error_msg)
         type(declaration_node), intent(in) :: component
-        type(derived_type_node), intent(in) :: parent
+        integer, intent(in) :: parent_line
+        integer, intent(in) :: parent_column
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: nested_index

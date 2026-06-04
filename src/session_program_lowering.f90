@@ -112,7 +112,12 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                      get_function_body_info, get_subroutine_body_info, &
                                      get_select_case_info, get_case_block_info, &
                                      get_case_default_body, get_case_range_info, &
-                                     get_select_type_info, get_type_guard_info
+                                     get_select_type_info, get_type_guard_info, &
+                                     is_derived_type_node, is_declaration_node, &
+                                     get_derived_type_name, get_derived_type_components, &
+                                     get_declaration_var_name, get_declaration_type_name, &
+                                     get_declaration_has_initializer, &
+                                     get_declaration_initializer_index
     use fortfront_utils, only: get_node_as_function_def, &
                                get_node_as_program, &
                                get_node_as_subroutine_def

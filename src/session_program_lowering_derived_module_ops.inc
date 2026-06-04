@@ -152,7 +152,7 @@
         integer :: type_idx
         integer :: type_idx_in_context
         character(len=:), allocatable :: module_lowered
-        character(len=64) :: type_name
+        character(len=:), allocatable :: type_name
 
         call set_empty(error_msg)
 
@@ -177,13 +177,12 @@
                     trim(context%module_exports(export_idx)%module_name)
                 return
             end if
-            select type (dtype => arena%entries(type_idx)%node)
-            type is (derived_type_node)
-                if (.not. allocated(dtype%name)) cycle
-                type_name = trim(dtype%name)
-            class default
+            if (.not. is_derived_type_node(arena, type_idx)) then
                 cycle
-            end select
+            end if
+            call get_derived_type_name(arena, type_idx, type_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (len_trim(type_name) == 0) cycle
             if (.not. use_only_wants(use_node, trim(type_name))) cycle
             type_idx_in_context = find_derived_type(context, type_name)
             if (type_idx_in_context > 0) then
@@ -344,6 +343,13 @@
         integer :: param_idx
         integer :: value_kind
         logical :: found
+        integer(c_int64_t) :: constant_value
+        integer :: init_index
+        integer :: line
+        integer :: column
+        integer :: symbol_idx
+        character(len=:), allocatable :: decl_name
+        character(len=:), allocatable :: decl_type_name
 
         call set_empty(error_msg)
         if (.not. allocated(use_node%rename_list)) return
@@ -353,19 +359,58 @@
             do j = 1, context%module_exports(export_idx)%parameter_count
                 param_idx = context%module_exports(export_idx)%parameter_indices(j)
                 if (.not. node_exists(arena, param_idx)) cycle
-                select type (decl => arena%entries(param_idx)%node)
-                type is (declaration_node)
-                    if (.not. allocated(decl%var_name)) cycle
-                    if (.not. same_name(decl%var_name, &
-                                        use_node%rename_list(i + 1)%s)) cycle
-                    call declaration_value_kind(decl, value_kind, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    call import_renamed_parameter(decl, &
-                        trim(use_node%rename_list(i)%s), value_kind, context, &
-                        error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    found = .true.
-                end select
+                if (.not. is_declaration_node(arena, param_idx)) cycle
+                call get_declaration_var_name(arena, param_idx, decl_name, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. same_name(decl_name, use_node%rename_list(i + 1)%s)) &
+                    cycle
+                call get_declaration_type_name(arena, param_idx, decl_type_name, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                line = get_node_line(arena, param_idx)
+                column = get_node_column(arena, param_idx)
+                call type_name_value_kind(decl_type_name, line, column, &
+                                          value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (value_kind /= VALUE_I32) then
+                    call unsupported_feature_error('renamed parameter', line, &
+                                                   column, 'direct LIRIC '// &
+                                                   'session only supports '// &
+                                                   'integer scalar parameters', &
+                                                   error_msg)
+                    return
+                end if
+                if (.not. get_declaration_has_initializer(arena, param_idx)) then
+                    error_msg = 'renamed parameter has no initializer: '// &
+                                trim(decl_name)
+                    return
+                end if
+                init_index = get_declaration_initializer_index(arena, param_idx)
+                if (init_index <= 0) then
+                    error_msg = 'renamed parameter has no initializer: '// &
+                                trim(decl_name)
+                    return
+                end if
+                call eval_i32_constant(context%arena, init_index, context, &
+                                       constant_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (find_symbol(context, trim(use_node%rename_list(i)%s)) > 0) then
+                    error_msg = 'duplicate use rename local name: '// &
+                                trim(use_node%rename_list(i)%s)
+                    return
+                end if
+                call grow_symbols(context)
+                symbol_idx = context%symbol_count + 1
+                context%symbols(symbol_idx)%name = trim(use_node%rename_list(i)%s)
+                context%symbols(symbol_idx)%value_kind = VALUE_I32
+                context%symbols(symbol_idx)%value = i32_immediate(context%session, &
+                                                                  constant_value)
+                context%symbols(symbol_idx)%is_parameter = .true.
+                context%symbols(symbol_idx)%has_i32_constant = .true.
+                context%symbols(symbol_idx)%i32_constant = constant_value
+                context%symbol_count = symbol_idx
+                found = .true.
                 if (found) exit
             end do
             if (.not. found) then
@@ -466,31 +511,35 @@
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         integer :: i
+        character(len=:), allocatable :: derived_name, decl_name
+        character(len=:), allocatable :: error_msg
 
         module_exports_name = .false.
         do i = 1, context%module_exports(export_idx)%derived_type_count
-            select type (dtype => arena%entries( &
-                context%module_exports(export_idx)%derived_type_indices(i))%node)
-            type is (derived_type_node)
-                if (allocated(dtype%name)) then
-                    if (same_name(dtype%name, name)) then
-                        module_exports_name = .true.
-                        return
-                    end if
-                end if
-            end select
+            if (.not. is_derived_type_node(arena, &
+                    context%module_exports(export_idx)%derived_type_indices(i))) cycle
+            call get_derived_type_name(arena, &
+                                       context%module_exports(export_idx)% &
+                                           derived_type_indices(i), &
+                                       derived_name, error_msg)
+            if (len_trim(error_msg) > 0) cycle
+            if (same_name(derived_name, name)) then
+                module_exports_name = .true.
+                return
+            end if
         end do
         do i = 1, context%module_exports(export_idx)%parameter_count
-            select type (decl => arena%entries( &
-                context%module_exports(export_idx)%parameter_indices(i))%node)
-            type is (declaration_node)
-                if (allocated(decl%var_name)) then
-                    if (same_name(decl%var_name, name)) then
-                        module_exports_name = .true.
-                        return
-                    end if
-                end if
-            end select
+            if (.not. is_declaration_node(arena, &
+                    context%module_exports(export_idx)%parameter_indices(i))) cycle
+            call get_declaration_var_name(arena, &
+                                          context%module_exports(export_idx)% &
+                                              parameter_indices(i), &
+                                          decl_name, error_msg)
+            if (len_trim(error_msg) > 0) cycle
+            if (same_name(decl_name, name)) then
+                module_exports_name = .true.
+                return
+            end if
         end do
     end function module_exports_name
 
@@ -504,23 +553,61 @@
         integer :: i
         integer :: param_idx
         integer :: value_kind
+        integer(c_int64_t) :: constant_value
+        integer :: init_index
+        integer :: line
+        integer :: column
+        character(len=:), allocatable :: decl_name
+        character(len=:), allocatable :: decl_type_name
 
         call set_empty(error_msg)
         do i = 1, context%module_exports(export_idx)%parameter_count
             param_idx = context%module_exports(export_idx)%parameter_indices(i)
             if (.not. node_exists(arena, param_idx)) cycle
-            select type (decl => arena%entries(param_idx)%node)
-            type is (declaration_node)
-                if (.not. use_only_wants(use_node, trim(decl%var_name))) cycle
-                if (find_symbol(context, decl%var_name) > 0) cycle
-                call declaration_value_kind(decl, value_kind, error_msg)
-                if (len_trim(error_msg) > 0) return
-                ! lower_constant_declaration rejects non-integer parameters with
-                ! a targeted diagnostic (real/character exports are follow-ups).
-                call lower_constant_declaration(decl, context, value_kind, &
-                                                error_msg)
-                if (len_trim(error_msg) > 0) return
-            end select
+            if (.not. is_declaration_node(arena, param_idx)) cycle
+            call get_declaration_var_name(arena, param_idx, decl_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. use_only_wants(use_node, trim(decl_name))) cycle
+            if (find_symbol(context, decl_name) > 0) cycle
+            call get_declaration_type_name(arena, param_idx, decl_type_name, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+            line = get_node_line(arena, param_idx)
+            column = get_node_column(arena, param_idx)
+            call type_name_value_kind(decl_type_name, line, column, value_kind, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (value_kind /= VALUE_I32) then
+                call unsupported_feature_error('parameter declaration', line, &
+                                               column, 'direct LIRIC session '// &
+                                               'only supports integer scalar '// &
+                                               'parameters', error_msg)
+                return
+            end if
+            if (.not. get_declaration_has_initializer(arena, param_idx)) then
+                error_msg = 'integer parameter requires a compile-time '// &
+                            'initializer: '//trim(decl_name)
+                return
+            end if
+            init_index = get_declaration_initializer_index(arena, param_idx)
+            if (init_index <= 0) then
+                error_msg = 'integer parameter requires a compile-time '// &
+                            'initializer: '//trim(decl_name)
+                return
+            end if
+            call eval_i32_constant(context%arena, init_index, context, &
+                                   constant_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call grow_symbols(context)
+            param_idx = context%symbol_count + 1
+            context%symbols(param_idx)%name = trim(decl_name)
+            context%symbols(param_idx)%value_kind = VALUE_I32
+            context%symbols(param_idx)%value = i32_immediate(context%session, &
+                                                             constant_value)
+            context%symbols(param_idx)%is_parameter = .true.
+            context%symbols(param_idx)%has_i32_constant = .true.
+            context%symbols(param_idx)%i32_constant = constant_value
+            context%symbol_count = param_idx
         end do
     end subroutine import_module_constants
 
@@ -557,6 +644,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index_new
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: type_name
 
         call set_empty(error_msg)
 
@@ -567,11 +655,9 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
 
         context%derived_types(type_index_new)%component_count = 0
 
-        ! Get the derived type name from the node
-        select type (dtype => arena%entries(type_index)%node)
-        type is (derived_type_node)
-            context%derived_types(type_index_new)%name = trim(dtype%name)
-        end select
+        call get_derived_type_name(arena, type_index, type_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%derived_types(type_index_new)%name = trim(type_name)
 
         call collect_derived_components_via_arena(arena, type_index, context, &
             type_index_new, error_msg)
@@ -613,6 +699,9 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         integer, intent(in) :: type_index_new
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        integer :: parent_line
+        integer :: parent_column
+        integer, allocatable :: component_indices(:)
 
         call set_empty(error_msg)
 
@@ -621,18 +710,22 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
             return
         end if
 
-        select type (dtype => arena%entries(type_index)%node)
-        type is (derived_type_node)
-            if (allocated(dtype%component_indices)) then
-                do i = 1, size(dtype%component_indices)
-                    call collect_component_declaration( &
-                        dtype%component_indices(i), dtype, context, type_index_new, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                end do
-            end if
-        class default
+        if (.not. is_derived_type_node(arena, type_index)) then
             error_msg = 'node at type_index is not a derived_type_node'
-        end select
+            return
+        end if
+        call get_derived_type_components(arena, type_index, component_indices)
+        parent_line = get_node_line(arena, type_index)
+        parent_column = get_node_column(arena, type_index)
+        if (allocated(component_indices)) then
+            do i = 1, size(component_indices)
+                call collect_component_declaration(component_indices(i), &
+                                                   parent_line, parent_column, &
+                                                   context, type_index_new, &
+                                                   error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
     end subroutine collect_derived_components_from_context_arena
 
     subroutine lower_program_body(arena, program, context, value, error_msg)

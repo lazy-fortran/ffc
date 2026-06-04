@@ -63,25 +63,31 @@
         type(fmod_parameter_t), intent(out) :: param
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: lit_value, lit_type, lit_err
+        character(len=:), allocatable :: name, type_name
+        integer :: init_index
 
         call set_empty(error_msg)
         param%name = ''
         param%kind = ''
         param%value = ''
-        select type (decl => arena%entries(node_index)%node)
-        type is (declaration_node)
-            if (allocated(decl%var_name)) param%name = trim(decl%var_name)
-            if (allocated(decl%type_name)) param%kind = fmod_kind_string(decl%type_name)
-            if (decl%has_initializer .and. decl%initializer_index > 0) then
-                if (is_literal(arena, decl%initializer_index)) then
-                    call get_literal_info(arena, decl%initializer_index, &
-                                          lit_value, lit_type, lit_err)
-                    if (len_trim(lit_err) == 0) param%value = trim(lit_value)
-                end if
-            end if
-        class default
+        if (.not. is_declaration_node(arena, node_index)) then
             error_msg = 'module parameter export is not a declaration'
-        end select
+            return
+        end if
+        call get_declaration_var_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        param%name = trim(name)
+        call get_declaration_type_name(arena, node_index, type_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        param%kind = fmod_kind_string(type_name)
+        if (get_declaration_has_initializer(arena, node_index)) then
+            init_index = get_declaration_initializer_index(arena, node_index)
+            if (init_index > 0 .and. is_literal(arena, init_index)) then
+                call get_literal_info(arena, init_index, lit_value, lit_type, &
+                                      lit_err)
+                if (len_trim(lit_err) == 0) param%value = trim(lit_value)
+            end if
+        end if
     end subroutine build_fmod_parameter
 
     subroutine build_fmod_derived_type(arena, node_index, dtype, error_msg)
@@ -90,29 +96,34 @@
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: n, k
+        character(len=:), allocatable :: type_name, comp_name, comp_type
+        integer, allocatable :: component_indices(:)
 
         call set_empty(error_msg)
         dtype%name = ''
-        select type (node => arena%entries(node_index)%node)
-        type is (derived_type_node)
-            if (allocated(node%name)) dtype%name = trim(node%name)
-            n = 0
-            if (allocated(node%component_indices)) n = size(node%component_indices)
-            allocate (dtype%components(n))
-            do k = 1, n
-                dtype%components(k)%name = ''
-                dtype%components(k)%kind = ''
-                select type (comp => arena%entries(node%component_indices(k))%node)
-                type is (declaration_node)
-                    if (allocated(comp%var_name)) &
-                        dtype%components(k)%name = trim(comp%var_name)
-                    if (allocated(comp%type_name)) &
-                        dtype%components(k)%kind = fmod_kind_string(comp%type_name)
-                end select
-            end do
-        class default
+        if (.not. is_derived_type_node(arena, node_index)) then
             error_msg = 'module derived-type export is not a derived type'
-        end select
+            return
+        end if
+        call get_derived_type_name(arena, node_index, type_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        dtype%name = trim(type_name)
+        call get_derived_type_components(arena, node_index, component_indices)
+        n = size(component_indices)
+        allocate (dtype%components(n))
+        do k = 1, n
+            dtype%components(k)%name = ''
+            dtype%components(k)%kind = ''
+            if (.not. is_declaration_node(arena, component_indices(k))) cycle
+            call get_declaration_var_name(arena, component_indices(k), &
+                                          comp_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            dtype%components(k)%name = trim(comp_name)
+            call get_declaration_type_name(arena, component_indices(k), &
+                                           comp_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            dtype%components(k)%kind = fmod_kind_string(comp_type)
+        end do
     end subroutine build_fmod_derived_type
 
     function fmod_kind_string(type_name) result(kind_text)
