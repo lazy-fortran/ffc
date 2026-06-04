@@ -78,15 +78,7 @@ check_xfail() {
     fi
     local stripped
     stripped=$(echo "$path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    while IFS= read -r line || [ -n "$line" ]; do
-        line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        [ -z "$line" ] && continue
-        case "$line" in \#*) continue ;; esac
-        if [ "$line" = "$stripped" ]; then
-            return 0
-        fi
-    done < "$manifest"
-    return 1
+    grep -Fxq -- "$stripped" "$manifest"
 }
 
 # Escape a string for safe JSON embedding (handles backslash, quotes, newlines).

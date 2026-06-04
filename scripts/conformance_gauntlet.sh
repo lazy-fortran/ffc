@@ -96,6 +96,12 @@ resolve_xfail_manifest() {
     echo "test/conformance/xfail_${safe_suite}.txt"
 }
 
+resolve_skip_manifest() {
+    local safe_suite
+    safe_suite=${SUITE//-/_}
+    echo "test/conformance/skip_${safe_suite}.txt"
+}
+
 # File extension for single-extension suites.
 file_extension() {
     case "$SUITE" in
@@ -116,12 +122,28 @@ if [ -z "$FFC_BIN" ]; then
     FFC_BIN=$(find_ffc) || exit 1
 fi
 
+normalize_manifest() {
+    local src="$1" dst="$2"
+    if [ ! -f "$src" ]; then
+        : > "$dst"
+        return
+    fi
+    sed 's/#.*$//' "$src" | \
+        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
+        awk 'NF' > "$dst"
+}
+
 # Setup
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
+SKIP_MANIFEST=$(resolve_skip_manifest)
 EXT=$(file_extension)
 TMPDIR_WORK=$(mktemp -d /tmp/ffc_gauntlet_XXXXXX)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
+XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
+SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"
+normalize_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP"
+normalize_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP"
 
 # Counters
 PASS_COUNT=0
@@ -129,6 +151,7 @@ XFAIL_COUNT=0
 XPASS_COUNT=0
 FAIL_COUNT=0
 NOREF_COUNT=0
+SKIP_COUNT=0
 TOTAL_COUNT=0
 
 # Clear report
@@ -137,8 +160,8 @@ TOTAL_COUNT=0
 # Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
@@ -159,8 +182,8 @@ fi
 FILE_COUNT=$(wc -l < "$FILE_LIST")
 if [ "$FILE_COUNT" -eq 0 ]; then
     echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
@@ -174,6 +197,13 @@ while IFS= read -r full_path; do
     basename_file=$(basename "$full_path")
     # Suite-relative path is the basename for single-depth search
     rel_path="$basename_file"
+
+    if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
+        SKIP_COUNT=$((SKIP_COUNT + 1))
+        printf '{"suite":"%s","file":"%s","status":"SKIP","note":"listed in skip manifest"}\n' \
+            "$SUITE" "$(json_escape "$rel_path")" >> "$REPORT"
+        continue
+    fi
 
     ffc_exe="$TMPDIR_WORK/ffc_${TOTAL_COUNT}"
     ref_exe="$TMPDIR_WORK/ref_${TOTAL_COUNT}"
@@ -196,7 +226,7 @@ while IFS= read -r full_path; do
 
     # Step 2: if ffc failed, classify immediately
     if [ "$ffc_exit" -ne 0 ]; then
-        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XFAIL"
             note="listed in xfail manifest"
             XFAIL_COUNT=$((XFAIL_COUNT + 1))
@@ -220,7 +250,7 @@ while IFS= read -r full_path; do
     ffc_exit=$?
 
     if [ "$ffc_exit" -ne 0 ]; then
-        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XFAIL"
             note="listed in xfail manifest (runtime failure)"
             XFAIL_COUNT=$((XFAIL_COUNT + 1))
@@ -241,7 +271,7 @@ while IFS= read -r full_path; do
 
     # Step 4: lazy suite, ffc succeeded and ran, no gfortran reference.
     if is_lazy_suite; then
-        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest but ffc ran successfully"
             XPASS_COUNT=$((XPASS_COUNT + 1))
@@ -266,7 +296,7 @@ while IFS= read -r full_path; do
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
     if [ "$ref_exit" -ne 0 ]; then
         NOREF_COUNT=$((NOREF_COUNT + 1))
-        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest; gfortran rejects but ffc runs"
             XPASS_COUNT=$((XPASS_COUNT + 1))
@@ -287,7 +317,7 @@ while IFS= read -r full_path; do
 
     # Step 8: compare outputs.
     if compare_outputs "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
-        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest but output matches gfortran"
             XPASS_COUNT=$((XPASS_COUNT + 1))
@@ -303,7 +333,7 @@ while IFS= read -r full_path; do
     fi
 
     # Step 9: mismatch, check xfail.
-    if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+    if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
         status="XFAIL"
         note="output mismatch listed in xfail manifest"
         XFAIL_COUNT=$((XFAIL_COUNT + 1))
@@ -323,12 +353,12 @@ while IFS= read -r full_path; do
 done < "$FILE_LIST"
 
 # Summary
-printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
-    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
+    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
 
 echo ""
 echo "=== $SUITE summary ==="
-echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  TOTAL=$TOTAL_COUNT"
+echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  TOTAL=$TOTAL_COUNT"
 echo "  Report: $REPORT"
 
 # Exit nonzero only if non-xfail FAILs occurred

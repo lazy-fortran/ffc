@@ -85,7 +85,7 @@ Fields:
 A final SUMMARY record closes the file:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"total":21}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"total":21}
 ```
 
 ## Disposition states
@@ -96,6 +96,7 @@ A final SUMMARY record closes the file:
 | `XFAIL` | Listed in xfail manifest; ffc failed as expected | None |
 | `XPASS` | Listed in xfail manifest; ffc passed unexpectedly | Visible in summary; promote the entry |
 | `FAIL` | Not in xfail manifest; ffc failed or mismatched | Fails the gate |
+| `SKIP` | Listed in a skip manifest because the runner does not model the case | Counted in summary |
 
 The runner exits nonzero if any `FAIL` record exists. `XFAIL` and
 `XPASS` never cause a nonzero exit.
@@ -104,6 +105,10 @@ The `noref` summary count is the number of standard Fortran files where
 `gfortran -w` rejected the source after ffc compiled and ran it. These
 records are `PASS` unless the file is still listed in the xfail manifest,
 in which case they are `XPASS`.
+
+The `skip` summary count is the number of files listed in
+`test/conformance/skip_<suite>.txt`. Skip lines use the format
+`basename.f90 # reason`. They are explicit entries, not silent drops.
 
 ## FortFront corpus gate
 
@@ -117,6 +122,27 @@ Current xfail manifests:
 
 - `test/conformance/xfail_fortfront_f90.txt`
 - `test/conformance/xfail_fortfront_lf.txt`
+
+## LFortran integration tests
+
+The `lfortran` suite reads `$FFC_LFORTRAN_DIR/integration_tests/*.f90`.
+The default root is `../lfortran`. To use another checkout:
+
+```bash
+FFC_LFORTRAN_DIR=/path/to/lfortran \
+    scripts/conformance_gauntlet.sh --suite lfortran \
+    --report /tmp/ffc_lfortran.jsonl
+```
+
+No lfortran source is copied into this repository. The checked-in files
+are:
+
+- `test/conformance/xfail_lfortran.txt`
+- `test/conformance/skip_lfortran.txt`
+
+Seed baseline from lfortran commit `5e3229bd6`: `PASS=123`,
+`XFAIL=4134`, `XPASS=0`, `FAIL=0`, `NOREF=72`, `SKIP=0`,
+`TOTAL=4257`.
 
 ## xfail promotion workflow
 
