@@ -40,7 +40,8 @@ Covered features and the public claim live in
   early `return`;
 - fixed-size 1-D integer arrays; simple derived types with scalar integer
   components;
-- minimal `print *, expr`, `stop <expr>`, `abs` / `min` / `max` / `mod`
+- minimal `print *, expr`, compound formatted `print fmt, items` with literal
+  `I`, `X`, and `F` descriptors, `stop <expr>`, `abs` / `min` / `max` / `mod`
   and integer-to-real `real()`;
 - compile-time `//` folding for character literal chains;
 - CLI: `-o`, `-c`, `-I <dir>` accepted (`-I` not yet consumed).

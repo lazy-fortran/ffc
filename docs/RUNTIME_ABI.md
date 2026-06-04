@@ -152,17 +152,19 @@ diagnostic. Only single-variable, one-dimensional, default-lower-bound
 
 `print fmt, items` with a literal format string lowers to direct `printf`
 calls that honour the format, with no list-directed leading blank and one
-record newline at the end. The supported edit-descriptor subset is a single
-descriptor applied to every item:
+record newline at the end. The supported edit-descriptor subset includes:
 
 - `I0` maps to `%d`, `Iw` to `%wd` (for example `I5` is `%5d`).
 - `A` maps to `%s`; `Aw` maps to `%ws`. Character items pass a pointer to a
   null-terminated buffer, so `%s` prints the variable's full declared width.
+- Compound literal formats made from `I`, `X`, and `F` descriptors are
+  supported on stdout. `X` emits blanks. `F w.d` lowers through `snprintf`
+  into a temporary buffer, then prints that buffer as a string field.
+- Repeat counts and reversion are still limited. `A` remains single-descriptor
+  only in formatted `print`, and unsupported descriptors still fail with a
+  diagnostic.
 
-Compound formats (`'(I0, " ", A)'`), repeat counts, and other edit descriptors
-are rejected with a diagnostic. Because ffc lowers every `real` as `real(8)`,
-no real edit descriptors are accepted yet. `print *, ...` remains the
-list-directed path described above.
+`print *, ...` remains the list-directed path described above.
 
 ### Internal write
 
