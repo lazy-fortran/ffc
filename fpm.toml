@@ -8,8 +8,6 @@ license = "MIT"
 fortfront = { path = "../fortfront" }
 
 [build]
-auto-executables = true
-auto-tests = true
 auto-examples = false
 link = ["liric", "stdc++", "m", "dl", "pthread"]
 
