@@ -102,7 +102,6 @@ issue_1547_scalar_allocatable.lf
 issue_1547_scalar_multiple_assignments.lf
 issue_1547_scalar_single_assignment.lf
 issue_1576_common_subroutine.lf
-issue_1622_import.lf
 issue_1775_intent_in_preserved.lf
 issue_1778_debug.lf
 issue_1781_allocate_deallocate.lf

@@ -13,6 +13,7 @@ function_param_memory_safety.lf
 issue_1260_subroutine_named_end.lf
 issue_1260_subroutine_no_name.lf
 issue_1540_do_loop_procedure.lf
+issue_1622_import.lf
 issue_177_line_continuation.lf
 issue_1883_intent_result.lf
 issue_215_unary_precedence.lf

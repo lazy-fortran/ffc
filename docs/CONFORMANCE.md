@@ -46,7 +46,7 @@ Options:
 |---|---|
 | `--suite SUITE` | Required. One of `fortfront-f90`, `fortfront-lf`, `lfortran`, `gfortran-dg` |
 | `--ffc PATH` | Path to the `ffc` binary. Auto-discovered from `build/` or `PATH` if omitted. |
-| `--report PATH` | JSONL report path. Defaults to `logs/ffc_gauntlet_<suite>.jsonl`. |
+| `--report PATH` | JSONL report path. Defaults to `/tmp/ffc_gauntlet_<suite>.jsonl`. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
 
@@ -108,7 +108,7 @@ feature is now supported.
 
 ```bash
 # Find XPASS entries in the latest report
-grep '"status":"XPASS"' logs/ffc_gauntlet_fortfront_f90.jsonl
+grep '"status":"XPASS"' /tmp/ffc_gauntlet_fortfront_f90.jsonl
 
 # Remove the promoted entry from the manifest
 sed -i '/^example\.f90$/d' test/conformance/xfail_fortfront_f90.txt
@@ -117,8 +117,9 @@ sed -i '/^example\.f90$/d' test/conformance/xfail_fortfront_f90.txt
 ## Smoke test
 
 The fpm test `test_conformance_gauntlet_smoke` exercises the runner
-against `fortfront-f90` with a 20-file cap. It runs under 120 seconds
-and validates that the report contains a SUMMARY record.
+against `fortfront-f90` with a 20-file cap. It runs under 120 seconds.
+It requires runner exit 0 and a SUMMARY record with zero `FAIL`
+entries.
 
 ```bash
 LIBRARY_PATH=../liric/build fpm test test_conformance_gauntlet_smoke

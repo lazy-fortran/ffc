@@ -1,4 +1,4 @@
-# ffc Roadmap
+# ffc Development Plan
 
 `ffc` is the compiler driver for Lazy Fortran and LFortran Infer-style
 source. The active pipeline is:
@@ -25,7 +25,7 @@ The retired MLIR/HLFIR experiment lives only in git history. Reference it
 by commit hash if you need to look back, but do not revive it without an
 explicit decision.
 
-## Phase A — direct LIRIC session backend (in progress)
+## Phase A: direct LIRIC session backend (in progress)
 
 Covered features and the public claim live in
 `docs/SUPPORT_CONTRACT.md`. Roughly:
@@ -48,7 +48,7 @@ Covered features and the public claim live in
 The detailed slices are tracked as GitHub issues. The self-hosting
 dependency map is in #167.
 
-## Phase B — runtime, ABI, and conformance (continuous)
+## Phase B: runtime, ABI, and conformance (continuous)
 
 The current ABI is documented in `docs/RUNTIME_ABI.md`. Conformance
 against external corpora is documented in `docs/CONFORMANCE.md`. Each
@@ -58,11 +58,11 @@ same change. Major open categories:
 - non-integer scalar procedure ABI: #50, #164.
 - character value + length representation beyond the current MVP: #51.
 - a Fortran-aware scalar I/O runtime replacing the `printf` shim: #55.
-- array descriptors and allocatable lifecycle: #53, slices #184–#186.
+- array descriptors and allocatable lifecycle: #53, slices #184-#186.
 - general control-flow value merging across SELECT CASE / IF: #56, #175,
   #176, #180.
 
-## Phase C — FortFront boundary
+## Phase C: FortFront boundary
 
 `ffc` reaches into FortFront's arena (`select type (node => ...)`) in
 ~50 sites. Replacing those with named compiler queries is tracked by #58
@@ -76,5 +76,5 @@ LIBRARY_PATH=<liric-build> fpm build
 LIBRARY_PATH=<liric-build> fpm test
 ```
 
-CI builds liric from source and runs the full test suite on every push
-and pull request.
+No CI is configured for this repository. Run these commands before
+pushing.

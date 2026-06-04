@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# conformance_gauntlet.sh — drive external Fortran corpora through ffc.
+# conformance_gauntlet.sh: drive external Fortran corpora through ffc.
 #
 # Usage:
 #   scripts/conformance_gauntlet.sh --suite SUITE [OPTIONS]
 #
 # Suites:
-#   fortfront-f90   — FortFront standard-mode examples (../fortfront/examples/f90)
-#   fortfront-lf    — FortFront lazy-mode examples (../fortfront/examples/lf)
-#   lfortran        — LFortran integration tests
-#   gfortran-dg     — GCC gfortran.dg testsuite
+#   fortfront-f90   FortFront standard-mode examples (../fortfront/examples/f90)
+#   fortfront-lf    FortFront lazy-mode examples (../fortfront/examples/lf)
+#   lfortran        LFortran integration tests
+#   gfortran-dg     GCC gfortran.dg testsuite
 #
 # Options:
 #   --suite SUITE       required
 #   --ffc PATH          path to ffc binary (auto-discovered if omitted)
-#   --report PATH       JSONL report path (default: logs/ffc_gauntlet_<suite>.jsonl)
+#   --report PATH       JSONL report path (default: /tmp/ffc_gauntlet_<suite>.jsonl)
 #   --max-files N       only test the first N files (for smoke runs)
 #   --timeout N         per-file timeout in seconds (default: 5)
 #
@@ -29,16 +29,15 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
 
-# ── defaults ──────────────────────────────────────────────────────────
+# Defaults
 SUITES="fortfront-f90 fortfront-lf lfortran gfortran-dg"
 FFC_BIN=""
 REPORT=""
 MAX_FILES=""
 TIMEOUT=5
 HAS_FAIL=0
-HAS_SKIP=0
 
-# ── argument parsing ──────────────────────────────────────────────────
+# Argument parsing
 SUITE=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -68,15 +67,15 @@ case "$SUITE" in
     *) echo "ERROR: unknown suite '$SUITE'. Choose from: $SUITES" >&2; exit 1 ;;
 esac
 
-# ── resolve report path ───────────────────────────────────────────────
+# Resolve report path
 if [ -z "$REPORT" ]; then
-    REPORT="logs/ffc_gauntlet_${SUITE}.jsonl"
+    REPORT="/tmp/ffc_gauntlet_${SUITE}.jsonl"
 fi
 
 # Ensure report directory exists
 mkdir -p "$(dirname "$REPORT")"
 
-# ── resolve suite root ────────────────────────────────────────────────
+# Resolve suite root
 resolve_suite_root() {
     case "$SUITE" in
         fortfront-f90)
@@ -90,12 +89,14 @@ resolve_suite_root() {
     esac
 }
 
-# ── resolve xfail manifest ────────────────────────────────────────────
+# Resolve xfail manifest
 resolve_xfail_manifest() {
-    echo "test/conformance/xfail_${SUITE}.txt"
+    local safe_suite
+    safe_suite=${SUITE//-/_}
+    echo "test/conformance/xfail_${safe_suite}.txt"
 }
 
-# ── file extension for the suite ──────────────────────────────────────
+# File extension for the suite
 file_extension() {
     case "$SUITE" in
         fortfront-f90) echo "f90" ;;
@@ -105,17 +106,17 @@ file_extension() {
     esac
 }
 
-# ── is lazy suite ─────────────────────────────────────────────────────
+# Lazy suites have no gfortran reference.
 is_lazy_suite() {
     [ "$SUITE" = "fortfront-lf" ]
 }
 
-# ── resolve ffc ───────────────────────────────────────────────────────
+# Resolve ffc
 if [ -z "$FFC_BIN" ]; then
     FFC_BIN=$(find_ffc) || exit 1
 fi
 
-# ── setup ─────────────────────────────────────────────────────────────
+# Setup
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
 EXT=$(file_extension)
@@ -133,17 +134,15 @@ TOTAL_COUNT=0
 # Clear report
 > "$REPORT"
 
-# ── check suite root exists ───────────────────────────────────────────
+# Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
-    HAS_SKIP=1
-    # Still write a summary line
     printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" >> "$REPORT"
     exit 0
 fi
 
-# ── collect files ─────────────────────────────────────────────────────
+# Collect files.
 FILE_LIST="$TMPDIR_WORK/files.txt"
 find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$FILE_LIST"
 
@@ -162,7 +161,7 @@ fi
 
 echo "Running $SUITE: $FILE_COUNT files, timeout=${TIMEOUT}s, ffc=$FFC_BIN"
 
-# ── process each file ─────────────────────────────────────────────────
+# Process each file.
 while IFS= read -r full_path; do
     [ -z "$full_path" ] && continue
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
@@ -235,16 +234,23 @@ while IFS= read -r full_path; do
         fi
     fi
 
-    # Step 4: lazy suite — ffc succeeded and ran, no gfortran reference
+    # Step 4: lazy suite, ffc succeeded and ran, no gfortran reference.
     if is_lazy_suite; then
-        status="PASS"
-        PASS_COUNT=$((PASS_COUNT + 1))
+        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+            status="XPASS"
+            note="listed in xfail manifest but ffc ran successfully"
+            XPASS_COUNT=$((XPASS_COUNT + 1))
+        else
+            status="PASS"
+            note="lazy suite, ffc ran successfully"
+            PASS_COUNT=$((PASS_COUNT + 1))
+        fi
         printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "lazy suite, ffc ran successfully")" >> "$REPORT"
+            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
         continue
     fi
 
-    # Step 5: standard suite — compile with gfortran reference
+    # Step 5: standard suite, compile with gfortran reference.
     if compile_with_gfortran "$full_path" "$ref_exe"; then
         ref_exit=0
     else
@@ -277,23 +283,29 @@ while IFS= read -r full_path; do
     run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
     ref_exit=$?
 
-    # Step 8: compare outputs
+    # Step 8: compare outputs.
     if compare_outputs "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
-        status="PASS"
-        PASS_COUNT=$((PASS_COUNT + 1))
+        if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
+            status="XPASS"
+            note="listed in xfail manifest but output matches gfortran"
+            XPASS_COUNT=$((XPASS_COUNT + 1))
+        else
+            status="PASS"
+            note="output matches gfortran"
+            PASS_COUNT=$((PASS_COUNT + 1))
+        fi
         printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "output matches gfortran")" >> "$REPORT"
+            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
         continue
     fi
 
-    # Step 9: mismatch — check xfail
+    # Step 9: mismatch, check xfail.
     if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
-        status="XPASS"
-        note="output mismatch but listed in xfail manifest — promote this entry"
-        XPASS_COUNT=$((XPASS_COUNT + 1))
+        status="XFAIL"
+        note="output mismatch listed in xfail manifest"
+        XFAIL_COUNT=$((XFAIL_COUNT + 1))
         printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
             "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
-        echo "  XPASS: $rel_path (previously expected to fail)"
         continue
     fi
 
@@ -307,7 +319,7 @@ while IFS= read -r full_path; do
 
 done < "$FILE_LIST"
 
-# ── summary ───────────────────────────────────────────────────────────
+# Summary
 printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d}\n' \
     "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" >> "$REPORT"
 

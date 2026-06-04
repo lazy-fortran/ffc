@@ -13,6 +13,7 @@ program test_conformance_gauntlet_smoke
     character(len=4096) :: line
     character(len=:), allocatable :: cmd
     logical :: has_summary
+    logical :: has_zero_fail_summary
     logical :: report_exists
 
     print *, '=== conformance gauntlet smoke test ==='
@@ -22,7 +23,6 @@ program test_conformance_gauntlet_smoke
           ' --suite fortfront-f90 --max-files 20' // &
           ' --report ' // REPORT
 
-    ! Run the gauntlet script
     call execute_command_line(cmd, exitstat=exit_stat)
 
     if (exit_stat > 126) then
@@ -30,15 +30,19 @@ program test_conformance_gauntlet_smoke
         stop 1
     end if
 
-    ! Check report file exists
+    if (exit_stat /= 0) then
+        print *, 'FAIL: gauntlet exited with ', exit_stat
+        stop 1
+    end if
+
     inquire(file=REPORT, exist=report_exists)
     if (.not. report_exists) then
         print *, 'FAIL: no report file at ', trim(adjustl(REPORT))
         stop 1
     end if
 
-    ! Validate report: must contain at least one summary line
     has_summary = .false.
+    has_zero_fail_summary = .false.
     open(newunit=unit, file=REPORT, status='old', action='read', &
          iostat=io_stat)
     if (io_stat /= 0) then
@@ -52,6 +56,9 @@ program test_conformance_gauntlet_smoke
         if (is_blank_or_comment(line)) cycle
         if (index(line, '"status":"SUMMARY"') > 0) then
             has_summary = .true.
+            if (index(line, '"fail":0') > 0) then
+                has_zero_fail_summary = .true.
+            end if
             exit
         end if
     end do
@@ -62,8 +69,12 @@ program test_conformance_gauntlet_smoke
         stop 1
     end if
 
-    print *, 'PASS: gauntlet smoke test completed (exit ', exit_stat, &
-        ', report has SUMMARY record)'
+    if (.not. has_zero_fail_summary) then
+        print *, 'FAIL: SUMMARY record has nonzero fail count'
+        stop 1
+    end if
+
+    print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
 
 contains
 

@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# lib_conformance.sh — shared helpers for the conformance gauntlet.
+# lib_conformance.sh: shared helpers for the conformance gauntlet.
 # Source this file; do not execute it directly.
 #
 # Public functions:
-#   find_ffc          — resolve ffc binary path
-#   compile_with_ffc  — compile a source file through ffc
-#   compile_with_gfortran — compile a source file with gfortran -w
-#   run_capture       — run an executable with timeout, capture stdout+stderr
-#   compare_outputs   — compare stdout files and exit statuses
+#   find_ffc               resolve ffc binary path
+#   compile_with_ffc       compile a source file through ffc
+#   compile_with_gfortran  compile a source file with gfortran -w
+#   run_capture            run an executable with timeout, capture stdout+stderr
+#   compare_outputs        compare stdout files and exit statuses
 
-set -euo pipefail
+set -uo pipefail
 
 # Resolve the ffc binary. Priority: --ffc arg > FFC_BIN env > build/ tree > PATH.
 find_ffc() {
