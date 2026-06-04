@@ -170,7 +170,7 @@ contains
                                        'end program main'
 
         test_whole_array_assignment_target_diagnostic = expect_error_contains( &
-                                        source, 'unsupported array assignment target', &
+                                        source, 'whole-array assignment requires array operands', &
                                          '/tmp/ffc_session_whole_array_assignment_test')
     end function test_whole_array_assignment_target_diagnostic
 
@@ -320,7 +320,7 @@ contains
 
         test_cli_whole_array_assignment_target_diagnostic = &
             expect_cli_error_contains(source, &
-                                      'unsupported array assignment target', &
+                                      'whole-array assignment requires array operands', &
                                       '/tmp/ffc_cli_whole_array_assignment_test')
     end function test_cli_whole_array_assignment_target_diagnostic
 

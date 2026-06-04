@@ -203,8 +203,8 @@
         context%symbols(index)%array_size = array_size
         context%symbols(index)%array_lower_bound = array_lower_bound
 
-        if (dim_count == 2 .and. allocated(node%dimension_indices)) then
-            do i = 1, 2
+        if (dim_count >= 1 .and. allocated(node%dimension_indices)) then
+            do i = 1, dim_count
                 dim_index = node%dimension_indices(i)
                 if (.not. node_exists(context%arena, dim_index)) cycle
                 select type (dim_node => context%arena%entries(dim_index)%node)
@@ -240,8 +240,8 @@
 
     subroutine lower_array_constructor_assignment(arena, ctor, symbol_index, &
                                                   context, error_msg)
-        ! arr = [a, b, c] for a fixed-size integer 1D array: lower each element
-        ! and store it at the matching slot.
+        ! arr = [a, b, c] for any fixed-size integer array: lower each element
+        ! and store it at the matching slot in linear storage order.
         type(ast_arena_t), intent(in) :: arena
         type(array_literal_node), intent(in) :: ctor
         integer, intent(in) :: symbol_index
@@ -276,6 +276,184 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    subroutine lower_array_whole_assignment(arena, node, symbol_index, context, &
+                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: addr
+        integer :: i
+        integer :: array_size
+
+        array_size = context%symbols(symbol_index)%array_size
+        if (array_size <= 0) then
+            error_msg = 'whole-array assignment requires a positive array size'
+            return
+        end if
+
+        do i = 1, array_size
+            call lower_array_elementwise_value(arena, node%value_index, &
+                                               symbol_index, i - 1, context, &
+                                               value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_array_element_addr(context%session, array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
+                return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_array_whole_assignment
+
+    recursive subroutine lower_array_elementwise_value(arena, node_index, &
+                                                       target_symbol_index, &
+                                                       linear_index, context, &
+                                                       value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        integer :: opcode
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: bin_op
+        character(len=:), allocatable :: id_name
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'whole-array expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'whole-array expression identifier was not declared: '// &
+                            trim(id_name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%is_array) then
+                call unsupported_feature_error('whole-array expression', &
+                                               get_node_line(arena, node_index), &
+                                               get_node_column(arena, node_index), &
+                                               'whole-array arithmetic requires array '// &
+                                               'operands', error_msg)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                error_msg = 'whole-array arithmetic only supports integer arrays'
+                return
+            end if
+            call ensure_array_shapes_match(context, target_symbol_index, &
+                                           symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, symbol_index, linear_index, &
+                                           value, error_msg)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_array_elementwise_value(arena, bin_left, &
+                                               target_symbol_index, linear_index, &
+                                               context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_array_elementwise_value(arena, bin_right, &
+                                               target_symbol_index, linear_index, &
+                                               context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            select case (trim(bin_op))
+            case ('+')
+                opcode = LR_OP_ADD
+            case ('-')
+                opcode = LR_OP_SUB
+            case ('*')
+                opcode = LR_OP_MUL
+            case default
+                call unsupported_feature_error('whole-array arithmetic', &
+                                               bin_line, bin_col, &
+                                               'direct LIRIC session supports only '// &
+                                               '+, -, and * for whole-array '// &
+                                               'arithmetic', error_msg)
+                return
+            end select
+            if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+                                      error_msg)) return
+            return
+        end if
+
+        call unsupported_feature_error('whole-array expression', &
+                                       get_node_line(arena, node_index), &
+                                       get_node_column(arena, node_index), &
+                                       'whole-array assignment requires array '// &
+                                       'operands and +, -, or *', error_msg)
+    end subroutine lower_array_elementwise_value
+
+    subroutine ensure_array_shapes_match(context, target_symbol_index, &
+                                         source_symbol_index, error_msg)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: source_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: rank
+        integer :: i
+        character(len=:), allocatable :: target_name
+        character(len=:), allocatable :: source_name
+
+        rank = context%symbols(target_symbol_index)%array_rank
+        if (context%symbols(source_symbol_index)%array_rank /= rank) then
+            target_name = trim(context%symbols(target_symbol_index)%name)
+            source_name = trim(context%symbols(source_symbol_index)%name)
+            error_msg = 'whole-array assignment requires conforming shapes: '// &
+                trim(target_name)//' and '//trim(source_name)//' have different ranks'
+            return
+        end if
+        do i = 1, rank
+            if (context%symbols(target_symbol_index)%array_dim_sizes(i) /= &
+                context%symbols(source_symbol_index)%array_dim_sizes(i)) then
+                target_name = trim(context%symbols(target_symbol_index)%name)
+                source_name = trim(context%symbols(source_symbol_index)%name)
+                error_msg = 'whole-array assignment requires conforming shapes: '// &
+                    trim(target_name)//' and '//trim(source_name)//' differ in extent'
+                return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine ensure_array_shapes_match
+
+    subroutine load_array_linear_element(context, symbol_index, linear_index, &
+                                         value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                i32_immediate(context%session, int(linear_index, c_int64_t)), addr, &
+                error_msg)) return
+        if (.not. emit_i32_load(context%session, addr, value, error_msg)) then
+            error_msg = 'array_element_load: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine load_array_linear_element
 
     subroutine lower_array_element_assignment(arena, node, target, context, value, &
                                               error_msg)

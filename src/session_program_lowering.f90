@@ -494,6 +494,10 @@ contains
                     call lower_array_constructor_assignment(arena, val, &
                         symbol_index, context, error_msg)
                     return
+                class default
+                    call lower_array_whole_assignment(arena, node, symbol_index, &
+                                                      context, error_msg)
+                    return
                 end select
             end if
             if (is_identifier(arena, node%target_index)) then
