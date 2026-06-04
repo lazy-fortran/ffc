@@ -295,6 +295,18 @@
             return
         end if
 
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (call_or_subscript_node)
+                if (allocated(rhs%name) .and. same_name(rhs%name, 'shape')) then
+                    call lower_shape_intrinsic_assignment(arena, node, &
+                                                          symbol_index, context, &
+                                                          error_msg)
+                    return
+                end if
+            end select
+        end if
+
         do i = 1, array_size
             call lower_array_elementwise_value(arena, node%value_index, &
                                                symbol_index, i - 1, context, &
@@ -309,6 +321,258 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_whole_assignment
+
+    subroutine lower_shape_intrinsic_assignment(arena, node, symbol_index, &
+                                                context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        type(lr_operand_desc_t) :: value
+        character(len=:), allocatable :: source_name
+        integer :: source_index
+        integer :: source_rank
+        integer :: i
+
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 1) then
+                error_msg = 'shape requires exactly one array argument'
+                return
+            end if
+            call get_identifier_name(arena, rhs%arg_indices(1), source_name, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_index = find_symbol(context, source_name)
+            if (source_index <= 0) then
+                error_msg = 'shape argument was not declared: '//trim(source_name)
+                return
+            end if
+            if (.not. context%symbols(source_index)%is_array) then
+                error_msg = 'shape requires an array argument: '//trim(source_name)
+                return
+            end if
+            if (context%symbols(source_index)%value_kind /= VALUE_I32) then
+                error_msg = 'shape only supports integer arrays'
+                return
+            end if
+        class default
+            error_msg = 'shape requires an array argument'
+            return
+        end select
+
+        source_rank = context%symbols(source_index)%array_rank
+        if (context%symbols(symbol_index)%array_rank /= 1) then
+            error_msg = 'shape result must be assigned to a rank-1 integer array'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_size /= source_rank) then
+            error_msg = 'shape result length does not match the target array size'
+            return
+        end if
+
+        do i = 1, source_rank
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
+                    error_msg)) return
+            value = i32_immediate(context%session, &
+                                  int(context%symbols(source_index)%array_dim_sizes(i), &
+                                      c_int64_t))
+            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
+                return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_shape_intrinsic_assignment
+
+    subroutine lower_shape_intrinsic_element(arena, node, target_symbol_index, &
+                                             linear_index, context, value, &
+                                             error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_index
+        integer :: source_rank
+
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'shape requires exactly one array argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), source_name, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol(context, source_name)
+        if (source_index <= 0) then
+            error_msg = 'shape argument was not declared: '//trim(source_name)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            error_msg = 'shape requires an array argument: '//trim(source_name)
+            return
+        end if
+        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
+            error_msg = 'shape only supports integer arrays'
+            return
+        end if
+
+        source_rank = context%symbols(source_index)%array_rank
+        if (context%symbols(target_symbol_index)%array_rank /= 1) then
+            error_msg = 'shape result must be assigned to a rank-1 integer array'
+            return
+        end if
+        if (context%symbols(target_symbol_index)%array_size /= source_rank) then
+            error_msg = 'shape result length does not match the target array size'
+            return
+        end if
+        if (linear_index < 0 .or. linear_index >= source_rank) then
+            error_msg = 'shape result index is out of range'
+            return
+        end if
+
+        value = i32_immediate(context%session, &
+                              int(context%symbols(source_index)%array_dim_sizes( &
+                                  linear_index + 1), c_int64_t))
+        call set_empty(error_msg)
+    end subroutine lower_shape_intrinsic_element
+
+    subroutine lower_array_size_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: array_name
+        integer :: source_index
+
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'size requires exactly one array argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol(context, array_name)
+        if (source_index <= 0) then
+            error_msg = 'size argument was not declared: '//trim(array_name)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            error_msg = 'size requires an array argument: '//trim(array_name)
+            return
+        end if
+        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
+            error_msg = 'size only supports integer arrays'
+            return
+        end if
+        value = i32_immediate(context%session, &
+                              int(context%symbols(source_index)%array_size, &
+                                  c_int64_t))
+        call set_empty(error_msg)
+    end subroutine lower_array_size_intrinsic
+
+    subroutine lower_array_reduction_intrinsic(arena, node, context, value, &
+                                               error_msg, reduction_name)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in) :: reduction_name
+        character(len=:), allocatable :: array_name
+        type(lr_operand_desc_t) :: candidate
+        type(lr_operand_desc_t) :: next_value
+        type(lr_operand_desc_t) :: condition
+        type(lr_operand_desc_t) :: selected
+        integer :: source_index
+        integer :: array_size
+        integer :: i
+        integer(c_int) :: predicate
+
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = trim(reduction_name)//' requires exactly one array argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol(context, array_name)
+        if (source_index <= 0) then
+            error_msg = trim(reduction_name)//' argument was not declared: '// &
+                        trim(array_name)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            error_msg = trim(reduction_name)//' requires an array argument: '// &
+                        trim(array_name)
+            return
+        end if
+        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
+            error_msg = trim(reduction_name)//' only supports integer arrays'
+            return
+        end if
+
+        array_size = context%symbols(source_index)%array_size
+        if (array_size <= 0) then
+            error_msg = trim(reduction_name)//' requires a non-empty array'
+            return
+        end if
+
+        select case (trim(reduction_name))
+        case ('sum')
+            value = i32_immediate(context%session, 0_c_int64_t)
+            do i = 0, array_size - 1
+                call load_array_linear_element(context, source_index, i, candidate, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, value, &
+                                          candidate, next_value, error_msg)) return
+                value = next_value
+            end do
+        case ('maxval')
+            predicate = LR_CMP_SGT
+            call load_array_linear_element(context, source_index, 0, value, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+            do i = 1, array_size - 1
+                call load_array_linear_element(context, source_index, i, candidate, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
+                        value, condition, error_msg)) return
+                call select_value(context, condition, candidate, value, selected, &
+                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = selected
+            end do
+        case ('minval')
+            predicate = LR_CMP_SLT
+            call load_array_linear_element(context, source_index, 0, value, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+            do i = 1, array_size - 1
+                call load_array_linear_element(context, source_index, i, candidate, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
+                        value, condition, error_msg)) return
+                call select_value(context, condition, candidate, value, selected, &
+                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = selected
+            end do
+        case default
+            error_msg = 'unsupported array reduction intrinsic: '//trim(reduction_name)
+            return
+        end select
+
+        call set_empty(error_msg)
+    end subroutine lower_array_reduction_intrinsic
 
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &
@@ -333,6 +597,25 @@
             error_msg = 'whole-array expression index does not reference an AST node'
             return
         end if
+
+        select type (call_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(call_node%name)) then
+                if (same_name(call_node%name, 'shape')) then
+                    call lower_shape_intrinsic_element(arena, call_node, &
+                                                       target_symbol_index, &
+                                                       linear_index, context, &
+                                                       value, error_msg)
+                    return
+                end if
+            else if (call_node%is_intrinsic) then
+                call lower_shape_intrinsic_element(arena, call_node, &
+                                                   target_symbol_index, &
+                                                   linear_index, context, value, &
+                                                   error_msg)
+                return
+            end if
+        end select
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)

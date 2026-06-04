@@ -24,7 +24,8 @@ The direct LIRIC session lowerer covers the subset documented in
 - contained integer/real/logical functions and subroutines with scalar
   args; early `return` inside contained functions and subroutines;
 - fixed-size 1-D integer arrays and rank-2 integer arrays with scalar
-  element access plus whole-array copy and elemental `+`/`-`/`*`, simple
+  element access plus whole-array copy, elemental `+`/`-`/`*`, and the
+  array intrinsics `size`, `shape`, `sum`, `maxval`, and `minval`, simple
   derived types with scalar integer components;
 - single-arm and multi-arm `SELECT CASE` (incl. multi-label and
   `case default`), each arm terminating with `stop`/`return`;

@@ -228,6 +228,29 @@
           call lower_index_intrinsic(arena, node, context, value, error_msg)
           return
       end if
+      if (same_name(node%name, 'size') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_size_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
+      if (same_name(node%name, 'sum') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                               error_msg, 'sum')
+          return
+      end if
+      if (same_name(node%name, 'maxval') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                               error_msg, 'maxval')
+          return
+      end if
+      if (same_name(node%name, 'minval') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                               error_msg, 'minval')
+          return
+      end if
 
       intrinsic_id = i32_intrinsic_id(node%name)
       if (.not. is_contained_i32_function(context, node%name)) then
