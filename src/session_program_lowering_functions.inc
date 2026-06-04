@@ -4,6 +4,10 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        character(len=:), allocatable :: fn_name, fn_result, sb_name
+        integer, allocatable :: body_indices(:), fn_params(:), fn_body(:), &
+                               sb_params(:), sb_body(:)
         integer :: i
 
         context%function_count = 0
@@ -11,39 +15,69 @@
         if (allocated(context%function_value_kinds)) deallocate(context%function_value_kinds)
         if (allocated(context%function_param_counts)) &
             deallocate(context%function_param_counts)
+        if (allocated(context%function_node_indices)) &
+            deallocate(context%function_node_indices)
         allocate(context%function_names(8))
         allocate(context%function_value_kinds(8))
         allocate(context%function_param_counts(8))
+        allocate(context%function_node_indices(8))
         context%function_value_kinds = VALUE_I32
         context%function_param_counts = 0
+        context%function_node_indices = 0
         call set_empty(error_msg)
 
-        select type (program => arena%entries(root_index)%node)
-        type is (program_node)
-            if (.not. allocated(program%body_indices)) return
-            do i = 1, size(program%body_indices)
-                select type (node => arena%entries(program%body_indices(i))%node)
-                type is (function_def_node)
-                    call register_internal_function_name(node, context, &
-                                                         error_msg)
-                    if (len_trim(error_msg) > 0) return
-                type is (subroutine_def_node)
-                    call register_internal_subroutine_name(node, context, &
-                                                           error_msg)
-                    if (len_trim(error_msg) > 0) return
-                type is (module_node)
-                    call register_module_procedures(arena, node, context, &
-                                                     error_msg)
-                    if (len_trim(error_msg) > 0) return
-                end select
-            end do
-        end select
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type == 'module_node' .or. node_type == 'module') return
+        call get_program_body_info(arena, root_index, &
+                                   prog_name, body_indices, ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                call get_function_body_info(arena, body_indices(i), &
+                                            fn_name, fn_params, fn_body, &
+                                            fn_result, ff_error)
+                if (len_trim(ff_error) > 0) then
+                    error_msg = ff_error
+                    return
+                end if
+                ! Create a synthetic function_def_node for register_internal_function_name
+                ! by passing the node_index directly - the register function accesses
+                ! node fields that are available via the query results
+                call register_internal_function_by_index(arena, body_indices(i), &
+                                                         context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                call get_subroutine_body_info(arena, body_indices(i), &
+                                              sb_name, sb_params, sb_body, &
+                                              ff_error)
+                if (len_trim(ff_error) > 0) then
+                    error_msg = ff_error
+                    return
+                end if
+                call register_internal_subroutine_by_index(arena, body_indices(i), &
+                                                           context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'module_node' .or. node_type == 'module') then
+                call register_module_procedures(arena, body_indices(i), context, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
     end subroutine collect_internal_function_names
 
-    subroutine register_internal_subroutine_name(node, context, error_msg)
+    subroutine register_internal_subroutine_name(node, context, error_msg, &
+                                                 node_index)
         type(subroutine_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: node_index
         integer :: next_index
 
         call set_empty(error_msg)
@@ -58,8 +92,47 @@
         else
             context%function_param_counts(next_index) = 0
         end if
+        if (present(node_index)) then
+            context%function_node_indices(next_index) = node_index
+        else
+            context%function_node_indices(next_index) = 0
+        end if
         context%function_count = next_index
     end subroutine register_internal_subroutine_name
+
+    subroutine register_internal_function_by_index(arena, node_index, context, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(function_def_node), pointer :: node
+
+        call set_empty(error_msg)
+        node => get_node_as_function_def(arena, node_index)
+        if (.not. associated(node)) then
+            error_msg = 'internal function index does not reference an AST node'
+            return
+        end if
+        call register_internal_function_name(node, context, error_msg, node_index)
+    end subroutine register_internal_function_by_index
+
+    subroutine register_internal_subroutine_by_index(arena, node_index, context, &
+                                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(subroutine_def_node), pointer :: node
+
+        call set_empty(error_msg)
+        node => get_node_as_subroutine_def(arena, node_index)
+        if (.not. associated(node)) then
+            error_msg = 'internal subroutine index does not reference an AST node'
+            return
+        end if
+        call register_internal_subroutine_name(node, context, error_msg, node_index)
+    end subroutine register_internal_subroutine_by_index
 
     integer function proc_param_count(context, name) result(count)
         ! Declared parameter count of a contained procedure, or -1 if unknown.
@@ -76,10 +149,12 @@
         end do
     end function proc_param_count
 
-    subroutine register_internal_function_name(node, context, error_msg)
+    subroutine register_internal_function_name(node, context, error_msg, &
+                                               node_index)
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: node_index
         integer :: next_index
         integer :: value_kind
         integer :: derived_type_index
@@ -89,7 +164,7 @@
             return
         end if
        call grow_function_names(context)
-        if (contained_function_kind(context, node%name) /= 0) then
+         if (contained_function_kind(context, node%name) /= 0) then
             error_msg = 'duplicate contained function: '//trim(node%name)
             return
         end if
@@ -104,6 +179,11 @@
             context%function_param_counts(next_index) = size(node%param_indices)
         else
             context%function_param_counts(next_index) = 0
+        end if
+        if (present(node_index)) then
+            context%function_node_indices(next_index) = node_index
+        else
+            context%function_node_indices(next_index) = 0
         end if
         context%function_count = next_index
         call set_empty(error_msg)
@@ -223,11 +303,16 @@
             allocate(destination%function_param_counts(8))
             destination%function_param_counts = 0
         end if
+        if (.not. allocated(destination%function_node_indices)) then
+            allocate(destination%function_node_indices(8))
+            destination%function_node_indices = 0
+        end if
         do i = 1, source%function_count
             call ensure_function_names_capacity(destination, i)
             destination%function_names(i) = source%function_names(i)
             destination%function_value_kinds(i) = source%function_value_kinds(i)
             destination%function_param_counts(i) = source%function_param_counts(i)
+            destination%function_node_indices(i) = source%function_node_indices(i)
         end do
         destination%function_count = source%function_count
     end subroutine copy_internal_function_names
@@ -304,24 +389,65 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        integer, allocatable :: body_indices(:)
         integer :: i
 
         call set_empty(error_msg)
-        select type (program => arena%entries(root_index)%node)
-        type is (program_node)
-            if (.not. allocated(program%body_indices)) return
-            do i = 1, size(program%body_indices)
-                select type (node => arena%entries(program%body_indices(i))%node)
-                type is (function_def_node)
-                    call lower_scalar_function(arena, node, context, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                type is (subroutine_def_node)
-                    call lower_void_subroutine(arena, node, context, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                end select
-            end do
-        end select
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type == 'module_node' .or. node_type == 'module') return
+        call get_program_body_info(arena, root_index, prog_name, body_indices, &
+                                   ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (size(body_indices) == 0) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                call lower_one_internal_function(arena, body_indices(i), context, &
+                                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
     end subroutine lower_internal_functions
+
+    subroutine lower_one_internal_function(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'internal procedure index does not reference an AST node'
+            return
+        end if
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) then
+                error_msg = 'internal procedure index does not reference a function node'
+                return
+            end if
+            call lower_scalar_function(arena, fn_node, context, error_msg)
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) then
+                error_msg = 'internal procedure index does not reference a subroutine node'
+                return
+            end if
+            call lower_void_subroutine(arena, sb_node, context, error_msg)
+        end if
+    end subroutine lower_one_internal_function
 
     subroutine lower_module_procedures(arena, root_index, context, error_msg)
         ! Emit module-defined procedures (of a module+program unit) under their
@@ -333,26 +459,37 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, mod_name, ff_error, node_type
+        integer, allocatable :: body_indices(:), decl_indices(:), proc_indices(:)
         integer :: i, p
 
         call set_empty(error_msg)
-        select type (program => arena%entries(root_index)%node)
-        type is (program_node)
-            if (.not. allocated(program%body_indices)) return
-            do i = 1, size(program%body_indices)
-                select type (mod_node => arena%entries(program%body_indices(i))%node)
-                type is (module_node)
-                    if (.not. allocated(mod_node%name)) cycle
-                    if (.not. allocated(mod_node%procedure_indices)) cycle
-                    do p = 1, size(mod_node%procedure_indices)
-                        call lower_one_module_procedure(arena, &
-                            mod_node%procedure_indices(p), trim(mod_node%name), &
-                            context, error_msg)
-                        if (len_trim(error_msg) > 0) return
-                    end do
-                end select
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type == 'module_node' .or. node_type == 'module') return
+        call get_program_body_info(arena, root_index, prog_name, body_indices, &
+                                   ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (size(body_indices) == 0) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
+            call get_module_body_info(arena, body_indices(i), mod_name, &
+                                      decl_indices, proc_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            if (size(proc_indices) == 0) cycle
+            do p = 1, size(proc_indices)
+                call lower_one_module_procedure(arena, proc_indices(p), &
+                                                trim(mod_name), context, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
             end do
-        end select
+        end do
     end subroutine lower_module_procedures
 
     subroutine lower_one_module_procedure(arena, node_index, module_name, &
@@ -362,21 +499,27 @@
         character(len=*), intent(in) :: module_name
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, node_index)) return
-        select type (node => arena%entries(node_index)%node)
-        type is (function_def_node)
-            if (.not. allocated(node%name)) return
-            if (procedure_has_nested_contains(arena, node%body_indices)) return
-            call lower_scalar_function(arena, node, context, error_msg, &
-                module_procedure_mangled(module_name, node%name))
-        type is (subroutine_def_node)
-            if (.not. allocated(node%name)) return
-            if (procedure_has_nested_contains(arena, node%body_indices)) return
-            call lower_void_subroutine(arena, node, context, error_msg, &
-                module_procedure_mangled(module_name, node%name))
-        end select
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
+            call lower_scalar_function(arena, fn_node, context, error_msg, &
+                module_procedure_mangled(module_name, fn_node%name))
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (procedure_has_nested_contains(arena, sb_node%body_indices)) return
+            call lower_void_subroutine(arena, sb_node, context, error_msg, &
+                module_procedure_mangled(module_name, sb_node%name))
+        end if
     end subroutine lower_one_module_procedure
 
     logical function procedure_has_nested_contains(arena, body_indices)
@@ -385,72 +528,85 @@
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: body_indices(:)
         integer :: i
+        character(len=:), allocatable :: node_type
 
         procedure_has_nested_contains = .false.
         if (.not. allocated(body_indices)) return
         do i = 1, size(body_indices)
             if (.not. node_exists(arena, body_indices(i))) cycle
-            if (trim(get_node_type_at(arena, body_indices(i))) == 'contains') then
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'contains_node' .or. node_type == 'contains' .or. &
+                node_type == 'function_def_node' .or. &
+                node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
                 procedure_has_nested_contains = .true.
                 return
             end if
-            select type (node => arena%entries(body_indices(i))%node)
-            type is (function_def_node)
-                procedure_has_nested_contains = .true.
-                return
-            type is (subroutine_def_node)
-                procedure_has_nested_contains = .true.
-                return
-            end select
         end do
     end function procedure_has_nested_contains
 
-    subroutine register_module_procedures(arena, mod_node, context, error_msg)
+    subroutine register_module_procedures(arena, module_index, context, error_msg)
         ! Register module procedures by Fortran name for call dispatch; skip
         ! duplicate names across modules (mangling keeps them distinct) and
         ! procedures with nested internals (not lowered).
         type(ast_arena_t), intent(in) :: arena
-        type(module_node), intent(in) :: mod_node
+        integer, intent(in) :: module_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mod_name, ff_error, node_type
+        integer, allocatable :: declaration_indices(:), procedure_indices(:)
         integer :: p
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         call set_empty(error_msg)
-        if (.not. allocated(mod_node%procedure_indices)) return
-        do p = 1, size(mod_node%procedure_indices)
-            if (.not. node_exists(arena, mod_node%procedure_indices(p))) cycle
-            select type (node => arena%entries(mod_node%procedure_indices(p))%node)
-            type is (function_def_node)
-                if (.not. allocated(node%name)) cycle
-                if (contained_function_kind(context, node%name) /= 0) cycle
-                if (procedure_has_nested_contains(arena, node%body_indices)) cycle
-                call register_internal_function_name(node, context, error_msg)
+        call get_module_body_info(arena, module_index, mod_name, &
+                                  declaration_indices, procedure_indices, &
+                                  ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (size(procedure_indices) == 0) return
+        do p = 1, size(procedure_indices)
+            if (.not. node_exists(arena, procedure_indices(p))) cycle
+            node_type = get_node_type_at(arena, procedure_indices(p))
+            if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, procedure_indices(p))
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (contained_function_kind(context, fn_node%name) /= 0) cycle
+                if (procedure_has_nested_contains(arena, fn_node%body_indices)) cycle
+                call register_internal_function_name(fn_node, context, error_msg, &
+                                                     procedure_indices(p))
                 if (len_trim(error_msg) > 0) return
-            type is (subroutine_def_node)
-                if (.not. allocated(node%name)) cycle
-                if (contained_function_kind(context, node%name) /= 0) cycle
-                if (procedure_has_nested_contains(arena, node%body_indices)) cycle
-                call register_internal_subroutine_name(node, context, error_msg)
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, procedure_indices(p))
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (contained_function_kind(context, sb_node%name) /= 0) cycle
+                if (procedure_has_nested_contains(arena, sb_node%body_indices)) cycle
+                call register_internal_subroutine_name(sb_node, context, error_msg, &
+                                                       procedure_indices(p))
                 if (len_trim(error_msg) > 0) return
-            end select
+            end if
         end do
     end subroutine register_module_procedures
 
     logical function is_internal_procedure_entry(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        character(len=:), allocatable :: node_type
 
         is_internal_procedure_entry = .false.
         if (.not. node_exists(arena, node_index)) return
-        select type (node => arena%entries(node_index)%node)
-        type is (function_def_node)
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def' .or. &
+            node_type == 'subroutine_def_node' .or. node_type == 'subroutine_def' .or. &
+            node_type == 'contains_node' .or. node_type == 'contains') then
             is_internal_procedure_entry = .true.
-        type is (subroutine_def_node)
-            is_internal_procedure_entry = .true.
-        end select
-        if (.not. is_internal_procedure_entry) then
-            is_internal_procedure_entry = &
-                trim(get_node_type_at(arena, node_index)) == 'contains'
         end if
     end function is_internal_procedure_entry
 
@@ -743,40 +899,49 @@
         integer, intent(in) :: param_pos
         integer :: n
         character(len=:), allocatable :: name, name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         callee_dummy_char_writable = .false.
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (subroutine_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
-                        if (.not. allocated(node%param_indices)) return
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (allocated(sb_node%name)) then
+                    if (same_name(sb_node%name, callee_name)) then
+                        if (.not. allocated(sb_node%param_indices)) return
                         if (param_pos < 1 .or. &
-                            param_pos > size(node%param_indices)) return
-                        call parameter_name(arena, node%param_indices(param_pos), &
+                            param_pos > size(sb_node%param_indices)) return
+                        call parameter_name(arena, sb_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
                         callee_dummy_char_writable = dummy_char_is_writable(arena, &
-                            node%body_indices, name)
+                            sb_node%body_indices, name)
                         return
                     end if
                 end if
-            type is (function_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
-                        if (.not. allocated(node%param_indices)) return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (allocated(fn_node%name)) then
+                    if (same_name(fn_node%name, callee_name)) then
+                        if (.not. allocated(fn_node%param_indices)) return
                         if (param_pos < 1 .or. &
-                            param_pos > size(node%param_indices)) return
-                        call parameter_name(arena, node%param_indices(param_pos), &
+                            param_pos > size(fn_node%param_indices)) return
+                        call parameter_name(arena, fn_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
                         callee_dummy_char_writable = dummy_char_is_writable(arena, &
-                            node%body_indices, name)
+                            fn_node%body_indices, name)
                         return
                     end if
                 end if
-            end select
+            end if
         end do
     end function callee_dummy_char_writable
 
@@ -821,40 +986,49 @@
         integer, intent(in) :: param_pos
         integer :: n
         character(len=:), allocatable :: name, name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         callee_dummy_is_class_star = .false.
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (subroutine_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
-                        if (.not. allocated(node%param_indices)) return
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (allocated(sb_node%name)) then
+                    if (same_name(sb_node%name, callee_name)) then
+                        if (.not. allocated(sb_node%param_indices)) return
                         if (param_pos < 1 .or. &
-                            param_pos > size(node%param_indices)) return
-                        call parameter_name(arena, node%param_indices(param_pos), &
+                            param_pos > size(sb_node%param_indices)) return
+                        call parameter_name(arena, sb_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
                         callee_dummy_is_class_star = dummy_is_class_star(arena, &
-                            node%body_indices, name)
+                            sb_node%body_indices, name)
                         return
                     end if
                 end if
-            type is (function_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
-                        if (.not. allocated(node%param_indices)) return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (allocated(fn_node%name)) then
+                    if (same_name(fn_node%name, callee_name)) then
+                        if (.not. allocated(fn_node%param_indices)) return
                         if (param_pos < 1 .or. &
-                            param_pos > size(node%param_indices)) return
-                        call parameter_name(arena, node%param_indices(param_pos), &
+                            param_pos > size(fn_node%param_indices)) return
+                        call parameter_name(arena, fn_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
                         callee_dummy_is_class_star = dummy_is_class_star(arena, &
-                            node%body_indices, name)
+                            fn_node%body_indices, name)
                         return
                     end if
                 end if
-            end select
+            end if
         end do
     end function callee_dummy_is_class_star
 
@@ -866,28 +1040,37 @@
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
         integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         callee_dummy_is_character = .false.
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (subroutine_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (allocated(sb_node%name)) then
+                    if (same_name(sb_node%name, callee_name)) then
                         callee_dummy_is_character = param_at_is_character(arena, &
-                            node%param_indices, node%body_indices, param_pos)
+                            sb_node%param_indices, sb_node%body_indices, param_pos)
                         return
                     end if
                 end if
-            type is (function_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, callee_name)) then
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (allocated(fn_node%name)) then
+                    if (same_name(fn_node%name, callee_name)) then
                         callee_dummy_is_character = param_at_is_character(arena, &
-                            node%param_indices, node%body_indices, param_pos)
+                            fn_node%param_indices, fn_node%body_indices, param_pos)
                         return
                     end if
                 end if
-            end select
+            end if
         end do
     end function callee_dummy_is_character
 
@@ -926,23 +1109,27 @@
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
         character(len=:), allocatable :: module_name
+        character(len=:), allocatable :: node_type, mod_name, ff_error
+        integer, allocatable :: declaration_indices(:), procedure_indices(:)
         integer :: n, p
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         call set_empty(module_name)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
-            select type (mod_node => arena%entries(n)%node)
-            type is (module_node)
-                if (.not. allocated(mod_node%name)) cycle
-                if (.not. allocated(mod_node%procedure_indices)) cycle
-                do p = 1, size(mod_node%procedure_indices)
-                    if (procedure_node_named(arena, &
-                            mod_node%procedure_indices(p), fortran_name)) then
-                        module_name = trim(mod_node%name)
-                        return
-                    end if
-                end do
-            end select
+            node_type = get_node_type_at(arena, n)
+            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
+            call get_module_body_info(arena, n, mod_name, declaration_indices, &
+                                      procedure_indices, ff_error)
+            if (len_trim(ff_error) > 0) cycle
+            if (size(procedure_indices) == 0) cycle
+            do p = 1, size(procedure_indices)
+                if (procedure_node_named(arena, procedure_indices(p), fortran_name)) then
+                    module_name = trim(mod_name)
+                    return
+                end if
+            end do
         end do
     end function procedure_module
 
@@ -950,17 +1137,25 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         procedure_node_named = .false.
         if (.not. node_exists(arena, node_index)) return
-        select type (node => arena%entries(node_index)%node)
-        type is (function_def_node)
-            if (allocated(node%name)) procedure_node_named = &
-                same_name(node%name, fortran_name)
-        type is (subroutine_def_node)
-            if (allocated(node%name)) procedure_node_named = &
-                same_name(node%name, fortran_name)
-        end select
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (associated(fn_node) .and. allocated(fn_node%name)) then
+                procedure_node_named = same_name(fn_node%name, fortran_name)
+            end if
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (associated(sb_node) .and. allocated(sb_node%name)) then
+                procedure_node_named = same_name(sb_node%name, fortran_name)
+            end if
+        end if
     end function procedure_node_named
 
     function module_procedure_mangled(module_name, proc_name) result(mangled)
@@ -979,7 +1174,10 @@
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
         character(len=:), allocatable :: emit_name, module_name
+        character(len=:), allocatable :: node_type
         integer :: n
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         module_name = procedure_module(arena, fortran_name)
         if (len_trim(module_name) > 0) then
@@ -989,24 +1187,28 @@
         emit_name = trim(fortran_name)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (subroutine_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, fortran_name)) then
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (associated(sb_node) .and. allocated(sb_node%name)) then
+                    if (same_name(sb_node%name, fortran_name)) then
                         emit_name = procedure_emit_name(fortran_name, &
-                                                        node%bind_c_clause)
+                                                        sb_node%bind_c_clause)
                         return
                     end if
                 end if
-            type is (function_def_node)
-                if (allocated(node%name)) then
-                    if (same_name(node%name, fortran_name)) then
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (associated(fn_node) .and. allocated(fn_node%name)) then
+                    if (same_name(fn_node%name, fortran_name)) then
                         emit_name = procedure_emit_name(fortran_name, &
-                                                        node%bind_c_clause)
+                                                        fn_node%bind_c_clause)
                         return
                     end if
                 end if
-            end select
+            end if
         end do
     end function call_emit_name
 

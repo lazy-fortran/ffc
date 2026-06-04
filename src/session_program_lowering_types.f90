@@ -150,6 +150,7 @@ module session_program_lowering_types
         character(len=64), allocatable :: function_names(:)
         integer, allocatable :: function_value_kinds(:)
         integer, allocatable :: function_param_counts(:)
+        integer, allocatable :: function_node_indices(:)
         integer :: function_count = 0
         type(external_procedure_t), allocatable :: external_procedures(:)
         integer :: external_procedure_count = 0

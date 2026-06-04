@@ -107,7 +107,12 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
   use ffc_strings, only: set_empty
-    use ffc_fortfront_queries, only: node_exists, get_node_type_at
+    use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
+                                     get_program_body_info, get_module_body_info, &
+                                     get_function_body_info, get_subroutine_body_info
+    use fortfront_utils, only: get_node_as_function_def, &
+                               get_node_as_program, &
+                               get_node_as_subroutine_def
     use fortfront, only: get_node_line, get_node_column
    use session_program_lowering_types, only: lowering_context_t, &
                                                 branch_result_t, symbol_t, &
@@ -309,22 +314,23 @@ contains
             error_msg = 'FortFront root index does not reference an AST node'
             return
         end if
-        select type (program => arena%entries(root_index)%node)
-        type is (program_node)
+        if (get_node_type_at(arena, root_index) == 'program_node' .or. &
+            get_node_type_at(arena, root_index) == 'program') then
             continue
-        type is (module_node)
+        else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
+                 get_node_type_at(arena, root_index) == 'module') then
             ! A bare module unit is accepted only when it declares no symbols;
             ! lower_program_return walks the body and emits targeted diagnostics
             ! for module-defined procedures, types, and constants.
             continue
-        class default
+        else
             call unsupported_feature_error('program unit', &
                                            get_node_line(arena, root_index), &
                                            get_node_column(arena, root_index), &
                                            'direct LIRIC session only lowers '// &
                                            'top-level programs', error_msg)
             return
-        end select
+        end if
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)
@@ -333,6 +339,9 @@ contains
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: program_name, mod_name, ff_error
+        integer, allocatable :: body_indices(:), mod_declaration_indices(:), &
+                                mod_procedure_indices(:)
         integer :: i
         integer :: j
         logical :: has_executable_statements
@@ -342,48 +351,67 @@ contains
         has_executable_statements = .false.
         has_nested_program = .false.
         call set_empty(error_msg)
-        select type (program => arena%entries(root_index)%node)
-        type is (program_node)
-            if (.not. allocated(program%body_indices)) return
+        if (get_node_type_at(arena, root_index) == 'program_node' .or. &
+            get_node_type_at(arena, root_index) == 'program') then
+            call get_program_body_info(arena, root_index, &
+                                       program_name, body_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            if (.not. allocated(body_indices)) return
             ! Check if there's a program_node in the body (multi-unit source)
             has_nested_program = .false.
-            do i = 1, size(program%body_indices)
-                if (is_program_node(arena, program%body_indices(i))) then
+            do i = 1, size(body_indices)
+                if (is_program_node(arena, body_indices(i))) then
                     has_nested_program = .true.
                     exit
                 end if
             end do
             ! Process body elements
-            do i = 1, size(program%body_indices)
-                if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
-                if (is_module_node(arena, program%body_indices(i))) then
+            do i = 1, size(body_indices)
+                if (is_internal_procedure_entry(arena, body_indices(i))) cycle
+                if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
+                    get_node_type_at(arena, body_indices(i)) == 'module') then
                     ! Skip module nodes only if there's a nested program
                     if (.not. has_nested_program) then
                         call unsupported_feature_error('module definition', &
-                            arena%entries(program%body_indices(i))%node%line, &
-                            arena%entries(program%body_indices(i))%node%column, &
+                            arena%entries(body_indices(i))%node%line, &
+                            arena%entries(body_indices(i))%node%column, &
                             'direct LIRIC session only supports modules as USE '// &
                             'targets, not as top-level program units', error_msg)
                         return
                     end if
                     cycle
                 end if
-                call lower_statement(arena, program%body_indices(i), context, &
+                call lower_statement(arena, body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (context%current_block_terminated) return
                 has_executable_statements = .true.
             end do
-        type is (module_node)
-            call lower_module_unit(arena, program, error_msg)
-        class default
+        else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
+                 get_node_type_at(arena, root_index) == 'module') then
+            call get_module_body_info(arena, root_index, &
+                                      mod_name, mod_declaration_indices, &
+                                      mod_procedure_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            call lower_module_unit(arena, mod_name, mod_declaration_indices, &
+                                   mod_procedure_indices, error_msg)
+        else
             error_msg = 'ffc direct-session lowering only supports a program node'
-        end select
+        end if
     end subroutine lower_program_return
 
-    subroutine lower_module_unit(arena, mod_node, error_msg)
+    subroutine lower_module_unit(arena, mod_name, declaration_indices, &
+                                 procedure_indices, error_msg)
         type(ast_arena_t), intent(in) :: arena
-        type(module_node), intent(in) :: mod_node
+        character(len=*), intent(in) :: mod_name
+        integer, intent(in) :: declaration_indices(:)
+        integer, intent(in) :: procedure_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
         integer :: i
@@ -393,31 +421,39 @@ contains
         ! use sites and the types are layout-only. Module variables that need
         ! storage and module procedures land in follow-up issues (#150, #164,
         ! #119). An empty module is a no-op.
-        if (allocated(mod_node%procedure_indices)) then
-            if (size(mod_node%procedure_indices) > 0) then
+        do i = 1, size(procedure_indices)
+            if (.not. node_exists(arena, procedure_indices(i))) cycle
+            node_type = get_node_type_at(arena, procedure_indices(i))
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def' .or. &
+                node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
                 call unsupported_feature_error('module-defined procedure', &
-                    mod_node%line, mod_node%column, &
+                    get_node_line(arena, procedure_indices(i)), &
+                    get_node_column(arena, procedure_indices(i)), &
                     'direct LIRIC session does not yet lower module '// &
                     'procedures', error_msg)
                 return
             end if
-        end if
-        if (allocated(mod_node%declaration_indices)) then
-            do i = 1, size(mod_node%declaration_indices)
-                node_type = get_node_type_at(arena, mod_node%declaration_indices(i))
-                if (trim(node_type) == 'implicit_statement') cycle
-                if (trim(node_type) == 'derived_type_def' .or. &
-                    trim(node_type) == 'derived_type') cycle
-                if (module_declaration_is_parameter(arena, &
-                        mod_node%declaration_indices(i))) cycle
+        end do
+        do i = 1, size(declaration_indices)
+            if (.not. node_exists(arena, declaration_indices(i))) cycle
+            node_type = get_node_type_at(arena, declaration_indices(i))
+            if (node_type == 'implicit_statement_node' .or. &
+                node_type == 'implicit_statement' .or. &
+                node_type == 'derived_type_node' .or. &
+                node_type == 'derived_type') cycle
+            if (node_type == 'declaration') then
+                if (module_declaration_is_parameter(arena, declaration_indices(i))) cycle
                 call unsupported_feature_error('module-defined declaration', &
-                    mod_node%line, mod_node%column, &
+                    get_node_line(arena, declaration_indices(i)), &
+                    get_node_column(arena, declaration_indices(i)), &
                     'direct LIRIC session lowers only module named constants '// &
                     'and derived-type definitions; module variables are not '// &
                     'yet supported', error_msg)
                 return
-            end do
-        end if
+            end if
+        end do
         call set_empty(error_msg)
     end subroutine lower_module_unit
 
@@ -449,6 +485,16 @@ contains
         end if
         if (is_subroutine_call_statement(arena, node_index)) then
             call lower_subroutine_call(arena, node_index, context, error_msg)
+            return
+        end if
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            call set_empty(error_msg)
+            return
+        end if
+        if (node_type == 'program_node' .or. node_type == 'program') then
+            call lower_program_body(arena, get_node_as_program(arena, node_index), &
+                                    context, value, error_msg)
             return
         end if
         select type (node => arena%entries(node_index)%node)
@@ -560,12 +606,6 @@ contains
             call lower_select_type(arena, node, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
-        type is (module_node)
-            ! Module nodes are skipped silently (they're USE targets, not executable)
-            call set_empty(error_msg)
-        type is (program_node)
-            call lower_program_body(arena, node, context, value, error_msg)
-        
         type is (use_statement_node)
             call import_module_derived_types(arena, node, context, error_msg)
         type is (interface_block_node)
@@ -1300,26 +1340,36 @@ contains
         character(len=64), allocatable :: old_names(:)
         integer, allocatable :: old_kinds(:)
         integer, allocatable :: old_counts(:)
+        integer, allocatable :: old_indices(:)
         integer :: new_size
 
         if (context%function_count < size(context%function_names)) return
         old_names = context%function_names
         old_kinds = context%function_value_kinds
         old_counts = context%function_param_counts
+        if (allocated(context%function_node_indices)) &
+            old_indices = context%function_node_indices
         new_size = 2 * size(context%function_names)
         deallocate(context%function_names)
         deallocate(context%function_value_kinds)
         deallocate(context%function_param_counts)
+        if (allocated(context%function_node_indices)) &
+            deallocate(context%function_node_indices)
         allocate(context%function_names(new_size))
         allocate(context%function_value_kinds(new_size))
         allocate(context%function_param_counts(new_size))
+        allocate(context%function_node_indices(new_size))
         context%function_param_counts = 0
+        context%function_node_indices = 0
         context%function_names(1:size(old_names)) = old_names
         context%function_value_kinds(1:size(old_kinds)) = old_kinds
         context%function_param_counts(1:size(old_counts)) = old_counts
+        if (allocated(old_indices)) &
+            context%function_node_indices(1:size(old_indices)) = old_indices
         deallocate(old_names)
         deallocate(old_kinds)
         deallocate(old_counts)
+        if (allocated(old_indices)) deallocate(old_indices)
     end subroutine grow_function_names
 
     integer function find_symbol(context, name) result(index)
