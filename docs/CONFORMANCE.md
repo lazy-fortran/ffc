@@ -1,21 +1,22 @@
 # Conformance gauntlet
 
-Drive external Fortran test corpora through the full `ffc` pipeline
-(compile to a native binary, run it, compare against a `gfortran -w`
-reference) and produce an xfail-style report.
+Drive external Fortran test corpora through the full `ffc` pipeline.
+The runner compiles each source to a native binary, runs it, compares
+standard Fortran output against `gfortran -w` when gfortran accepts the
+source, and writes an xfail-style report.
 
 ## No-vendoring rule
 
 The runner never copies source files from external suites into this
-repository. Only manifests (lists of filenames plus expected
-disposition) live here. External checkouts are referenced by path.
+repository. Only xfail manifests live here. External checkouts are
+referenced by path.
 
 ## Suites
 
 | Suite | Source | Extension | Reference |
 |---|---|---|---|
 | `fortfront-f90` | FortFront standard-mode examples | `.f90` | `gfortran -w` |
-| `fortfront-lf` | FortFront lazy-mode examples | `.lf` | ffc only (gfortran cannot compile lazy Fortran) |
+| `fortfront-lf` | FortFront lazy-mode examples | `.lf`, `.f90` | ffc only (gfortran cannot compile lazy Fortran) |
 | `lfortran` | LFortran integration tests | `.f90` | `gfortran -w` |
 | `gfortran-dg` | GCC gfortran.dg testsuite | `.f90` | `gfortran -w` |
 
@@ -31,8 +32,7 @@ Defaults assume sibling directories under the parent of the ffc checkout.
 | `FFC_GFORTRAN_DG_DIR` | `../gcc/gcc/testsuite/gfortran.dg` | `gfortran-dg` |
 
 A suite whose root directory does not exist prints `SKIP: <suite> not
-found at <path>` and exits 0. This keeps CI green when a suite is not
-checked out locally.
+found at <path>` and exits 0. Optional external suites may stay absent.
 
 ## Running the gauntlet
 
@@ -85,20 +85,38 @@ Fields:
 A final SUMMARY record closes the file:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"total":21}
 ```
 
 ## Disposition states
 
 | State | Meaning | Gate impact |
 |---|---|---|
-| `PASS` | ffc built, ran, and matched reference | None |
+| `PASS` | ffc built and ran; standard files matched gfortran when gfortran accepted the source | None |
 | `XFAIL` | Listed in xfail manifest; ffc failed as expected | None |
 | `XPASS` | Listed in xfail manifest; ffc passed unexpectedly | Visible in summary; promote the entry |
 | `FAIL` | Not in xfail manifest; ffc failed or mismatched | Fails the gate |
 
 The runner exits nonzero if any `FAIL` record exists. `XFAIL` and
 `XPASS` never cause a nonzero exit.
+
+The `noref` summary count is the number of standard Fortran files where
+`gfortran -w` rejected the source after ffc compiled and ran it. These
+records are `PASS` unless the file is still listed in the xfail manifest,
+in which case they are `XPASS`.
+
+## FortFront corpus gate
+
+The fpm test `test_fortfront_corpus_conformance` runs the full
+`fortfront-f90` and `fortfront-lf` suites through the gauntlet with
+reports under `/tmp`. Passing files need no manifest entry. A new
+FortFront example fails the ffc test until ffc supports it or its
+basename is added to the matching xfail manifest.
+
+Current xfail manifests:
+
+- `test/conformance/xfail_fortfront_f90.txt`
+- `test/conformance/xfail_fortfront_lf.txt`
 
 ## xfail promotion workflow
 
@@ -127,8 +145,8 @@ LIBRARY_PATH=../liric/build fpm test test_conformance_gauntlet_smoke
 
 ## Shared helpers
 
-`scripts/lib_conformance.sh` provides shell functions shared between
-the gauntlet runner and the FortFront corpus conformance test:
+`scripts/lib_conformance.sh` provides shell functions used by the
+gauntlet runner:
 
 - `find_ffc`: resolve ffc binary path
 - `compile_with_ffc`: compile through ffc

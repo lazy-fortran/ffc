@@ -111,10 +111,14 @@ diagnostic. Only single-variable, one-dimensional, default-lower-bound
 
 - Scalar `print` lowers to external C `printf`/`snprintf` calls.
 - List-directed record layout: one separating blank is written before every
-  value. The first blank also serves as the record's carriage control. No
+  value. The first blank is the record's carriage control. No
   blank is written between two consecutive character values, so they print
   concatenated (matching gfortran). Each value field below carries no leading
   blank of its own; a trailing newline closes the record.
+- The FortFront standard-example corpus checks stdout and exit status
+  byte-for-byte against `gfortran -w` for every example gfortran accepts.
+  Files gfortran rejects are counted as `NOREF` by the conformance runner and
+  still must compile and run through ffc.
 - The per-value format globals are:
   - integer/logical: `%11d` for integers. The field plus its leading separator
     blank reproduce gfortran's default list-directed `integer(4)` width of 12.

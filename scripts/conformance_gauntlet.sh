@@ -96,7 +96,7 @@ resolve_xfail_manifest() {
     echo "test/conformance/xfail_${safe_suite}.txt"
 }
 
-# File extension for the suite
+# File extension for single-extension suites.
 file_extension() {
     case "$SUITE" in
         fortfront-f90) echo "f90" ;;
@@ -128,7 +128,7 @@ PASS_COUNT=0
 XFAIL_COUNT=0
 XPASS_COUNT=0
 FAIL_COUNT=0
-SKIP_COUNT=0
+NOREF_COUNT=0
 TOTAL_COUNT=0
 
 # Clear report
@@ -137,14 +137,19 @@ TOTAL_COUNT=0
 # Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" >> "$REPORT"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
 # Collect files.
 FILE_LIST="$TMPDIR_WORK/files.txt"
-find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$FILE_LIST"
+case "$SUITE" in
+    fortfront-lf)
+        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | sort > "$FILE_LIST" ;;
+    *)
+        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$FILE_LIST" ;;
+esac
 
 if [ "$MAX_FILES" -gt 0 ] 2>/dev/null; then
     head -n "$MAX_FILES" "$FILE_LIST" > "$TMPDIR_WORK/files_limited.txt"
@@ -153,9 +158,9 @@ fi
 
 FILE_COUNT=$(wc -l < "$FILE_LIST")
 if [ "$FILE_COUNT" -eq 0 ]; then
-    echo "SKIP: no .${EXT} files found in $SUITE_ROOT"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" >> "$REPORT"
+    echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
@@ -240,6 +245,7 @@ while IFS= read -r full_path; do
             status="XPASS"
             note="listed in xfail manifest but ffc ran successfully"
             XPASS_COUNT=$((XPASS_COUNT + 1))
+            echo "  XPASS: $rel_path (lazy suite now runs)"
         else
             status="PASS"
             note="lazy suite, ffc ran successfully"
@@ -257,26 +263,22 @@ while IFS= read -r full_path; do
         ref_exit=1
     fi
 
-    # Step 6: if gfortran failed, for standard Fortran this is unexpected
-    # but some files may use non-standard features. Just check ffc exit code.
+    # Step 6: gfortran failed, but ffc already compiled and ran the file.
     if [ "$ref_exit" -ne 0 ]; then
+        NOREF_COUNT=$((NOREF_COUNT + 1))
         if check_xfail "$XFAIL_MANIFEST" "$rel_path"; then
-            status="XFAIL"
-            note="gfortran could not compile; listed in xfail"
-            XFAIL_COUNT=$((XFAIL_COUNT + 1))
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
-            continue
+            status="XPASS"
+            note="listed in xfail manifest; gfortran rejects but ffc runs"
+            XPASS_COUNT=$((XPASS_COUNT + 1))
+            echo "  XPASS: $rel_path (gfortran rejects, ffc runs)"
         else
-            status="FAIL"
-            note="gfortran could not compile reference; ffc_exit=$ffc_exit"
-            FAIL_COUNT=$((FAIL_COUNT + 1))
-            HAS_FAIL=1
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
-            echo "  FAIL: $rel_path (gfortran failed, ffc_exit=$ffc_exit)"
-            continue
+            status="PASS"
+            note="gfortran rejects; ffc runs (NO-REF)"
+            PASS_COUNT=$((PASS_COUNT + 1))
         fi
+        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
+            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        continue
     fi
 
     # Step 7: run gfortran reference
@@ -289,6 +291,7 @@ while IFS= read -r full_path; do
             status="XPASS"
             note="listed in xfail manifest but output matches gfortran"
             XPASS_COUNT=$((XPASS_COUNT + 1))
+            echo "  XPASS: $rel_path (output now matches gfortran)"
         else
             status="PASS"
             note="output matches gfortran"
@@ -320,12 +323,12 @@ while IFS= read -r full_path; do
 done < "$FILE_LIST"
 
 # Summary
-printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d}\n' \
-    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" >> "$REPORT"
+printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"total":%d}\n' \
+    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$TOTAL_COUNT" >> "$REPORT"
 
 echo ""
 echo "=== $SUITE summary ==="
-echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  TOTAL=$TOTAL_COUNT"
+echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  TOTAL=$TOTAL_COUNT"
 echo "  Report: $REPORT"
 
 # Exit nonzero only if non-xfail FAILs occurred

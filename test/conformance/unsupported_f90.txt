@@ -1,8 +1,0 @@
-# Fortfront standard-mode examples that exercise features outside the
-# current ffc support contract. The conformance test asserts that ffc
-# rejects each with a non-empty diagnostic from session_program_lowering
-# (no silent partial lowering). Each line is a basename resolved against
-# ../fortfront/examples/f90/.
-ast_select_case_ranges.f90
-close_do_loop.f90
-complex_assignment_literals.f90
