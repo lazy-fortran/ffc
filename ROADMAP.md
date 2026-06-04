@@ -39,7 +39,8 @@ Covered features and the public claim live in
 - contained integer / real / logical functions and subroutines, including
   early `return`;
 - fixed-size 1-D integer arrays and rank-2 integer arrays with scalar
-  element access, whole-array copy, elemental `+`/`-`/`*`, and the array
+  element access, array sections with compile-time integer bounds as
+  rvalues, whole-array copy, elemental `+`/`-`/`*`, and the array
   intrinsics `size`, `shape`, `sum`, `maxval`, and `minval`; simple
   derived types with scalar integer components;
 - minimal `print *, expr`, compound formatted `print fmt, items` with literal

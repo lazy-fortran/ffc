@@ -101,6 +101,22 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: allocatable_descriptor_address
     end type symbol_t
 
+    type, public :: array_section_info_t
+        character(len=64) :: source_name = ''
+        integer :: source_index = 0
+        integer :: source_rank = 0
+        integer :: result_rank = 0
+        integer :: kept_dims(2) = 0
+        logical :: keep_dim(2) = .false.
+        integer(c_int64_t) :: source_lowers(2) = 0_c_int64_t
+        integer(c_int64_t) :: source_sizes(2) = 0_c_int64_t
+        integer(c_int64_t) :: section_lowers(2) = 0_c_int64_t
+        integer(c_int64_t) :: section_uppers(2) = 0_c_int64_t
+        integer(c_int64_t) :: section_strides(2) = 1_c_int64_t
+        integer(c_int64_t) :: section_extents(2) = 0_c_int64_t
+        integer(c_int64_t) :: scalar_indices(2) = 0_c_int64_t
+    end type array_section_info_t
+
     type, public :: derived_type_info_t
         character(len=64) :: name = ''
         integer :: component_count = 0

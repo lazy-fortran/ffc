@@ -26,6 +26,15 @@
         ! one exception: no blank is written between two consecutive character
         ! values, so they print concatenated.
         expr_count = size(node%expression_indices)
+        if (expr_count == 1) then
+            select type (section_node => arena%entries( &
+                    node%expression_indices(1))%node)
+            type is (array_slice_node)
+                call lower_array_section_print(arena, section_node, context, &
+                                               error_msg)
+                return
+            end select
+        end if
         prev_is_char = .false.
         do i = 1, expr_count
             cur_is_char = char_print_item(arena, node%expression_indices(i), &

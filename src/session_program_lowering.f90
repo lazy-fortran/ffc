@@ -2,7 +2,8 @@ module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
                                                                               c_int64_t
     use ast_base, only: LITERAL_INTEGER
-    use ast_nodes_bounds, only: array_slice_node, range_expression_node
+    use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
+                                range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
                               pointer_assignment_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
@@ -122,8 +123,9 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                get_node_as_program, &
                                get_node_as_subroutine_def
     use fortfront, only: get_node_line, get_node_column
-   use session_program_lowering_types, only: lowering_context_t, &
+    use session_program_lowering_types, only: lowering_context_t, &
                                                 branch_result_t, symbol_t, &
+                                                array_section_info_t, &
                                                 derived_type_info_t, &
                                                 module_exports_t, &
                                                 external_procedure_t, &

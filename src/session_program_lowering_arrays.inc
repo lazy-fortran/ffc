@@ -527,7 +527,8 @@
         case ('sum')
             value = i32_immediate(context%session, 0_c_int64_t)
             do i = 0, array_size - 1
-                call load_array_linear_element(context, source_index, i, candidate, &
+                call load_array_linear_element(context, source_index, &
+                                               int(i, c_int64_t), candidate, &
                                                error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_i32_binary(context%session, LR_OP_ADD, value, &
@@ -536,11 +537,12 @@
             end do
         case ('maxval')
             predicate = LR_CMP_SGT
-            call load_array_linear_element(context, source_index, 0, value, &
-                                           error_msg)
+            call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                           value, error_msg)
             if (len_trim(error_msg) > 0) return
             do i = 1, array_size - 1
-                call load_array_linear_element(context, source_index, i, candidate, &
+                call load_array_linear_element(context, source_index, &
+                                               int(i, c_int64_t), candidate, &
                                                error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
@@ -552,11 +554,12 @@
             end do
         case ('minval')
             predicate = LR_CMP_SLT
-            call load_array_linear_element(context, source_index, 0, value, &
-                                           error_msg)
+            call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                           value, error_msg)
             if (len_trim(error_msg) > 0) return
             do i = 1, array_size - 1
-                call load_array_linear_element(context, source_index, i, candidate, &
+                call load_array_linear_element(context, source_index, &
+                                               int(i, c_int64_t), candidate, &
                                                error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
@@ -573,6 +576,415 @@
 
         call set_empty(error_msg)
     end subroutine lower_array_reduction_intrinsic
+
+    subroutine describe_array_section(arena, slice_node, context, info, &
+                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lowering_context_t), intent(in) :: context
+        type(array_section_info_t), intent(out) :: info
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_index
+        integer :: source_rank
+        integer :: dim
+        integer :: bounds_index
+        integer :: kept_dim
+        integer(c_int64_t) :: lower_value
+        integer(c_int64_t) :: upper_value
+        integer(c_int64_t) :: stride_value
+        integer(c_int64_t) :: scalar_value
+        integer(c_int64_t) :: extent_value
+
+        info%source_name = ''
+        info%source_index = 0
+        info%source_rank = 0
+        info%result_rank = 0
+        info%kept_dims = 0
+        info%keep_dim = .false.
+        info%source_lowers = 0_c_int64_t
+        info%source_sizes = 0_c_int64_t
+        info%section_lowers = 0_c_int64_t
+        info%section_uppers = 0_c_int64_t
+        info%section_strides = 1_c_int64_t
+        info%section_extents = 0_c_int64_t
+        info%scalar_indices = 0_c_int64_t
+
+        call identifier_name(arena, slice_node%array_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol(context, source_name)
+        if (source_index <= 0) then
+            error_msg = 'array section base was not declared: '//trim(source_name)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            error_msg = 'array section requires an array: '//trim(source_name)
+            return
+        end if
+        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
+            error_msg = 'array sections only support integer arrays'
+            return
+        end if
+
+        source_rank = context%symbols(source_index)%array_rank
+        if (source_rank < 1 .or. source_rank > 2) then
+            call unsupported_feature_error('array section', slice_node%line, &
+                                           slice_node%column, &
+                                           'direct LIRIC session supports at '// &
+                                           'most rank-2 array sections', error_msg)
+            return
+        end if
+        if (slice_node%num_dimensions > source_rank) then
+            call unsupported_feature_error('array section', slice_node%line, &
+                                           slice_node%column, &
+                                           'array section has too many subscripts', &
+                                           error_msg)
+            return
+        end if
+
+        info%source_name = trim(source_name)
+        info%source_index = source_index
+        info%source_rank = source_rank
+        do dim = 1, source_rank
+            info%source_lowers(dim) = int(context%symbols(source_index)%array_dim_lowers(dim), &
+                                          c_int64_t)
+            info%source_sizes(dim) = int(context%symbols(source_index)%array_dim_sizes(dim), &
+                                         c_int64_t)
+        end do
+
+        kept_dim = 0
+        do dim = 1, source_rank
+            if (dim <= slice_node%num_dimensions) then
+                bounds_index = slice_node%bounds_indices(dim)
+            else
+                bounds_index = 0
+            end if
+
+            if (bounds_index <= 0) then
+                info%keep_dim(dim) = .true.
+                info%section_lowers(dim) = info%source_lowers(dim)
+                info%section_uppers(dim) = info%source_lowers(dim) + &
+                                           info%source_sizes(dim) - 1_c_int64_t
+                info%section_strides(dim) = 1_c_int64_t
+                info%section_extents(dim) = info%source_sizes(dim)
+                kept_dim = kept_dim + 1
+                info%kept_dims(kept_dim) = dim
+                cycle
+            end if
+
+            if (.not. node_exists(arena, bounds_index)) then
+                error_msg = 'array section bound index does not reference an AST node'
+                return
+            end if
+
+            select type (bounds_node => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                call resolve_section_range_bound(arena, context, bounds_node%start_index, &
+                                                 info%source_lowers(dim), lower_value, &
+                                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                call resolve_section_range_bound(arena, context, bounds_node%end_index, &
+                                                 info%source_lowers(dim) + &
+                                                 info%source_sizes(dim) - 1_c_int64_t, &
+                                                 upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call resolve_section_stride(arena, context, bounds_node%stride_index, &
+                                            stride_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            type is (array_bounds_node)
+                if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
+                    bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) then
+                    lower_value = info%source_lowers(dim)
+                    upper_value = info%source_lowers(dim) + info%source_sizes(dim) - 1_c_int64_t
+                    stride_value = 1_c_int64_t
+                else
+                    call resolve_section_range_bound(arena, context, &
+                                                     bounds_node%lower_bound_index, &
+                                                     info%source_lowers(dim), lower_value, &
+                                                     error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call resolve_section_range_bound(arena, context, &
+                                                     bounds_node%upper_bound_index, &
+                                                     info%source_lowers(dim) + &
+                                                     info%source_sizes(dim) - 1_c_int64_t, &
+                                                     upper_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call resolve_section_stride(arena, context, bounds_node%stride_index, &
+                                                stride_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            class default
+                call resolve_section_scalar(arena, context, bounds_index, scalar_value, &
+                                            error_msg)
+                if (len_trim(error_msg) > 0) return
+                info%keep_dim(dim) = .false.
+                info%scalar_indices(dim) = scalar_value
+                cycle
+            end select
+
+            if (stride_value == 0_c_int64_t) then
+                call unsupported_feature_error('array section', slice_node%line, &
+                                               slice_node%column, &
+                                               'array section stride must be nonzero', &
+                                               error_msg)
+                return
+            end if
+            if (stride_value > 0_c_int64_t) then
+                if (lower_value > upper_value) then
+                    call unsupported_feature_error('array section', slice_node%line, &
+                                                   slice_node%column, &
+                                                   'array section produces a non-positive extent', &
+                                                   error_msg)
+                    return
+                end if
+                extent_value = (upper_value - lower_value) / stride_value + 1_c_int64_t
+            else
+                if (lower_value < upper_value) then
+                    call unsupported_feature_error('array section', slice_node%line, &
+                                                   slice_node%column, &
+                                                   'array section produces a non-positive extent', &
+                                                   error_msg)
+                    return
+                end if
+                extent_value = (lower_value - upper_value) / abs(stride_value) + 1_c_int64_t
+            end if
+            if (extent_value <= 0_c_int64_t) then
+                call unsupported_feature_error('array section', slice_node%line, &
+                                               slice_node%column, &
+                                               'array section produces a non-positive extent', &
+                                               error_msg)
+                return
+            end if
+
+            info%keep_dim(dim) = .true.
+            info%section_lowers(dim) = lower_value
+            info%section_uppers(dim) = upper_value
+            info%section_strides(dim) = stride_value
+            info%section_extents(dim) = extent_value
+            kept_dim = kept_dim + 1
+            info%kept_dims(kept_dim) = dim
+        end do
+
+        info%result_rank = kept_dim
+        call set_empty(error_msg)
+    end subroutine describe_array_section
+
+    subroutine resolve_section_range_bound(arena, context, node_index, default_value, &
+                                           bound_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(in) :: default_value
+        integer(c_int64_t), intent(out) :: bound_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (node_index <= 0) then
+            bound_value = default_value
+            call set_empty(error_msg)
+            return
+        end if
+        call eval_i32_constant(arena, node_index, context, bound_value, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'array section bounds must be compile-time integer expressions'
+        end if
+    end subroutine resolve_section_range_bound
+
+    subroutine resolve_section_stride(arena, context, node_index, stride_value, &
+                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(out) :: stride_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (node_index <= 0) then
+            stride_value = 1_c_int64_t
+            call set_empty(error_msg)
+            return
+        end if
+        call eval_i32_constant(arena, node_index, context, stride_value, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'array section bounds must be compile-time integer expressions'
+        end if
+    end subroutine resolve_section_stride
+
+    subroutine resolve_section_scalar(arena, context, node_index, scalar_value, &
+                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(out) :: scalar_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call eval_i32_constant(arena, node_index, context, scalar_value, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'array section bounds must be compile-time integer expressions'
+        end if
+    end subroutine resolve_section_scalar
+
+    integer(c_int64_t) function array_section_total_elements(info) result(total)
+        type(array_section_info_t), intent(in) :: info
+        integer :: i
+
+        total = 1_c_int64_t
+        if (info%result_rank <= 0) return
+        do i = 1, info%result_rank
+            total = total * info%section_extents(info%kept_dims(i))
+        end do
+    end function array_section_total_elements
+
+    integer(c_int64_t) function array_section_source_linear_index(info, linear_index) &
+            result(source_linear)
+        type(array_section_info_t), intent(in) :: info
+        integer(c_int64_t), intent(in) :: linear_index
+        integer(c_int64_t) :: coord1
+        integer(c_int64_t) :: coord2
+        integer(c_int64_t) :: inner_index
+        integer :: inner_dim
+        integer :: outer_dim
+
+        source_linear = 0_c_int64_t
+        if (info%source_rank == 1) then
+            if (info%result_rank >= 1) then
+                inner_dim = info%kept_dims(1)
+                coord1 = info%section_lowers(inner_dim) + &
+                         linear_index * info%section_strides(inner_dim)
+            else
+                coord1 = info%scalar_indices(1)
+            end if
+            source_linear = coord1 - info%source_lowers(1)
+            return
+        end if
+
+        if (info%result_rank == 2) then
+            inner_dim = info%kept_dims(1)
+            outer_dim = info%kept_dims(2)
+            inner_index = mod(linear_index, info%section_extents(inner_dim))
+            coord1 = info%section_lowers(inner_dim) + &
+                     inner_index * info%section_strides(inner_dim)
+            coord2 = info%section_lowers(outer_dim) + &
+                     (linear_index / info%section_extents(inner_dim)) * &
+                     info%section_strides(outer_dim)
+        else if (info%result_rank == 1) then
+            if (info%keep_dim(1)) then
+                coord1 = info%section_lowers(1) + linear_index * info%section_strides(1)
+                coord2 = info%scalar_indices(2)
+            else
+                coord1 = info%scalar_indices(1)
+                coord2 = info%section_lowers(2) + linear_index * info%section_strides(2)
+            end if
+        else
+            coord1 = info%scalar_indices(1)
+            coord2 = info%scalar_indices(2)
+        end if
+
+        source_linear = (coord1 - info%source_lowers(1)) + &
+                        info%source_sizes(1) * (coord2 - info%source_lowers(2))
+    end function array_section_source_linear_index
+
+    subroutine lower_array_section_element_from_info(info, linear_index, context, &
+                                                     value, error_msg)
+        type(array_section_info_t), intent(in) :: info
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: source_linear
+        integer(c_int64_t) :: total_elements
+
+        total_elements = array_section_total_elements(info)
+        if (linear_index < 0_c_int64_t .or. linear_index >= total_elements) then
+            error_msg = 'array section linear index is out of range'
+            return
+        end if
+
+        source_linear = array_section_source_linear_index(info, linear_index)
+        call load_array_linear_element(context, info%source_index, source_linear, &
+                                       value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
+    end subroutine lower_array_section_element_from_info
+
+    subroutine ensure_array_section_shapes_match(context, target_symbol_index, info, &
+                                                 error_msg)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: target_symbol_index
+        type(array_section_info_t), intent(in) :: info
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: target_rank
+        integer :: i
+        character(len=:), allocatable :: target_name
+
+        target_rank = context%symbols(target_symbol_index)%array_rank
+        if (target_rank /= info%result_rank) then
+            target_name = trim(context%symbols(target_symbol_index)%name)
+            error_msg = 'whole-array assignment requires conforming shapes: '// &
+                trim(target_name)//' and array section have different ranks'
+            return
+        end if
+        do i = 1, target_rank
+            if (context%symbols(target_symbol_index)%array_dim_sizes(i) /= &
+                int(info%section_extents(info%kept_dims(i)))) then
+                target_name = trim(context%symbols(target_symbol_index)%name)
+                error_msg = 'whole-array assignment requires conforming shapes: '// &
+                    trim(target_name)//' and array section differ in extent'
+                return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine ensure_array_section_shapes_match
+
+    subroutine lower_array_section_value(arena, slice_node, target_symbol_index, &
+                                        linear_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        integer, intent(in) :: target_symbol_index
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+
+        call describe_array_section(arena, slice_node, context, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call ensure_array_section_shapes_match(context, target_symbol_index, info, &
+                                               error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_array_section_element_from_info(info, linear_index, context, &
+                                                   value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
+    end subroutine lower_array_section_value
+
+    subroutine lower_array_section_print(arena, slice_node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: value
+        integer(c_int64_t) :: linear_index
+        integer(c_int64_t) :: total_elements
+
+        call describe_array_section(arena, slice_node, context, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        total_elements = array_section_total_elements(info)
+        if (total_elements <= 0_c_int64_t) then
+            error_msg = 'array section has no elements'
+            return
+        end if
+        do linear_index = 0_c_int64_t, total_elements - 1_c_int64_t
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+            call lower_array_section_element_from_info(info, linear_index, context, &
+                                                       value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end do
+        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_array_section_print
 
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &
@@ -597,6 +1009,15 @@
             error_msg = 'whole-array expression index does not reference an AST node'
             return
         end if
+
+        select type (slice_node => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call lower_array_section_value(arena, slice_node, &
+                                           target_symbol_index, &
+                                           int(linear_index, c_int64_t), &
+                                           context, value, error_msg)
+            return
+        end select
 
         select type (call_node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
@@ -641,8 +1062,9 @@
             call ensure_array_shapes_match(context, target_symbol_index, &
                                            symbol_index, error_msg)
             if (len_trim(error_msg) > 0) return
-            call load_array_linear_element(context, symbol_index, linear_index, &
-                                           value, error_msg)
+            call load_array_linear_element(context, symbol_index, &
+                                           int(linear_index, c_int64_t), value, &
+                                           error_msg)
             return
         end if
 
@@ -721,15 +1143,21 @@
                                          value, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
-        integer, intent(in) :: linear_index
+        integer(c_int64_t), intent(in) :: linear_index
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
 
+        if (linear_index < 0_c_int64_t .or. &
+            linear_index >= int(context%symbols(symbol_index)%array_size, &
+                                c_int64_t)) then
+            error_msg = 'array linear index is out of range'
+            return
+        end if
         if (.not. emit_i32_array_element_addr(context%session, &
                 context%symbols(symbol_index)%array_size, &
                 context%symbols(symbol_index)%element_address, &
-                i32_immediate(context%session, int(linear_index, c_int64_t)), addr, &
+                i32_immediate(context%session, linear_index), addr, &
                 error_msg)) return
         if (.not. emit_i32_load(context%session, addr, value, error_msg)) then
             error_msg = 'array_element_load: '//error_msg
