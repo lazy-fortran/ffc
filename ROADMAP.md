@@ -50,9 +50,10 @@ dependency map is in #167.
 
 ## Phase B — runtime, ABI, and conformance (continuous)
 
-The current ABI is documented in `docs/RUNTIME_ABI.md`. Each new feature
-must update that document and add executable tests in the same change.
-Major open categories:
+The current ABI is documented in `docs/RUNTIME_ABI.md`. Conformance
+against external corpora is documented in `docs/CONFORMANCE.md`. Each
+new feature must update both documents and add executable tests in the
+same change. Major open categories:
 
 - non-integer scalar procedure ABI: #50, #164.
 - character value + length representation beyond the current MVP: #51.

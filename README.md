@@ -46,6 +46,12 @@ LIBRARY_PATH=../liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
 echo $?
 ```
 
+## Conformance
+
+`docs/CONFORMANCE.md` documents the conformance gauntlet runner that
+drives external Fortran test corpora through the full `ffc` pipeline.
+It produces an xfail-style report with JSONL output.
+
 ## Layout
 
 - `app/ffc.f90` - CLI entry.
@@ -53,7 +59,8 @@ echo $?
 - `test/` - behavioural tests; each file is a standalone `program test_*`
   picked up by fpm auto-discovery.
 - `docs/` - `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
-  `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`.
+  `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`,
+  `CONFORMANCE.md`.
 - `BACKLOG.md`, `DESIGN.md` - planning docs.
 
 ## Conventions

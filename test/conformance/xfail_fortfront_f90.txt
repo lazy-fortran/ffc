@@ -1,0 +1,5 @@
+# Known-unsupported files for the fortfront-f90 suite.
+# One basename or suite-relative path per line.
+# Lines starting with '#' and blank lines are ignored.
+#
+# Promote entries by removing them from this file when ffc starts passing.
