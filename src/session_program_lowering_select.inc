@@ -35,7 +35,7 @@
         end if
 
         call lower_i32_expression(arena, node%selector_index, context, &
-                                  selector, error_msg)
+                                   selector, error_msg)
         if (len_trim(error_msg) > 0) return
 
         default_block = create_liric_block(context%session)
@@ -292,78 +292,69 @@
         type(lr_operand_desc_t) :: lbl_data, lbl_len, eq, cond
         logical :: terminated
         integer :: i
+        integer, allocatable :: value_indices(:), body(:)
 
         captured = .false.
-        if (.not. node_exists(arena, case_node_index)) then
-            error_msg = 'select case arm index does not reference an AST node'
-            return
-        end if
-        select type (arm => arena%entries(case_node_index)%node)
-        type is (case_block_node)
-            if (.not. allocated(arm%value_indices)) then
-                call unsupported_feature_error('select case statement', &
-                    arm%line, arm%column, 'case arm requires a label', error_msg)
-                return
-            end if
-            arm_block = create_liric_block(context%session)
-            if (is_last_arm) then
-                next_check_block = default_block
-            else
-                next_check_block = create_liric_block(context%session)
-            end if
-            ! Match the selector against each character label in turn.
-            do i = 1, size(arm%value_indices)
-                call char_expr_operands(arena, arm%value_indices(i), context, &
-                                        lbl_data, lbl_len, error_msg)
-                if (len_trim(error_msg) > 0) return
-                call char_equals(context, sel_data, sel_len, lbl_data, lbl_len, &
-                                 eq, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eq, &
-                        i32_immediate(context%session, 0_c_int64_t), cond, &
-                        error_msg)) return
-                if (i == size(arm%value_indices)) then
-                    false_target = next_check_block
-                else
-                    false_target = create_liric_block(context%session)
-                end if
-                if (.not. emit_liric_condbr(context%session, cond, arm_block, &
-                        false_target, error_msg)) return
-                if (i < size(arm%value_indices)) then
-                    if (.not. set_liric_block(context%session, false_target, &
-                            error_msg)) return
-                    context%current_block_id = false_target
-                    context%current_block_terminated = .false.
-                end if
-            end do
-
-            if (.not. set_liric_block(context%session, arm_block, error_msg)) &
-                return
-            context%current_block_id = arm_block
-            context%current_block_terminated = .false.
-            call restore_symbols(context, baseline, baseline_count)
-            terminated = .false.
-            if (allocated(arm%body_indices)) then
-                call lower_statement_list(arena, arm%body_indices, context, &
-                                          dummy_value, terminated, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            call capture_select_result(context, terminated, result)
-            if (.not. terminated) then
-                if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
-                    return
-                captured = .true.
-            end if
-            if (.not. is_last_arm) then
-                if (.not. set_liric_block(context%session, next_check_block, &
-                        error_msg)) return
-                context%current_block_id = next_check_block
-                context%current_block_terminated = .false.
-            end if
-        class default
+        call get_case_block_info(arena, case_node_index, value_indices, body)
+        if (.not. allocated(value_indices)) then
             error_msg = 'select case arm node has unexpected kind'
             return
-        end select
+        end if
+        arm_block = create_liric_block(context%session)
+        if (is_last_arm) then
+            next_check_block = default_block
+        else
+            next_check_block = create_liric_block(context%session)
+        end if
+        ! Match the selector against each character label in turn.
+        do i = 1, size(value_indices)
+            call char_expr_operands(arena, value_indices(i), context, &
+                                    lbl_data, lbl_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call char_equals(context, sel_data, sel_len, lbl_data, lbl_len, &
+                             eq, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eq, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+            if (i == size(value_indices)) then
+                false_target = next_check_block
+            else
+                false_target = create_liric_block(context%session)
+            end if
+            if (.not. emit_liric_condbr(context%session, cond, arm_block, &
+                    false_target, error_msg)) return
+            if (i < size(value_indices)) then
+                if (.not. set_liric_block(context%session, false_target, &
+                        error_msg)) return
+                context%current_block_id = false_target
+                context%current_block_terminated = .false.
+            end if
+        end do
+
+        if (.not. set_liric_block(context%session, arm_block, error_msg)) &
+            return
+        context%current_block_id = arm_block
+        context%current_block_terminated = .false.
+        call restore_symbols(context, baseline, baseline_count)
+        terminated = .false.
+        if (allocated(body)) then
+            call lower_statement_list(arena, body, context, &
+                                      dummy_value, terminated, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        call capture_select_result(context, terminated, result)
+        if (.not. terminated) then
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                return
+            captured = .true.
+        end if
+        if (.not. is_last_arm) then
+            if (.not. set_liric_block(context%session, next_check_block, &
+                    error_msg)) return
+            context%current_block_id = next_check_block
+            context%current_block_terminated = .false.
+        end if
         call set_empty(error_msg)
     end subroutine lower_select_case_character_arm
 
@@ -387,70 +378,59 @@
         integer(c_int32_t) :: arm_block
         integer(c_int32_t) :: next_check_block
         logical :: terminated
+        integer, allocatable :: value_indices(:), body(:)
 
         captured = .false.
-        if (.not. node_exists(arena, case_node_index)) then
-            error_msg = 'select case arm index does not reference an AST node'
+        call get_case_block_info(arena, case_node_index, value_indices, body)
+        if (.not. allocated(value_indices)) then
+            error_msg = 'select case arm node has unexpected kind'
+            return
+        end if
+        if (size(value_indices) < 1) then
+            call unsupported_feature_error('select case statement', &
+                                           0, 0, &
+                                           'case arm requires at least one label', &
+                                           error_msg)
             return
         end if
 
-        select type (arm => arena%entries(case_node_index)%node)
-        type is (case_block_node)
-            if (.not. allocated(arm%value_indices)) then
-                call unsupported_feature_error('select case statement', &
-                                               arm%line, arm%column, &
-                                               'case arm requires a label', &
-                                               error_msg)
-                return
-            end if
-            if (size(arm%value_indices) < 1) then
-                call unsupported_feature_error('select case statement', &
-                                               arm%line, arm%column, &
-                                               'case arm requires at least one label', &
-                                               error_msg)
-                return
-            end if
+        arm_block = create_liric_block(context%session)
+        if (is_last_arm) then
+            next_check_block = default_block
+        else
+            next_check_block = create_liric_block(context%session)
+        end if
 
-            arm_block = create_liric_block(context%session)
-            if (is_last_arm) then
-                next_check_block = default_block
-            else
-                next_check_block = create_liric_block(context%session)
-            end if
+        call emit_case_label_dispatch(arena, value_indices, selector, &
+                                      arm_block, next_check_block, &
+                                      context, error_msg)
+        if (len_trim(error_msg) > 0) return
 
-            call emit_case_label_dispatch(arena, arm%value_indices, selector, &
-                                          arm_block, next_check_block, &
-                                          context, error_msg)
+        if (.not. set_liric_block(context%session, arm_block, &
+                                  error_msg)) return
+        context%current_block_id = arm_block
+        context%current_block_terminated = .false.
+        call restore_symbols(context, baseline, baseline_count)
+        terminated = .false.
+        if (allocated(body)) then
+            call lower_statement_list(arena, body, context, &
+                                      dummy_value, terminated, error_msg)
             if (len_trim(error_msg) > 0) return
+        end if
+        call capture_select_result(context, terminated, result)
+        if (.not. terminated) then
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                return
+            captured = .true.
+        end if
 
-            if (.not. set_liric_block(context%session, arm_block, &
+        if (.not. is_last_arm) then
+            if (.not. set_liric_block(context%session, next_check_block, &
                                       error_msg)) return
-            context%current_block_id = arm_block
+            context%current_block_id = next_check_block
             context%current_block_terminated = .false.
-            call restore_symbols(context, baseline, baseline_count)
-            terminated = .false.
-            if (allocated(arm%body_indices)) then
-                call lower_statement_list(arena, arm%body_indices, context, &
-                                          dummy_value, terminated, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            call capture_select_result(context, terminated, result)
-            if (.not. terminated) then
-                if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
-                    return
-                captured = .true.
-            end if
-
-            if (.not. is_last_arm) then
-                if (.not. set_liric_block(context%session, next_check_block, &
-                                          error_msg)) return
-                context%current_block_id = next_check_block
-                context%current_block_terminated = .false.
-            end if
-        class default
-            error_msg = 'select case arm node has unexpected kind'
-            return
-        end select
+        end if
+        call set_empty(error_msg)
     end subroutine lower_select_case_arm
 
     subroutine lower_select_case_default(arena, default_idx, default_block, &
@@ -468,37 +448,28 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: dummy_value
         logical :: terminated
+        integer, allocatable :: body(:)
 
         captured = .false.
-        if (.not. node_exists(arena, default_idx)) then
-            error_msg = 'select case default index does not reference an AST node'
-            return
-        end if
-
+        call get_case_default_body(arena, default_idx, body)
         if (.not. set_liric_block(context%session, default_block, &
                                   error_msg)) return
         context%current_block_id = default_block
         context%current_block_terminated = .false.
         call restore_symbols(context, baseline, baseline_count)
 
-        select type (def => arena%entries(default_idx)%node)
-        type is (case_default_node)
-            terminated = .false.
-            if (allocated(def%body_indices)) then
-                call lower_statement_list(arena, def%body_indices, context, &
-                                          dummy_value, terminated, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            call capture_select_result(context, terminated, result)
-            if (.not. terminated) then
-                if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
-                    return
-                captured = .true.
-            end if
-        class default
-            error_msg = 'select case default node has unexpected kind'
-            return
-        end select
+        terminated = .false.
+        if (allocated(body)) then
+            call lower_statement_list(arena, body, context, &
+                                      dummy_value, terminated, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        call capture_select_result(context, terminated, result)
+        if (.not. terminated) then
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                return
+            captured = .true.
+        end if
         call set_empty(error_msg)
     end subroutine lower_select_case_default
 
@@ -546,38 +517,36 @@
         type(lr_operand_desc_t) :: bound_value
         type(lr_operand_desc_t) :: cond
         integer(c_int32_t) :: hi_check_block
+        integer :: start_value, end_value
 
-        if (node_exists(arena, value_index)) then
-            select type (label => arena%entries(value_index)%node)
-            type is (case_range_node)
-                ! lo: -> selector >= lo ; :hi -> selector <= hi ;
-                ! lo:hi -> selector >= lo AND selector <= hi (chained checks)
-                if (label%start_value > 0 .and. label%end_value > 0) then
-                    hi_check_block = create_liric_block(context%session)
-                    call emit_case_bound(arena, label%start_value, selector, &
-                                         LR_CMP_SGE, hi_check_block, &
-                                         no_match_block, context, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    if (.not. set_liric_block(context%session, hi_check_block, &
-                                              error_msg)) return
-                    context%current_block_id = hi_check_block
-                    context%current_block_terminated = .false.
-                    call emit_case_bound(arena, label%end_value, selector, &
-                                         LR_CMP_SLE, arm_block, no_match_block, &
-                                         context, error_msg)
-                else if (label%start_value > 0) then
-                    call emit_case_bound(arena, label%start_value, selector, &
-                                         LR_CMP_SGE, arm_block, no_match_block, &
-                                         context, error_msg)
-                else if (label%end_value > 0) then
-                    call emit_case_bound(arena, label%end_value, selector, &
-                                         LR_CMP_SLE, arm_block, no_match_block, &
-                                         context, error_msg)
-                else
-                    error_msg = 'select case range label has no bounds'
-                end if
-                return
-            end select
+        call get_case_range_info(arena, value_index, start_value, end_value)
+        if (start_value > 0 .or. end_value > 0) then
+            ! lo: -> selector >= lo ; :hi -> selector <= hi ;
+            ! lo:hi -> selector >= lo AND selector <= hi (chained checks)
+            if (start_value > 0 .and. end_value > 0) then
+                hi_check_block = create_liric_block(context%session)
+                call emit_case_bound(arena, start_value, selector, &
+                                     LR_CMP_SGE, hi_check_block, &
+                                     no_match_block, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. set_liric_block(context%session, hi_check_block, &
+                                          error_msg)) return
+                context%current_block_id = hi_check_block
+                context%current_block_terminated = .false.
+                call emit_case_bound(arena, end_value, selector, &
+                                     LR_CMP_SLE, arm_block, no_match_block, &
+                                     context, error_msg)
+            else if (start_value > 0) then
+                call emit_case_bound(arena, start_value, selector, &
+                                     LR_CMP_SGE, arm_block, no_match_block, &
+                                     context, error_msg)
+            else if (end_value > 0) then
+                call emit_case_bound(arena, end_value, selector, &
+                                     LR_CMP_SLE, arm_block, no_match_block, &
+                                     context, error_msg)
+            end if
+            call set_empty(error_msg)
+            return
         end if
 
         ! Literal label: selector == value
@@ -614,12 +583,12 @@
         call set_empty(error_msg)
     end subroutine emit_case_bound
 
-    subroutine lower_select_type(arena, node, context, error_msg)
+    subroutine lower_select_type(arena, node_index, context, error_msg)
         ! Lower select type on a class(*) selector: load the descriptor's
         ! runtime type id and branch to the matching `type is` arm; within the
         ! arm the selector is rebound to its concrete typed value (#142, #143).
         type(ast_arena_t), intent(in) :: arena
-        type(select_type_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: sel_name, assoc_name
@@ -630,11 +599,16 @@
         integer :: saved_count
         type(lr_operand_desc_t) :: value
         logical :: terminated
+        integer :: selector_idx
+        integer, allocatable :: guard_indices(:)
+        integer :: default_idx
 
         call set_empty(error_msg)
+        call get_select_type_info(arena, node_index, selector_idx, &
+                                  guard_indices, default_idx)
         ! Two forms: select type (var) and select type (assoc => var). The
         ! latter is parsed as an assignment node {target = assoc, value = var}.
-        call select_type_selector(arena, node%selector_index, sel_name, &
+        call select_type_selector(arena, selector_idx, sel_name, &
                                   assoc_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sel_index = find_symbol(context, sel_name)
@@ -661,9 +635,9 @@
         end do
         saved_count = context%symbol_count
 
-        if (allocated(node%guard_indices)) then
-            do g = 1, size(node%guard_indices)
-                call select_type_guard_id(arena, node%guard_indices(g), context, &
+        if (allocated(guard_indices)) then
+            do g = 1, size(guard_indices)
+                call select_type_guard_id(arena, guard_indices(g), context, &
                                           guard_id, error_msg)
                 if (len_trim(error_msg) > 0) return
                 arm_block = create_liric_block(context%session)
@@ -676,7 +650,7 @@
                                           error_msg)) return
                 context%current_block_terminated = .false.
                 call restore_select_symbols(context, saved, saved_count)
-                call lower_select_type_arm(arena, node%guard_indices(g), &
+                call lower_select_type_arm(arena, guard_indices(g), &
                     assoc_name, data_ptr, context, terminated, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. terminated) then
@@ -690,8 +664,8 @@
         end if
 
         call restore_select_symbols(context, saved, saved_count)
-        if (node%default_index > 0) then
-            call lower_select_type_default(arena, node%default_index, context, &
+        if (default_idx > 0) then
+            call lower_select_type_default(arena, default_idx, context, &
                                            terminated, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. terminated) then
@@ -792,26 +766,21 @@
         integer, intent(in) :: guard_index
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: type_name, terr
+        character(len=:), allocatable :: guard_type, type_name, terr
         integer :: tname_index
+        integer, allocatable :: body_tmp(:)
 
         call set_empty(error_msg)
         value_kind = VALUE_I32
-        if (.not. node_exists(arena, guard_index)) then
-            error_msg = 'select type guard does not reference an AST node'
+        guard_type = ''
+        type_name = ''
+        terr = ''
+        call get_type_guard_info(arena, guard_index, guard_type, &
+                                 tname_index, body_tmp)
+        if (trim(guard_type) /= 'type_is') then
+            error_msg = 'select type supports type is guards only'
             return
         end if
-        select type (guard => arena%entries(guard_index)%node)
-        type is (type_guard_block_node)
-            if (trim(guard%guard_type) /= 'type_is') then
-                error_msg = 'select type supports type is guards only'
-                return
-            end if
-            tname_index = guard%type_name_index
-        class default
-            error_msg = 'expected a select type guard block'
-            return
-        end select
         if (is_identifier(arena, tname_index)) then
             call get_identifier_name(arena, tname_index, type_name, terr)
         else if (is_literal(arena, tname_index)) then
@@ -883,15 +852,13 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: guard_index
         integer, allocatable, intent(out) :: body(:)
+        character(len=:), allocatable :: guard_type
+        integer :: tname_index
 
-        allocate (body(0))
-        if (.not. node_exists(arena, guard_index)) return
-        select type (guard => arena%entries(guard_index)%node)
-        type is (type_guard_block_node)
-            if (allocated(guard%body_indices)) then
-                if (size(guard%body_indices) > 0) body = guard%body_indices
-            end if
-        end select
+        guard_type = ''
+        tname_index = 0
+        call get_type_guard_info(arena, guard_index, guard_type, &
+                                 tname_index, body)
     end subroutine select_type_guard_body
 
     subroutine lower_select_type_default(arena, default_index, context, &

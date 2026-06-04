@@ -109,7 +109,10 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
   use ffc_strings, only: set_empty
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
                                      get_program_body_info, get_module_body_info, &
-                                     get_function_body_info, get_subroutine_body_info
+                                     get_function_body_info, get_subroutine_body_info, &
+                                     get_select_case_info, get_case_block_info, &
+                                     get_case_default_body, get_case_range_info, &
+                                     get_select_type_info, get_type_guard_info
     use fortfront_utils, only: get_node_as_function_def, &
                                get_node_as_program, &
                                get_node_as_subroutine_def
@@ -603,7 +606,7 @@ contains
         type is (select_case_node)
             call lower_select_case(arena, node, context, error_msg)
         type is (select_type_node)
-            call lower_select_type(arena, node, context, error_msg)
+            call lower_select_type(arena, node_index, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
         type is (use_statement_node)
