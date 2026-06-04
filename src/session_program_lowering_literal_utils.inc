@@ -127,9 +127,22 @@
         character(len=*), intent(in) :: text
         real(c_double), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: io_stat
+        character(len=:), allocatable :: clean
+        integer :: io_stat, uscore
 
-        read (text, *, iostat=io_stat) value
+        ! Strip trailing kind suffix (_8, _dp, _real64, etc.) which Fortran
+        ! internal reads do not accept.
+        clean = trim(text)
+        uscore = scan(clean, '_', back=.true.)
+        if (uscore > 1) then
+            ! Only strip if the underscore follows a digit, dot, or exponent
+            ! letter, not if it is part of the numeric value itself.
+            if (scan(clean(uscore - 1:uscore - 1), '0123456789.dDeE') > 0) then
+                clean = clean(1:uscore - 1)
+            end if
+        end if
+
+        read (clean, *, iostat=io_stat) value
         if (io_stat == 0) then
             call set_empty(error_msg)
         else

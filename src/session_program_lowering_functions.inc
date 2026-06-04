@@ -195,8 +195,8 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
         integer, intent(out) :: derived_type_index
-        integer :: char_len
-        character(len=:), allocatable :: derived_name
+        integer :: char_len, paren
+        character(len=:), allocatable :: derived_name, base_type
         character(len=:), allocatable, intent(out) :: error_msg
 
         value_kind = VALUE_I32
@@ -204,10 +204,18 @@
         call set_empty(error_msg)
         if (.not. allocated(node%return_type)) return
 
-        select case (trim(node%return_type))
+        ! Strip kind suffix: real(dp) -> real, double precision stays as-is.
+        paren = index(node%return_type, '(')
+        if (paren > 0) then
+            base_type = lowercase_text(trim(adjustl(node%return_type(1:paren - 1))))
+        else
+            base_type = lowercase_text(trim(adjustl(node%return_type)))
+        end if
+
+        select case (base_type)
         case ('integer')
             value_kind = VALUE_I32
-        case ('real')
+        case ('real', 'double precision')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
