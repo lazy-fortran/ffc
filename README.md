@@ -22,7 +22,8 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
 supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
-and `F` descriptors on stdout.
+and `F` descriptors on stdout, and fixed-size rank-2 integer arrays with
+scalar element access.
 
 ## Build
 

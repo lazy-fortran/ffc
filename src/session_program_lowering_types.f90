@@ -84,10 +84,13 @@ module session_program_lowering_types
         integer :: character_length = 0
         logical :: has_character_value = .false.
         logical :: is_array = .false.
-        logical :: is_derived = .false.
-        integer :: derived_type_index = 0
+        integer :: array_rank = 0
         integer :: array_size = 0
         integer :: array_lower_bound = 1
+        integer, dimension(2) :: array_dim_sizes = 0
+        integer, dimension(2) :: array_dim_lowers = 0
+        logical :: is_derived = .false.
+        integer :: derived_type_index = 0
         type(lr_operand_desc_t) :: element_address
         logical :: has_i32_constant = .false.
         integer(c_int64_t) :: i32_constant = 0_c_int64_t

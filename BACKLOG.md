@@ -23,8 +23,8 @@ The direct LIRIC session lowerer covers the subset documented in
   branches; counted `do` with literal positive and negative step;
 - contained integer/real/logical functions and subroutines with scalar
   args; early `return` inside contained functions and subroutines;
-- fixed-size 1-D integer arrays, simple derived types with scalar
-  integer components;
+- fixed-size 1-D integer arrays and rank-2 integer arrays with scalar
+  element access, simple derived types with scalar integer components;
 - single-arm and multi-arm `SELECT CASE` (incl. multi-label and
   `case default`), each arm terminating with `stop`/`return`;
 - compile-time `//` folding for character literal chains;
@@ -32,14 +32,14 @@ The direct LIRIC session lowerer covers the subset documented in
   and integer-to-real `real()` conversion;
 - CLI: `-o`, `-c`, `-I <dir>` (`-I` stored, not yet consumed).
 
-Open work is tracked as GitHub issues; the self-hosting roadmap is in #167.
+Open work is tracked as GitHub issues; #167 tracks self-hosting.
 
 ## P2: FortFront API boundary
 
 Tracked by #58 / #173. `ffc` still walks the FortFront AST arena with
 `select type` for most lowering. New compiler-facing FortFront queries
-should replace those reach-ins one slice at a time. Concrete queries the
-roadmap needs are listed in #173.
+should replace those reach-ins one slice at a time. The queries needed
+for #173 are listed there.
 
 ## P3: Runtime and ABI
 
@@ -52,7 +52,7 @@ change. Tracked categories:
   series tracked from #167.
 - print/runtime call surface beyond the current `printf` shim: #55.
 - array descriptors and allocatables: #53, plus the slice issues
-  #184–#186.
+  #184-#186.
 
 ## Verification
 

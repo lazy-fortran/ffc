@@ -5,70 +5,81 @@
         integer, intent(out) :: array_lower_bound
         integer, intent(out) :: array_size
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_count
         integer :: dim_index
         integer(c_int64_t) :: extent
         integer(c_int64_t) :: lower_value
         integer(c_int64_t) :: upper_value
+        integer :: i
 
         array_lower_bound = 1
         array_size = 0
         call set_empty(error_msg)
         if (.not. allocated(node%dimension_indices)) return
-        if (size(node%dimension_indices) /= 1) then
+
+        dim_count = size(node%dimension_indices)
+        if (dim_count < 1 .or. dim_count > 2) then
             call unsupported_feature_error('array declaration', node%line, &
                                            node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'one-dimensional arrays', error_msg)
+                                           'direct LIRIC session supports '// &
+                                           'at most rank-2 arrays', error_msg)
             return
         end if
 
-        dim_index = node%dimension_indices(1)
-        if (.not. node_exists(context%arena, dim_index)) then
-            error_msg = 'array dimension index does not reference an AST node'
-            return
-        end if
-
-        select type (dim_node => context%arena%entries(dim_index)%node)
-        type is (range_expression_node)
-            if (dim_node%stride_index > 0) then
-                call unsupported_feature_error('array declaration', node%line, &
-                                               node%column, &
-                                               'array declaration bounds do not '// &
-                                               'support strides', error_msg)
+        do i = 1, dim_count
+            dim_index = node%dimension_indices(i)
+            if (.not. node_exists(context%arena, dim_index)) then
+                error_msg = 'array dimension index does not reference an AST node'
                 return
             end if
-            if (dim_node%start_index <= 0 .or. dim_node%end_index <= 0) then
+
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                if (dim_node%stride_index > 0) then
+                    call unsupported_feature_error('array declaration', node%line, &
+                                                   node%column, &
+                                                   'array declaration bounds do not '// &
+                                                   'support strides', error_msg)
+                    return
+                end if
+                if (dim_node%start_index <= 0 .or. dim_node%end_index <= 0) then
+                    call unsupported_feature_error('array declaration', node%line, &
+                                                   node%column, &
+                                                   'array declaration requires '// &
+                                                   'explicit lower and upper bounds', &
+                                                   error_msg)
+                    return
+                end if
+                call eval_i32_constant(context%arena, dim_node%start_index, context, &
+                                       lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(context%arena, dim_node%end_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value - lower_value + 1_c_int64_t
+            class default
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                lower_value = 1_c_int64_t
+                extent = upper_value
+            end select
+
+            if (extent <= 0_c_int64_t) then
                 call unsupported_feature_error('array declaration', node%line, &
                                                node%column, &
-                                               'array declaration requires '// &
-                                               'explicit lower and upper bounds', &
-                                               error_msg)
+                                               'array bounds produce a '// &
+                                               'non-positive extent', error_msg)
                 return
             end if
-            call eval_i32_constant(context%arena, dim_node%start_index, context, &
-                                   lower_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call eval_i32_constant(context%arena, dim_node%end_index, context, &
-                                   upper_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            extent = upper_value - lower_value + 1_c_int64_t
-        class default
-            call eval_i32_constant(context%arena, dim_index, context, &
-                                   upper_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            lower_value = 1_c_int64_t
-            extent = upper_value
-        end select
 
-        if (extent <= 0_c_int64_t) then
-            call unsupported_feature_error('array declaration', node%line, &
-                                           node%column, &
-                                           'array bounds produce a '// &
-                                           'non-positive extent', error_msg)
-            return
-        end if
-        array_lower_bound = int(lower_value)
-        array_size = int(extent)
+            if (i == 1) then
+                array_lower_bound = int(lower_value)
+                array_size = int(extent)
+            else
+                array_size = array_size * int(extent)
+            end if
+        end do
         call set_empty(error_msg)
     end subroutine get_array_bounds
 
@@ -165,19 +176,57 @@
         integer, intent(in) :: array_size
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
+        integer :: dim_count
+        integer :: i
+        integer :: dim_index
+        integer(c_int64_t) :: lower_value
+        integer(c_int64_t) :: upper_value
+        integer(c_int64_t) :: extent
 
         if (find_symbol(context, name) > 0) then
             error_msg = 'duplicate array declaration: '//trim(name)
             return
         end if
-     call grow_symbols(context)
+
+        dim_count = 0
+        if (allocated(node%dimension_indices)) then
+            dim_count = size(node%dimension_indices)
+        end if
+
+        call grow_symbols(context)
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%is_array = .true.
+        context%symbols(index)%array_rank = dim_count
         context%symbols(index)%array_size = array_size
         context%symbols(index)%array_lower_bound = array_lower_bound
+
+        if (dim_count == 2 .and. allocated(node%dimension_indices)) then
+            do i = 1, 2
+                dim_index = node%dimension_indices(i)
+                if (.not. node_exists(context%arena, dim_index)) cycle
+                select type (dim_node => context%arena%entries(dim_index)%node)
+                type is (range_expression_node)
+                    call eval_i32_constant(context%arena, dim_node%start_index, context, &
+                                           lower_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call eval_i32_constant(context%arena, dim_node%end_index, context, &
+                                           upper_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    context%symbols(index)%array_dim_lowers(i) = int(lower_value)
+                    extent = upper_value - lower_value + 1_c_int64_t
+                    context%symbols(index)%array_dim_sizes(i) = int(extent)
+                class default
+                    context%symbols(index)%array_dim_lowers(i) = 1
+                    call eval_i32_constant(context%arena, dim_index, context, &
+                                           upper_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    context%symbols(index)%array_dim_sizes(i) = int(upper_value)
+                end select
+            end do
+        end if
 
         if (.not. emit_i32_array_alloca(context%session,  &
             array_size, context%symbols(index)%element_address, error_msg)) then
@@ -268,6 +317,11 @@
         type(lr_operand_desc_t) :: index_value
         type(lr_operand_desc_t) :: offset
         type(lr_operand_desc_t) :: lower_bound_value
+        type(lr_operand_desc_t) :: i_offset
+        type(lr_operand_desc_t) :: j_offset
+        type(lr_operand_desc_t) :: scaled_index
+        integer :: rank
+        integer :: arg_count
 
         if (.not. allocated(node%name)) then
             error_msg = 'array access requires an array name'
@@ -288,13 +342,33 @@
             return
         end if
 
+        rank = context%symbols(symbol_index)%array_rank
+        if (rank < 1 .or. rank > 2) then
+            call unsupported_feature_error('array access', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session supports '// &
+                                           'at most rank-2 arrays', error_msg)
+            return
+        end if
+
         diagnostic_feature = 'array expression'
         if (present(feature)) diagnostic_feature = feature
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
-            call unsupported_feature_error(diagnostic_feature, node%line, &
-                                           node%column, &
-                                           'array access requires exactly one '// &
-                                           'subscript', error_msg)
+        arg_count = 0
+        if (allocated(node%arg_indices)) then
+            arg_count = size(node%arg_indices)
+        end if
+        if (arg_count /= rank) then
+            if (rank == 1) then
+                call unsupported_feature_error(diagnostic_feature, node%line, &
+                                               node%column, &
+                                               'array access requires exactly one '// &
+                                               'subscript', error_msg)
+            else
+                call unsupported_feature_error(diagnostic_feature, node%line, &
+                                               node%column, &
+                                               'array access requires exactly two '// &
+                                               'subscripts', error_msg)
+            end if
             return
         end if
 
@@ -306,23 +380,83 @@
                                   index_value, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        ! Declared lower bound maps to element zero in LIRIC storage.
-        lower_bound_value = i32_immediate(context%session,  &
-                            int(context%symbols(symbol_index)%array_lower_bound, &
-                                c_int64_t))
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, index_value, &
-                                                  lower_bound_value, &
-                                                  offset, error_msg)) then
-            error_msg = 'arr_element_sub: '//error_msg
-            return
-        end if
+        if (rank == 1) then
+            ! Declared lower bound maps to element zero in LIRIC storage.
+            lower_bound_value = i32_immediate(context%session,  &
+                                int(context%symbols(symbol_index)%array_lower_bound, &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, index_value, &
+                                                      lower_bound_value, &
+                                                      offset, error_msg)) then
+                error_msg = 'arr_element_sub: '//error_msg
+                return
+            end if
 
-        if (.not. emit_i32_array_element_addr(context%session,  &
-            context%symbols(symbol_index)%array_size, &
-            context%symbols(symbol_index)%element_address, &
-            offset, element_address, error_msg)) then
-            error_msg = 'arr_element_gep: '//error_msg
-            return
+            if (.not. emit_i32_array_element_addr(context%session,  &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                offset, element_address, error_msg)) then
+                error_msg = 'arr_element_gep: '//error_msg
+                return
+            end if
+        else
+            ! Rank-2 column-major: linear = (i - lower1) + extent1 * (j - lower2)
+            call validate_i32_array_subscript(arena, node%arg_indices(2), context, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            call lower_i32_expression(arena, node%arg_indices(1), context, &
+                                      i_offset, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            lower_bound_value = i32_immediate(context%session,  &
+                                int(context%symbols(symbol_index)%array_dim_lowers(1), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, i_offset, &
+                                                      lower_bound_value, &
+                                                      offset, error_msg)) then
+                error_msg = 'arr2_i_offset: '//error_msg
+                return
+            end if
+
+            call lower_i32_expression(arena, node%arg_indices(2), context, &
+                                      j_offset, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            lower_bound_value = i32_immediate(context%session,  &
+                                int(context%symbols(symbol_index)%array_dim_lowers(2), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, j_offset, &
+                                                      lower_bound_value, &
+                                                      index_value, error_msg)) then
+                error_msg = 'arr2_j_offset: '//error_msg
+                return
+            end if
+
+            lower_bound_value = i32_immediate(context%session,  &
+                                int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, index_value, &
+                                                      lower_bound_value, &
+                                                      scaled_index, error_msg)) then
+                error_msg = 'arr2_stride: '//error_msg
+                return
+            end if
+
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, offset, &
+                                                      scaled_index, &
+                                                      index_value, error_msg)) then
+                error_msg = 'arr2_add: '//error_msg
+                return
+            end if
+
+            if (.not. emit_i32_array_element_addr(context%session,  &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                index_value, element_address, error_msg)) then
+                error_msg = 'arr2_gep: '//error_msg
+                return
+            end if
         end if
 
         call set_empty(error_msg)
