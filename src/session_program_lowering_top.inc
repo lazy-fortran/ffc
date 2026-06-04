@@ -1,0 +1,515 @@
+    subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
+                                          error_msg, include_paths)
+
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=*), intent(in) :: output_path
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: include_paths(:)
+        call lower_program_to_liric_path(arena, root_index, output_path, &
+                                         .true., error_msg, include_paths)
+    end subroutine lower_program_to_liric_exe
+    subroutine lower_program_to_liric_object(arena, root_index, output_path, &
+                                             error_msg, include_paths)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=*), intent(in) :: output_path
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: include_paths(:)
+        call lower_program_to_liric_path(arena, root_index, output_path, &
+                                         .false., error_msg, include_paths)
+    end subroutine lower_program_to_liric_object
+    subroutine lower_program_to_liric_path(arena, root_index, output_path, &
+                                           emit_executable, error_msg, &
+                                           include_paths)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=*), intent(in) :: output_path
+        character(len=*), intent(in), optional :: include_paths(:)
+        logical, intent(in) :: emit_executable
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t) :: context
+        type(lr_operand_desc_t) :: return_value
+        integer(c_int32_t) :: argc_vreg
+        integer(c_int32_t) :: argv_vreg
+        call validate_program(arena, root_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call liric_session_create(context%session, error_msg)
+        if (len_trim(error_msg) > 0) return
+        allocate(context%symbols(16))
+        allocate(context%derived_types(8))
+        allocate(context%module_exports(4))
+        allocate(context%function_names(8))
+        allocate(context%function_value_kinds(8))
+        context%function_value_kinds = VALUE_I32
+        context%arena = arena
+        if (present(include_paths)) then
+            context%include_paths = include_paths
+            context%include_path_count = size(include_paths)
+        else
+            allocate (character(len=1) :: context%include_paths(0))
+            context%include_path_count = 0
+        end if
+        if (.not. prepare_liric_print_runtime(context%session, &
+                                              context%i32_print_format_id, &
+                                              context%str_print_format_id, &
+                                              error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. synthesize_real8_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. synthesize_get_arg_helper(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        call collect_program_parameters(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call collect_derived_type_definitions(arena, root_index, context, &
+                                              error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call collect_module_exports(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call collect_internal_function_names(arena, root_index, context, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call lower_internal_functions(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call lower_module_procedures(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
+                                 argv_vreg)) then
+            call destroy(context%session)
+            return
+        end if
+        context%argc_value = i32_vreg(context%session, argc_vreg)
+        context%argv_value = ptr_vreg(context%session, argv_vreg)
+        context%has_command_args = .true.
+        call lower_program_return(arena, root_index, context, return_value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. context%current_block_terminated) then
+            if (.not. emit_ret_i32_operand(context%session, return_value, &
+                                                           error_msg)) then
+                call destroy(context%session)
+                return
+            end if
+        end if
+        if (emit_executable) then
+            if (.not. finish_and_emit_exe(context%session, output_path, &
+                                                          error_msg)) then
+                call destroy(context%session)
+                return
+            end if
+        else
+            if (.not. finish_and_emit_object(context%session, output_path, &
+                                                             error_msg)) then
+                call destroy(context%session)
+                return
+            end if
+            ! Emit a sibling .fmod for each module compiled with -c.
+            if (context%module_export_count > 0) then
+                call emit_module_fmod_artifacts(arena, context, output_path, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call destroy(context%session)
+                    return
+                end if
+            end if
+        end if
+        call destroy(context%session)
+        call set_empty(error_msg)
+    end subroutine lower_program_to_liric_path
+    subroutine validate_program(arena, root_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        if (root_index <= 0) then
+            error_msg = 'FortFront did not return a root program index'
+            return
+        end if
+        if (.not. node_exists(arena, root_index)) then
+            error_msg = 'FortFront root index does not reference an AST node'
+            return
+        end if
+        if (get_node_type_at(arena, root_index) == 'program_node' .or. &
+            get_node_type_at(arena, root_index) == 'program') then
+            continue
+        else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
+                 get_node_type_at(arena, root_index) == 'module') then
+            ! A bare module unit is accepted only when it declares no symbols;
+            ! lower_program_return walks the body and emits targeted diagnostics
+            ! for module-defined procedures, types, and constants.
+            continue
+        else
+            call unsupported_feature_error('program unit', &
+                                           get_node_line(arena, root_index), &
+                                           get_node_column(arena, root_index), &
+                                           'direct LIRIC session only lowers '// &
+                                           'top-level programs', error_msg)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine validate_program
+    subroutine lower_program_return(arena, root_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: program_name, mod_name, ff_error
+        integer, allocatable :: body_indices(:), mod_declaration_indices(:), &
+                                mod_procedure_indices(:)
+        integer :: i
+        integer :: j
+        logical :: has_executable_statements
+        logical :: has_nested_program
+        value = i32_immediate(context%session, 0_c_int64_t)
+        context%current_block_terminated = .false.
+        has_executable_statements = .false.
+        has_nested_program = .false.
+        call set_empty(error_msg)
+        if (get_node_type_at(arena, root_index) == 'program_node' .or. &
+            get_node_type_at(arena, root_index) == 'program') then
+            call get_program_body_info(arena, root_index, &
+                                       program_name, body_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            if (.not. allocated(body_indices)) return
+            ! Check if there's a program_node in the body (multi-unit source)
+            has_nested_program = .false.
+            do i = 1, size(body_indices)
+                if (is_program_node(arena, body_indices(i))) then
+                    has_nested_program = .true.
+                    exit
+                end if
+            end do
+            ! Process body elements
+            do i = 1, size(body_indices)
+                if (is_internal_procedure_entry(arena, body_indices(i))) cycle
+                if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
+                    get_node_type_at(arena, body_indices(i)) == 'module') then
+                    ! Skip module nodes only if there's a nested program
+                    if (.not. has_nested_program) then
+                        call unsupported_feature_error('module definition', &
+                            arena%entries(body_indices(i))%node%line, &
+                            arena%entries(body_indices(i))%node%column, &
+                            'direct LIRIC session only supports modules as USE '// &
+                            'targets, not as top-level program units', error_msg)
+                        return
+                    end if
+                    cycle
+                end if
+                call lower_statement(arena, body_indices(i), context, &
+                                     value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (context%current_block_terminated) return
+                has_executable_statements = .true.
+            end do
+        else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
+                 get_node_type_at(arena, root_index) == 'module') then
+            call get_module_body_info(arena, root_index, &
+                                      mod_name, mod_declaration_indices, &
+                                      mod_procedure_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            call lower_module_unit(arena, mod_name, mod_declaration_indices, &
+                                   mod_procedure_indices, error_msg)
+        else
+            error_msg = 'ffc direct-session lowering only supports a program node'
+        end if
+    end subroutine lower_program_return
+
+    subroutine lower_module_unit(arena, mod_name, declaration_indices, &
+                                 procedure_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: mod_name
+        integer, intent(in) :: declaration_indices(:)
+        integer, intent(in) :: procedure_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        integer :: i
+
+        ! A module of compile-time exports (named constants and derived-type
+        ! definitions) lowers to no runtime code: the constants are folded at
+        ! use sites and the types are layout-only. Module variables that need
+        ! storage and module procedures land in follow-up issues (#150, #164,
+        ! #119). An empty module is a no-op.
+        do i = 1, size(procedure_indices)
+            if (.not. node_exists(arena, procedure_indices(i))) cycle
+            node_type = get_node_type_at(arena, procedure_indices(i))
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def' .or. &
+                node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                call unsupported_feature_error('module-defined procedure', &
+                    get_node_line(arena, procedure_indices(i)), &
+                    get_node_column(arena, procedure_indices(i)), &
+                    'direct LIRIC session does not yet lower module '// &
+                    'procedures', error_msg)
+                return
+            end if
+        end do
+        do i = 1, size(declaration_indices)
+            if (.not. node_exists(arena, declaration_indices(i))) cycle
+            node_type = get_node_type_at(arena, declaration_indices(i))
+            if (node_type == 'implicit_statement_node' .or. &
+                node_type == 'implicit_statement' .or. &
+                node_type == 'derived_type_node' .or. &
+                node_type == 'derived_type') cycle
+            if (node_type == 'declaration') then
+                if (module_declaration_is_parameter(arena, declaration_indices(i))) cycle
+                call unsupported_feature_error('module-defined declaration', &
+                    get_node_line(arena, declaration_indices(i)), &
+                    get_node_column(arena, declaration_indices(i)), &
+                    'direct LIRIC session lowers only module named constants '// &
+                    'and derived-type definitions; module variables are not '// &
+                    'yet supported', error_msg)
+                return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_module_unit
+
+    logical function module_declaration_is_parameter(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        module_declaration_is_parameter = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            module_declaration_is_parameter = decl%is_parameter
+        end select
+    end function module_declaration_is_parameter
+    include 'session_program_lowering_functions.inc'
+    recursive subroutine lower_statement(arena, node_index, context, value, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        context%current_block_terminated = .false.
+        value = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'program body index does not reference an AST node'
+            return
+        end if
+        if (is_subroutine_call_statement(arena, node_index)) then
+            call lower_subroutine_call(arena, node_index, context, error_msg)
+            return
+        end if
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            call set_empty(error_msg)
+            return
+        end if
+        if (node_type == 'program_node' .or. node_type == 'program') then
+            call lower_program_body(arena, get_node_as_program(arena, node_index), &
+                                    context, value, error_msg)
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
+        type is (parameter_declaration_node)
+            call lower_parameter_declaration(node, context, error_msg)
+        type is (declaration_node)
+            call lower_declaration(node, context, error_msg)
+        type is (assignment_node)
+            call lower_assignment(arena, node, context, error_msg)
+        type is (print_statement_node)
+            call lower_print(arena, node, context, error_msg)
+        type is (read_statement_node)
+            if (is_internal_read(node, context)) then
+                call lower_internal_read(arena, node, context, error_msg)
+                return
+            end if
+            call unsupported_feature_error('read statement', node%line, &
+                                           node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support input runtime calls', &
+                                           error_msg)
+        type is (write_statement_node)
+            if (is_internal_write(node, context)) then
+                call lower_internal_write(arena, node, context, error_msg)
+            else
+                call unsupported_feature_error('write statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports minimal print output '// &
+                                               'and internal write to a '// &
+                                               'character variable', error_msg)
+            end if
+        type is (allocate_statement_node)
+            call lower_allocate_statement(arena, node, context, error_msg)
+        type is (deallocate_statement_node)
+            call lower_deallocate_statement(arena, node, context, error_msg)
+        type is (return_node)
+            if (context%in_internal_subroutine) then
+                if (.not. emit_ret_void(context%session, error_msg)) return
+                context%current_block_terminated = .true.
+            else if (context%in_internal_function) then
+                call lower_function_return(node, context, error_msg)
+            else
+                call unsupported_feature_error('return statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session does not '// &
+                                               'support return at top level', &
+                                               error_msg)
+            end if
+        type is (stop_node)
+            call lower_stop(arena, node, context, value, error_msg)
+            if (len_trim(error_msg) == 0) then
+                if (context%in_internal_function .or. &
+                    context%in_internal_subroutine) then
+                    ! stop terminates the whole program. From a contained
+                    ! procedure, call libc exit() rather than returning the
+                    ! code (which would only return from the procedure).
+                    if (.not. emit_void_call(context%session, 'exit', [value], &
+                                             error_msg)) return
+                    if (context%in_internal_subroutine) then
+                        if (.not. emit_ret_void(context%session, error_msg)) return
+                    else
+                        if (.not. emit_ret_i32_operand(context%session, value, &
+                                                       error_msg)) return
+                    end if
+                else
+                    if (.not. emit_ret_i32_operand(context%session, value, &
+                                                                   error_msg)) return
+                end if
+                context%current_block_terminated = .true.
+            end if
+        type is (exit_node)
+            if (.not. context%in_counted_do) then
+                call unsupported_feature_error('exit statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports exit inside a counted '// &
+                                               'do', error_msg)
+                return
+            end if
+            if (.not. emit_liric_br(context%session, &
+                                    context%current_loop_exit_block, &
+                                    error_msg)) return
+            context%current_block_terminated = .true.
+            context%current_block_exited_loop = .true.
+        type is (cycle_node)
+            if (.not. context%in_counted_do) then
+                call unsupported_feature_error('cycle statement', node%line, &
+                                               node%column, &
+                                               'direct LIRIC session only '// &
+                                               'supports cycle inside a counted '// &
+                                               'do', error_msg)
+                return
+            end if
+            if (.not. emit_liric_br(context%session, &
+                                    context%current_loop_latch_block, &
+                                    error_msg)) return
+            context%current_block_terminated = .true.
+            context%current_block_exited_loop = .true.
+        type is (if_node)
+            call lower_if(arena, node, context, value, error_msg)
+        type is (do_loop_node)
+            call lower_do_loop(arena, node, context, value, error_msg)
+        type is (do_while_node)
+            call lower_do_while(arena, node, context, value, error_msg)
+        type is (select_case_node)
+            call lower_select_case(arena, node, context, error_msg)
+        type is (select_type_node)
+            call lower_select_type(arena, node_index, context, error_msg)
+        type is (derived_type_node)
+            call lower_derived_type_definition(node, context, error_msg)
+        type is (use_statement_node)
+            call import_module_derived_types(arena, node, context, error_msg)
+        type is (interface_block_node)
+            call lower_interface_block(arena, node, context, error_msg)
+        class default
+            node_type = get_node_type_at(arena, node_index)
+            if (len_trim(node_type) == 0) node_type = 'unknown'
+            call unsupported_statement_node(arena, node_index, node_type, error_msg)
+        end select
+    end subroutine lower_statement
+    subroutine unsupported_statement_node(arena, node_index, node_type, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: node_type
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: column
+        integer :: line
+        line = get_node_line(arena, node_index)
+        column = get_node_column(arena, node_index)
+        select case (trim(node_type))
+        case ('implicit_statement')
+            call set_empty(error_msg)
+        case ('use_statement')
+            call unsupported_feature_error('use statement', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support module imports', error_msg)
+        case ('interface_block')
+            call unsupported_feature_error('interface block', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support generic or explicit '// &
+                                           'interfaces', error_msg)
+        case default
+            call unsupported_feature_error('statement node: '//trim(node_type), &
+                                           line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'support this AST node', error_msg)
+        end select
+    end subroutine unsupported_statement_node
+    include 'session_program_lowering_control.inc'
+    include 'session_program_lowering_loops.inc'
+    include 'session_program_lowering_do_while.inc'
+    include 'session_program_lowering_interface.inc'
+    include 'session_program_lowering_derived_types.inc'
+    include 'session_program_lowering_derived_type_ops.inc'
+    include 'session_program_lowering_derived_module_ops.inc'
+    subroutine lower_statement_list(arena, node_indices, context, value, &
+                                    terminated, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: terminated
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        terminated = .false.
+        value = i32_immediate(context%session, 0_c_int64_t)
+        call set_empty(error_msg)
+        do i = 1, size(node_indices)
+            call lower_statement(arena, node_indices(i), context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%current_block_terminated) then
+                terminated = .true.
+                return
+            end if
+        end do
+    end subroutine lower_statement_list
