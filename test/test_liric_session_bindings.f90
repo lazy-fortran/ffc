@@ -1,7 +1,13 @@
 program test_liric_session_bindings
-    use liric_session_bindings, only: liric_session_t, liric_session_create, destroy, is_open, emit_ret_i32_main_exe, emit_ret_i32_operand, finish_and_emit_exe, begin_i32_main, i32_immediate
-    use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store, emit_i32_load
-    use liric_session_procedure_bindings, only: begin_liric_f64_function, emit_liric_f64_alloca, emit_liric_f64_store, emit_liric_f64_load
+    use liric_session_bindings, only: liric_session_t, &
+        liric_session_create, destroy, is_open, &
+        emit_ret_i32_main_exe, emit_ret_i32_operand, &
+        finish_and_emit_exe, begin_i32_main, i32_immediate
+    use liric_session_memory_bindings, only: emit_i32_alloca, &
+        emit_i32_store, emit_i32_load
+    use liric_session_procedure_bindings, only: &
+        begin_liric_f64_function, emit_liric_f64_alloca, &
+        emit_liric_f64_store, emit_liric_f64_load
     use liric_session_common, only: lr_operand_desc_t
     use, intrinsic :: iso_c_binding, only: c_int64_t
     implicit none
