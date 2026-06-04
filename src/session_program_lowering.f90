@@ -337,6 +337,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
     include 'session_program_lowering_arrays.inc'
+    include 'session_program_lowering_array_elements.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
     include 'session_program_lowering_internal_read.inc'
@@ -799,81 +800,67 @@ contains
     end subroutine identifier_name
     subroutine grow_symbols(context)
         type(lowering_context_t), intent(inout) :: context
-        type(symbol_t), allocatable :: old_symbols(:)
-        integer :: new_size
+        type(symbol_t), allocatable :: tmp(:)
+        integer :: old_size
 
         if (context%symbol_count < size(context%symbols)) return
-        old_symbols = context%symbols
-        new_size = 2 * size(context%symbols)
-        deallocate(context%symbols)
-        allocate(context%symbols(new_size))
-        context%symbols(1:size(old_symbols)) = old_symbols
-        deallocate(old_symbols)
+        old_size = size(context%symbols)
+        call move_alloc(context%symbols, tmp)
+        allocate(context%symbols(2 * old_size))
+        context%symbols(1:old_size) = tmp
     end subroutine grow_symbols
 
     subroutine grow_derived_types(context)
         type(lowering_context_t), intent(inout) :: context
-        type(derived_type_info_t), allocatable :: old_types(:)
-        integer :: new_size
+        type(derived_type_info_t), allocatable :: tmp(:)
+        integer :: old_size
 
         if (context%derived_type_count < size(context%derived_types)) return
-        old_types = context%derived_types
-        new_size = 2 * size(context%derived_types)
-        deallocate(context%derived_types)
-        allocate(context%derived_types(new_size))
-        context%derived_types(1:size(old_types)) = old_types
-        deallocate(old_types)
+        old_size = size(context%derived_types)
+        call move_alloc(context%derived_types, tmp)
+        allocate(context%derived_types(2 * old_size))
+        context%derived_types(1:old_size) = tmp
     end subroutine grow_derived_types
 
     subroutine grow_module_exports(context)
         type(lowering_context_t), intent(inout) :: context
-        type(module_exports_t), allocatable :: old_exports(:)
-        integer :: new_size
+        type(module_exports_t), allocatable :: tmp(:)
+        integer :: old_size
 
         if (context%module_export_count < size(context%module_exports)) return
-        old_exports = context%module_exports
-        new_size = 2 * size(context%module_exports)
-        deallocate(context%module_exports)
-        allocate(context%module_exports(new_size))
-        context%module_exports(1:size(old_exports)) = old_exports
-        deallocate(old_exports)
+        old_size = size(context%module_exports)
+        call move_alloc(context%module_exports, tmp)
+        allocate(context%module_exports(2 * old_size))
+        context%module_exports(1:old_size) = tmp
     end subroutine grow_module_exports
 
     subroutine grow_function_names(context)
         type(lowering_context_t), intent(inout) :: context
-        character(len=64), allocatable :: old_names(:)
-        integer, allocatable :: old_kinds(:)
-        integer, allocatable :: old_counts(:)
-        integer, allocatable :: old_indices(:)
-        integer :: new_size
+        character(len=64), allocatable :: tmp_names(:)
+        integer, allocatable :: tmp_kinds(:)
+        integer, allocatable :: tmp_counts(:)
+        integer, allocatable :: tmp_indices(:)
+        integer :: old_size, new_size
 
         if (context%function_count < size(context%function_names)) return
-        old_names = context%function_names
-        old_kinds = context%function_value_kinds
-        old_counts = context%function_param_counts
+        old_size = size(context%function_names)
+        new_size = 2 * old_size
+        call move_alloc(context%function_names, tmp_names)
+        call move_alloc(context%function_value_kinds, tmp_kinds)
+        call move_alloc(context%function_param_counts, tmp_counts)
         if (allocated(context%function_node_indices)) &
-            old_indices = context%function_node_indices
-        new_size = 2 * size(context%function_names)
-        deallocate(context%function_names)
-        deallocate(context%function_value_kinds)
-        deallocate(context%function_param_counts)
-        if (allocated(context%function_node_indices)) &
-            deallocate(context%function_node_indices)
+            call move_alloc(context%function_node_indices, tmp_indices)
         allocate(context%function_names(new_size))
         allocate(context%function_value_kinds(new_size))
         allocate(context%function_param_counts(new_size))
         allocate(context%function_node_indices(new_size))
         context%function_param_counts = 0
         context%function_node_indices = 0
-        context%function_names(1:size(old_names)) = old_names
-        context%function_value_kinds(1:size(old_kinds)) = old_kinds
-        context%function_param_counts(1:size(old_counts)) = old_counts
-        if (allocated(old_indices)) &
-            context%function_node_indices(1:size(old_indices)) = old_indices
-        deallocate(old_names)
-        deallocate(old_kinds)
-        deallocate(old_counts)
-        if (allocated(old_indices)) deallocate(old_indices)
+        context%function_names(1:old_size) = tmp_names
+        context%function_value_kinds(1:old_size) = tmp_kinds
+        context%function_param_counts(1:old_size) = tmp_counts
+        if (allocated(tmp_indices)) &
+            context%function_node_indices(1:size(tmp_indices)) = tmp_indices
     end subroutine grow_function_names
 
     integer function find_symbol(context, name) result(index)
