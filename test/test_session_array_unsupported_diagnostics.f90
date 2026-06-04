@@ -142,11 +142,11 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: values(3)'//new_line('a')// &
-                                       '  print *, values(1:2)'//new_line('a')// &
+                                       '  print *, values(1:2, 3:4)'//new_line('a')// &
                                        'end program main'
 
         test_array_slice_subscript_diagnostic = expect_error_contains( &
-                                                source, 'unsupported array subscript', &
+                                                source, 'too many subscripts', &
                                                 '/tmp/ffc_session_array_slice_test')
     end function test_array_slice_subscript_diagnostic
 
@@ -291,11 +291,11 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: values(3)'//new_line('a')// &
-                                       '  print *, values(1:2)'//new_line('a')// &
+                                       '  print *, values(1:2, 3:4)'//new_line('a')// &
                                        'end program main'
 
         test_cli_array_slice_subscript_diagnostic = expect_cli_error_contains( &
-                                                source, 'unsupported array subscript', &
+                                                source, 'too many subscripts', &
                                                     '/tmp/ffc_cli_array_slice_test')
     end function test_cli_array_slice_subscript_diagnostic
 
