@@ -359,6 +359,48 @@
         case (F64_INTRINSIC_ATAN2)
             call lower_f64_libm_call(arena, node, 'atan2', 2, context, value, &
                                      error_msg)
+        case (F64_INTRINSIC_ASIN)
+            call lower_f64_libm_call(arena, node, 'asin', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ACOS)
+            call lower_f64_libm_call(arena, node, 'acos', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_SINH)
+            call lower_f64_libm_call(arena, node, 'sinh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_COSH)
+            call lower_f64_libm_call(arena, node, 'cosh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_TANH)
+            call lower_f64_libm_call(arena, node, 'tanh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ASINH)
+            call lower_f64_libm_call(arena, node, 'asinh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ACOSH)
+            call lower_f64_libm_call(arena, node, 'acosh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATANH)
+            call lower_f64_libm_call(arena, node, 'atanh', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG10)
+            call lower_f64_libm_call(arena, node, 'log10', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ERF)
+            call lower_f64_libm_call(arena, node, 'erf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ERFC)
+            call lower_f64_libm_call(arena, node, 'erfc', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_GAMMA)
+            call lower_f64_libm_call(arena, node, 'tgamma', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG_GAMMA)
+            call lower_f64_libm_call(arena, node, 'lgamma', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_HYPOT)
+            call lower_f64_libm_call(arena, node, 'hypot', 2, context, value, &
+                                     error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -833,8 +875,11 @@
                                            'abs, min, max, mod, iand, ior, '// &
                                            'ieor, not, ishft, ishftc, sign, '// &
                                            'real, and the libm reals (sqrt, '// &
-                                           'exp, log, sin, cos, tan, atan, '// &
-                                           'atan2)', error_msg)
+                                           'exp, log, log10, sin, cos, tan, '// &
+                                           'asin, acos, atan, atan2, sinh, '// &
+                                           'cosh, tanh, asinh, acosh, atanh, '// &
+                                           'erf, erfc, gamma, log_gamma, '// &
+                                           'hypot)', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
@@ -842,8 +887,11 @@
                                            'abs, min, max, mod, iand, ior, '// &
                                            'ieor, not, ishft, ishftc, sign, '// &
                                            'real, and the libm reals (sqrt, '// &
-                                           'exp, log, sin, cos, tan, atan, '// &
-                                           'atan2)', error_msg)
+                                           'exp, log, log10, sin, cos, tan, '// &
+                                           'asin, acos, atan, atan2, sinh, '// &
+                                           'cosh, tanh, asinh, acosh, atanh, '// &
+                                           'erf, erfc, gamma, log_gamma, '// &
+                                           'hypot)', error_msg)
         end if
     end subroutine unsupported_intrinsic_error
 

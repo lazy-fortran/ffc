@@ -35,7 +35,11 @@ component layout, so inherited components and inherited type-bound
 procedures are reachable on a child instance. A module procedure may
 `contains` internal procedures, lowered as flat functions like
 program-contained procedures. The `associate` construct binds scalar
-selectors (`associate (x => expr)`) for the construct scope.
+selectors (`associate (x => expr)`) for the construct scope. The real
+transcendental intrinsics lower to libm: `sqrt`, `exp`, `log`, `log10`,
+`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`,
+`tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`, `log_gamma`,
+and `hypot`.
 
 ## Build
 

@@ -56,6 +56,20 @@ module session_program_lowering_types
     integer, parameter, public :: F64_INTRINSIC_TAN = 11
     integer, parameter, public :: F64_INTRINSIC_ATAN = 12
     integer, parameter, public :: F64_INTRINSIC_ATAN2 = 13
+    integer, parameter, public :: F64_INTRINSIC_ASIN = 14
+    integer, parameter, public :: F64_INTRINSIC_ACOS = 15
+    integer, parameter, public :: F64_INTRINSIC_SINH = 16
+    integer, parameter, public :: F64_INTRINSIC_COSH = 17
+    integer, parameter, public :: F64_INTRINSIC_TANH = 18
+    integer, parameter, public :: F64_INTRINSIC_ASINH = 19
+    integer, parameter, public :: F64_INTRINSIC_ACOSH = 20
+    integer, parameter, public :: F64_INTRINSIC_ATANH = 21
+    integer, parameter, public :: F64_INTRINSIC_LOG10 = 22
+    integer, parameter, public :: F64_INTRINSIC_ERF = 23
+    integer, parameter, public :: F64_INTRINSIC_ERFC = 24
+    integer, parameter, public :: F64_INTRINSIC_GAMMA = 25
+    integer, parameter, public :: F64_INTRINSIC_LOG_GAMMA = 26
+    integer, parameter, public :: F64_INTRINSIC_HYPOT = 27
     character(len=18), parameter, public :: I32_INTRINSIC_NAMES(21) = &
                                    [character(len=18) :: 'abs', 'min', 'max', 'mod', &
                                     'iand', 'ior', 'ieor', 'not', 'ishft', &
@@ -73,16 +87,26 @@ module session_program_lowering_types
                            I32_INTRINSIC_TRANSPOSE, I32_INTRINSIC_DOT_PRODUCT, &
                            I32_INTRINSIC_RESHAPE, I32_INTRINSIC_SELECTED_INT_KIND, &
                            I32_INTRINSIC_SELECTED_REAL_KIND]
-    character(len=8), parameter, public :: F64_INTRINSIC_NAMES(13) = &
-                                   [character(len=8) :: 'abs', 'min', 'max', 'real', &
+    character(len=9), parameter, public :: F64_INTRINSIC_NAMES(27) = &
+                                   [character(len=9) :: 'abs', 'min', 'max', 'real', &
                                     'sign', 'sqrt', 'exp', 'log', 'sin', 'cos', &
-                                    'tan', 'atan', 'atan2']
-    integer, parameter, public :: F64_INTRINSIC_IDS(13) = &
+                                    'tan', 'atan', 'atan2', 'asin', 'acos', 'sinh', &
+                                    'cosh', 'tanh', 'asinh', 'acosh', 'atanh', &
+                                    'log10', 'erf', 'erfc', 'gamma', 'log_gamma', &
+                                    'hypot']
+    integer, parameter, public :: F64_INTRINSIC_IDS(27) = &
                           [F64_INTRINSIC_ABS, F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                            F64_INTRINSIC_REAL, F64_INTRINSIC_SIGN, F64_INTRINSIC_SQRT, &
                            F64_INTRINSIC_EXP, F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
                            F64_INTRINSIC_COS, F64_INTRINSIC_TAN, F64_INTRINSIC_ATAN, &
-                           F64_INTRINSIC_ATAN2]
+                           F64_INTRINSIC_ATAN2, F64_INTRINSIC_ASIN, &
+                           F64_INTRINSIC_ACOS, F64_INTRINSIC_SINH, &
+                           F64_INTRINSIC_COSH, F64_INTRINSIC_TANH, &
+                           F64_INTRINSIC_ASINH, F64_INTRINSIC_ACOSH, &
+                           F64_INTRINSIC_ATANH, F64_INTRINSIC_LOG10, &
+                           F64_INTRINSIC_ERF, F64_INTRINSIC_ERFC, &
+                           F64_INTRINSIC_GAMMA, F64_INTRINSIC_LOG_GAMMA, &
+                           F64_INTRINSIC_HYPOT]
 
     type, public :: symbol_t
         character(len=64) :: name = ''

@@ -300,11 +300,11 @@ contains
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  real :: x'//new_line('a')// &
-                                       '  x = asin(0.5)'//new_line('a')// &
+                                       '  x = modulo(5.5, 2.0)'//new_line('a')// &
                                        'end program main'
 
         test_unsupported_real_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar intrinsic: asin', &
+            source, 'unsupported scalar intrinsic: modulo', &
             '/tmp/ffc_session_unsupported_real_intrinsic_test')
     end function test_unsupported_real_intrinsic_diagnostic
 
