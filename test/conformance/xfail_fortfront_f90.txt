@@ -31,9 +31,6 @@ close_nested_if.f90
 close_select_case.f90
 complex_assignment_literals.f90
 complex_literal_kind.f90
-constant_folding_comparison.f90
-constant_folding_literal_false.f90
-constant_folding_parameter.f90
 control_flow_associate_construct.f90
 control_flow_forall_construct.f90
 control_flow_nested_select_case.f90
@@ -56,7 +53,6 @@ docs_unsigned_integers_out.f90
 dtio_interface_basic.f90
 dtio_interface_read_write.f90
 dtio_interface_unformatted.f90
-equivalence_common_block.f90
 external_tool_example.f90
 f2003_abstract_interface.f90
 f2003_associate_construct.f90
@@ -127,7 +123,6 @@ issue_1774_user_defined_operator.f90
 issue_1782_procedure_pointer.f90
 issue_1783_use_rename_no_only.f90
 issue_1783_use_rename_only.f90
-issue_1787_continue_in_if.f90
 issue_1810_parameter_array_allocatable.f90
 issue_1811_cmplx_intrinsic.f90
 issue_1818_assumed_size_array.f90
@@ -172,7 +167,6 @@ issue_2250_pure_interface.f90
 issue_2251_data_implied_do.f90
 issue_2252_data_value_implied_do.f90
 issue_2253_procedure_interface.f90
-issue_2255_inline_if_comment_continuation.f90
 issue_2265_module_program.f90
 issue_2266_identifier_dimension.f90
 issue_2267_identifier_else.f90
@@ -190,8 +184,6 @@ issue_2349_data_boz_x_prefix.f90
 issue_2349_data_implied_do.f90
 issue_2349_data_trailing_object_comma.f90
 issue_2349_data_trailing_value_comma.f90
-issue_2387_comment_roundtrip.f90
-issue_2387_nested_program.f90
 issue_2387_procedure_only.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
@@ -258,8 +250,6 @@ issue_2753_unsigned_argument_mixing_error.f90
 issue_2753_unsigned_assignment_mixing_error.f90
 issue_509_mixed_constructs_expected.f90
 issue_88_double_free_complex.f90
-issue_common_block_ordering.f90
-issue_playtest5_array_and_loop_body_lost.f90
 issue_playtest5_array_parameter_rank_lost.f90
 issue_playtest5_array_type_changed_real_to_int.f90
 issue_playtest5_derived_type_field_lost.f90
@@ -281,7 +271,6 @@ roundtrip_declaration_attributes.f90
 roundtrip_interface_blocks.f90
 roundtrip_module_features.f90
 roundtrip_procedure_attributes.f90
-roundtrip_statement_preservation.f90
 roundtrip_type_preservation.f90
 select_rank_simple.f90
 tmp_goto_ast.f90
