@@ -25,7 +25,7 @@ Current slices include compound formatted `print` with literal `I`, `X`,
 and `F` descriptors on stdout, and fixed-size rank-2 integer arrays with
 scalar element access, array sections with compile-time integer bounds as
 rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
-`size`, `shape`, `sum`, `maxval`, and `minval`.
+`size`, `shape`, `sum`, `product`, `maxval`, and `minval`.
 
 ## Build
 

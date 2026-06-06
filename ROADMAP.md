@@ -41,7 +41,7 @@ Covered features and the public claim live in
 - fixed-size 1-D integer arrays and rank-2 integer arrays with scalar
   element access, array sections with compile-time integer bounds as
   rvalues, whole-array copy, elemental `+`/`-`/`*`, and the array
-  intrinsics `size`, `shape`, `sum`, `maxval`, and `minval`; simple
+  intrinsics `size`, `shape`, `sum`, `product`, `maxval`, and `minval`; simple
   derived types with scalar integer components;
 - minimal `print *, expr`, compound formatted `print fmt, items` with literal
   `I`, `X`, and `F` descriptors, `stop <expr>`, `abs` / `min` / `max` / `mod`

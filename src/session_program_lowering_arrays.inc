@@ -552,6 +552,17 @@
                                           candidate, next_value, error_msg)) return
                 value = next_value
             end do
+        case ('product')
+            value = i32_immediate(context%session, 1_c_int64_t)
+            do i = 0, array_size - 1
+                call load_array_linear_element(context, source_index, &
+                                               int(i, c_int64_t), candidate, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, value, &
+                                          candidate, next_value, error_msg)) return
+                value = next_value
+            end do
         case ('maxval')
             predicate = LR_CMP_SGT
             call load_array_linear_element(context, source_index, 0_c_int64_t, &

@@ -239,6 +239,12 @@
                                                error_msg, 'sum')
           return
       end if
+      if (same_name(node%name, 'product') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                               error_msg, 'product')
+          return
+      end if
       if (same_name(node%name, 'maxval') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_array_reduction_intrinsic(arena, node, context, value, &
