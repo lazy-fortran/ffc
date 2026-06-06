@@ -29,7 +29,10 @@ rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
 read and write on an allocated 1-D integer allocatable (`a(i)`). Scalar integer
 `pointer`/`target` with `p => t`, read/write through `p`, `associated(p)`,
 and `nullify(p)` is supported, as are constant-folded `selected_int_kind` and
-`selected_real_kind` kind-selection intrinsics.
+`selected_real_kind` kind-selection intrinsics. Derived types support
+single inheritance (`type, extends(parent) :: child`) with parent-first
+component layout, so inherited components and inherited type-bound
+procedures are reachable on a child instance.
 
 ## Build
 

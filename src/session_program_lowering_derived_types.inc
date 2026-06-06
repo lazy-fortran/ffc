@@ -274,13 +274,6 @@
             return
         end if
 
-        if (allocated(node%extends_parent)) then
-            call unsupported_feature_error('derived type inheritance', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'plain derived types', error_msg)
-            return
-        end if
         if (node%has_parameters .or. allocated(node%param_indices)) then
             call unsupported_feature_error('derived type parameters', &
                                            node%line, node%column, &
@@ -289,7 +282,8 @@
                                            error_msg)
             return
         end if
-        if (.not. allocated(node%component_indices)) then
+        if (.not. allocated(node%component_indices) .and. &
+            .not. allocated(node%extends_parent)) then
             call unsupported_feature_error('derived type definition', &
                                            node%line, node%column, &
                                            'derived types need at least one '// &
@@ -302,8 +296,21 @@
         type_index = context%derived_type_count + 1
         context%derived_types(type_index)%name = trim(node%name)
         context%derived_types(type_index)%binding_count = 0
-        call collect_derived_components(node, context, type_index, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (allocated(node%extends_parent)) then
+            call inherit_parent_members(node, context, type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (allocated(node%component_indices)) then
+            call collect_derived_components(node, context, type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (context%derived_types(type_index)%component_count <= 0) then
+            call unsupported_feature_error('derived type definition', &
+                                           node%line, node%column, &
+                                           'derived types need at least one '// &
+                                           'integer component', error_msg)
+            return
+        end if
         call collect_type_bindings(node, context, type_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
@@ -323,6 +330,14 @@
 
         call set_empty(error_msg)
         if (.not. allocated(node%binding_indices)) return
+        ! Inherited bindings are already in the table; a child that also
+        ! declares its own bindings (override/extension) is a later #248 slice.
+        if (context%derived_types(type_index)%binding_count > 0) then
+            call unsupported_feature_error('type-bound procedure', &
+                node%line, node%column, 'an extending type that declares its '// &
+                'own type-bound procedures is not yet supported', error_msg)
+            return
+        end if
 
         allocate(context%derived_types(type_index)% &
             binding_method_names(size(node%binding_indices)))
@@ -379,22 +394,77 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
-        context%derived_types(type_index)%component_count = 0
+        ! Own components append after any inherited (parent-first) components,
+        ! so the child layout is parent components then own (#248 B6a).
         do i = 1, size(node%component_indices)
             call collect_component_declaration( &
                 node%component_indices(i), node%line, node%column, context, &
                 type_index, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-        if (context%derived_types(type_index)%component_count <= 0) then
-            call unsupported_feature_error('derived type definition', &
-                                           node%line, node%column, &
-                                           'derived types need at least one '// &
-                                           'integer component', error_msg)
-            return
-        end if
         call set_empty(error_msg)
     end subroutine collect_derived_components
+
+    subroutine inherit_parent_members(node, context, type_index, error_msg)
+        ! Copy the parent type's components (parent-first layout) and its
+        ! static type-bound bindings into the extending child (#248 B6a). The
+        ! parent must already be collected; types are collected in source order
+        ! and Fortran requires the parent to be defined before it is extended.
+        type(derived_type_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: parent_index, c
+
+        call set_empty(error_msg)
+        parent_index = find_derived_type(context, node%extends_parent)
+        if (parent_index <= 0) then
+            call unsupported_feature_error('derived type inheritance', &
+                node%line, node%column, 'parent type "'// &
+                trim(node%extends_parent)//'" must be defined before the type '// &
+                'that extends it', error_msg)
+            return
+        end if
+
+        associate (parent => context%derived_types(parent_index))
+            do c = 1, parent%component_count
+                call add_derived_component(context, type_index, &
+                    parent%component_names(c), node%line, node%column, &
+                    parent%component_has_default(c), &
+                    parent%component_default_value(c), &
+                    parent%component_array_size(c), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end associate
+        call inherit_parent_bindings(context, type_index, parent_index)
+    end subroutine inherit_parent_members
+
+    subroutine inherit_parent_bindings(context, type_index, parent_index)
+        ! Copy the parent's static type-bound bindings into the child so a
+        ! parent method is callable on a child instance (static dispatch;
+        ! overriding and dynamic dispatch are later #248 slices).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: parent_index
+        integer :: pc, slot
+
+        pc = context%derived_types(parent_index)%binding_count
+        if (pc <= 0) return
+        if (.not. allocated(context%derived_types(parent_index)% &
+                            binding_method_names)) return
+        allocate(context%derived_types(type_index)%binding_method_names(pc))
+        allocate(context%derived_types(type_index)%binding_target_names(pc))
+        allocate(context%derived_types(type_index)%binding_pass_names(pc))
+        do slot = 1, pc
+            context%derived_types(type_index)%binding_method_names(slot) = &
+                context%derived_types(parent_index)%binding_method_names(slot)
+            context%derived_types(type_index)%binding_target_names(slot) = &
+                context%derived_types(parent_index)%binding_target_names(slot)
+            context%derived_types(type_index)%binding_pass_names(slot) = &
+                context%derived_types(parent_index)%binding_pass_names(slot)
+        end do
+        context%derived_types(type_index)%binding_count = pc
+    end subroutine inherit_parent_bindings
 
 subroutine collect_component_declaration(component_index, parent_line, &
                                               parent_column, context, &

@@ -14,7 +14,7 @@ program test_session_derived_type_compiler
     if (.not. test_real_component_diagnostic()) all_passed = .false.
     if (.not. test_nested_component_diagnostic()) all_passed = .false.
     if (.not. test_constructor_diagnostic()) all_passed = .false.
-    if (.not. test_inheritance_diagnostic()) all_passed = .false.
+    if (.not. test_inheritance_parent_component()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
     if (.not. test_component_default_initialiser()) all_passed = .false.
@@ -207,7 +207,9 @@ contains
                                       '/tmp/ffc_session_derived_constructor_test')
     end function test_constructor_diagnostic
 
-    logical function test_inheritance_diagnostic()
+    logical function test_inheritance_parent_component()
+        ! A child that extends a parent inherits the parent's component; the
+        ! parent component is reachable on a child instance (#248 B6a).
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: base_t'//new_line('a')// &
@@ -217,12 +219,16 @@ contains
                                        new_line('a')// &
                                        '    integer :: extra'//new_line('a')// &
                                        '  end type child_t'//new_line('a')// &
+                                       '  type(child_t) :: c'//new_line('a')// &
+                                       '  c%code = 6'//new_line('a')// &
+                                       '  c%extra = 3'//new_line('a')// &
+                                       '  stop c%code + c%extra'//new_line('a')// &
                                        'end program main'
 
-        test_inheritance_diagnostic = expect_error_contains( &
-                                      source, 'unsupported derived type inheritance', &
+        test_inheritance_parent_component = expect_exit_status( &
+                                      source, 9, &
                                       '/tmp/ffc_session_derived_extends_test')
-    end function test_inheritance_diagnostic
+    end function test_inheritance_parent_component
 
     logical function test_type_bound_binding_compiles()
         ! A plain procedure binding is recorded (not yet lowered as a call,
