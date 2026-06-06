@@ -51,10 +51,123 @@
         case (I32_INTRINSIC_DOT_PRODUCT)
             call lower_i32_dot_product_intrinsic(arena, node, context, value, &
                                                  error_msg)
+        case (I32_INTRINSIC_SELECTED_INT_KIND)
+            call lower_selected_int_kind_intrinsic(arena, node, context, value, &
+                                                   error_msg)
+        case (I32_INTRINSIC_SELECTED_REAL_KIND)
+            call lower_selected_real_kind_intrinsic(arena, node, context, value, &
+                                                    error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
     end subroutine lower_i32_intrinsic_call
+
+    ! selected_int_kind(r): smallest integer kind holding values up to 10**r-1.
+    ! gfortran kinds and their decimal ranges: 1->2, 2->4, 4->9, 8->18, 16->38.
+    ! Returns -1 when no available kind satisfies the request.
+    integer(c_int64_t) function selected_int_kind_value(r) result(kind_value)
+        integer(c_int64_t), intent(in) :: r
+
+        if (r <= 2_c_int64_t) then
+            kind_value = 1_c_int64_t
+        else if (r <= 4_c_int64_t) then
+            kind_value = 2_c_int64_t
+        else if (r <= 9_c_int64_t) then
+            kind_value = 4_c_int64_t
+        else if (r <= 18_c_int64_t) then
+            kind_value = 8_c_int64_t
+        else if (r <= 38_c_int64_t) then
+            kind_value = 16_c_int64_t
+        else
+            kind_value = -1_c_int64_t
+        end if
+    end function selected_int_kind_value
+
+    ! selected_real_kind(p, r): smallest real kind with at least p decimal
+    ! digits of precision and decimal exponent range r. gfortran available
+    ! kinds (precision, range): 4 (6, 37), 8 (15, 307), 10 (18, 4931),
+    ! 16 (33, 4931). Error codes: -1 precision unmet, -2 range unmet,
+    ! -3 both unmet.
+    integer(c_int64_t) function selected_real_kind_value(p, r) result(kind_value)
+        integer(c_int64_t), intent(in) :: p, r
+        integer, parameter :: nk = 4
+        integer(c_int64_t), parameter :: kinds(nk) = [4_c_int64_t, 8_c_int64_t, &
+                                                      10_c_int64_t, 16_c_int64_t]
+        integer(c_int64_t), parameter :: precs(nk) = [6_c_int64_t, 15_c_int64_t, &
+                                                      18_c_int64_t, 33_c_int64_t]
+        integer(c_int64_t), parameter :: ranges(nk) = [37_c_int64_t, 307_c_int64_t, &
+                                                       4931_c_int64_t, 4931_c_int64_t]
+        logical :: prec_ok, range_ok
+        integer :: i
+
+        prec_ok = .false.
+        range_ok = .false.
+        do i = 1, nk
+            if (precs(i) >= p) prec_ok = .true.
+            if (ranges(i) >= r) range_ok = .true.
+            if (precs(i) >= p .and. ranges(i) >= r) then
+                kind_value = kinds(i)
+                return
+            end if
+        end do
+        if (.not. prec_ok .and. .not. range_ok) then
+            kind_value = -3_c_int64_t
+        else if (.not. prec_ok) then
+            kind_value = -1_c_int64_t
+        else
+            kind_value = -2_c_int64_t
+        end if
+    end function selected_real_kind_value
+
+    subroutine lower_selected_int_kind_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: r
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        call eval_i32_constant(arena, node%arg_indices(1), context, r, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'selected_int_kind requires a compile-time integer '// &
+                        'argument: '//error_msg
+            return
+        end if
+        value = i32_immediate(context%session, selected_int_kind_value(r))
+        call set_empty(error_msg)
+    end subroutine lower_selected_int_kind_intrinsic
+
+    subroutine lower_selected_real_kind_intrinsic(arena, node, context, value, &
+                                                  error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: p, r
+
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+        p = 0_c_int64_t
+        r = 0_c_int64_t
+        call eval_i32_constant(arena, node%arg_indices(1), context, p, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'selected_real_kind requires compile-time integer '// &
+                        'arguments: '//error_msg
+            return
+        end if
+        if (size(node%arg_indices) >= 2) then
+            call eval_i32_constant(arena, node%arg_indices(2), context, r, error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'selected_real_kind requires compile-time integer '// &
+                            'arguments: '//error_msg
+                return
+            end if
+        end if
+        value = i32_immediate(context%session, selected_real_kind_value(p, r))
+        call set_empty(error_msg)
+    end subroutine lower_selected_real_kind_intrinsic
 
     subroutine lower_i32_bitwise_intrinsic(arena, node, opcode, context, value, &
                                            error_msg)

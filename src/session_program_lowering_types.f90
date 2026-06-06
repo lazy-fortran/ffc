@@ -40,6 +40,8 @@ module session_program_lowering_types
     integer, parameter, public :: I32_INTRINSIC_TRANSPOSE = 17
     integer, parameter, public :: I32_INTRINSIC_DOT_PRODUCT = 18
     integer, parameter, public :: I32_INTRINSIC_RESHAPE = 19
+    integer, parameter, public :: I32_INTRINSIC_SELECTED_INT_KIND = 20
+    integer, parameter, public :: I32_INTRINSIC_SELECTED_REAL_KIND = 21
     integer, parameter, public :: F64_INTRINSIC_NONE = 0
     integer, parameter, public :: F64_INTRINSIC_ABS = 1
     integer, parameter, public :: F64_INTRINSIC_MIN = 2
@@ -54,13 +56,14 @@ module session_program_lowering_types
     integer, parameter, public :: F64_INTRINSIC_TAN = 11
     integer, parameter, public :: F64_INTRINSIC_ATAN = 12
     integer, parameter, public :: F64_INTRINSIC_ATAN2 = 13
-    character(len=11), parameter, public :: I32_INTRINSIC_NAMES(19) = &
-                                   [character(len=11) :: 'abs', 'min', 'max', 'mod', &
+    character(len=18), parameter, public :: I32_INTRINSIC_NAMES(21) = &
+                                   [character(len=18) :: 'abs', 'min', 'max', 'mod', &
                                     'iand', 'ior', 'ieor', 'not', 'ishft', &
                                     'ishftc', 'sign', 'int', 'nint', 'floor', &
                                     'ceiling', 'matmul', 'transpose', &
-                                    'dot_product', 'reshape']
-    integer, parameter, public :: I32_INTRINSIC_IDS(19) = &
+                                    'dot_product', 'reshape', 'selected_int_kind', &
+                                    'selected_real_kind']
+    integer, parameter, public :: I32_INTRINSIC_IDS(21) = &
                           [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
                            I32_INTRINSIC_MOD, I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
                            I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, I32_INTRINSIC_ISHFT, &
@@ -68,7 +71,8 @@ module session_program_lowering_types
                            I32_INTRINSIC_NINT, I32_INTRINSIC_FLOOR, &
                            I32_INTRINSIC_CEILING, I32_INTRINSIC_MATMUL, &
                            I32_INTRINSIC_TRANSPOSE, I32_INTRINSIC_DOT_PRODUCT, &
-                           I32_INTRINSIC_RESHAPE]
+                           I32_INTRINSIC_RESHAPE, I32_INTRINSIC_SELECTED_INT_KIND, &
+                           I32_INTRINSIC_SELECTED_REAL_KIND]
     character(len=8), parameter, public :: F64_INTRINSIC_NAMES(13) = &
                                    [character(len=8) :: 'abs', 'min', 'max', 'real', &
                                     'sign', 'sqrt', 'exp', 'log', 'sin', 'cos', &

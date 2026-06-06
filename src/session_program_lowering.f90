@@ -155,6 +155,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  I32_INTRINSIC_TRANSPOSE, &
                                                  I32_INTRINSIC_DOT_PRODUCT, &
                                                  I32_INTRINSIC_RESHAPE, &
+                                                 I32_INTRINSIC_SELECTED_INT_KIND, &
+                                                 I32_INTRINSIC_SELECTED_REAL_KIND, &
                                                  F64_INTRINSIC_SIGN, &
                                                 F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
                                                 F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &

@@ -28,7 +28,8 @@ rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, and `minval`, plus scalar element
 read and write on an allocated 1-D integer allocatable (`a(i)`). Scalar integer
 `pointer`/`target` with `p => t`, read/write through `p`, `associated(p)`,
-and `nullify(p)` is supported.
+and `nullify(p)` is supported, as are constant-folded `selected_int_kind` and
+`selected_real_kind` kind-selection intrinsics.
 
 ## Build
 

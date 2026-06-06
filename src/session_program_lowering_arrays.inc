@@ -162,10 +162,62 @@
         end if
 
         select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            call eval_kind_inquiry_constant(arena, node, context, &
+                                            constant_value, error_msg)
         class default
             error_msg = 'array bound is not a compile-time integer expression'
         end select
     end subroutine eval_i32_constant
+
+    ! Constant-fold selected_int_kind / selected_real_kind so they may appear
+    ! in a compile-time integer parameter initializer (kind selection).
+    subroutine eval_kind_inquiry_constant(arena, node, context, constant_value, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: p, r
+
+        constant_value = 0_c_int64_t
+        if (.not. allocated(node%name)) then
+            error_msg = 'compile-time call has no callee name'
+            return
+        end if
+        if (same_name(node%name, 'selected_int_kind')) then
+            if (.not. allocated(node%arg_indices) .or. &
+                size(node%arg_indices) /= 1) then
+                error_msg = 'selected_int_kind requires one argument'
+                return
+            end if
+            call eval_i32_constant(arena, node%arg_indices(1), context, r, error_msg)
+            if (len_trim(error_msg) > 0) return
+            constant_value = selected_int_kind_value(r)
+            call set_empty(error_msg)
+        else if (same_name(node%name, 'selected_real_kind')) then
+            if (.not. allocated(node%arg_indices) .or. &
+                size(node%arg_indices) < 1 .or. size(node%arg_indices) > 2) then
+                error_msg = 'selected_real_kind requires one or two arguments'
+                return
+            end if
+            p = 0_c_int64_t
+            r = 0_c_int64_t
+            call eval_i32_constant(arena, node%arg_indices(1), context, p, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (size(node%arg_indices) >= 2) then
+                call eval_i32_constant(arena, node%arg_indices(2), context, r, &
+                                       error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            constant_value = selected_real_kind_value(p, r)
+            call set_empty(error_msg)
+        else
+            error_msg = 'compile-time integer expression uses unsupported call: '// &
+                        trim(node%name)
+        end if
+    end subroutine eval_kind_inquiry_constant
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
                                             array_size, error_msg)
