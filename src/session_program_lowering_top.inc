@@ -449,6 +449,8 @@
             call lower_select_case(arena, node, context, error_msg)
         type is (select_type_node)
             call lower_select_type(arena, node_index, context, error_msg)
+        type is (associate_node)
+            call lower_associate(arena, node, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
         type is (use_statement_node)
@@ -490,6 +492,7 @@
         end select
     end subroutine unsupported_statement_node
     include 'session_program_lowering_control.inc'
+    include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_do_while.inc'
     include 'session_program_lowering_interface.inc'

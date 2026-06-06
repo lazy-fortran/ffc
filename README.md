@@ -34,7 +34,8 @@ single inheritance (`type, extends(parent) :: child`) with parent-first
 component layout, so inherited components and inherited type-bound
 procedures are reachable on a child instance. A module procedure may
 `contains` internal procedures, lowered as flat functions like
-program-contained procedures.
+program-contained procedures. The `associate` construct binds scalar
+selectors (`associate (x => expr)`) for the construct scope.
 
 ## Build
 

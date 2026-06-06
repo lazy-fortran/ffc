@@ -11,6 +11,7 @@ module session_program_lowering
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               visibility_statement_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node
+    use ast_nodes_associate, only: associate_node, association_t
     use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
