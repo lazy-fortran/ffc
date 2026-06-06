@@ -2,7 +2,7 @@ program test_session_formatted_print_compiler
     use fortfront_compiler, only: compiler_frontend_options_t, &
                                   compiler_frontend_result_t, &
                                   compile_frontend_from_string, INPUT_MODE_STANDARD
-    use ffc_test_support, only: expect_error_contains, expect_output
+    use ffc_test_support, only: expect_output
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
@@ -16,7 +16,8 @@ program test_session_formatted_print_compiler
     if (.not. test_string_a_literal()) all_passed = .false.
     if (.not. test_string_a_variable()) all_passed = .false.
     if (.not. test_compound_i_x_f()) all_passed = .false.
-    if (.not. test_compound_a_rejected()) all_passed = .false.
+    if (.not. test_compound_a_i()) all_passed = .false.
+    if (.not. test_compound_a_width()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: formatted print lowers through direct LIRIC session'
@@ -81,16 +82,32 @@ contains
         test_compound_i_x_f = matches_gfortran(source, 'fmt_compound_i_x_f')
     end function test_compound_i_x_f
 
-    logical function test_compound_a_rejected()
+    logical function test_compound_a_i()
+        ! Compound format mixing A (character) and I descriptors with literal
+        ! text and a variable, matched byte-for-byte against gfortran.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            "  print '(I0, A)', 1, 'x'"//new_line('a')// &
+            '  integer :: n'//new_line('a')// &
+            '  character(len=5) :: s'//new_line('a')// &
+            "  s = 'count'"//new_line('a')// &
+            '  n = 42'//new_line('a')// &
+            "  print '(A,A,I5)', s, ' = ', n"//new_line('a')// &
             'end program main'
 
-        test_compound_a_rejected = expect_error_contains( &
-            source, 'unsupported edit descriptor in compound format: A', &
-            '/tmp/ffc_fmt_compound_test')
-    end function test_compound_a_rejected
+        test_compound_a_i = matches_gfortran(source, 'fmt_compound_a_i')
+    end function test_compound_a_i
+
+    logical function test_compound_a_width()
+        ! Aw (width) on a character literal inside a compound format.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  i = 7'//new_line('a')// &
+            "  print '(A8,I3)', 'tag', i"//new_line('a')// &
+            'end program main'
+
+        test_compound_a_width = matches_gfortran(source, 'fmt_compound_a_width')
+    end function test_compound_a_width
 
     logical function matches_gfortran(source, stem)
         character(len=*), intent(in) :: source

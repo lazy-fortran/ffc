@@ -22,7 +22,7 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
 supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
-and `F` descriptors on stdout, and fixed-size rank-2 integer arrays with
+`F`, and `A` descriptors on stdout, and fixed-size rank-2 integer arrays with
 scalar element access, array sections with compile-time integer bounds as
 rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, and `minval`, plus scalar element

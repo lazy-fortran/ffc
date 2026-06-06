@@ -286,6 +286,23 @@
             call lower_compound_data_descriptor(arena, node, context, kind_char, &
                                                 printf_fmt, buffer_size, &
                                                 item_index, error_msg)
+        case ('A')
+            if (len(prefix) > 0) then
+                error_msg = 'repeat counts are not supported for A descriptors'
+                return
+            end if
+            call parse_decimal_digits(format_body, pos, width)
+            if (len(width) == 0) then
+                printf_fmt = '%s'
+            else
+                call read_decimal_value(width, width_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                write (width_text, '(I0)') width_value
+                printf_fmt = '%'//trim(width_text)//'s'
+            end if
+            call lower_compound_data_descriptor(arena, node, context, kind_char, &
+                                                printf_fmt, 0, item_index, &
+                                                error_msg)
         case default
             error_msg = 'unsupported edit descriptor in compound format: '// &
                         kind_char
@@ -324,6 +341,10 @@
         if (kind_char == 'I') then
             call lower_formatted_int_item(arena, node%expression_indices(item_index), &
                                           context, fmt_id, error_msg)
+        else if (kind_char == 'A') then
+            call lower_formatted_char_item(arena, &
+                                           node%expression_indices(item_index), &
+                                           context, fmt_id, error_msg)
         else
             call lower_formatted_real_item(arena, node%expression_indices(item_index), &
                                            context, fmt_id, buffer_size, &
