@@ -303,6 +303,7 @@
         type(lr_operand_desc_t) :: addr
         integer :: i
         integer :: n
+        integer, allocatable :: flat(:)
 
         if (allocated(ctor%syntax_style)) then
             if (ctor%syntax_style == 'implied_do') then
@@ -316,15 +317,20 @@
             error_msg = 'array constructor has no elements'
             return
         end if
-        n = size(ctor%element_indices)
+        ! Flatten nested array literals ([[1,2],[3,4]] -> [1,2,3,4]) so a
+        ! rank-2 array constructed from row literals stores in linear order.
+        allocate (flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        n = size(flat)
         if (n /= context%symbols(symbol_index)%array_size) then
             error_msg = 'array constructor element count does not match the '// &
                 'declared size of '//trim(context%symbols(symbol_index)%name)
             return
         end if
         do i = 1, n
-            call lower_i32_expression(arena, ctor%element_indices(i), context, &
-                                      value, error_msg)
+            call lower_i32_expression(arena, flat(i), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -336,6 +342,42 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    recursive subroutine flatten_constructor_elements(arena, indices, flat, error_msg)
+        !! Collect the leaf element indices of a (possibly nested) array
+        !! constructor in order. A nested array literal contributes its own
+        !! flattened elements; an implied-do nested inside is not supported.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        integer, allocatable, intent(inout) :: flat(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) then
+                flat = [flat, indices(i)]
+                cycle
+            end if
+            select type (child => arena%entries(indices(i))%node)
+            type is (array_literal_node)
+                if (allocated(child%syntax_style)) then
+                    if (child%syntax_style == 'implied_do') then
+                        error_msg = 'nested implied-do array constructors are '// &
+                                    'not supported'
+                        return
+                    end if
+                end if
+                if (allocated(child%element_indices)) then
+                    call flatten_constructor_elements(arena, child%element_indices, &
+                                                      flat, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            class default
+                flat = [flat, indices(i)]
+            end select
+        end do
+    end subroutine flatten_constructor_elements
 
     subroutine expand_implied_do_constructor(arena, ctor, symbol_index, context, &
                                              error_msg)

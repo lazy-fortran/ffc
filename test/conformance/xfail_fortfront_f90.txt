@@ -240,8 +240,6 @@ memory_corruption.f90
 module_implicit_none_insertion.f90
 module_interface_block.f90
 module_parsing_basic.f90
-nested_array_literal_rectangular.f90
-nested_array_literal_square.f90
 pause_in_if_block.f90
 pause_with_string_in_loop.f90
 pause_without_message.f90
