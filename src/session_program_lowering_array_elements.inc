@@ -601,18 +601,17 @@
 
         type(array_section_info_t) :: tinfo, sinfo
         type(lr_operand_desc_t) :: value
-        integer :: k, n
+        integer :: k, k2, n
         integer(c_int64_t) :: tgt_lin, src_lin
 
         call describe_array_section(arena, target, context, tinfo, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (tinfo%source_rank /= 1 .or. tinfo%result_rank /= 1) then
-            error_msg = 'array section assignment supports rank-1 sections only'
-            return
-        end if
         n = int(tinfo%section_extents(1))
 
-        if (node_exists(arena, node%value_index)) then
+        ! Constructor and section-copy right-hand sides are handled for rank-1
+        ! sections only; the scalar-broadcast tail below also covers rank-2.
+        if (node_exists(arena, node%value_index) .and. tinfo%result_rank == 1 &
+            .and. tinfo%source_rank == 1) then
             select type (rhs => arena%entries(node%value_index)%node)
             type is (array_literal_node)
                 if (.not. allocated(rhs%element_indices)) then
@@ -664,17 +663,38 @@
             end select
         end if
 
-        ! Scalar broadcast: arr(lo:hi) = expr.
+        ! Scalar broadcast: arr(section) = expr, for rank-1 and rank-2 sections.
+        if (tinfo%source_rank /= tinfo%result_rank .or. tinfo%result_rank > 2) then
+            error_msg = 'array section assignment supports whole rank-1 and '// &
+                        'rank-2 sections'
+            return
+        end if
         call lower_i32_expression(arena, node%value_index, context, value, error_msg)
         if (len_trim(error_msg) > 0) return
-        do k = 0, n - 1
-            tgt_lin = tinfo%section_lowers(1) + &
-                      int(k, c_int64_t) * tinfo%section_strides(1) - &
-                      tinfo%source_lowers(1)
-            call store_array_linear_element(context, tinfo%source_index, tgt_lin, &
-                                            value, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
+        if (tinfo%result_rank == 1) then
+            do k = 0, n - 1
+                tgt_lin = tinfo%section_lowers(1) + &
+                          int(k, c_int64_t) * tinfo%section_strides(1) - &
+                          tinfo%source_lowers(1)
+                call store_array_linear_element(context, tinfo%source_index, &
+                                                tgt_lin, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else
+            do k2 = 0, int(tinfo%section_extents(2)) - 1
+                do k = 0, n - 1
+                    tgt_lin = (tinfo%section_lowers(1) + &
+                               int(k, c_int64_t) * tinfo%section_strides(1) - &
+                               tinfo%source_lowers(1)) + tinfo%source_sizes(1) * &
+                              (tinfo%section_lowers(2) + &
+                               int(k2, c_int64_t) * tinfo%section_strides(2) - &
+                               tinfo%source_lowers(2))
+                    call store_array_linear_element(context, tinfo%source_index, &
+                                                    tgt_lin, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end do
+        end if
         call set_empty(error_msg)
     end subroutine lower_array_section_assignment
 
