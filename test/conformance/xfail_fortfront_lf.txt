@@ -176,7 +176,6 @@ issue_509_mixed_constructs_input.lf
 issue_652_multi_var_allocatable.lf
 issue_935_allocate_param.lf
 issue_935_multidim_arrays.lf
-issue_935_param_dimension.lf
 issue_allocatable_without_allocate.lf
 issue_array_slice_type_mismatch.lf
 issue_missing_intent_in_function.lf

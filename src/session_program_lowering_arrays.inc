@@ -376,6 +376,24 @@
             end select
         end if
 
+        ! Scalar broadcast: a = expr where expr is a scalar. Lower the scalar
+        ! once and store it into every element.
+        if (is_scalar_broadcast_rhs(arena, node%value_index, context)) then
+            call lower_i32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            do i = 1, array_size
+                if (.not. emit_i32_array_element_addr(context%session, array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        i32_immediate(context%session, int(i - 1, c_int64_t)), &
+                        addr, error_msg)) return
+                if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
+                    return
+            end do
+            call set_empty(error_msg)
+            return
+        end if
+
         do i = 1, array_size
             call lower_array_elementwise_value(arena, node%value_index, &
                                                symbol_index, i - 1, context, &
@@ -390,6 +408,30 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_whole_assignment
+
+    logical function is_scalar_broadcast_rhs(arena, node_index, context) result(scalar)
+        !! True when the RHS of a whole-array assignment is a scalar that should
+        !! broadcast: a literal, or an identifier naming a non-array scalar.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, err
+        integer :: sym
+
+        scalar = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (literal_node)
+            scalar = .true.
+            return
+        end select
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, name)
+            if (sym > 0) scalar = .not. context%symbols(sym)%is_array
+        end if
+    end function is_scalar_broadcast_rhs
 
     subroutine lower_shape_intrinsic_assignment(arena, node, symbol_index, &
                                                 context, error_msg)

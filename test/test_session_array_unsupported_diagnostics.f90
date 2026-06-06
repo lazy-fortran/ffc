@@ -32,8 +32,6 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_cli_array_rhs_assignment_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_slice_subscript_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_real_subscript_diagnostic()) all_passed = .false.
-    if (.not. test_cli_whole_array_assignment_target_diagnostic()) &
-        all_passed = .false.
     if (.not. test_cli_whole_array_argument_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -169,8 +167,10 @@ contains
                                        '  values = 4'//new_line('a')// &
                                        'end program main'
 
-        test_whole_array_assignment_target_diagnostic = expect_error_contains( &
-                                        source, 'whole-array assignment requires array operands', &
+        ! Scalar broadcast to a whole integer array (values = 4) is supported;
+        ! verify it lowers without a diagnostic.
+        test_whole_array_assignment_target_diagnostic = expect_no_error( &
+                                        source, &
                                          '/tmp/ffc_session_whole_array_assignment_test')
     end function test_whole_array_assignment_target_diagnostic
 
@@ -300,18 +300,6 @@ contains
                                                    '/tmp/ffc_cli_array_real_index_test')
     end function test_cli_array_real_subscript_diagnostic
 
-    logical function test_cli_whole_array_assignment_target_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: values(3)'//new_line('a')// &
-                                       '  values = 4'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_whole_array_assignment_target_diagnostic = &
-            expect_cli_error_contains(source, &
-                                      'whole-array assignment requires array operands', &
-                                      '/tmp/ffc_cli_whole_array_assignment_test')
-    end function test_cli_whole_array_assignment_target_diagnostic
 
     logical function test_cli_whole_array_argument_diagnostic()
         character(len=*), parameter :: source = &
