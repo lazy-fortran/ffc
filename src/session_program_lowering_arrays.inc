@@ -304,6 +304,14 @@
         integer :: i
         integer :: n
 
+        if (allocated(ctor%syntax_style)) then
+            if (ctor%syntax_style == 'implied_do') then
+                call expand_implied_do_constructor(arena, ctor, symbol_index, &
+                                                   context, error_msg)
+                return
+            end if
+        end if
+
         if (.not. allocated(ctor%element_indices)) then
             error_msg = 'array constructor has no elements'
             return
@@ -328,6 +336,108 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    subroutine expand_implied_do_constructor(arena, ctor, symbol_index, context, &
+                                             error_msg)
+        !! Expand a compile-time implied-do array constructor, arr = [(expr, i =
+        !! lo, hi)], by folding the body for each i and storing the result. The
+        !! constructor wraps a do_loop_node (var, start/end/step, body). The loop
+        !! variable is bound as a compile-time constant per iteration so
+        !! eval_i32_constant can fold the body.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, step, ival, cval
+        integer :: vsym, b, slot
+        logical :: saved_has
+        integer(c_int64_t) :: saved_val
+
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'implied-do constructor has no loop'
+            return
+        end if
+        if (size(ctor%element_indices) /= 1) then
+            error_msg = 'nested implied-do constructors are not supported'
+            return
+        end if
+
+        select type (dnode => arena%entries(ctor%element_indices(1))%node)
+        type is (do_loop_node)
+            if (.not. allocated(dnode%body_indices)) then
+                error_msg = 'implied-do constructor has no body'
+                return
+            end if
+            call eval_i32_constant(arena, dnode%start_expr_index, context, lo, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(arena, dnode%end_expr_index, context, hi, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            step = 1_c_int64_t
+            if (dnode%step_expr_index > 0) then
+                call eval_i32_constant(arena, dnode%step_expr_index, context, step, &
+                                       error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (step == 0_c_int64_t) then
+                error_msg = 'implied-do constructor step is zero'
+                return
+            end if
+            vsym = find_symbol(context, dnode%var_name)
+            if (vsym <= 0) then
+                error_msg = 'implied-do variable was not declared: '// &
+                            trim(dnode%var_name)
+                return
+            end if
+            saved_has = context%symbols(vsym)%has_i32_constant
+            saved_val = context%symbols(vsym)%i32_constant
+            context%symbols(vsym)%has_i32_constant = .true.
+            slot = 0
+            ival = lo
+            do while ((step > 0 .and. ival <= hi) .or. (step < 0 .and. ival >= hi))
+                context%symbols(vsym)%i32_constant = ival
+                do b = 1, size(dnode%body_indices)
+                    if (slot >= context%symbols(symbol_index)%array_size) then
+                        error_msg = 'implied-do constructor produces more '// &
+                                    'elements than the array holds'
+                        context%symbols(vsym)%has_i32_constant = saved_has
+                        context%symbols(vsym)%i32_constant = saved_val
+                        return
+                    end if
+                    call eval_i32_constant(arena, dnode%body_indices(b), context, &
+                                           cval, error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        context%symbols(vsym)%has_i32_constant = saved_has
+                        context%symbols(vsym)%i32_constant = saved_val
+                        return
+                    end if
+                    call store_array_linear_element(context, symbol_index, &
+                        int(slot, c_int64_t), i32_immediate(context%session, cval), &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        context%symbols(vsym)%has_i32_constant = saved_has
+                        context%symbols(vsym)%i32_constant = saved_val
+                        return
+                    end if
+                    slot = slot + 1
+                end do
+                ival = ival + step
+            end do
+            context%symbols(vsym)%has_i32_constant = saved_has
+            context%symbols(vsym)%i32_constant = saved_val
+            if (slot /= context%symbols(symbol_index)%array_size) then
+                error_msg = 'implied-do constructor element count does not match '// &
+                            'the array size'
+                return
+            end if
+        class default
+            error_msg = 'implied-do constructor is missing its loop node'
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine expand_implied_do_constructor
 
     subroutine lower_array_whole_assignment(arena, node, symbol_index, context, &
                                             error_msg)

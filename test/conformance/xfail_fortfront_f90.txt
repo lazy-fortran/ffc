@@ -71,7 +71,6 @@ issue_1565_use_associated_rename.f90
 issue_1565_use_associated_variable.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90
-issue_1575_implied_do_array_constructor.f90
 issue_1578_block_data.f90
 issue_1582_simple_goto.f90
 issue_1583_computed_goto.f90
