@@ -59,9 +59,15 @@ runtime integer) calls `malloc(N*4)`, stores the pointer in `data`, sets
 `lower = 1` and `upper = N`. `deallocate(a)` calls `free(data)` then zeroes
 `data` and `upper`. `free(NULL)` is a no-op, so deallocating an unallocated
 variable exits cleanly rather than erroring (a deliberate divergence from the
-standard, which makes it a runtime error). Element access and whole-array
-assignment on allocatables are not yet supported and are rejected with a
-diagnostic. Only single-variable, one-dimensional, default-lower-bound
+standard, which makes it a runtime error).
+
+Element access on an allocated 1-D integer allocatable is supported as an
+rvalue and an assignment target. `a(i)` loads `data` from offset 0 and `lower`
+from offset 8 at runtime, computes the element address as
+`data + (i - lower) * 4`, and emits an i32 load or store. No alloc/free happens
+inside element loops: `allocate` once and index many. Bounds are not checked.
+Whole-array assignment on allocatables is not yet supported and is rejected
+with a diagnostic. Only single-variable, one-dimensional, default-lower-bound
 `allocate`/`deallocate` are supported.
 
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the

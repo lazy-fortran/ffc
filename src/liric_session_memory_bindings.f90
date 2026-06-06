@@ -31,7 +31,7 @@ module liric_session_memory_bindings
     public :: emit_i32_load, emit_i64_load, emit_ptr_load
     public :: emit_i32_store, emit_i64_store
     public :: emit_i64_load_at, emit_i64_store_at
-    public :: emit_ptr_offset
+    public :: emit_ptr_offset, emit_ptr_offset_dyn
     public :: emit_alloca_bytes, emit_malloc, emit_free, emit_ptr_store, emit_memcpy
     public :: emit_i32_array_alloca, emit_i32_array_element_addr
     public :: emit_i64_binary
@@ -472,6 +472,47 @@ contains
         call set_empty(error_msg)
         emit_ptr_offset = .true.
     end function emit_ptr_offset
+
+    logical function emit_ptr_offset_dyn(session, base, offset, result, error_msg)
+        ! GEP a raw pointer by a runtime i64 byte offset: result = base + offset.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base
+        type(lr_operand_desc_t), intent(in) :: offset
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+
+        emit_ptr_offset_dyn = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        operands(1) = base
+        operands(2) = offset
+
+        inst%op = LR_OP_GEP
+        inst%typ = lr_type_ptr_s(session%handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = ptr_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_ptr_offset_dyn = .true.
+    end function emit_ptr_offset_dyn
 
     logical function emit_i64_store_at(session, value, base, offset, &
                                        error_msg)

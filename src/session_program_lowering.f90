@@ -55,7 +55,8 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                                emit_i64_store_at, &
                                                emit_i32_array_alloca, &
                                               emit_i32_array_element_addr, &
-                                              emit_ptr_offset, ptr_param
+                                              emit_ptr_offset, emit_ptr_offset_dyn, &
+                                              ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -474,6 +475,16 @@ contains
                 call lower_array_element_assignment(arena, node, target, context, &
                                                     value, error_msg)
                 return
+            end if
+            if (allocated(target%name) .and. allocated(target%arg_indices)) then
+                symbol_index = find_symbol(context, target%name)
+                if (symbol_index > 0) then
+                    if (context%symbols(symbol_index)%is_allocatable) then
+                        call lower_array_element_assignment(arena, node, target, &
+                                                            context, value, error_msg)
+                        return
+                    end if
+                end if
             end if
         type is (component_access_node)
             call lower_derived_component_assignment(arena, node, target, context, &

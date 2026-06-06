@@ -707,6 +707,12 @@
             error_msg = 'array identifier was not declared: '//trim(node%name)
             return
         end if
+        if (context%symbols(symbol_index)%is_allocatable) then
+            call lower_allocatable_element_address(arena, node, symbol_index, &
+                                                   context, element_address, &
+                                                   error_msg)
+            return
+        end if
         if (.not. context%symbols(symbol_index)%is_array) then
             error_msg = trim(node%name)//' is not an array'
             return

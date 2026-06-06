@@ -106,6 +106,8 @@
                                                         value, error_msg)
           else if (node%is_array_access) then
               call lower_i32_array_element(arena, node, context, value, error_msg)
+          else if (is_allocatable_element_ref(node, context)) then
+              call lower_i32_array_element(arena, node, context, value, error_msg)
           else
               call lower_i32_call(arena, node, context, value, error_msg)
           end if

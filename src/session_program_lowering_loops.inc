@@ -203,7 +203,8 @@
         count = 0
         do i = 1, context%symbol_count
             if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
-                .not. context%symbols(i)%is_array) then
+                .not. context%symbols(i)%is_array .and. &
+                .not. context%symbols(i)%is_allocatable) then
                 count = count + 1
             end if
         end do
@@ -211,7 +212,8 @@
         count = 0
         do i = 1, context%symbol_count
             if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
-                .not. context%symbols(i)%is_array) then
+                .not. context%symbols(i)%is_array .and. &
+                .not. context%symbols(i)%is_allocatable) then
                 count = count + 1
                 indices(count) = i
             end if

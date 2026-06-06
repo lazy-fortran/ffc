@@ -206,6 +206,70 @@
         call set_empty(error_msg)
     end subroutine lower_deallocate_i32_1d
 
+    logical function is_allocatable_element_ref(node, context) result(is_ref)
+        ! a(i) where a is an allocatable and i is a subscript, even when FortFront
+        ! did not flag the call_or_subscript node as an array access.
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+
+        is_ref = .false.
+        if (.not. allocated(node%name)) return
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 1) return
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) return
+        is_ref = context%symbols(symbol_index)%is_allocatable
+    end function is_allocatable_element_ref
+
+    subroutine lower_allocatable_element_address(arena, node, symbol_index, &
+                                                 context, element_address, error_msg)
+        ! Runtime element address of a(i) for a 1-D integer allocatable.
+        ! data = descriptor.data (offset 0); lower = descriptor.lower (offset 8).
+        ! address = data + (i - lower) * 4 bytes.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, lower_i64
+        type(lr_operand_desc_t) :: index_i32, index_i64, offset_i64, byte_offset
+        integer :: arg_count
+
+        arg_count = 0
+        if (allocated(node%arg_indices)) arg_count = size(node%arg_indices)
+        if (arg_count /= 1) then
+            call unsupported_feature_error('allocatable element access', node%line, &
+                node%column, 'direct LIRIC session supports one subscript on a '// &
+                'rank-1 integer allocatable', error_msg)
+            return
+        end if
+
+        call validate_i32_array_subscript(arena, node%arg_indices(1), context, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, index_i32, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_i64_load_at(context%session, descriptor, 8_c_int64_t, &
+                lower_i64, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, index_i32, index_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_SUB, index_i64, lower_i64, &
+                offset_i64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, offset_i64, &
+                i64_immediate(context%session, 4_c_int64_t), byte_offset, &
+                error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                element_address, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_element_address
+
     subroutine declare_allocatable_i32_1d(context, name, error_msg)
         ! Stack-allocate a 24-byte descriptor {i32* data; i64 lower; i64 upper}
         ! and zero it. data == 0 marks the array unallocated. allocate/deallocate
