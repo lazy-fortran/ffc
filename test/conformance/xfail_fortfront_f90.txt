@@ -34,7 +34,6 @@ complex_literal_kind.f90
 control_flow_associate_construct.f90
 control_flow_forall_construct.f90
 control_flow_nested_select_case.f90
-control_flow_select_case_basic.f90
 control_flow_where_construct.f90
 data_multi_objects.f90
 data_multiple_sets.f90

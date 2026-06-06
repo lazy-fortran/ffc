@@ -268,10 +268,51 @@ contains
         else if (allocated(node%var_name)) then
             call define_declared_symbol(context, node, node%var_name, &
                                         value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (node%has_initializer .and. node%initializer_index > 0) then
+                call lower_scalar_initializer(context, node%var_name, value_kind, &
+                                              node%initializer_index, error_msg)
+            end if
         else
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
+
+    subroutine lower_scalar_initializer(context, name, value_kind, init_index, &
+                                        error_msg)
+        !! Apply a scalar declaration initializer (integer :: x = 2) by lowering
+        !! the initializer expression and storing it into the variable, mirroring
+        !! a plain assignment. Without this the variable keeps its zero default.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind, init_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: symbol_index
+
+        call set_empty(error_msg)
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        select case (value_kind)
+        case (VALUE_F64)
+            call lower_f64_expression(context%arena, init_index, context, value, &
+                                      error_msg)
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(context%arena, init_index, context, &
+                                          value, error_msg)
+        case (VALUE_I32)
+            call lower_i32_expression(context%arena, init_index, context, value, &
+                                      error_msg)
+        case default
+            return
+        end select
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%value = value
+        if (context%symbols(symbol_index)%has_address .and. &
+            context%symbols(symbol_index)%is_reference) then
+            call store_reference_value(context, symbol_index, value, error_msg)
+        end if
+    end subroutine lower_scalar_initializer
     include 'session_program_lowering_declarations.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
