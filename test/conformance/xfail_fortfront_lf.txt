@@ -22,7 +22,6 @@ array_slice_basic.lf
 array_slice_empty_bounds.lf
 array_slice_stride.lf
 array_slice_type_inference.lf
-array_stride_assignment.lf
 arrays.lf
 assignment_simple.lf
 assignment_with_prefix.lf

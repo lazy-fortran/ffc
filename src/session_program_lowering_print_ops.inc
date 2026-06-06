@@ -34,6 +34,12 @@
                                                error_msg)
                 return
             end select
+            block
+                logical :: handled
+                call lower_whole_array_print(arena, node%expression_indices(1), &
+                                             context, handled, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            end block
         end if
         prev_is_char = .false.
         do i = 1, expr_count

@@ -407,6 +407,49 @@
         call set_empty(error_msg)
     end subroutine lower_array_section_print
 
+    subroutine lower_whole_array_print(arena, expr_index, context, handled, error_msg)
+        !! print *, a for a bare integer array a: emit each element in storage
+        !! order with list-directed spacing, matching gfortran. handled stays
+        !! false when expr is not a bare integer-array identifier so the caller
+        !! falls through to its normal per-item handling.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        type(lr_operand_desc_t) :: value
+        integer :: sym
+        integer(c_int64_t) :: k, n
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. is_identifier(arena, expr_index)) return
+        call identifier_name(arena, expr_index, name, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        sym = find_symbol(context, name)
+        if (sym <= 0) return
+        if (.not. context%symbols(sym)%is_array) return
+        if (context%symbols(sym)%is_allocatable) return
+        if (context%symbols(sym)%value_kind /= VALUE_I32) return
+
+        handled = .true.
+        n = int(context%symbols(sym)%array_size, c_int64_t)
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+            call load_array_linear_element(context, sym, k, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end do
+        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_whole_array_print
+
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &
                                                        linear_index, context, &

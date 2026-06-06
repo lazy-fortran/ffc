@@ -1,6 +1,6 @@
 program test_session_array_unsupported_diagnostics
     use ffc_test_support, only: expect_error_contains, &
-                                expect_cli_error_contains
+                                expect_cli_error_contains, expect_no_error
     implicit none
 
     logical :: all_passed
@@ -29,8 +29,6 @@ program test_session_array_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
-    if (.not. test_cli_whole_array_expression_diagnostic()) &
-        all_passed = .false.
     if (.not. test_cli_array_rhs_assignment_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_slice_subscript_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_real_subscript_diagnostic()) all_passed = .false.
@@ -120,8 +118,10 @@ contains
                                        '  print *, values'//new_line('a')// &
                                        'end program main'
 
-        test_whole_array_expression_diagnostic = expect_error_contains( &
-                                               source, 'unsupported array expression', &
+        ! Whole-array list-directed print of an integer array is now supported
+        ! (one element print per slot); verify it lowers without a diagnostic.
+        test_whole_array_expression_diagnostic = expect_no_error( &
+                                               source, &
                                                '/tmp/ffc_session_whole_array_expr_test')
     end function test_whole_array_expression_diagnostic
 
@@ -262,17 +262,6 @@ contains
                                                '/tmp/ffc_cli_array_expr_test')
     end function test_cli_array_expression_diagnostic
 
-    logical function test_cli_whole_array_expression_diagnostic()
-        character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: values(3)'//new_line('a')// &
-                                       '  print *, values'//new_line('a')// &
-                                       'end program main'
-
-        test_cli_whole_array_expression_diagnostic = expect_cli_error_contains( &
-                                               source, 'unsupported array expression', &
-                                                   '/tmp/ffc_cli_whole_array_expr_test')
-    end function test_cli_whole_array_expression_diagnostic
 
     logical function test_cli_array_rhs_assignment_diagnostic()
         character(len=*), parameter :: source = &
