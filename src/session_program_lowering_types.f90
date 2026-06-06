@@ -106,6 +106,13 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: deferred_length
         logical :: is_allocatable = .false.
         type(lr_operand_desc_t) :: allocatable_descriptor_address
+        ! Scalar POINTER/TARGET (#245, slice B3a). A target lives in memory at
+        ! `address`; a pointer carries the current target's `address` once
+        ! associated. `is_associated` tracks straight-line association at compile
+        ! time for `associated`/`nullify`.
+        logical :: is_pointer = .false.
+        logical :: is_target = .false.
+        logical :: is_associated = .false.
     end type symbol_t
 
     type, public :: array_section_info_t

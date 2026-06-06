@@ -26,7 +26,9 @@ and `F` descriptors on stdout, and fixed-size rank-2 integer arrays with
 scalar element access, array sections with compile-time integer bounds as
 rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, and `minval`, plus scalar element
-read and write on an allocated 1-D integer allocatable (`a(i)`).
+read and write on an allocated 1-D integer allocatable (`a(i)`). Scalar integer
+`pointer`/`target` with `p => t`, read/write through `p`, `associated(p)`,
+and `nullify(p)` is supported.
 
 ## Build
 

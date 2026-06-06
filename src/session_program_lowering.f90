@@ -6,6 +6,7 @@ module session_program_lowering
                                 range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
                               pointer_assignment_node
+    use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               visibility_statement_node
@@ -186,6 +187,26 @@ contains
         if (derived_type_index > 0) then
             call lower_derived_type_declaration(node, context, derived_type_index, &
                                                 error_msg)
+            return
+        end if
+        if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
+            call unsupported_feature_error('pointer/target array declaration', &
+                node%line, node%column, &
+                'direct LIRIC session supports scalar integer pointer/target '// &
+                'only (#245 slice B3a)', error_msg)
+            return
+        end if
+        if (node%is_pointer .or. node%is_target) then
+            call declaration_value_kind(node, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (value_kind /= VALUE_I32) then
+                call unsupported_feature_error('pointer/target declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports scalar integer pointer/target '// &
+                    'only (#245 slice B3a)', error_msg)
+                return
+            end if
+            call lower_scalar_pointer_target(node, context, error_msg)
             return
         end if
         if (node%is_array) then
@@ -617,6 +638,7 @@ contains
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_c_ptr.inc'
+    include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_fmod.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -761,6 +783,9 @@ contains
                 if (same_name(node%name, 'c_associated')) then
                     call lower_c_associated(arena, node%arg_indices, context, &
                                             value, error_msg)
+                else if (same_name(node%name, 'associated')) then
+                    call lower_associated(arena, node%arg_indices, context, &
+                                          value, error_msg)
                 else
                     error_msg = 'direct LIRIC session IF condition supports '// &
                                 'comparisons, logicals, and present()'
