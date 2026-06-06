@@ -73,7 +73,6 @@ issue_1337_forall.f90
 issue_1338_where.f90
 issue_1344_character_length.f90
 issue_1347_interface.f90
-issue_1348_pointer.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1352_optional_module_if_control.f90
@@ -91,7 +90,6 @@ issue_1565_use_associated_rename.f90
 issue_1565_use_associated_variable.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90
-issue_1574_intrinsic_external.f90
 issue_1575_implied_do_array_constructor.f90
 issue_1578_block_data.f90
 issue_1582_simple_goto.f90
@@ -144,7 +142,6 @@ issue_1897_typed_array_constructor.f90
 issue_1900_block_data_after_program.f90
 issue_1900_block_data_labels.f90
 issue_1958_intent_preservation.f90
-issue_1959_target_attribute.f90
 issue_1960_pointer_assignment_if.f90
 issue_1970_implied_do_array_constructor.f90
 issue_2010_deferred_char_allocatable.f90
@@ -156,7 +153,6 @@ issue_2018_function_returns_array_duplicate_var.f90
 issue_2021_multi_function_merged.f90
 issue_2022_fixed_array_to_unallocated.f90
 issue_2024_char_function_duplicate_and_missing.f90
-issue_2025_multi_internal_proc_structure_collapse.f90
 issue_2065_extra_spaces_in_string_literals.f90
 issue_2070_entry_loses_argument_declarations.f90
 issue_2074_arithmetic_if_not_supported.f90
@@ -254,7 +250,6 @@ issue_2591_unsigned_mixing_error.f90
 issue_2592_interface_block_explicit_interface_ok.f90
 issue_2592_missing_explicit_interface_function.f90
 issue_2592_missing_explicit_interface_subroutine.f90
-issue_2593_call_argument_type_mismatch.f90
 issue_2639_intrinsic_subroutine_calls_ok.f90
 issue_2644_strict_arg_checker_scope_lookup.f90
 issue_2737_lfortran_template_instantiate.f90
@@ -278,8 +273,6 @@ module_interface_block.f90
 module_parsing_basic.f90
 nested_array_literal_rectangular.f90
 nested_array_literal_square.f90
-nullify_basic.f90
-nullify_in_if_block.f90
 pause_in_if_block.f90
 pause_with_string_in_loop.f90
 pause_without_message.f90

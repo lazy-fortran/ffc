@@ -475,6 +475,12 @@
         select case (trim(node_type))
         case ('implicit_statement')
             call set_empty(error_msg)
+        case ('comment')
+            ! Comments carry no executable semantics; skip them.
+            call set_empty(error_msg)
+        case ('continue_node')
+            ! CONTINUE is a no-op statement (often only a loop label target).
+            call set_empty(error_msg)
         case ('use_statement')
             call unsupported_feature_error('use statement', line, column, &
                                            'direct LIRIC session does not '// &

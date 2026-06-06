@@ -174,7 +174,6 @@ issue_2694_strict_zero_sized_array_constructor.lf
 issue_508_module_comment_main.lf
 issue_508_module_comment_multi.lf
 issue_509_mixed_constructs_input.lf
-issue_637_do_loop_with_function_calls.lf
 issue_652_multi_var_allocatable.lf
 issue_935_allocate_param.lf
 issue_935_multidim_arrays.lf
@@ -201,9 +200,6 @@ monomorphization_simple.lf
 namelist_weather.lf
 nested_function_calls_forward_ref.lf
 nested_loops.lf
-pointer_assignment_before_print.lf
-pointer_assignment_direct_print.lf
-pointer_assignment_print_then_assign.lf
 print_basic.lf
 read_statement.lf
 real_literal_kind_inference.lf
