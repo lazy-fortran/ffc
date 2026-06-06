@@ -509,6 +509,11 @@
         value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
         do i = 1, size(node_indices)
+            ! A nested procedure definition (an internal procedure of the unit
+            ! whose body this is) is lowered separately, not as an in-body
+            ! statement. Skip it here so a procedure that contains internals is
+            ! lowered the same way a program-contained procedure is.
+            if (is_internal_procedure_entry(arena, node_indices(i))) cycle
             call lower_statement(arena, node_indices(i), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (context%current_block_terminated) then

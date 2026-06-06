@@ -517,18 +517,53 @@
         if (node_type == 'function_def_node' .or. node_type == 'function_def') then
             fn_node => get_node_as_function_def(arena, node_index)
             if (.not. associated(fn_node)) return
-            if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
             call lower_scalar_function(arena, fn_node, context, error_msg, &
                 module_procedure_mangled(module_name, fn_node%name))
+            if (len_trim(error_msg) > 0) return
+            call lower_nested_internal_procedures(arena, fn_node%body_indices, &
+                                                  context, error_msg)
         else if (node_type == 'subroutine_def_node' .or. &
                  node_type == 'subroutine_def') then
             sb_node => get_node_as_subroutine_def(arena, node_index)
             if (.not. associated(sb_node)) return
-            if (procedure_has_nested_contains(arena, sb_node%body_indices)) return
             call lower_void_subroutine(arena, sb_node, context, error_msg, &
                 module_procedure_mangled(module_name, sb_node%name))
+            if (len_trim(error_msg) > 0) return
+            call lower_nested_internal_procedures(arena, sb_node%body_indices, &
+                                                  context, error_msg)
         end if
     end subroutine lower_one_module_procedure
+
+    subroutine lower_nested_internal_procedures(arena, body_indices, context, &
+                                                error_msg)
+        ! Lower the internal procedures contained in a module procedure as flat
+        ! functions under their plain Fortran names (#249 B7f). They are emitted
+        ! after the containing procedure; calls inside the containing procedure
+        ! resolve to these symbols via call_emit_name. Host association of the
+        ! containing procedure's local variables is not provided: an internal
+        ! procedure that references a host variable is unsupported.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                call lower_one_internal_function(arena, body_indices(i), &
+                                                 context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine lower_nested_internal_procedures
 
     logical function procedure_has_nested_contains(arena, body_indices)
         ! Whether a procedure body holds an internal (nested) procedure, which
@@ -585,9 +620,11 @@
                 if (.not. associated(fn_node)) cycle
                 if (.not. allocated(fn_node%name)) cycle
                 if (contained_function_kind(context, fn_node%name) /= 0) cycle
-                if (procedure_has_nested_contains(arena, fn_node%body_indices)) cycle
                 call register_internal_function_name(fn_node, context, error_msg, &
                                                      procedure_indices(p))
+                if (len_trim(error_msg) > 0) return
+                call register_nested_internal_names(arena, fn_node%body_indices, &
+                                                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (node_type == 'subroutine_def_node' .or. &
                      node_type == 'subroutine_def') then
@@ -595,13 +632,56 @@
                 if (.not. associated(sb_node)) cycle
                 if (.not. allocated(sb_node%name)) cycle
                 if (contained_function_kind(context, sb_node%name) /= 0) cycle
-                if (procedure_has_nested_contains(arena, sb_node%body_indices)) cycle
                 call register_internal_subroutine_name(sb_node, context, error_msg, &
                                                        procedure_indices(p))
+                if (len_trim(error_msg) > 0) return
+                call register_nested_internal_names(arena, sb_node%body_indices, &
+                                                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
         end do
     end subroutine register_module_procedures
+
+    subroutine register_nested_internal_names(arena, body_indices, context, &
+                                              error_msg)
+        ! Register, by Fortran name, the internal procedures contained in a
+        ! module procedure (#249 B7f) so a call inside the containing procedure
+        ! resolves to the right value kind and emit name.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        integer :: i
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        call set_empty(error_msg)
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, body_indices(i))
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (contained_function_kind(context, fn_node%name) /= 0) cycle
+                call register_internal_function_name(fn_node, context, error_msg, &
+                                                     body_indices(i))
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, body_indices(i))
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (contained_function_kind(context, sb_node%name) /= 0) cycle
+                call register_internal_subroutine_name(sb_node, context, &
+                                                       error_msg, body_indices(i))
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine register_nested_internal_names
 
     logical function is_internal_procedure_entry(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
