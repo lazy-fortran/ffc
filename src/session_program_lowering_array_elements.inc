@@ -587,6 +587,97 @@
         call set_empty(error_msg)
     end subroutine load_array_linear_element
 
+    subroutine lower_array_section_assignment(arena, node, target, context, error_msg)
+        !! Assign to a rank-1 integer array section: arr(lo:hi:st) = rhs, where
+        !! rhs is an array constructor, another rank-1 section, or a scalar. The
+        !! section bounds are compile-time constants (describe_array_section), so
+        !! emit one element store per position. Only rank-1 integer sections are
+        !! handled; anything else returns an error and stays xfail.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(array_slice_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        type(array_section_info_t) :: tinfo, sinfo
+        type(lr_operand_desc_t) :: value
+        integer :: k, n
+        integer(c_int64_t) :: tgt_lin, src_lin
+
+        call describe_array_section(arena, target, context, tinfo, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (tinfo%source_rank /= 1 .or. tinfo%result_rank /= 1) then
+            error_msg = 'array section assignment supports rank-1 sections only'
+            return
+        end if
+        n = int(tinfo%section_extents(1))
+
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                if (.not. allocated(rhs%element_indices)) then
+                    error_msg = 'array constructor has no elements'
+                    return
+                end if
+                if (size(rhs%element_indices) /= n) then
+                    error_msg = 'array section length does not match constructor'
+                    return
+                end if
+                do k = 0, n - 1
+                    call lower_i32_expression(arena, rhs%element_indices(k + 1), &
+                                              context, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    tgt_lin = tinfo%section_lowers(1) + &
+                              int(k, c_int64_t) * tinfo%section_strides(1) - &
+                              tinfo%source_lowers(1)
+                    call store_array_linear_element(context, tinfo%source_index, &
+                                                    tgt_lin, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                call set_empty(error_msg)
+                return
+            type is (array_slice_node)
+                call describe_array_section(arena, rhs, context, sinfo, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (sinfo%source_rank /= 1 .or. sinfo%result_rank /= 1 .or. &
+                    int(sinfo%section_extents(1)) /= n) then
+                    error_msg = 'array section assignment requires matching '// &
+                                'rank-1 shapes'
+                    return
+                end if
+                do k = 0, n - 1
+                    src_lin = sinfo%section_lowers(1) + &
+                              int(k, c_int64_t) * sinfo%section_strides(1) - &
+                              sinfo%source_lowers(1)
+                    call load_array_linear_element(context, sinfo%source_index, &
+                                                   src_lin, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    tgt_lin = tinfo%section_lowers(1) + &
+                              int(k, c_int64_t) * tinfo%section_strides(1) - &
+                              tinfo%source_lowers(1)
+                    call store_array_linear_element(context, tinfo%source_index, &
+                                                    tgt_lin, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                call set_empty(error_msg)
+                return
+            end select
+        end if
+
+        ! Scalar broadcast: arr(lo:hi) = expr.
+        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do k = 0, n - 1
+            tgt_lin = tinfo%section_lowers(1) + &
+                      int(k, c_int64_t) * tinfo%section_strides(1) - &
+                      tinfo%source_lowers(1)
+            call store_array_linear_element(context, tinfo%source_index, tgt_lin, &
+                                            value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_array_section_assignment
+
     subroutine store_array_linear_element(context, symbol_index, linear_index, &
                                           value, error_msg)
         type(lowering_context_t), intent(inout) :: context

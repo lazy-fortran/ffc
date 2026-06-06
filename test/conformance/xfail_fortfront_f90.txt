@@ -8,11 +8,7 @@ arithmetic_if_expression_complex.f90
 arithmetic_if_inline_comment.f90
 arithmetic_if_negative_labels.f90
 arithmetic_if_whitespace_labels.f90
-array_slice_basic.f90
-array_slice_empty_bounds.f90
 array_slice_multidim.f90
-array_slicing_basic.f90
-array_slicing_empty_bounds.f90
 array_slicing_multidim.f90
 array_slicing_type_inference.f90
 ast_coverage_control_flow.f90

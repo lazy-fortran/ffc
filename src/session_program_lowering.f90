@@ -563,6 +563,10 @@ contains
             call lower_derived_component_assignment(arena, node, target, context, &
                                                     value, error_msg)
             return
+        type is (array_slice_node)
+            call lower_array_section_assignment(arena, node, target, context, &
+                                                error_msg)
+            return
         end select
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
