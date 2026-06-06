@@ -349,6 +349,8 @@
             call lower_pointer_assignment(arena, node, context, error_msg)
         type is (nullify_node)
             call lower_nullify(arena, node, context, error_msg)
+        type is (data_statement_node)
+            call lower_data_statement(arena, node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
