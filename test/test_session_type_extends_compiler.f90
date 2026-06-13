@@ -11,6 +11,8 @@ program test_type_extends
     if (.not. test_child_with_no_own_components()) all_passed = .false.
     if (.not. test_array_parent_component_on_child()) all_passed = .false.
     if (.not. test_inherited_type_bound_call()) all_passed = .false.
+    if (.not. test_child_overrides_parent_binding()) all_passed = .false.
+    if (.not. test_child_adds_own_binding()) all_passed = .false.
     if (.not. test_missing_parent_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -110,6 +112,77 @@ contains
         test_inherited_type_bound_call = expect_exit_status( &
             source, 8, '/tmp/ffc_extends_tbp_test')
     end function test_inherited_type_bound_call
+
+    logical function test_child_overrides_parent_binding()
+        ! A child may redeclare a parent binding with its own implementation
+        ! (static override, #248 B6b). The call on a child instance routes
+        ! to the child's implementation, not the parent's.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: base_t'//new_line('a')// &
+            '    integer :: v'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: get => base_get'//new_line('a')// &
+            '  end type base_t'//new_line('a')// &
+            '  type, extends(base_t) :: child_t'//new_line('a')// &
+            '    integer :: extra'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: get => child_get'//new_line('a')// &
+            '  end type child_t'//new_line('a')// &
+            '  type(child_t) :: c'//new_line('a')// &
+            '  c%v = 3'//new_line('a')// &
+            '  c%extra = 10'//new_line('a')// &
+            '  stop c%get()'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function base_get(self)'//new_line('a')// &
+            '    type(base_t), intent(in) :: self'//new_line('a')// &
+            '    base_get = self%v'//new_line('a')// &
+            '  end function base_get'//new_line('a')// &
+            '  integer function child_get(self)'//new_line('a')// &
+            '    type(child_t), intent(in) :: self'//new_line('a')// &
+            '    child_get = self%v + self%extra'//new_line('a')// &
+            '  end function child_get'//new_line('a')// &
+            'end program main'
+
+        ! child_get returns 3 + 10 = 13; base_get would return 3.
+        test_child_overrides_parent_binding = expect_exit_status( &
+            source, 13, '/tmp/ffc_extends_override_test')
+    end function test_child_overrides_parent_binding
+
+    logical function test_child_adds_own_binding()
+        ! A child type may define a brand-new binding (not present in the parent)
+        ! alongside the inherited ones (#248 B6b).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: base_t'//new_line('a')// &
+            '    integer :: v'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: get => base_get'//new_line('a')// &
+            '  end type base_t'//new_line('a')// &
+            '  type, extends(base_t) :: child_t'//new_line('a')// &
+            '    integer :: extra'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: get_extra => child_extra'//new_line('a')// &
+            '  end type child_t'//new_line('a')// &
+            '  type(child_t) :: c'//new_line('a')// &
+            '  c%v = 5'//new_line('a')// &
+            '  c%extra = 7'//new_line('a')// &
+            '  stop c%get() + c%get_extra()'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function base_get(self)'//new_line('a')// &
+            '    type(base_t), intent(in) :: self'//new_line('a')// &
+            '    base_get = self%v'//new_line('a')// &
+            '  end function base_get'//new_line('a')// &
+            '  integer function child_extra(self)'//new_line('a')// &
+            '    type(child_t), intent(in) :: self'//new_line('a')// &
+            '    child_extra = self%extra'//new_line('a')// &
+            '  end function child_extra'//new_line('a')// &
+            'end program main'
+
+        ! get() returns 5, get_extra() returns 7; total = 12.
+        test_child_adds_own_binding = expect_exit_status( &
+            source, 12, '/tmp/ffc_extends_new_binding_test')
+    end function test_child_adds_own_binding
 
     logical function test_missing_parent_diagnostic()
         ! Extending a type that was never defined is a clear diagnostic.

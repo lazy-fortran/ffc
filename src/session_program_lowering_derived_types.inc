@@ -109,6 +109,10 @@
                 deallocate(context%module_exports(i)%parameter_indices)
             end if
             context%module_exports(i)%parameter_count = 0
+            if (allocated(context%module_exports(i)%variable_indices)) then
+                deallocate(context%module_exports(i)%variable_indices)
+            end if
+            context%module_exports(i)%variable_count = 0
         end do
         context%module_export_count = 0
         call set_empty(error_msg)
@@ -145,6 +149,8 @@
         allocate(context%module_exports(export_idx)%derived_type_indices(8))
         context%module_exports(export_idx)%parameter_count = 0
         allocate(context%module_exports(export_idx)%parameter_indices(8))
+        context%module_exports(export_idx)%variable_count = 0
+        allocate(context%module_exports(export_idx)%variable_indices(8))
 
         do j = 1, size(mod_node%declaration_indices)
             select type (decl => &
@@ -160,16 +166,27 @@
                 context%module_exports(export_idx)%derived_type_count = &
                     context%module_exports(export_idx)%derived_type_count + 1
             type is (declaration_node)
-                if (.not. decl%is_parameter) cycle
                 if (.not. allocated(decl%var_name)) cycle
-                if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
-                    cycle
-                call grow_module_export_parameter_indices(context, export_idx)
-                context%module_exports(export_idx)%parameter_indices( &
-                    context%module_exports(export_idx)%parameter_count + 1) = &
-                    mod_node%declaration_indices(j)
-                context%module_exports(export_idx)%parameter_count = &
-                    context%module_exports(export_idx)%parameter_count + 1
+                if (decl%is_parameter) then
+                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                        cycle
+                    call grow_module_export_parameter_indices(context, export_idx)
+                    context%module_exports(export_idx)%parameter_indices( &
+                        context%module_exports(export_idx)%parameter_count + 1) = &
+                        mod_node%declaration_indices(j)
+                    context%module_exports(export_idx)%parameter_count = &
+                        context%module_exports(export_idx)%parameter_count + 1
+                else if (.not. decl%is_array) then
+                    ! Non-parameter scalar: export as module variable (#249 B7a).
+                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                        cycle
+                    call grow_module_export_variable_indices(context, export_idx)
+                    context%module_exports(export_idx)%variable_indices( &
+                        context%module_exports(export_idx)%variable_count + 1) = &
+                        mod_node%declaration_indices(j)
+                    context%module_exports(export_idx)%variable_count = &
+                        context%module_exports(export_idx)%variable_count + 1
+                end if
             end select
         end do
 
@@ -319,33 +336,54 @@
     end subroutine lower_derived_type_definition
 
     subroutine collect_type_bindings(node, context, type_index, error_msg)
-        ! Record non-overridable type-bound procedure bindings (procedure :: m
-        ! => fn) as compile-time aliases. Calls are not lowered yet (#146).
+        ! Record type-bound procedure bindings (procedure :: m => fn) as
+        ! compile-time aliases. When inherited bindings are already present
+        ! (from inherit_parent_bindings), child declarations either override
+        ! an inherited name or append a new one (#248 B6b).
         type(derived_type_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
-        integer :: slot
+        integer :: i, b, inherited, new_total, slot
+        character(len=64) :: method_name_buf, target_name_buf, pass_name_buf
+        logical :: overrides
+        character(len=64), allocatable :: old_methods(:), old_targets(:), old_passes(:)
 
         call set_empty(error_msg)
         if (.not. allocated(node%binding_indices)) return
-        ! Inherited bindings are already in the table; a child that also
-        ! declares its own bindings (override/extension) is a later #248 slice.
-        if (context%derived_types(type_index)%binding_count > 0) then
-            call unsupported_feature_error('type-bound procedure', &
-                node%line, node%column, 'an extending type that declares its '// &
-                'own type-bound procedures is not yet supported', error_msg)
-            return
-        end if
 
-        allocate(context%derived_types(type_index)% &
-            binding_method_names(size(node%binding_indices)))
-        allocate(context%derived_types(type_index)% &
-            binding_target_names(size(node%binding_indices)))
-        allocate(context%derived_types(type_index)% &
-            binding_pass_names(size(node%binding_indices)))
-        context%derived_types(type_index)%binding_pass_names = ''
+        inherited = context%derived_types(type_index)%binding_count
+        if (inherited == 0) then
+            ! No inherited bindings: allocate fresh arrays sized to own bindings.
+            allocate(context%derived_types(type_index)% &
+                binding_method_names(size(node%binding_indices)))
+            allocate(context%derived_types(type_index)% &
+                binding_target_names(size(node%binding_indices)))
+            allocate(context%derived_types(type_index)% &
+                binding_pass_names(size(node%binding_indices)))
+            context%derived_types(type_index)%binding_pass_names = ''
+        else
+            ! Inherited bindings exist: grow arrays to hold inherited + new own.
+            new_total = inherited + size(node%binding_indices)
+            old_methods = context%derived_types(type_index)%binding_method_names
+            old_targets = context%derived_types(type_index)%binding_target_names
+            old_passes  = context%derived_types(type_index)%binding_pass_names
+            deallocate(context%derived_types(type_index)%binding_method_names)
+            deallocate(context%derived_types(type_index)%binding_target_names)
+            deallocate(context%derived_types(type_index)%binding_pass_names)
+            allocate(context%derived_types(type_index)%binding_method_names(new_total))
+            allocate(context%derived_types(type_index)%binding_target_names(new_total))
+            allocate(context%derived_types(type_index)%binding_pass_names(new_total))
+            context%derived_types(type_index)%binding_method_names = ''
+            context%derived_types(type_index)%binding_target_names = ''
+            context%derived_types(type_index)%binding_pass_names = ''
+            context%derived_types(type_index)%binding_method_names(1:inherited) = &
+                old_methods(1:inherited)
+            context%derived_types(type_index)%binding_target_names(1:inherited) = &
+                old_targets(1:inherited)
+            context%derived_types(type_index)%binding_pass_names(1:inherited) = &
+                old_passes(1:inherited)
+        end if
 
         do i = 1, size(node%binding_indices)
             if (.not. node_exists(context%arena, node%binding_indices(i))) cycle
@@ -362,27 +400,41 @@
                     return
                 end if
                 if (.not. allocated(binding%binding_name)) cycle
-                slot = context%derived_types(type_index)%binding_count + 1
-                context%derived_types(type_index)%binding_method_names(slot) = &
-                    trim(binding%binding_name)
-                if (allocated(binding%implementation)) then
-                    if (len_trim(binding%implementation) > 0) then
-                        context%derived_types(type_index)% &
-                            binding_target_names(slot) = trim(binding%implementation)
-                    else
-                        context%derived_types(type_index)% &
-                            binding_target_names(slot) = trim(binding%binding_name)
-                    end if
+                method_name_buf = trim(binding%binding_name)
+                if (allocated(binding%implementation) .and. &
+                    len_trim(binding%implementation) > 0) then
+                    target_name_buf = trim(binding%implementation)
                 else
-                    context%derived_types(type_index)% &
-                        binding_target_names(slot) = trim(binding%binding_name)
+                    target_name_buf = trim(binding%binding_name)
                 end if
+                pass_name_buf = ''
                 if (allocated(binding%pass_name)) then
                     if (len_trim(binding%pass_name) > 0) &
-                        context%derived_types(type_index)% &
-                            binding_pass_names(slot) = trim(binding%pass_name)
+                        pass_name_buf = trim(binding%pass_name)
                 end if
-                context%derived_types(type_index)%binding_count = slot
+                ! Override inherited binding with same method name, or append.
+                overrides = .false.
+                do b = 1, inherited
+                    if (trim(context%derived_types(type_index)% &
+                              binding_method_names(b)) == trim(method_name_buf)) then
+                        context%derived_types(type_index)%binding_target_names(b) = &
+                            target_name_buf
+                        context%derived_types(type_index)%binding_pass_names(b) = &
+                            pass_name_buf
+                        overrides = .true.
+                        exit
+                    end if
+                end do
+                if (.not. overrides) then
+                    slot = context%derived_types(type_index)%binding_count + 1
+                    context%derived_types(type_index)%binding_method_names(slot) = &
+                        method_name_buf
+                    context%derived_types(type_index)%binding_target_names(slot) = &
+                        target_name_buf
+                    context%derived_types(type_index)%binding_pass_names(slot) = &
+                        pass_name_buf
+                    context%derived_types(type_index)%binding_count = slot
+                end if
             end select
         end do
     end subroutine collect_type_bindings
@@ -740,3 +792,74 @@ subroutine collect_component_declaration(component_index, parent_line, &
         context%module_exports(export_idx)%parameter_indices(1:old_size) = old_indices
         deallocate(old_indices)
     end subroutine grow_module_export_parameter_indices
+
+    subroutine grow_module_export_variable_indices(context, export_idx)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: export_idx
+        integer, allocatable :: old_indices(:)
+        integer :: new_size, old_size
+
+        old_size = context%module_exports(export_idx)%variable_count
+        if (old_size > 0 .and. &
+            allocated(context%module_exports(export_idx)%variable_indices)) then
+            if (old_size < &
+                size(context%module_exports(export_idx)%variable_indices)) return
+        else
+            return
+        end if
+
+        old_indices = context%module_exports(export_idx)%variable_indices
+        new_size = 2 * size(context%module_exports(export_idx)%variable_indices)
+        deallocate(context%module_exports(export_idx)%variable_indices)
+        allocate(context%module_exports(export_idx)%variable_indices(new_size))
+        context%module_exports(export_idx)%variable_indices(1:old_size) = old_indices
+        deallocate(old_indices)
+    end subroutine grow_module_export_variable_indices
+
+    subroutine lower_module_variables(arena, root_index, context, error_msg)
+        ! Emit a zero-initialised i32 global for each scalar integer module
+        ! variable collected in the export table (#249 B7a). The global is named
+        ! __<module>_MOD_<var> (gfortran convention). A using unit resolves the
+        ! same name via lr_session_intern in import_module_variables.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_null_ptr, c_ptr, c_size_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: m, i, var_idx, value_kind
+        integer(c_int32_t) :: global_id
+        character(len=:), allocatable :: mangled, var_name, type_name, err2
+        character(kind=c_char), allocatable :: c_name(:)
+        type(c_ptr) :: i32_type
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        do m = 1, context%module_export_count
+            do i = 1, context%module_exports(m)%variable_count
+                var_idx = context%module_exports(m)%variable_indices(i)
+                if (.not. node_exists(arena, var_idx)) cycle
+                if (.not. is_declaration_node(arena, var_idx)) cycle
+                call get_declaration_type_name(arena, var_idx, type_name, err2)
+                if (len_trim(err2) > 0) cycle
+                call type_name_value_kind(type_name, 0, 0, value_kind, err2)
+                if (len_trim(err2) > 0) cycle
+                if (value_kind /= VALUE_I32) cycle
+                call get_declaration_var_name(arena, var_idx, var_name, err2)
+                if (len_trim(err2) > 0) cycle
+                mangled = module_procedure_mangled( &
+                    trim(context%module_exports(m)%module_name), trim(var_name))
+                call to_c_chars(mangled, c_name)
+                i32_type = lr_type_i32_s(context%session%handle)
+                global_id = lr_session_global(context%session%handle, c_name, &
+                                              i32_type, c_false_local, &
+                                              c_null_ptr, 0_c_size_t)
+                if (global_id < 0_c_int32_t) then
+                    error_msg = 'LIRIC could not create module variable global: '// &
+                                trim(mangled)
+                    return
+                end if
+            end do
+        end do
+    end subroutine lower_module_variables
