@@ -106,7 +106,13 @@
                     'direct LIRIC session only supports default/c_int/'// &
                     'c_int32_t (32-bit) integer kinds', error_msg)
             end if
-        case ('real', 'double precision')
+        case ('real')
+            if (real_kind_is_f64(kind_spec)) then
+                value_kind = VALUE_F64
+            else
+                value_kind = VALUE_F32
+            end if
+        case ('double precision')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
@@ -148,6 +154,19 @@
             integer_kind_is_i32 = .false.
         end select
     end function integer_kind_is_i32
+
+    ! Returns true when the real kind spec selects f64 (kind 8 or higher).
+    ! Bare real and real(4)/c_float/real32 are f32.
+    logical function real_kind_is_f64(kind_spec)
+        character(len=*), intent(in) :: kind_spec
+
+        select case (trim(kind_spec))
+        case ('8', 'real64', 'c_double', 'c_long_double')
+            real_kind_is_f64 = .true.
+        case default
+            real_kind_is_f64 = .false.
+        end select
+    end function real_kind_is_f64
 
     subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node

@@ -180,6 +180,195 @@
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_logical_call
 
+    recursive subroutine lower_f32_expression(arena, node_index, context, &
+                                              value, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        real(c_float) :: literal_value_f32
+        real(c_double) :: literal_value_f64
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer :: opcode
+        integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'real expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call parse_f64_literal(lit_value, literal_value_f64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            literal_value_f32 = real(literal_value_f64, c_float)
+            value = liric_f32_immediate(context%session, literal_value_f32)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f32_expression(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f32_expression(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (trim(bin_op) == '**') then
+                ! f32 exponentiation: call libm powf(f32, f32).
+                if (.not. emit_liric_f32_call(context%session, 'powf', &
+                                              [lhs, rhs], value, error_msg)) &
+                    return
+                return
+            end if
+            call real_opcode(bin_op, bin_line, bin_col, opcode, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_binary(context%session, opcode, lhs, rhs, &
+                                            value, error_msg)) return
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'real identifier was not declared: '//trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_F32) then
+                error_msg = 'real(4) expression used non-f32 identifier: '// &
+                            trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_liric_f32_load( &
+                    context%session, context%symbols(symbol_index)%address, &
+                    value, error_msg)) return
+            else
+                value = context%symbols(symbol_index)%value
+                call set_empty(error_msg)
+            end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            call lower_f32_call(arena, node, context, value, error_msg)
+        class default
+            error_msg = 'ffc direct-session lowering only supports real(4) expressions'
+        end select
+    end subroutine lower_f32_expression
+
+    subroutine lower_f32_call(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: intrinsic_id
+
+        if (node%is_array_access) then
+            call unsupported_feature_error('array expression', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support reading array elements', &
+                                           error_msg)
+            return
+        end if
+        if (.not. allocated(node%name)) then
+            error_msg = 'direct LIRIC session real(4) function call requires a name'
+            return
+        end if
+
+        intrinsic_id = f64_intrinsic_id(node%name)
+        if (intrinsic_id /= F64_INTRINSIC_NONE) then
+            call lower_f32_intrinsic_call(arena, node, intrinsic_id, context, &
+                                          value, error_msg)
+            return
+        end if
+
+        if (.not. is_contained_f32_function(context, node%name)) then
+            call unsupported_feature_error('scalar real(4) function call', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session only '// &
+                                           'supports contained real(4) '// &
+                                           'functions and supported intrinsics', &
+                                           error_msg)
+            return
+        end if
+
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_F32, node%name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        if (.not. emit_liric_f32_call(context%session, &
+                call_emit_name(arena, node%name), args, value, &
+                                      error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_f32_call
+
+    recursive logical function is_f32_expression(arena, node_index, context) &
+        result(is_f32)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: id_name, id_err
+
+        is_f32 = .false.
+        if (.not. node_exists(arena, node_index)) return
+
+        if (is_literal(arena, node_index)) then
+            is_f32 = is_real_literal(arena, node_index)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, bin_err)
+            is_f32 = is_f32_expression(arena, bin_left, context) .or. &
+                     is_f32_expression(arena, bin_right, context)
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index > 0) then
+                is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
+            end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(node%name)) then
+                is_f32 = is_contained_f32_function(context, node%name)
+            end if
+        end select
+    end function is_f32_expression
+
     recursive subroutine lower_f64_expression(arena, node_index, context, &
                                               value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -357,7 +546,15 @@
         end if
 
         if (is_literal(arena, node_index)) then
-            is_f64 = is_real_literal(arena, node_index)
+            ! Only an explicitly-typed f64 literal (d exponent or _8/_real64/…
+            ! suffix) is f64.  A bare literal like "2.5" is default real (f32).
+            if (is_real_literal(arena, node_index)) then
+                block
+                    character(len=:), allocatable :: lv, lt, le
+                    call get_literal_info(arena, node_index, lv, lt, le)
+                    is_f64 = literal_is_f64(lv)
+                end block
+            end if
             return
         end if
 

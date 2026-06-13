@@ -370,11 +370,20 @@
         integer, intent(in) :: buffer_size
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: value_f64
         type(lr_operand_desc_t) :: field
         type(lr_operand_desc_t) :: args(4)
 
-        call lower_f64_expression(arena, node_index, context, value, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (is_f32_expression(arena, node_index, context)) then
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_to_f64(context%session, value, value_f64, &
+                                             error_msg)) return
+            value = value_f64
+        else
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (.not. emit_alloca_bytes(context%session, &
                 i64_immediate(context%session, int(buffer_size, c_int64_t)), &
                 field, error_msg)) return

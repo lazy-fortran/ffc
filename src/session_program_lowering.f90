@@ -1,5 +1,5 @@
 module session_program_lowering
-    use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
+    use, intrinsic :: iso_c_binding, only: c_double, c_float, c_int, c_int32_t, &
                                                                               c_int64_t
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
@@ -82,10 +82,17 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                             printf_format_ptr, &
                                             create_type_info_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
+                                                 synthesize_real4_printer, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf
-    use liric_session_io_bindings, only: emit_liric_f64_binary, &
+    use liric_session_io_bindings, only: emit_liric_f32_binary, &
+                                          emit_liric_i32_to_f32, &
+                                          emit_liric_f32_to_i32, &
+                                          emit_liric_f32_to_f64, &
+                                          emit_liric_print_f32, &
+                                          emit_liric_print_f32_value, &
+                                          emit_liric_f64_binary, &
                                           emit_liric_i32_to_f64, &
                                           emit_liric_f64_to_i32, &
                                           emit_liric_char_byte_zext, &
@@ -101,9 +108,15 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                           emit_liric_print_string_operand_value, &
                                           emit_liric_print_string, &
                                           emit_liric_print_string_value, &
+                                          liric_f32_immediate, &
                                           liric_f64_immediate, &
                                           materialize_liric_string
-    use liric_session_procedure_bindings, only: begin_liric_f64_function, &
+    use liric_session_procedure_bindings, only: begin_liric_f32_function, &
+                                                emit_liric_f32_alloca, &
+                                                emit_liric_f32_call, &
+                                                emit_liric_f32_load, &
+                                                emit_liric_f32_store, &
+                                                begin_liric_f64_function, &
                                                 emit_liric_f64_alloca, &
                                                 emit_liric_f64_call, &
                                                 emit_liric_f64_load, &
@@ -133,7 +146,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 module_exports_t, &
                                                 external_procedure_t, &
                                                 MAX_PROC_ARGS, &
-                                                VALUE_I32, VALUE_F64, &
+                                                VALUE_I32, VALUE_F32, VALUE_F64, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
@@ -294,6 +307,9 @@ contains
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) return
         select case (value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(context%arena, init_index, context, value, &
+                                      error_msg)
         case (VALUE_F64)
             call lower_f64_expression(context%arena, init_index, context, value, &
                                       error_msg)
@@ -503,6 +519,8 @@ contains
         end if
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_F32) then
+            call define_f32_symbol(context, name, error_msg)
         else if (value_kind == VALUE_F64) then
             call define_f64_symbol(context, name, error_msg)
         else if (value_kind == VALUE_LOGICAL) then
@@ -529,7 +547,10 @@ contains
             return
         end if
         context%symbols(index)%value_kind = value_kind
-        if (value_kind == VALUE_F64) then
+        if (value_kind == VALUE_F32) then
+            context%symbols(index)%value = liric_f32_immediate(context%session, &
+                                                               0.0_c_float)
+        else if (value_kind == VALUE_F64) then
             context%symbols(index)%value = liric_f64_immediate(context%session, &
                                                                0.0_c_double)
         else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
@@ -559,6 +580,25 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i32_symbol
+    subroutine define_f32_symbol(context, name, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate real declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_F32
+        context%symbols(index)%value = liric_f32_immediate(context%session, &
+                                                           0.0_c_float)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_f32_symbol
     subroutine define_f64_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
@@ -684,7 +724,10 @@ contains
                                                            error_msg)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
+        if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
+            call lower_f32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
             call lower_f64_expression(arena, node%value_index, context, value, &
                                       error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
@@ -725,7 +768,7 @@ contains
             return
         end if
         select case (context%symbols(idx)%value_kind)
-        case (VALUE_I32, VALUE_LOGICAL, VALUE_F64)
+        case (VALUE_I32, VALUE_LOGICAL, VALUE_F32, VALUE_F64)
             result_value = context%symbols(idx)%value
             if (.not. emit_ret_i32_operand(context%session, result_value, &
                                                            error_msg)) return

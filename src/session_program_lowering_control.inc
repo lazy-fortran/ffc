@@ -185,7 +185,7 @@
                                          else_result%predecessor_block_id, &
                                          context%symbols(index)%value, &
                                          error_msg)) return
-        case (VALUE_F64)
+        case (VALUE_F32, VALUE_F64)
             if (.not. emit_liric_phi(context%session, &
                                      then_result%symbols(index)%value, &
                                      then_result%predecessor_block_id, &

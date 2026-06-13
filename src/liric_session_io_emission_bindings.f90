@@ -8,12 +8,14 @@ module liric_session_io_emission_bindings
                                       lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
                                       LR_OP_KIND_VREG, LR_OP_KIND_GLOBAL, &
                                       LR_OP_CALL, LR_OP_BITCAST, LR_OP_SITOFP, &
-                                      LR_OP_FPTOSI, LR_OP_ZEXT, LR_OP_TRUNC, &
+                                      LR_OP_FPTOSI, LR_OP_FPEXT, LR_OP_FPTRUNC, &
+                                      LR_OP_ZEXT, LR_OP_TRUNC, &
                                       LR_OP_GEP, LR_OP_LOAD, LR_OP_STORE, &
                                       LR_OP_KIND_IMM_I64, &
                                       LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
                                       liric_session_error_message, &
-                                      lr_type_i32_s, lr_type_f64_s, lr_type_i64_s, &
+                                      lr_type_i32_s, lr_type_f32_s, lr_type_f64_s, &
+                                      lr_type_i64_s, &
                                       lr_type_ptr_s, lr_type_i8_s, &
                                       lr_type_array_s, lr_session_emit, &
                                       lr_session_intern, lr_session_global, &
@@ -23,20 +25,30 @@ module liric_session_io_emission_bindings
                                       to_c_chars, i32_vreg
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg
     use liric_session_format_bindings, only: LR_OP_FSUB
-    use liric_session_real_print_bindings, only: emit_real8_print_call
+    use liric_session_real_print_bindings, only: emit_real8_print_call, &
+                                                 emit_real4_print_call
     implicit none
     private
 
     integer(c_int), parameter :: LR_OP_KIND_IMM_F64 = 2_c_int
+    ! f32 literals use the same IMM_F64 encoding; the backend truncates the
+    ! double payload to float when the operand type is f32.
+    integer(c_int), parameter :: LR_OP_KIND_IMM_F32 = 2_c_int
     logical(c_bool), parameter :: c_false = .false.
     logical(c_bool), parameter :: c_true = .true.
 
+    public :: emit_liric_f32_binary
+    public :: emit_liric_i32_to_f32
+    public :: emit_liric_f32_to_i32
+    public :: emit_liric_f32_to_f64
     public :: emit_liric_f64_binary
     public :: emit_liric_i32_to_f64
     public :: emit_liric_f64_to_i32
     public :: emit_liric_char_byte_zext
     public :: emit_liric_i32_to_i64
     public :: emit_liric_store_char_byte
+    public :: emit_liric_print_f32
+    public :: emit_liric_print_f32_value
     public :: emit_liric_print_f64
     public :: emit_liric_print_f64_value
     public :: emit_liric_print_i32
@@ -47,6 +59,7 @@ module liric_session_io_emission_bindings
     public :: emit_liric_print_string_operand
     public :: emit_liric_print_string_operand_value
     public :: emit_liric_print_string_value
+    public :: liric_f32_immediate
     public :: liric_f64_immediate
     public :: materialize_liric_string
 
@@ -163,6 +176,30 @@ contains
         call set_empty(error_msg)
         emit_liric_print_f64_value = .true.
     end function emit_liric_print_f64_value
+
+    logical function emit_liric_print_f32(session, value, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_liric_print_f32 = .false.
+        if (.not. emit_liric_print_f32_value(session, value, error_msg)) return
+        if (.not. emit_liric_print_newline(session, error_msg)) return
+        call set_empty(error_msg)
+        emit_liric_print_f32 = .true.
+    end function emit_liric_print_f32
+
+    logical function emit_liric_print_f32_value(session, value, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_liric_print_f32_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (.not. emit_real4_print_call(session, value, error_msg)) return
+        call set_empty(error_msg)
+        emit_liric_print_f32_value = .true.
+    end function emit_liric_print_f32_value
 
     logical function emit_liric_print_string_value(session, format_global_id, &
                                                    string_global_name, text, &
@@ -529,6 +566,22 @@ contains
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_space
 
+    function liric_f32_immediate(session, value) result(operand)
+        ! f32 immediates are encoded as f64 payloads; the backend narrows to
+        ! float when the operand type is f32.
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(liric_session_t), intent(in) :: session
+        real(c_float), intent(in) :: value
+        type(lr_operand_desc_t) :: operand
+        real(c_double) :: as_f64
+
+        as_f64 = real(value, c_double)
+        operand%kind = LR_OP_KIND_IMM_F32
+        operand%payload = transfer(as_f64, operand%payload)
+        operand%typ = lr_type_f32_s(session%handle)
+        operand%global_offset = 0_c_int64_t
+    end function liric_f32_immediate
+
     function liric_f64_immediate(session, value) result(operand)
         type(liric_session_t), intent(in) :: session
         real(c_double), intent(in) :: value
@@ -539,6 +592,94 @@ contains
         operand%typ = lr_type_f64_s(session%handle)
         operand%global_offset = 0_c_int64_t
     end function liric_f64_immediate
+
+    logical function emit_liric_f32_binary(session, opcode, lhs, rhs, result, &
+                                           error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int), intent(in) :: opcode
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f32_binary = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_binary_f32(session%handle, opcode, lhs, rhs, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_f32_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_liric_f32_binary = .true.
+    end function emit_liric_f32_binary
+
+    logical function emit_liric_i32_to_f32(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_i32_to_f32 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_cast_f32(session%handle, LR_OP_SITOFP, source, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_f32_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_liric_i32_to_f32 = .true.
+    end function emit_liric_i32_to_f32
+
+    logical function emit_liric_f32_to_i32(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f32_to_i32 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_cast_i32(session%handle, LR_OP_FPTOSI, source, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i32_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_liric_f32_to_i32 = .true.
+    end function emit_liric_f32_to_i32
+
+    logical function emit_liric_f32_to_f64(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f32_to_f64 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_cast_f64(session%handle, LR_OP_FPEXT, source, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_f64_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_liric_f32_to_f64 = .true.
+    end function emit_liric_f32_to_f64
 
     logical function emit_liric_f64_binary(session, opcode, lhs, rhs, result, &
                                            error_msg)
@@ -794,6 +935,65 @@ contains
         operand%typ = lr_type_i8_s(session%handle)
         operand%global_offset = 0_c_int64_t
     end function i8_vreg
+
+    function emit_binary_f32(handle, opcode, lhs, rhs, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        integer(c_int), intent(in) :: opcode
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_inst_desc_t) :: inst
+
+        operands = [lhs, rhs]
+
+        inst%op = opcode
+        inst%typ = lr_type_f32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 2_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_binary_f32
+
+    function emit_cast_f32(handle, opcode, source, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        integer(c_int), intent(in) :: opcode
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+
+        operands(1) = source
+
+        inst%op = opcode
+        inst%typ = lr_type_f32_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_cast_f32
 
     function emit_binary_f64(handle, opcode, lhs, rhs, error) result(vreg)
         type(c_ptr), intent(in) :: handle

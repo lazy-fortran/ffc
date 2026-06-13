@@ -61,6 +61,10 @@
             call destroy(context%session)
             return
         end if
+        if (.not. synthesize_real4_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
         if (.not. synthesize_get_arg_helper(context%session, error_msg)) then
             call destroy(context%session)
             return

@@ -38,6 +38,8 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_TRUNC = 35_c_int
     integer(c_int), parameter, public :: LR_OP_SITOFP = 39_c_int
     integer(c_int), parameter, public :: LR_OP_FPTOSI = 41_c_int
+    integer(c_int), parameter, public :: LR_OP_FPEXT = 43_c_int
+    integer(c_int), parameter, public :: LR_OP_FPTRUNC = 44_c_int
     integer(c_int), parameter, public :: LR_OP_FADD = 18_c_int
     integer(c_int), parameter, public :: LR_OP_FMUL = 20_c_int
     integer(c_int), parameter, public :: LR_OP_FDIV = 21_c_int
@@ -53,8 +55,8 @@ module liric_session_bindings
     public :: liric_session_error_message
     public :: i32_vreg, i32_immediate
     public :: global_operand
-    public :: lr_type_i32_s, lr_type_i64_s, lr_type_f64_s, lr_type_ptr_s, &
-              lr_type_i8_s, lr_type_array_s, lr_type_void_s
+    public :: lr_type_i32_s, lr_type_i64_s, lr_type_f32_s, lr_type_f64_s, &
+              lr_type_ptr_s, lr_type_i8_s, lr_type_array_s, lr_type_void_s
     public :: lr_session_emit, lr_session_vreg, lr_session_param, &
               lr_session_intern, lr_session_global
     public :: status_ok, clear_liric_error, set_empty, require_open_session, &
@@ -96,6 +98,12 @@ module liric_session_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_void_s
+
+        function lr_type_f32_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_f32_s
 
         function lr_type_f64_s(handle) result(typ) bind(c)
             import :: c_ptr

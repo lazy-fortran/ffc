@@ -8,6 +8,10 @@
         case (VALUE_I32, VALUE_LOGICAL)
             if (.not. emit_i32_store(context%session,  &
                 value, context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_store( &
+                context%session, value, context%symbols(symbol_index)%address, &
+                error_msg)) return
         case (VALUE_F64)
             if (.not. emit_liric_f64_store( &
                 context%session, value, context%symbols(symbol_index)%address, &
@@ -353,13 +357,22 @@
         if (.not. node_exists(arena, node_index)) return
 
         if (is_binary_op(arena, node_index)) then
-            if (is_f64_expression(arena, node_index, context)) value_kind = VALUE_F64
+            if (is_f32_expression(arena, node_index, context)) then
+                value_kind = VALUE_F32
+            else if (is_f64_expression(arena, node_index, context)) then
+                value_kind = VALUE_F64
+            end if
             return
         end if
 
         if (is_literal(arena, node_index)) then
             if (is_real_literal(arena, node_index)) then
-                value_kind = VALUE_F64
+                ! Real literals take on the caller's expected kind (f32 or f64).
+                if (default_kind == VALUE_F32) then
+                    value_kind = VALUE_F32
+                else
+                    value_kind = VALUE_F64
+                end if
             else if (is_logical_literal(arena, node_index)) then
                 value_kind = VALUE_LOGICAL
             end if
@@ -376,7 +389,9 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
-                if (is_contained_f64_function(context, node%name)) then
+                if (is_contained_f32_function(context, node%name)) then
+                    value_kind = VALUE_F32
+                else if (is_contained_f64_function(context, node%name)) then
                     value_kind = VALUE_F64
                 else if (is_contained_logical_function(context, node%name)) then
                     value_kind = VALUE_LOGICAL
@@ -397,6 +412,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         select case (value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
         case (VALUE_F64)
             call lower_f64_expression(arena, node_index, context, value, error_msg)
         case (VALUE_LOGICAL)
@@ -416,6 +433,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         select case (value_kind)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_alloca(context%session, address, error_msg)) &
+                return
+            if (.not. emit_liric_f32_store(context%session, value, address, &
+                                           error_msg)) return
         case (VALUE_F64)
             if (.not. emit_liric_f64_alloca(context%session, address, error_msg)) &
                 return
@@ -444,6 +466,9 @@
         do i = 1, size(copyback_indices)
             if (copyback_indices(i) <= 0) cycle
             select case (context%symbols(copyback_indices(i))%value_kind)
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_load(context%session, args(i), value, &
+                                              error_msg)) return
             case (VALUE_F64)
                 if (.not. emit_liric_f64_load(context%session, args(i), value, &
                                               error_msg)) return

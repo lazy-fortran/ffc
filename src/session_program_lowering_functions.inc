@@ -195,8 +195,8 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
         integer, intent(out) :: derived_type_index
-        integer :: char_len, paren
-        character(len=:), allocatable :: derived_name, base_type
+        integer :: char_len, paren, rparen
+        character(len=:), allocatable :: derived_name, base_type, kind_spec
         character(len=:), allocatable, intent(out) :: error_msg
 
         value_kind = VALUE_I32
@@ -204,18 +204,33 @@
         call set_empty(error_msg)
         if (.not. allocated(node%return_type)) return
 
-        ! Strip kind suffix: real(dp) -> real, double precision stays as-is.
+        ! Split "real(kind)" into base and kind_spec; double precision has none.
         paren = index(node%return_type, '(')
         if (paren > 0) then
             base_type = lowercase_text(trim(adjustl(node%return_type(1:paren - 1))))
+            rparen = index(node%return_type, ')', back=.true.)
+            if (rparen > paren) then
+                kind_spec = lowercase_text(trim(adjustl( &
+                    node%return_type(paren + 1:rparen - 1))))
+            else
+                call set_empty(kind_spec)
+            end if
         else
             base_type = lowercase_text(trim(adjustl(node%return_type)))
+            call set_empty(kind_spec)
         end if
 
         select case (base_type)
         case ('integer')
             value_kind = VALUE_I32
-        case ('real', 'double precision')
+        case ('real')
+            ! Classify by kind: bare real and real(4) are f32; real(8) is f64.
+            if (real_kind_is_f64(kind_spec)) then
+                value_kind = VALUE_F64
+            else
+                value_kind = VALUE_F32
+            end if
+        case ('double precision')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
@@ -344,6 +359,14 @@
         is_contained_i32_function = &
             contained_function_kind(context, name) == VALUE_I32
     end function is_contained_i32_function
+
+    logical function is_contained_f32_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_f32_function = &
+            contained_function_kind(context, name) == VALUE_F32
+    end function is_contained_f32_function
 
     logical function is_contained_f64_function(context, name)
         type(lowering_context_t), intent(in) :: context
@@ -751,7 +774,10 @@
         else
             emit_name = procedure_emit_name(node%name, node%bind_c_clause)
         end if
-        if (value_kind == VALUE_F64) then
+        if (value_kind == VALUE_F32) then
+            if (.not. begin_liric_f32_function(context%session, emit_name, &
+                                               param_count, error_msg)) return
+        else if (value_kind == VALUE_F64) then
             if (.not. begin_liric_f64_function(context%session, emit_name, &
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &

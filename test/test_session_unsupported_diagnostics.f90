@@ -254,7 +254,7 @@ contains
 
         test_external_real_function_call_diagnostic = &
             expect_error_contains(source, &
-                                  'unsupported scalar real function call', &
+                                  'unsupported scalar real(4) function call', &
                                   '/tmp/ffc_session_external_real_call_test')
     end function test_external_real_function_call_diagnostic
 
@@ -536,7 +536,7 @@ contains
 
         test_cli_external_real_function_call_diagnostic = &
             expect_cli_error_contains(source, &
-                                      'unsupported scalar real function call', &
+                                      'unsupported scalar real(4) function call', &
                                       '/tmp/ffc_cli_external_real_call_test')
     end function test_cli_external_real_function_call_diagnostic
 

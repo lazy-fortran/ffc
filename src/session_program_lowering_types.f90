@@ -8,6 +8,9 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_I32 = 1
     integer, parameter, public :: VALUE_F64 = 2
     integer, parameter, public :: VALUE_LOGICAL = 3
+    ! VALUE_F32 is f32 (single precision, kind 4). Bare 'real' and real(4)
+    ! lower as f32; real(8) and double precision stay as VALUE_F64.
+    integer, parameter, public :: VALUE_F32 = 10
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6

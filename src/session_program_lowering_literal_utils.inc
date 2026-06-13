@@ -123,6 +123,33 @@
         end if
     end function logical_i32_value
 
+    logical function literal_is_f64(text)
+        ! Returns true when a real literal is explicitly f64 — i.e. it carries a
+        ! 'd'/'D' exponent, or a _8 / _real64 / _c_double / _c_long_double kind
+        ! suffix.  A bare literal such as "2.5" or "3.0e0" is default real (f32).
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: lo
+        integer :: uscore, dpos
+
+        lo = lowercase_text(trim(text))
+        ! d/D exponent marks a double-precision literal.
+        dpos = scan(lo, 'd')
+        if (dpos > 0) then
+            literal_is_f64 = .true.
+            return
+        end if
+        ! Explicit kind suffix after underscore.
+        uscore = scan(lo, '_', back=.true.)
+        if (uscore > 1) then
+            select case (lo(uscore + 1:))
+            case ('8', 'real64', 'c_double', 'c_long_double')
+                literal_is_f64 = .true.
+                return
+            end select
+        end if
+        literal_is_f64 = .false.
+    end function literal_is_f64
+
     subroutine parse_f64_literal(text, value, error_msg)
         character(len=*), intent(in) :: text
         real(c_double), intent(out) :: value

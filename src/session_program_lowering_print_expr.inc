@@ -7,6 +7,7 @@
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
+        real(c_float) :: real_value_f32
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
@@ -40,17 +41,34 @@
                 return
             end if
             if (is_real_literal(arena, node_index)) then
-                call parse_f64_literal(lit_value, real_value, error_msg)
-                if (len_trim(error_msg) > 0) return
-                value = liric_f64_immediate(context%session, real_value)
-                if (.not. emit_liric_print_f64(context%session, &
-                                               value, error_msg)) return
+                if (literal_is_f64(lit_value)) then
+                    call parse_f64_literal(lit_value, real_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = liric_f64_immediate(context%session, real_value)
+                    if (.not. emit_liric_print_f64(context%session, &
+                                                   value, error_msg)) return
+                else
+                    call parse_f64_literal(lit_value, real_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    real_value_f32 = real(real_value, c_float)
+                    value = liric_f32_immediate(context%session, real_value_f32)
+                    if (.not. emit_liric_print_f32(context%session, &
+                                                   value, error_msg)) return
+                end if
                 return
             end if
             ! An integer literal falls through to the integer print below.
         end if
 
         if (is_binary_op(arena, node_index)) then
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -65,6 +83,14 @@
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
+                    call lower_f32_expression(arena, node_index, context, &
+                                              value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_f32(context%session, &
+                                                   value, error_msg)) return
+                    return
+                end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
                     call lower_f64_expression(arena, node_index, context, &
                                               value, error_msg)
@@ -103,6 +129,14 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -138,6 +172,7 @@
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
+        real(c_float) :: real_value_f32
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
@@ -169,17 +204,34 @@
                 return
             end if
             if (is_real_literal(arena, node_index)) then
-                call parse_f64_literal(lit_value, real_value, error_msg)
-                if (len_trim(error_msg) > 0) return
-                value = liric_f64_immediate(context%session, real_value)
-                if (.not. emit_liric_print_f64_value(context%session, &
-                                                     value, error_msg)) return
+                if (literal_is_f64(lit_value)) then
+                    call parse_f64_literal(lit_value, real_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = liric_f64_immediate(context%session, real_value)
+                    if (.not. emit_liric_print_f64_value(context%session, &
+                                                         value, error_msg)) return
+                else
+                    call parse_f64_literal(lit_value, real_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    real_value_f32 = real(real_value, c_float)
+                    value = liric_f32_immediate(context%session, real_value_f32)
+                    if (.not. emit_liric_print_f32_value(context%session, &
+                                                         value, error_msg)) return
+                end if
                 return
             end if
             ! An integer literal falls through to the integer print below.
         end if
 
         if (is_binary_op(arena, node_index)) then
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+                return
+            end if
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -194,6 +246,15 @@
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
+                    call lower_f32_expression(arena, node_index, context, &
+                                              value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_f32_value(context%session, &
+                                                         value, error_msg)) &
+                        return
+                    return
+                end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
                     call lower_f64_expression(arena, node_index, context, &
                                               value, error_msg)
@@ -231,6 +292,14 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+                return
+            end if
             if (is_f64_expression(arena, node_index, context)) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)

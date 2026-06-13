@@ -312,6 +312,270 @@
         call set_empty(error_msg)
     end subroutine literal_shift_count
 
+    subroutine lower_f32_intrinsic_call(arena, node, intrinsic_id, context, &
+                                        value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: intrinsic_id
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (intrinsic_id)
+        case (F64_INTRINSIC_ABS)
+            call lower_f32_abs_intrinsic(arena, node, context, value, error_msg)
+        case (F64_INTRINSIC_MIN)
+            call lower_f32_minmax_intrinsic(arena, node, LR_FCMP_OLE, context, &
+                                            value, error_msg)
+        case (F64_INTRINSIC_MAX)
+            call lower_f32_minmax_intrinsic(arena, node, LR_FCMP_OGE, context, &
+                                            value, error_msg)
+        case (F64_INTRINSIC_REAL)
+            call lower_f32_real_intrinsic(arena, node, context, value, error_msg)
+        case (F64_INTRINSIC_SIGN)
+            call lower_f32_sign_intrinsic(arena, node, context, value, error_msg)
+        case (F64_INTRINSIC_SQRT)
+            call lower_f32_libm_call(arena, node, 'sqrtf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_EXP)
+            call lower_f32_libm_call(arena, node, 'expf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG)
+            call lower_f32_libm_call(arena, node, 'logf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_SIN)
+            call lower_f32_libm_call(arena, node, 'sinf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_COS)
+            call lower_f32_libm_call(arena, node, 'cosf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_TAN)
+            call lower_f32_libm_call(arena, node, 'tanf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATAN)
+            call lower_f32_libm_call(arena, node, 'atanf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATAN2)
+            call lower_f32_libm_call(arena, node, 'atan2f', 2, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ASIN)
+            call lower_f32_libm_call(arena, node, 'asinf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ACOS)
+            call lower_f32_libm_call(arena, node, 'acosf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_SINH)
+            call lower_f32_libm_call(arena, node, 'sinhf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_COSH)
+            call lower_f32_libm_call(arena, node, 'coshf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_TANH)
+            call lower_f32_libm_call(arena, node, 'tanhf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ASINH)
+            call lower_f32_libm_call(arena, node, 'asinhf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ACOSH)
+            call lower_f32_libm_call(arena, node, 'acoshf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ATANH)
+            call lower_f32_libm_call(arena, node, 'atanhf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG10)
+            call lower_f32_libm_call(arena, node, 'log10f', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ERF)
+            call lower_f32_libm_call(arena, node, 'erff', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ERFC)
+            call lower_f32_libm_call(arena, node, 'erfcf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_GAMMA)
+            call lower_f32_libm_call(arena, node, 'tgammaf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_LOG_GAMMA)
+            call lower_f32_libm_call(arena, node, 'lgammaf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_HYPOT)
+            call lower_f32_libm_call(arena, node, 'hypotf', 2, context, value, &
+                                     error_msg)
+        case default
+            call unsupported_intrinsic_error(node, error_msg)
+        end select
+    end subroutine lower_f32_intrinsic_call
+
+    subroutine lower_f32_libm_call(arena, node, libm_name, arg_count, context, &
+                                   value, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        integer, intent(in) :: arg_count
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(arg_count)
+        integer :: i
+
+        if (.not. require_intrinsic_arg_count(node, arg_count, arg_count, &
+                                              error_msg)) return
+        do i = 1, arg_count
+            call lower_f32_intrinsic_arg(arena, node%arg_indices(i), context, &
+                                         args(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        if (.not. emit_liric_f32_call(context%session, libm_name, args, value, &
+                                      error_msg)) return
+    end subroutine lower_f32_libm_call
+
+    subroutine lower_f32_sign_intrinsic(arena, node, context, value, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, b, zero
+        type(lr_operand_desc_t) :: a_nonneg, neg_a, magnitude
+        type(lr_operand_desc_t) :: b_nonneg, neg_magnitude
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, a, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(2), context, b, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = liric_f32_immediate(context%session, 0.0_c_float)
+        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, a, zero, &
+                                      a_nonneg, error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, a, &
+                                        neg_a, error_msg)) return
+        call select_value(context, a_nonneg, a, neg_a, magnitude, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, b, zero, &
+                                      b_nonneg, error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, &
+                                        magnitude, neg_magnitude, error_msg)) &
+            return
+        call select_value(context, b_nonneg, magnitude, neg_magnitude, value, &
+                          error_msg)
+    end subroutine lower_f32_sign_intrinsic
+
+    subroutine lower_f32_abs_intrinsic(arena, node, context, value, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: condition
+        type(lr_operand_desc_t) :: negative
+        type(lr_operand_desc_t) :: zero
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = liric_f32_immediate(context%session, 0.0_c_float)
+        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, arg, zero, &
+                                      condition, error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, &
+                                        arg, negative, error_msg)) return
+        call select_value(context, condition, arg, negative, value, error_msg)
+    end subroutine lower_f32_abs_intrinsic
+
+    subroutine lower_f32_minmax_intrinsic(arena, node, predicate, context, &
+                                          value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer(c_int), intent(in) :: predicate
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: candidate
+        type(lr_operand_desc_t) :: condition
+        type(lr_operand_desc_t) :: selected
+        integer :: i
+
+        if (.not. require_intrinsic_arg_count(node, 2, 64, error_msg)) return
+
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, &
+                                     value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        do i = 2, size(node%arg_indices)
+            call lower_f32_intrinsic_arg(arena, node%arg_indices(i), context, &
+                                         candidate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_fcmp(context%session, predicate, value, &
+                                          candidate, condition, error_msg)) return
+            call select_value(context, condition, value, candidate, selected, &
+                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = selected
+        end do
+    end subroutine lower_f32_minmax_intrinsic
+
+    subroutine lower_f32_real_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        ! real(x) converts integer x to f32.
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, value, &
+                                     error_msg)
+    end subroutine lower_f32_real_intrinsic
+
+    subroutine lower_f32_intrinsic_arg(arena, node_index, context, value, &
+                                       error_msg)
+        ! Lower an argument to an f32 intrinsic. Real literals and f32 variables
+        ! lower as f32; integer literals/variables are promoted to f32.
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: integer_value
+        real(c_double) :: lit_f64
+        character(len=:), allocatable :: lit_value, lit_type
+
+        if (is_literal(arena, node_index)) then
+            if (is_real_literal(arena, node_index)) then
+                call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                call parse_f64_literal(lit_value, lit_f64, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = liric_f32_immediate(context%session, real(lit_f64, c_float))
+                return
+            end if
+        end if
+
+        if (is_f32_expression(arena, node_index, context)) then
+            call lower_f32_expression(arena, node_index, context, value, &
+                                      error_msg)
+            return
+        end if
+
+        ! Integer argument: promote to f32.
+        call lower_i32_expression(arena, node_index, context, integer_value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_f32(context%session, integer_value, value, &
+                                        error_msg)) return
+    end subroutine lower_f32_intrinsic_arg
+
     subroutine lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                         value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -687,10 +951,21 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: integer_value
+        type(lr_operand_desc_t) :: f32_value
 
         if (is_f64_expression(arena, node_index, context)) then
             call lower_f64_expression(arena, node_index, context, value, &
                                       error_msg)
+            return
+        end if
+
+        ! f32 argument: promote to f64 via FPEXT.
+        if (is_f32_expression(arena, node_index, context)) then
+            call lower_f32_expression(arena, node_index, context, f32_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_to_f64(context%session, f32_value, value, &
+                                             error_msg)) return
             return
         end if
 

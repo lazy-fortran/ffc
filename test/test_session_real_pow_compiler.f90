@@ -25,7 +25,7 @@ contains
                                        'end program main'
 
         test_real_pow_two_three = expect_output( &
-                                  source, '   8.0000000000000000     '//new_line('a'), &
+                                  source, '   8.00000000    '//new_line('a'), &
                                   '/tmp/ffc_session_real_pow_two_three_test')
     end function test_real_pow_two_three
 
@@ -38,7 +38,7 @@ contains
                                        'end program main'
 
         test_real_pow_half = expect_output( &
-                             source, '   2.0000000000000000     '//new_line('a'), &
+                             source, '   2.00000000    '//new_line('a'), &
                              '/tmp/ffc_session_real_pow_half_test')
     end function test_real_pow_half
 
@@ -55,7 +55,7 @@ contains
                                        'end program main'
 
         test_real_pow_variable = expect_output( &
-                                 source, '   9.0000000000000000     '//new_line('a'), &
+                                 source, '   9.00000000    '//new_line('a'), &
                                  '/tmp/ffc_session_real_pow_variable_test')
     end function test_real_pow_variable
 
