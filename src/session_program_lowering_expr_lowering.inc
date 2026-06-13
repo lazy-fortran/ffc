@@ -506,6 +506,12 @@
                                           value, error_msg)
             return
         end if
+        ! dble(x) is identical to real(x, kind=8): promote/convert any type to f64.
+        if (same_name(node%name, 'dble') .and. .not. &
+            is_contained_f64_function(context, node%name)) then
+            call lower_f64_real_intrinsic(arena, node, context, value, error_msg)
+            return
+        end if
         if (is_real_array_reduction(arena, node, context, VALUE_F64)) then
             call lower_array_reduction_intrinsic(arena, node, context, value, &
                                                  error_msg, trim(node%name))
@@ -745,3 +751,243 @@
 
         error_msg = 'ffc direct-session lowering only supports integer(8) expressions'
     end subroutine lower_i64_expression
+
+    logical function is_i8_binary_op(arena, node_index, context)
+        ! Returns true when node_index is a binary op with at least one i8 operand.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: bin_op, err, id_name
+        integer :: sym
+
+        is_i8_binary_op = .false.
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, err)
+        if (len_trim(err) > 0) return
+        if (is_identifier(arena, bin_left)) then
+            call get_identifier_name(arena, bin_left, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I8) then
+                is_i8_binary_op = .true.
+                return
+            end if
+        end if
+        if (is_identifier(arena, bin_right)) then
+            call get_identifier_name(arena, bin_right, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I8) then
+                is_i8_binary_op = .true.
+                return
+            end if
+        end if
+    end function is_i8_binary_op
+
+    logical function is_i16_binary_op(arena, node_index, context)
+        ! Returns true when node_index is a binary op with at least one i16 operand.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: bin_op, err, id_name
+        integer :: sym
+
+        is_i16_binary_op = .false.
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, err)
+        if (len_trim(err) > 0) return
+        if (is_identifier(arena, bin_left)) then
+            call get_identifier_name(arena, bin_left, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I16) then
+                is_i16_binary_op = .true.
+                return
+            end if
+        end if
+        if (is_identifier(arena, bin_right)) then
+            call get_identifier_name(arena, bin_right, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I16) then
+                is_i16_binary_op = .true.
+                return
+            end if
+        end if
+    end function is_i16_binary_op
+
+    recursive subroutine lower_i8_expression(arena, node_index, context, &
+                                              value, error_msg)
+        ! Lower an expression expected to produce an integer(1)/i8 result.
+        use liric_session_bindings, only: LR_OP_ADD
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: literal_value
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer :: opcode
+        integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
+        integer :: uscore_pos
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            uscore_pos = index(lit_value, '_')
+            if (uscore_pos > 0) lit_value = lit_value(1:uscore_pos - 1)
+            call parse_i32_literal(lit_value, literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i8_immediate(context%session, literal_value)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i8_expression(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i8_expression(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_opcode(bin_op, opcode, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('integer(1) operator', &
+                                               bin_line, bin_col, &
+                                               'direct LIRIC session supports '// &
+                                               '+, -, *, and / for integer(1) '// &
+                                               'expressions', error_msg)
+                return
+            end if
+            if (.not. emit_i8_binary(context%session, opcode, lhs, rhs, value, &
+                                     error_msg)) return
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'integer(1) identifier was not declared: '//trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I8) then
+                error_msg = 'integer(1) expression used non-i8 identifier: '// &
+                            trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_i8_load(context%session, &
+                    context%symbols(symbol_index)%address, value, &
+                    error_msg)) return
+            else
+                value = context%symbols(symbol_index)%value
+                call set_empty(error_msg)
+            end if
+            return
+        end if
+
+        error_msg = 'ffc direct-session lowering only supports integer(1) expressions'
+    end subroutine lower_i8_expression
+
+    recursive subroutine lower_i16_expression(arena, node_index, context, &
+                                               value, error_msg)
+        ! Lower an expression expected to produce an integer(2)/i16 result.
+        use liric_session_bindings, only: LR_OP_ADD
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: literal_value
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer :: opcode
+        integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
+        integer :: uscore_pos
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            uscore_pos = index(lit_value, '_')
+            if (uscore_pos > 0) lit_value = lit_value(1:uscore_pos - 1)
+            call parse_i32_literal(lit_value, literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i16_immediate(context%session, literal_value)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i16_expression(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i16_expression(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_opcode(bin_op, opcode, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('integer(2) operator', &
+                                               bin_line, bin_col, &
+                                               'direct LIRIC session supports '// &
+                                               '+, -, *, and / for integer(2) '// &
+                                               'expressions', error_msg)
+                return
+            end if
+            if (.not. emit_i16_binary(context%session, opcode, lhs, rhs, value, &
+                                      error_msg)) return
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'integer(2) identifier was not declared: '//trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I16) then
+                error_msg = 'integer(2) expression used non-i16 identifier: '// &
+                            trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_i16_load(context%session, &
+                    context%symbols(symbol_index)%address, value, &
+                    error_msg)) return
+            else
+                value = context%symbols(symbol_index)%value
+                call set_empty(error_msg)
+            end if
+            return
+        end if
+
+        error_msg = 'ffc direct-session lowering only supports integer(2) expressions'
+    end subroutine lower_i16_expression

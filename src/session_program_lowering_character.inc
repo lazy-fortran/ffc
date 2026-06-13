@@ -567,6 +567,14 @@
             end select
             return
         end if
+        if (is_named_char_call(arena, node_index, 'repeat')) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_repeat_deferred(arena, n, context, data_ptr, length, &
+                                           error_msg)
+            end select
+            return
+        end if
         if (is_literal(arena, node_index)) then
             if (.not. is_character_literal(arena, node_index)) then
                 call unsupported_feature_error('character expression', 0, 0, &
@@ -612,7 +620,8 @@
         is_char_expr_call = is_trim_call(arena, node_index) .or. &
                             is_named_char_call(arena, node_index, 'achar') .or. &
                             is_named_char_call(arena, node_index, 'adjustl') .or. &
-                            is_named_char_call(arena, node_index, 'adjustr')
+                            is_named_char_call(arena, node_index, 'adjustr') .or. &
+                            is_named_char_call(arena, node_index, 'repeat')
     end function is_char_expr_call
 
     logical function is_named_char_call(arena, node_index, name)

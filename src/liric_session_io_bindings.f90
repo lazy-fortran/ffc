@@ -27,7 +27,13 @@ module liric_session_io_bindings
                                                   emit_liric_print_string_operand_value, &
                                                   emit_liric_print_string_value, &
                                                   liric_f32_immediate, &
-                                                  liric_f64_immediate
+                                                  liric_f64_immediate, &
+                                                  emit_liric_i8_to_i32, &
+                                                  emit_liric_i16_to_i32, &
+                                                  emit_liric_print_i8, &
+                                                  emit_liric_print_i8_value, &
+                                                  emit_liric_print_i16, &
+                                                  emit_liric_print_i16_value
     implicit none
     private
 
@@ -58,6 +64,12 @@ module liric_session_io_bindings
     public :: liric_f32_immediate
     public :: liric_f64_immediate
     public :: materialize_liric_string
+    public :: emit_liric_i8_to_i32
+    public :: emit_liric_i16_to_i32
+    public :: emit_liric_print_i8
+    public :: emit_liric_print_i8_value
+    public :: emit_liric_print_i16
+    public :: emit_liric_print_i16_value
     public :: prepare_liric_print_runtime
     public :: LR_OP_FSUB
 

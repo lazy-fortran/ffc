@@ -19,6 +19,7 @@ module ffc_test_support
     public :: expect_object_exists
     public :: expect_no_error
     public :: expect_exe_has_symbol
+    public :: expect_output_with_stdin
 
 contains
 
@@ -140,6 +141,56 @@ contains
         call execute_command_line('rm -f '//exe_path//' '//stdout_path)
         ok = .true.
     end function expect_output
+
+    logical function expect_output_with_stdin(source, stdin_input, expected, exe_path) result(ok)
+        ! Like expect_output but pipes stdin_input to the executable via echo.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: stdin_input
+        character(len=*), intent(in) :: expected
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg
+        character(len=:), allocatable :: actual
+        character(len=:), allocatable :: stdout_path
+        integer :: cmd_stat
+        integer :: exit_stat
+
+        ok = .false.
+        call compile_to_exe(source, exe_path, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: ', trim(error_msg)
+            call execute_command_line('rm -f '//exe_path)
+            return
+        end if
+
+        stdout_path = exe_path//'.out'
+        call execute_command_line("echo '"//stdin_input//"' | "//exe_path// &
+                                  " > "//stdout_path, &
+                                  exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: emitted executable did not run: ', exe_path
+            call execute_command_line('rm -f '//exe_path//' '//stdout_path)
+            return
+        end if
+        if (exit_stat /= 0) then
+            print *, 'FAIL: emitted executable exited with status ', exit_stat
+            call execute_command_line('rm -f '//exe_path//' '//stdout_path)
+            return
+        end if
+
+        call read_file(stdout_path, actual)
+        call execute_command_line('rm -f '//exe_path//' '//stdout_path)
+        if (.not. allocated(actual)) then
+            print *, 'FAIL: could not read output of ', exe_path
+            return
+        end if
+        if (actual /= expected) then
+            print *, 'FAIL: output mismatch'
+            print *, '  expected: ', expected
+            print *, '  actual:   ', actual
+            return
+        end if
+        ok = .true.
+    end function expect_output_with_stdin
 
     logical function expect_error_contains(source, fragment, exe_path) result(ok)
         character(len=*), intent(in) :: source

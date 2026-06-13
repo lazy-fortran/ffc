@@ -57,6 +57,10 @@
         case (I32_INTRINSIC_SELECTED_REAL_KIND)
             call lower_selected_real_kind_intrinsic(arena, node, context, value, &
                                                     error_msg)
+        case (I32_INTRINSIC_MODULO)
+            call lower_i32_modulo_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_DIM)
+            call lower_i32_dim_intrinsic(arena, node, context, value, error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -840,6 +844,70 @@
         if (.not. emit_i32_binary(context%session, LR_OP_SREM, lhs, rhs, value, &
                                                   error_msg)) return
     end subroutine lower_i32_mod_intrinsic
+
+    ! modulo(a, p): remainder with the sign of p.
+    ! For integers: r = a srem p; if r /= 0 and sign(r) /= sign(p): r = r + p.
+    subroutine lower_i32_modulo_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, p, r, zero, r_plus_p
+        type(lr_operand_desc_t) :: r_nonzero, signs_differ, adjust
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, a, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, p, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_SREM, a, p, r, &
+                                  error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, r, p, r_plus_p, &
+                                  error_msg)) return
+        ! r_nonzero = (r /= 0)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, r, zero, &
+                                      r_nonzero, error_msg)) return
+        ! signs_differ: (r XOR p) < 0 -- MSB set iff signs differ
+        if (.not. emit_i32_binary(context%session, LR_OP_XOR, r, p, adjust, &
+                                  error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, adjust, zero, &
+                                      signs_differ, error_msg)) return
+        ! need_adjust = r_nonzero AND signs_differ
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, r_nonzero, &
+                                  signs_differ, adjust, error_msg)) return
+        ! result = need_adjust ? r + p : r
+        call select_value(context, adjust, r_plus_p, r, value, error_msg)
+    end subroutine lower_i32_modulo_intrinsic
+
+    ! dim(x, y): max(x - y, 0) -- positive difference or zero.
+    subroutine lower_i32_dim_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: x, y, diff, zero, is_pos
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, x, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, y, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, x, y, diff, &
+                                  error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, diff, zero, &
+                                      is_pos, error_msg)) return
+        call select_value(context, is_pos, diff, zero, value, error_msg)
+    end subroutine lower_i32_dim_intrinsic
 
     subroutine lower_i32_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)

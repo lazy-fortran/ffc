@@ -196,6 +196,9 @@
         call import_module_constants(arena, export_idx, use_node, context, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
+        call import_module_variables(arena, export_idx, use_node, context, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
         call validate_use_only_names(arena, export_idx, use_node, context, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
@@ -233,6 +236,13 @@
             do i = 1, size(info%parameters)
                 call import_fmod_parameter(use_node, info%parameters(i), &
                                            context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
+        if (allocated(info%variables)) then
+            do i = 1, size(info%variables)
+                call import_fmod_variable(use_node, info%variables(i), &
+                                          context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
@@ -329,6 +339,49 @@
         context%symbols(index)%i32_constant = constant_value
         context%symbol_count = index
     end subroutine import_fmod_parameter
+
+    subroutine import_fmod_variable(use_node, var, context, error_msg)
+        ! Add a module variable from a .fmod record to the symbol table (#249 B7a).
+        ! The global `__<mod>_MOD_<name>` must already exist in the session
+        ! (emitted when the defining module was compiled); we resolve it with
+        ! lr_session_intern and set up an addressed symbol so that load/store
+        ! work in the using unit.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        type(use_statement_node), intent(in) :: use_node
+        type(fmod_variable_t), intent(in) :: var
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: global_id
+        integer :: sym_idx
+
+        call set_empty(error_msg)
+        if (.not. allocated(var%name)) return
+        if (len_trim(var%name) == 0) return
+        if (.not. use_only_wants(use_node, trim(var%name))) return
+        if (trim(var%kind) /= 'integer') return
+        if (find_symbol(context, trim(var%name)) > 0) return
+        mangled = module_procedure_mangled( &
+            trim(use_node%module_name), trim(var%name))
+        call to_c_chars(mangled, c_name)
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'module variable global not found: '//trim(mangled)
+            return
+        end if
+        call grow_symbols(context)
+        sym_idx = context%symbol_count + 1
+        context%symbols(sym_idx)%name = trim(var%name)
+        context%symbols(sym_idx)%value_kind = VALUE_I32
+        context%symbols(sym_idx)%has_address = .true.
+        context%symbols(sym_idx)%is_reference = .true.
+        context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+        context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+        context%symbol_count = sym_idx
+    end subroutine import_fmod_variable
 
     subroutine import_use_renames(arena, export_idx, use_node, context, error_msg)
         ! use m, only: local => remote binds module symbol `remote` under the
@@ -541,6 +594,19 @@
                 return
             end if
         end do
+        do i = 1, context%module_exports(export_idx)%variable_count
+            if (.not. is_declaration_node(arena, &
+                    context%module_exports(export_idx)%variable_indices(i))) cycle
+            call get_declaration_var_name(arena, &
+                                          context%module_exports(export_idx)% &
+                                              variable_indices(i), &
+                                          decl_name, error_msg)
+            if (len_trim(error_msg) > 0) cycle
+            if (same_name(decl_name, name)) then
+                module_exports_name = .true.
+                return
+            end if
+        end do
     end function module_exports_name
 
     subroutine import_module_constants(arena, export_idx, use_node, context, &
@@ -610,6 +676,59 @@
             context%symbol_count = param_idx
         end do
     end subroutine import_module_constants
+
+    subroutine import_module_variables(arena, export_idx, use_node, context, &
+                                       error_msg)
+        ! Import module-level variables from an in-unit module into the calling
+        ! program's symbol table (#249 B7a). Each variable is resolved as an
+        ! addressed global via lr_session_intern.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, var_idx, sym_idx, value_kind
+        character(len=:), allocatable :: var_name, type_name, mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: global_id
+
+        call set_empty(error_msg)
+        do i = 1, context%module_exports(export_idx)%variable_count
+            var_idx = context%module_exports(export_idx)%variable_indices(i)
+            if (.not. node_exists(arena, var_idx)) cycle
+            if (.not. is_declaration_node(arena, var_idx)) cycle
+            call get_declaration_var_name(arena, var_idx, var_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. use_only_wants(use_node, trim(var_name))) cycle
+            if (find_symbol(context, var_name) > 0) cycle
+            call get_declaration_type_name(arena, var_idx, type_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call type_name_value_kind(type_name, 0, 0, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (value_kind /= VALUE_I32) cycle
+            mangled = module_procedure_mangled( &
+                trim(context%module_exports(export_idx)%module_name), &
+                trim(var_name))
+            call to_c_chars(mangled, c_name)
+            global_id = lr_session_intern(context%session%handle, c_name)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'module variable global not found: '//trim(mangled)
+                return
+            end if
+            call grow_symbols(context)
+            sym_idx = context%symbol_count + 1
+            context%symbols(sym_idx)%name = trim(var_name)
+            context%symbols(sym_idx)%value_kind = VALUE_I32
+            context%symbols(sym_idx)%has_address = .true.
+            context%symbols(sym_idx)%is_reference = .true.
+            context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
+            context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+            context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
+            context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+            context%symbol_count = sym_idx
+        end do
+    end subroutine import_module_variables
 
     subroutine add_derived_type_from_arena(arena, type_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena

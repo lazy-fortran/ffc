@@ -823,6 +823,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         ! same name via lr_session_intern in import_module_variables.
         use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
                                                c_null_ptr, c_ptr, c_size_t
+        use liric_session_bindings, only: lr_type_i32_s, lr_session_global, to_c_chars
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context

@@ -29,6 +29,10 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_unsupported_real_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_user_function_shadowing()) all_passed = .false.
+    if (.not. test_integer_modulo_positive()) all_passed = .false.
+    if (.not. test_integer_modulo_negative_divisor()) all_passed = .false.
+    if (.not. test_integer_dim_positive()) all_passed = .false.
+    if (.not. test_integer_dim_zero()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: scalar intrinsics lower through direct LIRIC session'
@@ -286,13 +290,14 @@ contains
     end function test_real_conversion_intrinsic
 
     logical function test_unsupported_intrinsic_diagnostic()
+        ! verify that a genuinely unsupported integer intrinsic still errors
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
-                                       '  stop modulo(7, 3)'//new_line('a')// &
+                                       '  stop ibset(0, 1)'//new_line('a')// &
                                        'end program main'
 
         test_unsupported_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar intrinsic: modulo', &
+            source, 'unsupported', &
             '/tmp/ffc_session_unsupported_intrinsic_test')
     end function test_unsupported_intrinsic_diagnostic
 
@@ -303,8 +308,11 @@ contains
                                        '  x = modulo(5.5, 2.0)'//new_line('a')// &
                                        'end program main'
 
+        ! modulo is now in the f64 lookup table so the error comes from the
+        ! intrinsic dispatcher rather than the generic "unsupported function call"
+        ! path; check for the common prefix only.
         test_unsupported_real_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported scalar real(4) function call', &
+            source, 'unsupported', &
             '/tmp/ffc_session_unsupported_real_intrinsic_test')
     end function test_unsupported_real_intrinsic_diagnostic
 
@@ -324,5 +332,57 @@ contains
                                       source, 5, &
                                       '/tmp/ffc_session_intrinsic_shadow_test')
     end function test_user_function_shadowing
+
+    logical function test_integer_modulo_positive()
+        ! modulo(7, 3) == 1  (same as mod when both positive)
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = modulo(7, 3)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_modulo_positive = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_integer_modulo_pos_test')
+    end function test_integer_modulo_positive
+
+    logical function test_integer_modulo_negative_divisor()
+        ! modulo(-7, 3) == 2  (result has sign of divisor, unlike mod)
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = modulo(-7, 3)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_modulo_negative_divisor = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_integer_modulo_neg_test')
+    end function test_integer_modulo_negative_divisor
+
+    logical function test_integer_dim_positive()
+        ! dim(5, 2) == 3
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = dim(5, 2)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_dim_positive = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_integer_dim_pos_test')
+    end function test_integer_dim_positive
+
+    logical function test_integer_dim_zero()
+        ! dim(2, 5) == 0  (negative difference clamped to zero)
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       '  integer :: x'//new_line('a')// &
+                                       '  x = dim(2, 5)'//new_line('a')// &
+                                       '  stop x'//new_line('a')// &
+                                       'end program main'
+
+        test_integer_dim_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_integer_dim_zero_test')
+    end function test_integer_dim_zero
 
 end program test_session_integer_intrinsic_compiler

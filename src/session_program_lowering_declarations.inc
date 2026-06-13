@@ -148,6 +148,10 @@
 
         call set_empty(error_msg)
         select case (trim(kind_spec))
+        case ('1', 'int8', 'c_int8_t', 'c_signed_char')
+            value_kind = VALUE_I8
+        case ('2', 'int16', 'c_int16_t', 'c_short')
+            value_kind = VALUE_I16
         case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char', 'int32')
             value_kind = VALUE_I32
         case ('8', 'int64', 'c_int64_t', 'c_long', 'c_long_long')
@@ -155,8 +159,9 @@
         case default
             value_kind = VALUE_I32
             call unsupported_feature_error('integer kind', line, column, &
-                'direct LIRIC session supports integer kinds 4 (default) and '// &
-                '8 (int64); kind '//trim(kind_spec)//' is not yet supported', &
+                'direct LIRIC session supports integer kinds 1 (int8), '// &
+                '2 (int16), 4 (default), and 8 (int64); kind '// &
+                trim(kind_spec)//' is not yet supported', &
                 error_msg)
         end select
     end subroutine integer_kind_to_value_kind

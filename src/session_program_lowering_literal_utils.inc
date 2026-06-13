@@ -14,6 +14,11 @@
             is_f64 = .true.
             return
         end if
+        ! dble() always returns real(8), regardless of argument kind.
+        if (same_name(node%name, 'dble')) then
+            is_f64 = .true.
+            return
+        end if
         if (intrinsic_id == F64_INTRINSIC_NONE) return
         if (.not. allocated(node%arg_indices)) return
 

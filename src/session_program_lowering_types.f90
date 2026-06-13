@@ -14,6 +14,10 @@ module session_program_lowering_types
     ! VALUE_I64 is integer(8) / integer(int64). Arithmetic uses i64 ops;
     ! list-directed output uses %20ld (gfortran field width 21 including sep).
     integer, parameter, public :: VALUE_I64 = 11
+    ! VALUE_I8  is integer(1)/integer(int8).  Field width 5 (gfortran); %4d.
+    integer, parameter, public :: VALUE_I8 = 12
+    ! VALUE_I16 is integer(2)/integer(int16). Field width 7 (gfortran); %6d.
+    integer, parameter, public :: VALUE_I16 = 13
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
@@ -48,6 +52,8 @@ module session_program_lowering_types
     integer, parameter, public :: I32_INTRINSIC_RESHAPE = 19
     integer, parameter, public :: I32_INTRINSIC_SELECTED_INT_KIND = 20
     integer, parameter, public :: I32_INTRINSIC_SELECTED_REAL_KIND = 21
+    integer, parameter, public :: I32_INTRINSIC_MODULO = 22
+    integer, parameter, public :: I32_INTRINSIC_DIM = 23
     integer, parameter, public :: F64_INTRINSIC_NONE = 0
     integer, parameter, public :: F64_INTRINSIC_ABS = 1
     integer, parameter, public :: F64_INTRINSIC_MIN = 2
@@ -76,14 +82,16 @@ module session_program_lowering_types
     integer, parameter, public :: F64_INTRINSIC_GAMMA = 25
     integer, parameter, public :: F64_INTRINSIC_LOG_GAMMA = 26
     integer, parameter, public :: F64_INTRINSIC_HYPOT = 27
-    character(len=18), parameter, public :: I32_INTRINSIC_NAMES(21) = &
+    integer, parameter, public :: F64_INTRINSIC_MOD = 28
+    integer, parameter, public :: F64_INTRINSIC_MODULO = 29
+    character(len=18), parameter, public :: I32_INTRINSIC_NAMES(23) = &
                                    [character(len=18) :: 'abs', 'min', 'max', 'mod', &
                                     'iand', 'ior', 'ieor', 'not', 'ishft', &
                                     'ishftc', 'sign', 'int', 'nint', 'floor', &
                                     'ceiling', 'matmul', 'transpose', &
                                     'dot_product', 'reshape', 'selected_int_kind', &
-                                    'selected_real_kind']
-    integer, parameter, public :: I32_INTRINSIC_IDS(21) = &
+                                    'selected_real_kind', 'modulo', 'dim']
+    integer, parameter, public :: I32_INTRINSIC_IDS(23) = &
                           [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
                            I32_INTRINSIC_MOD, I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
                            I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, I32_INTRINSIC_ISHFT, &
@@ -92,15 +100,16 @@ module session_program_lowering_types
                            I32_INTRINSIC_CEILING, I32_INTRINSIC_MATMUL, &
                            I32_INTRINSIC_TRANSPOSE, I32_INTRINSIC_DOT_PRODUCT, &
                            I32_INTRINSIC_RESHAPE, I32_INTRINSIC_SELECTED_INT_KIND, &
-                           I32_INTRINSIC_SELECTED_REAL_KIND]
-    character(len=9), parameter, public :: F64_INTRINSIC_NAMES(27) = &
+                           I32_INTRINSIC_SELECTED_REAL_KIND, I32_INTRINSIC_MODULO, &
+                           I32_INTRINSIC_DIM]
+    character(len=9), parameter, public :: F64_INTRINSIC_NAMES(29) = &
                                    [character(len=9) :: 'abs', 'min', 'max', 'real', &
                                     'sign', 'sqrt', 'exp', 'log', 'sin', 'cos', &
                                     'tan', 'atan', 'atan2', 'asin', 'acos', 'sinh', &
                                     'cosh', 'tanh', 'asinh', 'acosh', 'atanh', &
                                     'log10', 'erf', 'erfc', 'gamma', 'log_gamma', &
-                                    'hypot']
-    integer, parameter, public :: F64_INTRINSIC_IDS(27) = &
+                                    'hypot', 'mod', 'modulo']
+    integer, parameter, public :: F64_INTRINSIC_IDS(29) = &
                           [F64_INTRINSIC_ABS, F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                            F64_INTRINSIC_REAL, F64_INTRINSIC_SIGN, F64_INTRINSIC_SQRT, &
                            F64_INTRINSIC_EXP, F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
@@ -112,7 +121,8 @@ module session_program_lowering_types
                            F64_INTRINSIC_ATANH, F64_INTRINSIC_LOG10, &
                            F64_INTRINSIC_ERF, F64_INTRINSIC_ERFC, &
                            F64_INTRINSIC_GAMMA, F64_INTRINSIC_LOG_GAMMA, &
-                           F64_INTRINSIC_HYPOT]
+                           F64_INTRINSIC_HYPOT, F64_INTRINSIC_MOD, &
+                           F64_INTRINSIC_MODULO]
 
     type, public :: symbol_t
         character(len=64) :: name = ''
@@ -147,6 +157,11 @@ module session_program_lowering_types
         logical :: is_pointer = .false.
         logical :: is_target = .false.
         logical :: is_associated = .false.
+        ! File I/O (#247 B5c). When this symbol holds a Fortran unit number that
+        ! was opened via OPEN, file_ptr_address is the alloca'd ptr holding the
+        ! FILE* handle. is_file_unit is set to .true. at that point.
+        logical :: is_file_unit = .false.
+        type(lr_operand_desc_t) :: file_ptr_address
     end type symbol_t
 
     type, public :: array_section_info_t
@@ -186,6 +201,9 @@ module session_program_lowering_types
         integer :: derived_type_count = 0
         integer, allocatable :: parameter_indices(:)
         integer :: parameter_count = 0
+        ! Non-parameter variable declarations exported from the module (#249 B7a).
+        integer, allocatable :: variable_indices(:)
+        integer :: variable_count = 0
     end type module_exports_t
 
     integer, parameter, public :: MAX_PROC_ARGS = 16
@@ -210,6 +228,8 @@ module session_program_lowering_types
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: i64_print_format_id = -1_c_int32_t
+        integer(c_int32_t) :: i8_print_format_id = -1_c_int32_t
+        integer(c_int32_t) :: i16_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
         logical :: has_command_args = .false.
@@ -233,6 +253,11 @@ module session_program_lowering_types
         ! Search paths (-I) for .fmod module artefacts resolved on USE.
         character(len=:), allocatable :: include_paths(:)
         integer :: include_path_count = 0
+        ! File I/O unit table (#247 B5c). unit_table_id is the LIRIC global vreg
+        ! for the [256 x ptr] table; -1 means not yet created.
+        integer(c_int32_t) :: unit_table_id = -1_c_int32_t
+        ! Next unit number assigned by newunit=. Start at 10 to avoid 0/1/6.
+        integer(c_int32_t) :: next_file_unit = 10_c_int32_t
     end type lowering_context_t
 
     type, public :: branch_result_t

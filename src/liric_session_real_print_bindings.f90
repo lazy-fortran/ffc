@@ -57,6 +57,8 @@ module liric_session_real_print_bindings
     public :: emit_get_arg_call
     public :: emit_snprintf
     public :: emit_sscanf
+    public :: emit_scanf
+    public :: emit_fprintf
 
     interface
         function lr_session_declare(handle, name, ret, params, n, vararg, &

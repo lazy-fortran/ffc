@@ -34,6 +34,7 @@ module liric_session_bindings
     integer(c_int), parameter, public :: LR_OP_GEP = 29_c_int
     integer(c_int), parameter, public :: LR_OP_CALL = 30_c_int
     integer(c_int), parameter, public :: LR_OP_BITCAST = 36_c_int
+    integer(c_int), parameter, public :: LR_OP_SEXT = 33_c_int
     integer(c_int), parameter, public :: LR_OP_ZEXT = 34_c_int
     integer(c_int), parameter, public :: LR_OP_TRUNC = 35_c_int
     integer(c_int), parameter, public :: LR_OP_SITOFP = 39_c_int
@@ -56,7 +57,7 @@ module liric_session_bindings
     public :: i32_vreg, i32_immediate
     public :: global_operand
     public :: lr_type_i32_s, lr_type_i64_s, lr_type_f32_s, lr_type_f64_s, &
-              lr_type_ptr_s, lr_type_i8_s, lr_type_array_s, lr_type_void_s
+              lr_type_ptr_s, lr_type_i8_s, lr_type_i16_s, lr_type_array_s, lr_type_void_s
     public :: lr_session_emit, lr_session_vreg, lr_session_param, &
               lr_session_intern, lr_session_global
     public :: status_ok, clear_liric_error, set_empty, require_open_session, &
@@ -66,7 +67,7 @@ module liric_session_bindings
               emit_ret_i32_main_exe, &
               emit_ret_i32_operand, emit_ret_void, finish_function, &
               finish_and_emit_object, finish_and_emit_exe, &
-              emit_i32_call, emit_void_call
+              emit_i32_call, emit_ptr_call, emit_void_call
 
     interface
         function lr_session_create(cfg, err) result(handle) bind(c)
@@ -116,6 +117,12 @@ module liric_session_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_i8_s
+
+        function lr_type_i16_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_i16_s
 
         function lr_type_ptr_s(handle) result(typ) bind(c)
             import :: c_ptr
@@ -627,6 +634,58 @@ contains
         call set_empty(error_msg)
         emit_void_call = .true.
     end function emit_void_call
+
+    logical function emit_ptr_call(session, name, args, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(9)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+        integer :: i
+
+        emit_ptr_call = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        call to_c_chars(trim(name), c_name)
+        symbol_id = lr_session_intern(session%handle, c_name)
+        if (symbol_id < 0_c_int32_t .or. size(args) > 8) then
+            error_msg = 'could not intern symbol for ptr call: '//trim(name)
+            return
+        end if
+        operands(1) = global_operand(session%handle, symbol_id)
+        do i = 1, size(args)
+            operands(i + 1) = args(i)
+        end do
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_ptr_s(session%handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = int(size(args) + 1, c_int32_t)
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        ! Inline ptr_vreg: cannot use liric_session_memory_bindings here
+        ! (circular dependency); build the ptr operand directly.
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_ptr_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_ptr_call = .true.
+    end function emit_ptr_call
 
     function emit_ret_i32(handle, value, error) result(vreg)
         type(c_ptr), intent(in) :: handle

@@ -27,7 +27,7 @@ module liric_session_memory_bindings
     public :: i64_immediate, ptr_param, &
               reserve_i32_vreg, ptr_vreg, i64_vreg
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
-    public :: emit_i32_alloca, emit_i64_alloca
+    public :: emit_i32_alloca, emit_i64_alloca, emit_ptr_alloca
     public :: emit_i32_load, emit_i64_load, emit_ptr_load
     public :: emit_i32_store, emit_i64_store
     public :: emit_i64_load_at, emit_i64_store_at
@@ -38,6 +38,8 @@ module liric_session_memory_bindings
     public :: emit_f64_array_alloca, emit_f64_array_element_addr
     public :: emit_i64_binary
     public :: emit_alloca_typed, emit_load_typed, emit_store_typed
+    public :: i8_immediate, emit_i8_alloca, emit_i8_load, emit_i8_store, emit_i8_binary
+    public :: i16_immediate, emit_i16_alloca, emit_i16_load, emit_i16_store, emit_i16_binary
 
     interface
         function lr_session_vreg(handle) result(vreg) bind(c)
@@ -1076,6 +1078,25 @@ contains
         emit_f64_array_element_addr = .true.
     end function emit_f64_array_element_addr
 
+    include 'liric_session_memory_bindings_i8_i16.inc'
     include 'liric_session_memory_bindings_tail.inc'
+
+    logical function emit_ptr_alloca(session, address, error_msg)
+        ! Allocate one pointer slot on the stack; address is a ptr to ptr.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_ptr_alloca = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        vreg = emit_alloca_typed(session%handle, &
+                                  lr_type_ptr_s(session%handle), error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        address = ptr_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_ptr_alloca = .true.
+    end function emit_ptr_alloca
 
 end module liric_session_memory_bindings

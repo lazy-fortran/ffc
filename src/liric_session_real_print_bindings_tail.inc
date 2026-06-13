@@ -258,6 +258,34 @@
                                 c_true, vreg, error_msg)
     end function emit_sscanf
 
+    logical function emit_scanf(session, args, error_msg)
+        ! Variadic scanf(fmt, ...) call for list-directed stdin reads.
+        ! args(1) is the format-string pointer; remaining args are destination
+        ! pointers. Only the format is fixed; all destination pointers are vararg.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_scanf = emit_call(session, 'scanf', args, &
+                               lr_type_i32_s(session%handle), 1_c_int32_t, &
+                               c_true, vreg, error_msg)
+    end function emit_scanf
+
+    logical function emit_fprintf(session, args, error_msg)
+        ! Variadic fprintf(fp, fmt, ...) call (#247 B5c file I/O).
+        ! args(1) is the FILE* pointer, args(2) the format-string pointer;
+        ! remaining args are the values to print.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_fprintf = emit_call(session, 'fprintf', args, &
+                                 lr_type_i32_s(session%handle), 2_c_int32_t, &
+                                 c_true, vreg, error_msg)
+    end function emit_fprintf
+
     logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
                                vararg, vreg, error_msg)
         type(liric_session_t), intent(inout) :: session

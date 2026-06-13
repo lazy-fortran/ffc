@@ -54,7 +54,9 @@
                                               context%i32_print_format_id, &
                                               context%str_print_format_id, &
                                               error_msg, &
-                                              context%i64_print_format_id)) then
+                                              context%i64_print_format_id, &
+                                              context%i8_print_format_id, &
+                                              context%i16_print_format_id)) then
             call destroy(context%session)
             return
         end if
@@ -98,6 +100,11 @@
             return
         end if
         call lower_module_procedures(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
+        call lower_module_variables(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
@@ -356,6 +363,10 @@
             call lower_nullify(arena, node, context, error_msg)
         type is (data_statement_node)
             call lower_data_statement(arena, node, context, error_msg)
+        type is (open_statement_node)
+            call lower_open(arena, node, context, error_msg)
+        type is (close_statement_node)
+            call lower_close(node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
@@ -363,21 +374,29 @@
                 call lower_internal_read(arena, node, context, error_msg)
                 return
             end if
+            if (is_stdin_read(node)) then
+                call lower_read_stdin(arena, node, context, error_msg)
+                return
+            end if
             call unsupported_feature_error('read statement', node%line, &
                                            node%column, &
                                            'direct LIRIC session does not '// &
-                                           'support input runtime calls', &
+                                           'support this read form yet', &
                                            error_msg)
         type is (write_statement_node)
             if (is_internal_write(node, context)) then
                 call lower_internal_write(arena, node, context, error_msg)
+            else if (is_stdout_write(node)) then
+                call lower_write_stdout(arena, node, context, error_msg)
+            else if (is_file_unit_write(node, context)) then
+                call lower_write_file(arena, node, context, error_msg)
             else
                 call unsupported_feature_error('write statement', node%line, &
                                                node%column, &
                                                'direct LIRIC session only '// &
-                                               'supports minimal print output '// &
-                                               'and internal write to a '// &
-                                               'character variable', error_msg)
+                                               'supports minimal print output, '// &
+                                               'internal write, and file write '// &
+                                               '(#247)', error_msg)
             end if
         type is (allocate_statement_node)
             call lower_allocate_statement(arena, node, context, error_msg)
@@ -449,7 +468,11 @@
         type is (if_node)
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
-            call lower_do_loop(arena, node, context, value, error_msg)
+            if (node%is_concurrent) then
+                call lower_do_concurrent(arena, node, context, value, error_msg)
+            else
+                call lower_do_loop(arena, node, context, value, error_msg)
+            end if
         type is (do_while_node)
             call lower_do_while(arena, node, context, value, error_msg)
         type is (select_case_node)
@@ -458,6 +481,14 @@
             call lower_select_type(arena, node_index, context, error_msg)
         type is (associate_node)
             call lower_associate(arena, node, context, error_msg)
+        type is (block_construct_node)
+            call lower_block_construct(arena, node, context, error_msg)
+        type is (where_node)
+            call lower_where_construct(arena, node, context, error_msg)
+        type is (where_stmt_node)
+            call lower_where_stmt(arena, node, context, error_msg)
+        type is (forall_node)
+            call lower_forall(arena, node, context, error_msg)
         type is (derived_type_node)
             call lower_derived_type_definition(node, context, error_msg)
         type is (use_statement_node)
@@ -512,6 +543,7 @@
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
+    include 'session_program_lowering_block_concurrent.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena

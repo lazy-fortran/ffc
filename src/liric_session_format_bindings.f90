@@ -20,6 +20,8 @@ module liric_session_format_bindings
     public :: create_printf_format_global
     public :: printf_format_ptr
     public :: create_type_info_global
+    public :: create_i8_format_global_no_newline
+    public :: create_i16_format_global_no_newline
 
     interface
         function lr_type_i32_s(handle) result(typ) bind(c)
@@ -85,13 +87,18 @@ contains
 
     logical function prepare_liric_print_runtime(session, i32_format_id, &
                                                  str_format_id, error_msg, &
-                                                 i64_format_id)
+                                                 i64_format_id, i8_format_id, &
+                                                 i16_format_id)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(out) :: i32_format_id
         integer(c_int32_t), intent(out) :: str_format_id
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t), intent(out), optional :: i64_format_id
+        integer(c_int32_t), intent(out), optional :: i8_format_id
+        integer(c_int32_t), intent(out), optional :: i16_format_id
         integer(c_int32_t) :: local_i64_format_id
+        integer(c_int32_t) :: local_i8_format_id
+        integer(c_int32_t) :: local_i16_format_id
 
         prepare_liric_print_runtime = .false.
         if (.not. declare_printf_i32(session, error_msg)) return
@@ -104,6 +111,16 @@ contains
                                                  local_i64_format_id, error_msg)
         if (len_trim(error_msg) > 0) return
         if (present(i64_format_id)) i64_format_id = local_i64_format_id
+        call create_i8_format_global_no_newline(session, &
+                                                '.ffc.fmt.i8', &
+                                                local_i8_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (present(i8_format_id)) i8_format_id = local_i8_format_id
+        call create_i16_format_global_no_newline(session, &
+                                                 '.ffc.fmt.i16', &
+                                                 local_i16_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (present(i16_format_id)) i16_format_id = local_i16_format_id
         call create_str_format_global_no_newline(session, &
                                                  '.ffc.fmt.str', &
                                                  str_format_id, error_msg)
@@ -219,6 +236,82 @@ contains
 
         call set_empty(error_msg)
     end subroutine create_str_format_global_no_newline
+
+    subroutine create_i8_format_global_no_newline(session, name, global_id, &
+                                                  error_msg)
+        ! gfortran list-directed integer(1) field is I5 (field width 5, %4d).
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), target :: format_text(4)
+        type(c_ptr) :: array_type
+
+        call to_c_chars(name, c_name)
+        format_text(1) = '%'
+        format_text(2) = '4'
+        format_text(3) = 'd'
+        format_text(4) = c_null_char
+
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                     4_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(format_text(1)), &
+                                      4_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create i8 printf format string'
+            return
+        end if
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern i8 printf format string'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine create_i8_format_global_no_newline
+
+    subroutine create_i16_format_global_no_newline(session, name, global_id, &
+                                                   error_msg)
+        ! gfortran list-directed integer(2) field is I7 (field width 7, %6d).
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int32_t), intent(out) :: global_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), target :: format_text(4)
+        type(c_ptr) :: array_type
+
+        call to_c_chars(name, c_name)
+        format_text(1) = '%'
+        format_text(2) = '6'
+        format_text(3) = 'd'
+        format_text(4) = c_null_char
+
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+                                     4_c_int64_t)
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a format string array type'
+            return
+        end if
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+                                      c_true, c_loc(format_text(1)), &
+                                      4_c_size_t)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create i16 printf format string'
+            return
+        end if
+        global_id = lr_session_intern(session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern i16 printf format string'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine create_i16_format_global_no_newline
 
     subroutine create_i64_format_global_no_newline(session, name, global_id, &
                                                    error_msg)

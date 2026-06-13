@@ -8,10 +8,13 @@ module session_program_lowering
                               pointer_assignment_node, literal_node
     use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
+    use ast_nodes_io, only: open_statement_node, close_statement_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               visibility_statement_node, data_statement_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node
     use ast_nodes_associate, only: associate_node, association_t
+    use ast_nodes_control, only: block_construct_node, where_stmt_node, &
+                                 elsewhere_clause_t
     use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
@@ -24,29 +27,37 @@ module session_program_lowering
                          return_node, select_case_node, stop_node, &
                          subroutine_def_node, write_statement_node, &
                          allocate_statement_node, deallocate_statement_node, &
+                         where_node, forall_node, &
                          get_subroutine_call_arg_indices, &
                          get_subroutine_call_name, is_subroutine_call_statement, &
                          is_binary_op, get_binary_op_info, &
                          is_literal, get_literal_info, &
                          is_identifier, get_identifier_name, &
                          is_declaration_node, is_module_node, is_program_node
-use liric_session_bindings, only: destroy, begin_i32_main, &
+    use liric_session_bindings, only: destroy, begin_i32_main, &
                                        begin_i32_function, begin_void_subroutine, &
                                        begin_ptr_function, &
-                                      emit_ret_i32_operand, emit_ret_void, &
-                                      finish_function, finish_and_emit_exe, &
-                                      finish_and_emit_object, emit_void_call, &
-                                      emit_i32_call, liric_session_create, &
-                                      i32_immediate, i32_vreg, lr_operand_desc_t, &
-                                      lr_type_ptr_s, &
-                                      LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
-                                      LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
-                                      LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
-                                      LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64
+                                       emit_ret_i32_operand, emit_ret_void, &
+                                       finish_function, finish_and_emit_exe, &
+                                       finish_and_emit_object, emit_void_call, &
+                                       emit_i32_call, emit_ptr_call, &
+                                       liric_session_create, &
+                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
+                                       lr_type_ptr_s, lr_type_i64_s, &
+                                       lr_type_array_s, &
+                                       lr_session_global, lr_session_intern, &
+                                       lr_session_emit, lr_inst_desc_t, lr_error_t, &
+                                       clear_liric_error, status_ok, to_c_chars, &
+                                       LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
+                                       LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
+                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
+                                       LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, &
+                                       LR_OP_KIND_GLOBAL
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
                                               ptr_vreg, &
                                               emit_i32_binary, emit_i32_binary_into, &
                                               emit_i32_copy_to, emit_i32_alloca, &
+                                              emit_ptr_alloca, &
                                               emit_i32_load, emit_i32_store, &
                                               emit_i64_load, emit_ptr_load, &
                                               emit_i64_store, &
@@ -62,7 +73,11 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                               emit_f64_array_alloca, &
                                               emit_f64_array_element_addr, &
                                               emit_ptr_offset, emit_ptr_offset_dyn, &
-                                              ptr_param
+                                              ptr_param, &
+                                              i8_immediate, emit_i8_alloca, &
+                                              emit_i8_load, emit_i8_store, emit_i8_binary, &
+                                              i16_immediate, emit_i16_alloca, &
+                                              emit_i16_load, emit_i16_store, emit_i16_binary
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
@@ -92,7 +107,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  synthesize_real4_printer, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &
-                                                 emit_sscanf
+                                                 emit_sscanf, emit_scanf, &
+                                                 emit_fprintf
     use liric_session_io_bindings, only: emit_liric_f32_binary, &
                                           emit_liric_i32_to_f32, &
                                           emit_liric_f32_to_i32, &
@@ -119,7 +135,13 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                           emit_liric_print_string_value, &
                                           liric_f32_immediate, &
                                           liric_f64_immediate, &
-                                          materialize_liric_string
+                                          materialize_liric_string, &
+                                          emit_liric_i8_to_i32, &
+                                          emit_liric_i16_to_i32, &
+                                          emit_liric_print_i8, &
+                                          emit_liric_print_i8_value, &
+                                          emit_liric_print_i16, &
+                                          emit_liric_print_i16_value
     use liric_session_procedure_bindings, only: begin_liric_f32_function, &
                                                 emit_liric_f32_alloca, &
                                                 emit_liric_f32_call, &
@@ -155,7 +177,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 module_exports_t, &
                                                 external_procedure_t, &
                                                 MAX_PROC_ARGS, &
-                                                VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
+                                                VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
@@ -180,6 +202,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  I32_INTRINSIC_RESHAPE, &
                                                  I32_INTRINSIC_SELECTED_INT_KIND, &
                                                  I32_INTRINSIC_SELECTED_REAL_KIND, &
+                                                I32_INTRINSIC_MODULO, &
+                                                I32_INTRINSIC_DIM, &
                                                  F64_INTRINSIC_SIGN, &
                                                 F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
                                                 F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
@@ -200,7 +224,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 F64_INTRINSIC_IDS
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
                                    fmod_component_t, fmod_derived_type_t, &
-                                   write_fmod, read_fmod
+                                   fmod_variable_t, write_fmod, read_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe
@@ -339,6 +363,12 @@ contains
                                           value, error_msg)
         case (VALUE_I32)
             call lower_i32_expression(context%arena, init_index, context, value, &
+                                      error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(context%arena, init_index, context, value, &
+                                     error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(context%arena, init_index, context, value, &
                                       error_msg)
         case (VALUE_I64)
             call lower_i64_expression(context%arena, init_index, context, value, &
@@ -543,6 +573,10 @@ contains
         end if
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_I8) then
+            call define_i8_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_I16) then
+            call define_i16_symbol(context, name, error_msg)
         else if (value_kind == VALUE_I64) then
             call define_i64_symbol(context, name, error_msg)
         else if (value_kind == VALUE_F32) then
@@ -624,6 +658,43 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i64_symbol
+
+    subroutine define_i8_symbol(context, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate integer(1) declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I8
+        context%symbols(index)%value = i8_immediate(context%session, 0_c_int64_t)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_i8_symbol
+
+    subroutine define_i16_symbol(context, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate integer(2) declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I16
+        context%symbols(index)%value = i16_immediate(context%session, 0_c_int64_t)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_i16_symbol
+
     subroutine define_f32_symbol(context, name, error_msg)
         use, intrinsic :: iso_c_binding, only: c_float
         type(lowering_context_t), intent(inout) :: context
@@ -776,7 +847,13 @@ contains
                                                            error_msg)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
+        if (context%symbols(symbol_index)%value_kind == VALUE_I8) then
+            call lower_i8_expression(arena, node%value_index, context, value, &
+                                     error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_I16) then
+            call lower_i16_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
             call lower_i64_expression(arena, node%value_index, context, value, &
                                       error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
@@ -850,12 +927,15 @@ contains
                                       value, error_msg)
         end if
     end subroutine lower_stop
+    include 'session_program_lowering_write_ops.inc'
+    include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_print_ops.inc'
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
+    include 'session_program_lowering_intrinsics_extra.inc'
     include 'session_program_lowering_c_ptr.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_fmod.inc'

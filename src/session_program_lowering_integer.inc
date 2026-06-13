@@ -265,6 +265,44 @@
                                                error_msg)
           return
       end if
+      if (same_name(node%name, 'lbound') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_lbound_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
+      if (same_name(node%name, 'ubound') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_ubound_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
+      if (same_name(node%name, 'count') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_logical_array_count_intrinsic(arena, node, context, value, &
+                                                   error_msg)
+          return
+      end if
+      if (same_name(node%name, 'any') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_logical_array_any_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+          return
+      end if
+      if (same_name(node%name, 'all') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_logical_array_all_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+          return
+      end if
+      if (same_name(node%name, 'scan') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_scan_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
+      if (same_name(node%name, 'verify') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_verify_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
 
       intrinsic_id = i32_intrinsic_id(node%name)
       if (.not. is_contained_i32_function(context, node%name)) then

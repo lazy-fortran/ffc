@@ -10,6 +10,7 @@ module ffc_module_artefact
     public :: fmod_parameter_t
     public :: fmod_component_t
     public :: fmod_derived_type_t
+    public :: fmod_variable_t
     public :: module_info_t
     public :: write_fmod
     public :: read_fmod
@@ -32,10 +33,16 @@ module ffc_module_artefact
         type(fmod_component_t), allocatable :: components(:)
     end type fmod_derived_type_t
 
+    type :: fmod_variable_t
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: kind
+    end type fmod_variable_t
+
     type :: module_info_t
         character(len=:), allocatable :: name
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
+        type(fmod_variable_t), allocatable :: variables(:)
     end type module_info_t
 
 contains
@@ -87,6 +94,15 @@ contains
             end do
         end if
 
+        if (allocated(info%variables)) then
+            do i = 1, size(info%variables)
+                write (unit, '(A)') ''
+                write (unit, '(A)') '[[variable]]'
+                write (unit, '(A)') 'name = "'//field(info%variables(i)%name)//'"'
+                write (unit, '(A)') 'kind = "'//field(info%variables(i)%kind)//'"'
+            end do
+        end if
+
         close (unit, iostat=io_stat)
         if (io_stat /= 0) then
             error_msg = 'could not close .fmod artefact: '//trim(path)
@@ -107,7 +123,8 @@ contains
         type(fmod_parameter_t), allocatable :: params(:)
         type(fmod_derived_type_t), allocatable :: dtypes(:)
         type(fmod_component_t), allocatable :: comps(:)
-        integer :: nparam, ndtype, ncomp
+        type(fmod_variable_t), allocatable :: vars(:)
+        integer :: nparam, ndtype, ncomp, nvar
         character(len=:), allocatable :: cname, ckind
 
         allocate (character(len=0) :: error_msg)
@@ -115,9 +132,11 @@ contains
         allocate (params(0))
         allocate (dtypes(0))
         allocate (comps(0))
+        allocate (vars(0))
         nparam = 0
         ndtype = 0
         ncomp = 0
+        nvar = 0
         section = ''
 
         open (newunit=unit, file=path, status='old', action='read', iostat=io_stat)
@@ -142,6 +161,14 @@ contains
                 params(nparam)%name = ''
                 params(nparam)%kind = ''
                 params(nparam)%value = ''
+                cycle
+            else if (line == '[[variable]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'variable'
+                nvar = nvar + 1
+                call grow_vars(vars, nvar)
+                vars(nvar)%name = ''
+                vars(nvar)%kind = ''
                 cycle
             else if (line == '[[derived_type]]') then
                 call flush_component(comps, ncomp, dtypes, ndtype)
@@ -175,6 +202,9 @@ contains
                 if (key == 'value') params(nparam)%value = unquote(val)
             case ('derived_type')
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
+            case ('variable')
+                if (key == 'name') vars(nvar)%name = unquote(val)
+                if (key == 'kind') vars(nvar)%kind = unquote(val)
             end select
         end do
         close (unit)
@@ -182,6 +212,7 @@ contains
 
         info%parameters = params
         info%derived_types = dtypes
+        info%variables = vars(1:nvar)
         if (len_trim(info%name) == 0) error_msg = 'malformed .fmod (no module name): '// &
             trim(path)
     end subroutine read_fmod
@@ -289,6 +320,17 @@ contains
         tmp(1:size(arr)) = arr
         call move_alloc(tmp, arr)
     end subroutine grow_comps
+
+    subroutine grow_vars(arr, n)
+        type(fmod_variable_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_variable_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_vars
 
     pure function mod_name(info) result(name)
         type(module_info_t), intent(in) :: info
