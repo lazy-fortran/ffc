@@ -25,6 +25,33 @@
         end do
     end function is_f64_intrinsic_expression
 
+    logical function is_real_array_reduction(arena, node, context, vk) result(ok)
+        !! True when node is a sum/product/maxval/minval call whose first
+        !! argument is a fixed-size array of value kind vk.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: vk
+        character(len=:), allocatable :: arg_name, err
+        integer :: sym
+
+        ok = .false.
+        if (.not. allocated(node%name)) return
+        select case (trim(node%name))
+        case ('sum', 'product', 'maxval', 'minval')
+        case default
+            return
+        end select
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 1) return
+        call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol(context, arg_name)
+        if (sym <= 0) return
+        ok = context%symbols(sym)%is_array .and. &
+             context%symbols(sym)%value_kind == vk
+    end function is_real_array_reduction
+
     subroutine real_opcode(source_op, line, column, opcode, error_msg)
         character(len=*), intent(in) :: source_op
         integer, intent(in) :: line

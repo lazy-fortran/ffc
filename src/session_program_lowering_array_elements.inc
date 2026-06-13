@@ -549,29 +549,33 @@
                                                target_symbol_index, linear_index, &
                                                context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            select case (trim(bin_op))
-            case ('+')
-                opcode = LR_OP_ADD
-            case ('-')
-                opcode = LR_OP_SUB
-            case ('*')
-                opcode = LR_OP_MUL
-            case default
-                call unsupported_feature_error('whole-array arithmetic', &
-                                               bin_line, bin_col, &
-                                               'direct LIRIC session supports only '// &
-                                               '+, -, and * for whole-array '// &
-                                               'arithmetic', error_msg)
-                return
-            end select
             select case (context%symbols(target_symbol_index)%value_kind)
-            case (VALUE_F32)
-                if (.not. emit_liric_f32_binary(context%session, opcode, lhs, &
-                                                rhs, value, error_msg)) return
-            case (VALUE_F64)
-                if (.not. emit_liric_f64_binary(context%session, opcode, lhs, &
-                                                rhs, value, error_msg)) return
+            case (VALUE_F32, VALUE_F64)
+                call real_opcode(bin_op, bin_line, bin_col, opcode, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (context%symbols(target_symbol_index)%value_kind == VALUE_F32) then
+                    if (.not. emit_liric_f32_binary(context%session, opcode, lhs, &
+                                                    rhs, value, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_binary(context%session, opcode, lhs, &
+                                                    rhs, value, error_msg)) return
+                end if
             case default
+                select case (trim(bin_op))
+                case ('+')
+                    opcode = LR_OP_ADD
+                case ('-')
+                    opcode = LR_OP_SUB
+                case ('*')
+                    opcode = LR_OP_MUL
+                case default
+                    call unsupported_feature_error('whole-array arithmetic', &
+                                                   bin_line, bin_col, &
+                                                   'direct LIRIC session supports '// &
+                                                   'only +, -, and * for whole-array '// &
+                                                   'arithmetic', error_msg)
+                    return
+                end select
                 if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, &
                                           value, error_msg)) return
             end select

@@ -304,6 +304,12 @@
             return
         end if
 
+        if (is_real_array_reduction(arena, node, context, VALUE_F32)) then
+            call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                                 error_msg, trim(node%name))
+            return
+        end if
+
         if (.not. is_contained_f32_function(context, node%name)) then
             call unsupported_feature_error('scalar real(4) function call', &
                                            node%line, node%column, &
@@ -375,6 +381,8 @@
                     end if
                 else
                     is_f32 = is_contained_f32_function(context, node%name)
+                    if (.not. is_f32) &
+                        is_f32 = is_real_array_reduction(arena, node, context, VALUE_F32)
                 end if
             end if
         end select
@@ -498,6 +506,11 @@
                                           value, error_msg)
             return
         end if
+        if (is_real_array_reduction(arena, node, context, VALUE_F64)) then
+            call lower_array_reduction_intrinsic(arena, node, context, value, &
+                                                 error_msg, trim(node%name))
+            return
+        end if
         if (is_contained_f64_function(context, node%name)) then
             call lower_contained_f64_call(arena, node, context, value, error_msg)
             return
@@ -593,12 +606,48 @@
                 else
                     is_f64 = is_contained_f64_function(context, node%name)
                     is_f64 = is_f64 .or. is_f64_intrinsic_expression(arena, node, context)
+                    if (.not. is_f64) &
+                        is_f64 = is_real_array_reduction(arena, node, context, VALUE_F64)
                 end if
             else
                 is_f64 = is_f64_intrinsic_expression(arena, node, context)
             end if
         end select
     end function is_f64_expression
+
+    logical function is_i64_binary_op(arena, node_index, context)
+        ! Returns true when node_index is a binary op with at least one i64 operand.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: bin_op, err, id_name
+        integer :: sym
+
+        is_i64_binary_op = .false.
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, err)
+        if (len_trim(err) > 0) return
+        if (is_identifier(arena, bin_left)) then
+            call get_identifier_name(arena, bin_left, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I64) then
+                is_i64_binary_op = .true.
+                return
+            end if
+        end if
+        if (is_identifier(arena, bin_right)) then
+            call get_identifier_name(arena, bin_right, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I64) then
+                is_i64_binary_op = .true.
+                return
+            end if
+        end if
+    end function is_i64_binary_op
 
     recursive subroutine lower_i64_expression(arena, node_index, context, &
                                                value, error_msg)
