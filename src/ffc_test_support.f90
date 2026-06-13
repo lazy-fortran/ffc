@@ -15,6 +15,7 @@ module ffc_test_support
     public :: expect_output
     public :: expect_error_contains
     public :: expect_cli_error_contains
+    public :: expect_cli_no_error
     public :: expect_object_exists
     public :: expect_no_error
     public :: expect_exe_has_symbol
@@ -214,6 +215,47 @@ contains
 
         ok = .true.
     end function expect_cli_error_contains
+
+    logical function expect_cli_no_error(source, stem) result(ok)
+        ! Invokes the CLI binary and checks that compilation succeeds.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: stem
+        character(len=:), allocatable :: output
+        character(len=:), allocatable :: command
+        character(len=:), allocatable :: source_path
+        character(len=:), allocatable :: output_path
+        character(len=:), allocatable :: exe_path
+        integer :: exit_stat
+        integer :: cmd_stat
+
+        ok = .false.
+        source_path = stem//'.f90'
+        output_path = stem//'.out'
+        exe_path = stem//'.exe'
+        call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
+                                  exe_path)
+        if (.not. write_source_file(source_path, source)) return
+
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | "// &
+                  "head -n 1); "// &
+                  "test -n ""$exe"" && ""$exe"" "// &
+                  source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
+        call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
+        output = read_text_file(output_path)
+        call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
+                                  exe_path)
+
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: ffc CLI command could not be executed'
+            return
+        end if
+        if (exit_stat /= 0) then
+            print *, 'FAIL: expected CLI success, got exit code ', exit_stat
+            print *, '  output: ', trim(output)
+            return
+        end if
+        ok = .true.
+    end function expect_cli_no_error
 
     logical function expect_object_exists(source, object_path) result(ok)
         ! Compiles source and checks that a non-empty object file was emitted.

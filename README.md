@@ -22,11 +22,13 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
 supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
-`F`, and `A` descriptors on stdout, and fixed-size rank-2 integer arrays with
-scalar element access, array sections with compile-time integer bounds as
-rvalues, whole-array copy, elemental arithmetic, and the array intrinsics
-`size`, `shape`, `sum`, `product`, `maxval`, and `minval`, plus scalar element
-read and write on an allocated 1-D integer allocatable (`a(i)`). Scalar integer
+`F`, and `A` descriptors on stdout; fixed-size rank-1 and rank-2 arrays with
+`integer`, `real`, and `real(8)` elements; scalar element access, array
+sections, whole-array copy, elemental arithmetic, and the array intrinsics
+`size`, `shape`, `sum`, `product`, `maxval`, and `minval`; scalar element read
+and write on an allocated 1-D integer allocatable (`a(i)`); and whole-array
+assignment from an array constructor to a 1-D integer allocatable with
+auto-reallocation (`a = [e1, e2, ...]`). Scalar integer
 `pointer`/`target` with `p => t`, read/write through `p`, `associated(p)`,
 and `nullify(p)` is supported, as are constant-folded `selected_int_kind` and
 `selected_real_kind` kind-selection intrinsics. Derived types support

@@ -220,12 +220,13 @@
     end subroutine eval_kind_inquiry_constant
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
-                                            array_size, error_msg)
+                                            array_size, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
         integer, intent(in) :: array_lower_bound
         integer, intent(in) :: array_size
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
         integer :: dim_count
@@ -249,7 +250,7 @@
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
-        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%value_kind = value_kind
         context%symbols(index)%is_array = .true.
         context%symbols(index)%array_rank = dim_count
         context%symbols(index)%array_size = array_size
@@ -280,11 +281,26 @@
             end do
         end if
 
-        if (.not. emit_i32_array_alloca(context%session,  &
-            array_size, context%symbols(index)%element_address, error_msg)) then
-            error_msg = 'decl_array['//trim(name)//']: '//error_msg
-            return
-        end if
+        select case (value_kind)
+        case (VALUE_F32)
+            if (.not. emit_f32_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_f32_array['//trim(name)//']: '//error_msg
+                return
+            end if
+        case (VALUE_F64)
+            if (.not. emit_f64_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_f64_array['//trim(name)//']: '//error_msg
+                return
+            end if
+        case default
+            if (.not. emit_i32_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_array['//trim(name)//']: '//error_msg
+                return
+            end if
+        end select
 
         context%symbol_count = index
         call set_empty(error_msg)
@@ -292,17 +308,17 @@
 
     subroutine lower_array_constructor_assignment(arena, ctor, symbol_index, &
                                                   context, error_msg)
-        ! arr = [a, b, c] for any fixed-size integer array: lower each element
-        ! and store it at the matching slot in linear storage order.
+        ! arr = [a, b, c] for any fixed-size array: lower each element and
+        ! store it at the matching slot in linear storage order.
         type(ast_arena_t), intent(in) :: arena
         type(array_literal_node), intent(in) :: ctor
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
-        type(lr_operand_desc_t) :: addr
         integer :: i
         integer :: n
+        integer :: vk
         integer, allocatable :: flat(:)
 
         if (allocated(ctor%syntax_style)) then
@@ -329,16 +345,19 @@
                 'declared size of '//trim(context%symbols(symbol_index)%name)
             return
         end if
+        vk = context%symbols(symbol_index)%value_kind
         do i = 1, n
-            call lower_i32_expression(arena, flat(i), context, value, error_msg)
+            if (vk == VALUE_F32) then
+                call lower_f32_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_F64) then
+                call lower_f64_expression(arena, flat(i), context, value, error_msg)
+            else
+                call lower_i32_expression(arena, flat(i), context, value, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_array_element_addr(context%session, &
-                    context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
-                    i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
-                    error_msg)) return
-            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
-                return
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i - 1, c_int64_t), value, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
@@ -489,7 +508,6 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
-        type(lr_operand_desc_t) :: addr
         integer :: i
         integer :: array_size
 
@@ -531,16 +549,23 @@
         ! Scalar broadcast: a = expr where expr is a scalar. Lower the scalar
         ! once and store it into every element.
         if (is_scalar_broadcast_rhs(arena, node%value_index, context)) then
-            call lower_i32_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+            select case (context%symbols(symbol_index)%value_kind)
+            case (VALUE_F32)
+                call lower_f32_expression(arena, node%value_index, context, &
+                                          value, error_msg)
+            case (VALUE_F64)
+                call lower_f64_expression(arena, node%value_index, context, &
+                                          value, error_msg)
+            case default
+                call lower_i32_expression(arena, node%value_index, context, &
+                                          value, error_msg)
+            end select
             if (len_trim(error_msg) > 0) return
             do i = 1, array_size
-                if (.not. emit_i32_array_element_addr(context%session, array_size, &
-                        context%symbols(symbol_index)%element_address, &
-                        i32_immediate(context%session, int(i - 1, c_int64_t)), &
-                        addr, error_msg)) return
-                if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
-                    return
+                call store_array_linear_element(context, symbol_index, &
+                                                int(i - 1, c_int64_t), value, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
             end do
             call set_empty(error_msg)
             return
@@ -551,12 +576,9 @@
                                                symbol_index, i - 1, context, &
                                                value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_array_element_addr(context%session, array_size, &
-                    context%symbols(symbol_index)%element_address, &
-                    i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
-                    error_msg)) return
-            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
-                return
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i - 1, c_int64_t), value, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)
     end subroutine lower_array_whole_assignment
@@ -615,10 +637,6 @@
             end if
             if (.not. context%symbols(source_index)%is_array) then
                 error_msg = 'shape requires an array argument: '//trim(source_name)
-                return
-            end if
-            if (context%symbols(source_index)%value_kind /= VALUE_I32) then
-                error_msg = 'shape only supports integer arrays'
                 return
             end if
         class default
@@ -681,10 +699,6 @@
             error_msg = 'shape requires an array argument: '//trim(source_name)
             return
         end if
-        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
-            error_msg = 'shape only supports integer arrays'
-            return
-        end if
 
         source_rank = context%symbols(source_index)%array_rank
         if (context%symbols(target_symbol_index)%array_rank /= 1) then
@@ -730,10 +744,6 @@
             error_msg = 'size requires an array argument: '//trim(array_name)
             return
         end if
-        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
-            error_msg = 'size only supports integer arrays'
-            return
-        end if
         value = i32_immediate(context%session, &
                               int(context%symbols(source_index)%array_size, &
                                   c_int64_t))
@@ -775,10 +785,6 @@
                         trim(array_name)
             return
         end if
-        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
-            error_msg = trim(reduction_name)//' only supports integer arrays'
-            return
-        end if
 
         array_size = context%symbols(source_index)%array_size
         if (array_size <= 0) then
@@ -786,66 +792,202 @@
             return
         end if
 
-        select case (trim(reduction_name))
-        case ('sum')
-            value = i32_immediate(context%session, 0_c_int64_t)
-            do i = 0, array_size - 1
-                call load_array_linear_element(context, source_index, &
-                                               int(i, c_int64_t), candidate, &
-                                               error_msg)
+        select case (context%symbols(source_index)%value_kind)
+        case (VALUE_F32)
+            select case (trim(reduction_name))
+            case ('sum')
+                value = liric_f32_immediate(context%session, 0.0_c_float)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                                                    value, candidate, next_value, &
+                                                    error_msg)) return
+                    value = next_value
+                end do
+            case ('product')
+                value = liric_f32_immediate(context%session, 1.0_c_float)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                                                    value, candidate, next_value, &
+                                                    error_msg)) return
+                    value = next_value
+                end do
+            case ('maxval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, value, &
-                                          candidate, next_value, error_msg)) return
-                value = next_value
-            end do
-        case ('product')
-            value = i32_immediate(context%session, 1_c_int64_t)
-            do i = 0, array_size - 1
-                call load_array_linear_element(context, source_index, &
-                                               int(i, c_int64_t), candidate, &
-                                               error_msg)
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case ('minval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (.not. emit_i32_binary(context%session, LR_OP_MUL, value, &
-                                          candidate, next_value, error_msg)) return
-                value = next_value
-            end do
-        case ('maxval')
-            predicate = LR_CMP_SGT
-            call load_array_linear_element(context, source_index, 0_c_int64_t, &
-                                           value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            do i = 1, array_size - 1
-                call load_array_linear_element(context, source_index, &
-                                               int(i, c_int64_t), candidate, &
-                                               error_msg)
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OLT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case default
+                error_msg = 'unsupported array reduction intrinsic: '// &
+                            trim(reduction_name)
+                return
+            end select
+        case (VALUE_F64)
+            select case (trim(reduction_name))
+            case ('sum')
+                value = liric_f64_immediate(context%session, 0.0_c_double)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                                                    value, candidate, next_value, &
+                                                    error_msg)) return
+                    value = next_value
+                end do
+            case ('product')
+                value = liric_f64_immediate(context%session, 1.0_c_double)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                                                    value, candidate, next_value, &
+                                                    error_msg)) return
+                    value = next_value
+                end do
+            case ('maxval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
-                        value, condition, error_msg)) return
-                call select_value(context, condition, candidate, value, selected, &
-                                  error_msg)
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case ('minval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                value = selected
-            end do
-        case ('minval')
-            predicate = LR_CMP_SLT
-            call load_array_linear_element(context, source_index, 0_c_int64_t, &
-                                           value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            do i = 1, array_size - 1
-                call load_array_linear_element(context, source_index, &
-                                               int(i, c_int64_t), candidate, &
-                                               error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_i32_icmp(context%session, predicate, candidate, &
-                        value, condition, error_msg)) return
-                call select_value(context, condition, candidate, value, selected, &
-                                  error_msg)
-                if (len_trim(error_msg) > 0) return
-                value = selected
-            end do
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OLT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case default
+                error_msg = 'unsupported array reduction intrinsic: '// &
+                            trim(reduction_name)
+                return
+            end select
         case default
-            error_msg = 'unsupported array reduction intrinsic: '//trim(reduction_name)
-            return
+            select case (trim(reduction_name))
+            case ('sum')
+                value = i32_immediate(context%session, 0_c_int64_t)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, value, &
+                                              candidate, next_value, error_msg)) return
+                    value = next_value
+                end do
+            case ('product')
+                value = i32_immediate(context%session, 1_c_int64_t)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, value, &
+                                              candidate, next_value, error_msg)) return
+                    value = next_value
+                end do
+            case ('maxval')
+                predicate = LR_CMP_SGT
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case ('minval')
+                predicate = LR_CMP_SLT
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case default
+                error_msg = 'unsupported array reduction intrinsic: '// &
+                            trim(reduction_name)
+                return
+            end select
         end select
 
         call set_empty(error_msg)

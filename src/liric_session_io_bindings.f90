@@ -18,6 +18,8 @@ module liric_session_io_bindings
                                                   emit_liric_print_f64_value, &
                                                   emit_liric_print_i32, &
                                                   emit_liric_print_i32_value, &
+                                                  emit_liric_print_i64, &
+                                                  emit_liric_print_i64_value, &
                                                   emit_liric_print_newline, &
                                                   emit_liric_print_space, &
                                                   emit_liric_print_string, &
@@ -45,6 +47,8 @@ module liric_session_io_bindings
     public :: emit_liric_print_f64_value
     public :: emit_liric_print_i32
     public :: emit_liric_print_i32_value
+    public :: emit_liric_print_i64
+    public :: emit_liric_print_i64_value
     public :: emit_liric_print_newline
     public :: emit_liric_print_space
     public :: emit_liric_print_string

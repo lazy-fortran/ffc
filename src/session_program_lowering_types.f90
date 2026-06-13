@@ -11,6 +11,9 @@ module session_program_lowering_types
     ! VALUE_F32 is f32 (single precision, kind 4). Bare 'real' and real(4)
     ! lower as f32; real(8) and double precision stay as VALUE_F64.
     integer, parameter, public :: VALUE_F32 = 10
+    ! VALUE_I64 is integer(8) / integer(int64). Arithmetic uses i64 ops;
+    ! list-directed output uses %20ld (gfortran field width 21 including sep).
+    integer, parameter, public :: VALUE_I64 = 11
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
@@ -206,6 +209,7 @@ module session_program_lowering_types
         integer :: module_export_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
         integer(c_int32_t) :: i32_print_format_id = -1_c_int32_t
+        integer(c_int32_t) :: i64_print_format_id = -1_c_int32_t
         integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
         integer :: string_literal_count = 0
         logical :: has_command_args = .false.

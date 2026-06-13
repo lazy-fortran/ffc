@@ -1,6 +1,7 @@
 program test_session_array_unsupported_diagnostics
     use ffc_test_support, only: expect_error_contains, &
-                                expect_cli_error_contains, expect_no_error
+                                expect_cli_error_contains, expect_no_error, &
+                                expect_cli_no_error
     implicit none
 
     logical :: all_passed
@@ -73,13 +74,16 @@ contains
     end function test_array_reversed_extent_diagnostic
 
     logical function test_noninteger_array_declaration_diagnostic()
+        ! real(4) arrays are now supported; verify no diagnostic.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  real :: values(3)'//new_line('a')// &
+                                       '  values = 1.0'//new_line('a')// &
+                                       '  print *, values(1)'//new_line('a')// &
                                        'end program main'
 
-        test_noninteger_array_declaration_diagnostic = expect_error_contains( &
-                                                    source, 'supports integer arrays', &
+        test_noninteger_array_declaration_diagnostic = expect_no_error( &
+                                                     source, &
                                                      '/tmp/ffc_session_real_array_test')
     end function test_noninteger_array_declaration_diagnostic
 
@@ -226,14 +230,16 @@ contains
     end function test_cli_array_reversed_extent_diagnostic
 
     logical function test_cli_noninteger_array_declaration_diagnostic()
+        ! real(4) arrays are now supported; verify no diagnostic.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  real :: values(3)'//new_line('a')// &
+                                       '  values = 1.0'//new_line('a')// &
+                                       '  print *, values(1)'//new_line('a')// &
                                        'end program main'
 
         test_cli_noninteger_array_declaration_diagnostic = &
-            expect_cli_error_contains(source, 'supports integer arrays', &
-                                      '/tmp/ffc_cli_real_array_test')
+            expect_cli_no_error(source, '/tmp/ffc_cli_real_array_test')
     end function test_cli_noninteger_array_declaration_diagnostic
 
     logical function test_cli_array_assignment_target_diagnostic()

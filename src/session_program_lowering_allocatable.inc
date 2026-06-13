@@ -112,13 +112,24 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: n_i32, bytes_i32, bytes_i64, n_i64, data_ptr
+        type(lr_operand_desc_t) :: n_i32
+
+        call lower_i32_expression(arena, size_index, context, n_i32, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+    end subroutine lower_allocate_i32_1d
+
+    subroutine lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+        ! data = malloc(N*4); descriptor.data = data; .lower = 1; .upper = N
+        ! n_i32 is the already-lowered size operand (i32).
+        type(lr_operand_desc_t), intent(in) :: n_i32
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: bytes_i32, bytes_i64, n_i64, data_ptr
         type(lr_operand_desc_t) :: descriptor
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
-        call lower_i32_expression(arena, size_index, context, n_i32, error_msg)
-        if (len_trim(error_msg) > 0) return
-
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, n_i32, &
                 i32_immediate(context%session, 4_c_int64_t), bytes_i32, &
                 error_msg)) return
@@ -137,7 +148,61 @@
         if (.not. emit_i64_store_at(context%session, n_i64, descriptor, &
                 16_c_int64_t, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_allocate_i32_1d
+    end subroutine lower_allocate_i32_1d_operand
+
+    subroutine lower_allocatable_constructor_assignment(arena, ctor, symbol_index, &
+                                                       context, error_msg)
+        ! a = [e1, e2, ...] where a is an integer 1-D allocatable (B2c).
+        ! Deallocates old storage, allocates for N elements, then stores each.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: n_i32, elem_addr, value
+        type(lr_operand_desc_t) :: descriptor, data_ptr
+        integer :: i, n
+        integer, allocatable :: flat(:)
+
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'array constructor has no elements'
+            return
+        end if
+        allocate(flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        n = size(flat)
+        if (n <= 0) then
+            error_msg = 'array constructor has no elements'
+            return
+        end if
+
+        ! Free old allocation if any.
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+
+        ! Allocate N elements.
+        n_i32 = i32_immediate(context%session, int(n, c_int64_t))
+        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Store each element. After lower_allocate_i32_1d_operand the descriptor
+        ! data pointer points to the fresh allocation with lower = 1.
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        do i = 1, n
+            call lower_i32_expression(arena, flat(i), context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int((i - 1) * 4, c_int64_t), elem_addr, error_msg)) return
+            if (.not. emit_i32_store(context%session, value, elem_addr, &
+                                     error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_constructor_assignment
 
     subroutine lower_deallocate_statement(arena, node, context, error_msg)
         ! deallocate(a) for one integer 1-D allocatable.

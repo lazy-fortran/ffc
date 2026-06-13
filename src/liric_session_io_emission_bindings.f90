@@ -53,6 +53,8 @@ module liric_session_io_emission_bindings
     public :: emit_liric_print_f64_value
     public :: emit_liric_print_i32
     public :: emit_liric_print_i32_value
+    public :: emit_liric_print_i64
+    public :: emit_liric_print_i64_value
     public :: emit_liric_print_newline
     public :: emit_liric_print_space
     public :: emit_liric_print_string
@@ -164,6 +166,52 @@ contains
         call set_empty(error_msg)
         emit_liric_print_i32_value = .true.
     end function emit_liric_print_i32_value
+
+    logical function emit_liric_print_i64(session, format_global_id, value, &
+                                          error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_liric_print_i64 = .false.
+        if (.not. emit_liric_print_i64_value(session, format_global_id, value, &
+                                             error_msg)) return
+        if (.not. emit_liric_print_newline(session, error_msg)) return
+        call set_empty(error_msg)
+        emit_liric_print_i64 = .true.
+    end function emit_liric_print_i64
+
+    logical function emit_liric_print_i64_value(session, format_global_id, &
+                                                value, error_msg)
+        ! Print an i64 value via printf with the %20ld format global. The
+        ! variadic printf call promotes the i64 value verbatim.
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(in) :: format_global_id
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_operand_desc_t) :: format_ptr
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_print_i64_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_printf_operand(session, callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call materialize_global_pointer(session, format_global_id, format_ptr, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
+                                    error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_print_i64_value = .true.
+    end function emit_liric_print_i64_value
 
     logical function emit_liric_print_f64_value(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session

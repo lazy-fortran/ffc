@@ -53,7 +53,8 @@
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
                                               context%str_print_format_id, &
-                                              error_msg)) then
+                                              error_msg, &
+                                              context%i64_print_format_id)) then
             call destroy(context%session)
             return
         end if

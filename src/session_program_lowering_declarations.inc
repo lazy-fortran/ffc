@@ -99,13 +99,8 @@
 
         select case (base)
         case ('integer')
-            if (integer_kind_is_i32(kind_spec)) then
-                value_kind = VALUE_I32
-            else
-                call unsupported_feature_error('integer kind', line, column, &
-                    'direct LIRIC session only supports default/c_int/'// &
-                    'c_int32_t (32-bit) integer kinds', error_msg)
-            end if
+            call integer_kind_to_value_kind(kind_spec, line, column, &
+                                            value_kind, error_msg)
         case ('real')
             if (real_kind_is_f64(kind_spec)) then
                 value_kind = VALUE_F64
@@ -144,16 +139,27 @@
         end select
     end subroutine type_name_value_kind
 
-    logical function integer_kind_is_i32(kind_spec)
+    subroutine integer_kind_to_value_kind(kind_spec, line, column, &
+                                          value_kind, error_msg)
         character(len=*), intent(in) :: kind_spec
+        integer, intent(in) :: line, column
+        integer, intent(out) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
 
+        call set_empty(error_msg)
         select case (trim(kind_spec))
-        case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char')
-            integer_kind_is_i32 = .true.
+        case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char', 'int32')
+            value_kind = VALUE_I32
+        case ('8', 'int64', 'c_int64_t', 'c_long', 'c_long_long')
+            value_kind = VALUE_I64
         case default
-            integer_kind_is_i32 = .false.
+            value_kind = VALUE_I32
+            call unsupported_feature_error('integer kind', line, column, &
+                'direct LIRIC session supports integer kinds 4 (default) and '// &
+                '8 (int64); kind '//trim(kind_spec)//' is not yet supported', &
+                error_msg)
         end select
-    end function integer_kind_is_i32
+    end subroutine integer_kind_to_value_kind
 
     ! Returns true when the real kind spec selects f64 (kind 8 or higher).
     ! Bare real and real(4)/c_float/real32 are f32.

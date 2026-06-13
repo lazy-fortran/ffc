@@ -277,15 +277,19 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
+        type(lr_operand_desc_t) :: element_addr
         integer, allocatable :: copyback_indices(:)
         integer :: intrinsic_id
 
         if (node%is_array_access) then
-            call unsupported_feature_error('array expression', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support reading array elements', &
-                                           error_msg)
+            call lower_real_array_element_address(arena, node, context, VALUE_F32, &
+                                                  element_addr, error_msg, &
+                                                  'array expression')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_load(context%session, element_addr, value, &
+                                          error_msg)) then
+                error_msg = 'f32_arr_read: '//error_msg
+            end if
             return
         end if
         if (.not. allocated(node%name)) then
@@ -364,7 +368,14 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
-                is_f32 = is_contained_f32_function(context, node%name)
+                if (node%is_array_access) then
+                    symbol_index = find_symbol(context, node%name)
+                    if (symbol_index > 0) then
+                        is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
+                    end if
+                else
+                    is_f32 = is_contained_f32_function(context, node%name)
+                end if
             end if
         end select
     end function is_f32_expression
@@ -462,14 +473,18 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_addr
         integer :: intrinsic_id
 
         if (node%is_array_access) then
-            call unsupported_feature_error('array expression', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support reading array elements', &
-                                           error_msg)
+            call lower_real_array_element_address(arena, node, context, VALUE_F64, &
+                                                  element_addr, error_msg, &
+                                                  'array expression')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_load(context%session, element_addr, value, &
+                                          error_msg)) then
+                error_msg = 'f64_arr_read: '//error_msg
+            end if
             return
         end if
         if (.not. allocated(node%name)) then
@@ -570,8 +585,114 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
-                is_f64 = is_contained_f64_function(context, node%name)
+                if (node%is_array_access) then
+                    symbol_index = find_symbol(context, node%name)
+                    if (symbol_index > 0) then
+                        is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
+                    end if
+                else
+                    is_f64 = is_contained_f64_function(context, node%name)
+                    is_f64 = is_f64 .or. is_f64_intrinsic_expression(arena, node, context)
+                end if
+            else
+                is_f64 = is_f64_intrinsic_expression(arena, node, context)
             end if
-            is_f64 = is_f64 .or. is_f64_intrinsic_expression(arena, node, context)
         end select
     end function is_f64_expression
+
+    recursive subroutine lower_i64_expression(arena, node_index, context, &
+                                               value, error_msg)
+        ! Lower an expression expected to produce an integer(8)/i64 result.
+        ! Literals are parsed as i32 then zero-extended; binary ops use
+        ! emit_i64_binary. i32 identifiers are widened via emit_liric_i32_to_i64.
+        use liric_session_bindings, only: LR_OP_ADD
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: literal_value
+        type(lr_operand_desc_t) :: lhs
+        type(lr_operand_desc_t) :: rhs
+        integer :: opcode
+        integer :: symbol_index
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: lit_value, lit_type
+        character(len=:), allocatable :: id_name
+        integer :: uscore_pos
+
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            ! Strip Fortran kind suffix (e.g. 42_8, 100_int64) before parsing.
+            uscore_pos = index(lit_value, '_')
+            if (uscore_pos > 0) lit_value = lit_value(1:uscore_pos - 1)
+            call parse_i32_literal(lit_value, literal_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i64_immediate(context%session, literal_value)
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i64_expression(arena, bin_left, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i64_expression(arena, bin_right, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_opcode(bin_op, opcode, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('integer(8) operator', &
+                                               bin_line, bin_col, &
+                                               'direct LIRIC session supports '// &
+                                               '+, -, *, and / for integer(8) '// &
+                                               'expressions', error_msg)
+                return
+            end if
+            if (.not. emit_i64_binary(context%session, opcode, lhs, rhs, value, &
+                                      error_msg)) return
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'integer(8) identifier was not declared: '//trim(id_name)
+                return
+            end if
+            ! Widen an i32 symbol to i64 (e.g. do-variable used in i64 context).
+            if (context%symbols(symbol_index)%value_kind == VALUE_I32) then
+                call lower_i32_expression(arena, node_index, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_to_i64(context%session, lhs, value, &
+                                                 error_msg)) return
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I64) then
+                error_msg = 'integer(8) expression used non-i64 identifier: '// &
+                            trim(id_name)
+                return
+            end if
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_i64_load(context%session, &
+                    context%symbols(symbol_index)%address, value, &
+                    error_msg)) return
+            else
+                value = context%symbols(symbol_index)%value
+                call set_empty(error_msg)
+            end if
+            return
+        end if
+
+        error_msg = 'ffc direct-session lowering only supports integer(8) expressions'
+    end subroutine lower_i64_expression

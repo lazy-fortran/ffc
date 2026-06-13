@@ -77,7 +77,16 @@
                                                value, error_msg)) return
                 return
             end if
-            ! A non-real binary op falls through to the integer print below.
+            if (is_i64_binary_op(arena, node_index, context)) then
+                call lower_i64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i64(context%session, &
+                                               context%i64_print_format_id, &
+                                               value, error_msg)) return
+                return
+            end if
+            ! A non-i64 binary op falls through to the integer(4) print below.
         else if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -105,6 +114,15 @@
                     if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_print_i32(context%session, &
                                                    context%i32_print_format_id, &
+                                                   value, error_msg)) return
+                    return
+                end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
+                    call lower_i64_expression(arena, node_index, context, &
+                                              value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_i64(context%session, &
+                                                   context%i64_print_format_id, &
                                                    value, error_msg)) return
                     return
                 end if
@@ -240,7 +258,16 @@
                                                      value, error_msg)) return
                 return
             end if
-            ! A non-real binary op falls through to the integer print below.
+            if (is_i64_binary_op(arena, node_index, context)) then
+                call lower_i64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i64_value(context%session, &
+                                                     context%i64_print_format_id, &
+                                                     value, error_msg)) return
+                return
+            end if
+            ! A non-i64 binary op falls through to the integer(4) print below.
         else if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -269,6 +296,15 @@
                                                   value, error_msg)
                     if (len_trim(error_msg) > 0) return
                     call lower_print_logical_value(context, value, error_msg)
+                    return
+                end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
+                    call lower_i64_expression(arena, node_index, context, &
+                                              value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_i64_value(context%session, &
+                                                         context%i64_print_format_id, &
+                                                         value, error_msg)) return
                     return
                 end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then

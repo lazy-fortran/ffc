@@ -408,10 +408,9 @@
     end subroutine lower_array_section_print
 
     subroutine lower_whole_array_print(arena, expr_index, context, handled, error_msg)
-        !! print *, a for a bare integer array a: emit each element in storage
-        !! order with list-directed spacing, matching gfortran. handled stays
-        !! false when expr is not a bare integer-array identifier so the caller
-        !! falls through to its normal per-item handling.
+        !! print *, a for a bare integer or real array: emit each element in
+        !! storage order with list-directed spacing, matching gfortran. handled
+        !! stays false when expr is not a bare supported-array identifier.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: expr_index
         type(lowering_context_t), intent(inout) :: context
@@ -420,6 +419,7 @@
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: value
         integer :: sym
+        integer :: vk
         integer(c_int64_t) :: k, n
 
         handled = .false.
@@ -434,7 +434,8 @@
         if (sym <= 0) return
         if (.not. context%symbols(sym)%is_array) return
         if (context%symbols(sym)%is_allocatable) return
-        if (context%symbols(sym)%value_kind /= VALUE_I32) return
+        vk = context%symbols(sym)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64) return
 
         handled = .true.
         n = int(context%symbols(sym)%array_size, c_int64_t)
@@ -442,9 +443,17 @@
             if (.not. emit_liric_print_space(context%session, error_msg)) return
             call load_array_linear_element(context, sym, k, value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_print_i32_value(context%session, &
-                                                 context%i32_print_format_id, &
-                                                 value, error_msg)) return
+            if (vk == VALUE_F32) then
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+            else if (vk == VALUE_F64) then
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
+            else
+                if (.not. emit_liric_print_i32_value(context%session, &
+                                                     context%i32_print_format_id, &
+                                                     value, error_msg)) return
+            end if
         end do
         if (.not. emit_liric_print_newline(context%session, error_msg)) return
         call set_empty(error_msg)
@@ -519,10 +528,6 @@
                                                'operands', error_msg)
                 return
             end if
-            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-                error_msg = 'whole-array arithmetic only supports integer arrays'
-                return
-            end if
             call ensure_array_shapes_match(context, target_symbol_index, &
                                            symbol_index, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -559,8 +564,17 @@
                                                'arithmetic', error_msg)
                 return
             end select
-            if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
-                                      error_msg)) return
+            select case (context%symbols(target_symbol_index)%value_kind)
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_binary(context%session, opcode, lhs, &
+                                                rhs, value, error_msg)) return
+            case (VALUE_F64)
+                if (.not. emit_liric_f64_binary(context%session, opcode, lhs, &
+                                                rhs, value, error_msg)) return
+            case default
+                if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, &
+                                          value, error_msg)) return
+            end select
             return
         end if
 
@@ -611,6 +625,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
+        integer :: vk
 
         if (linear_index < 0_c_int64_t .or. &
             linear_index >= int(context%symbols(symbol_index)%array_size, &
@@ -618,14 +633,39 @@
             error_msg = 'array linear index is out of range'
             return
         end if
-        if (.not. emit_i32_array_element_addr(context%session, &
-                context%symbols(symbol_index)%array_size, &
-                context%symbols(symbol_index)%element_address, &
-                i32_immediate(context%session, linear_index), addr, &
-                error_msg)) return
-        if (.not. emit_i32_load(context%session, addr, value, error_msg)) then
-            error_msg = 'array_element_load: '//error_msg
-            return
+        vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_F32) then
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f32_load(context%session, addr, value, &
+                                          error_msg)) then
+                error_msg = 'f32_array_element_load: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_F64) then
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f64_load(context%session, addr, value, &
+                                          error_msg)) then
+                error_msg = 'f64_array_element_load: '//error_msg
+                return
+            end if
+        else
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i32_load(context%session, addr, value, error_msg)) then
+                error_msg = 'array_element_load: '//error_msg
+                return
+            end if
         end if
         call set_empty(error_msg)
     end subroutine load_array_linear_element
@@ -749,15 +789,41 @@
         type(lr_operand_desc_t), intent(in) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
+        integer :: vk
 
-        if (.not. emit_i32_array_element_addr(context%session, &
-                context%symbols(symbol_index)%array_size, &
-                context%symbols(symbol_index)%element_address, &
-                i32_immediate(context%session, linear_index), addr, &
-                error_msg)) return
-        if (.not. emit_i32_store(context%session, value, addr, error_msg)) then
-            error_msg = 'array_store: '//error_msg
-            return
+        vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_F32) then
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, value, addr, &
+                                           error_msg)) then
+                error_msg = 'f32_array_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_F64) then
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, value, addr, &
+                                           error_msg)) then
+                error_msg = 'f64_array_store: '//error_msg
+                return
+            end if
+        else
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, value, addr, error_msg)) then
+                error_msg = 'array_store: '//error_msg
+                return
+            end if
         end if
         call set_empty(error_msg)
     end subroutine store_array_linear_element
@@ -814,19 +880,56 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: element_address
+        integer :: sym_idx
+        integer :: vk
 
-        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        vk = VALUE_I32
+        if (allocated(target%name)) then
+            sym_idx = find_symbol(context, target%name)
+            if (sym_idx > 0) vk = context%symbols(sym_idx)%value_kind
+        end if
+
+        if (vk == VALUE_F32) then
+            call lower_f32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else if (vk == VALUE_F64) then
+            call lower_f64_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else
+            call lower_i32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
-        call lower_i32_array_element_address(arena, target, context, &
-                                             element_address, error_msg, &
-                                             'array assignment target')
+        if (vk == VALUE_F32 .or. vk == VALUE_F64) then
+            call lower_real_array_element_address(arena, target, context, vk, &
+                                                  element_address, error_msg, &
+                                                  'array assignment target')
+        else
+            call lower_i32_array_element_address(arena, target, context, &
+                                                 element_address, error_msg, &
+                                                 'array assignment target')
+        end if
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_i32_store(context%session, value, element_address, &
-                                                 error_msg)) then
-            error_msg = 'arr_assign_store: '//error_msg
-            return
+        if (vk == VALUE_F32) then
+            if (.not. emit_liric_f32_store(context%session, value, &
+                                           element_address, error_msg)) then
+                error_msg = 'f32_arr_assign_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_F64) then
+            if (.not. emit_liric_f64_store(context%session, value, &
+                                           element_address, error_msg)) then
+                error_msg = 'f64_arr_assign_store: '//error_msg
+                return
+            end if
+        else
+            if (.not. emit_i32_store(context%session, value, element_address, &
+                                     error_msg)) then
+                error_msg = 'arr_assign_store: '//error_msg
+                return
+            end if
         end if
         call set_empty(error_msg)
     end subroutine lower_array_element_assignment
@@ -842,6 +945,7 @@
         character(len=*), intent(in), optional :: feature
         character(len=:), allocatable :: diagnostic_feature
         integer :: symbol_index
+        integer :: vk
         type(lr_operand_desc_t) :: index_value
         type(lr_operand_desc_t) :: offset
         type(lr_operand_desc_t) :: lower_bound_value
@@ -871,10 +975,7 @@
             error_msg = trim(node%name)//' is not an array'
             return
         end if
-        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-            error_msg = 'ffc direct-session lowering only supports integer arrays'
-            return
-        end if
+        vk = context%symbols(symbol_index)%value_kind
 
         rank = context%symbols(symbol_index)%array_rank
         if (rank < 1 .or. rank > 2) then
@@ -925,12 +1026,30 @@
                 return
             end if
 
-            if (.not. emit_i32_array_element_addr(context%session,  &
-                context%symbols(symbol_index)%array_size, &
-                context%symbols(symbol_index)%element_address, &
-                offset, element_address, error_msg)) then
-                error_msg = 'arr_element_gep: '//error_msg
-                return
+            if (vk == VALUE_F32) then
+                if (.not. emit_f32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        offset, element_address, error_msg)) then
+                    error_msg = 'arr_element_gep_f32: '//error_msg
+                    return
+                end if
+            else if (vk == VALUE_F64) then
+                if (.not. emit_f64_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        offset, element_address, error_msg)) then
+                    error_msg = 'arr_element_gep_f64: '//error_msg
+                    return
+                end if
+            else
+                if (.not. emit_i32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        offset, element_address, error_msg)) then
+                    error_msg = 'arr_element_gep: '//error_msg
+                    return
+                end if
             end if
         else
             call validate_i32_array_subscript(arena, node%arg_indices(2), context, &
@@ -982,17 +1101,177 @@
                 return
             end if
 
-            if (.not. emit_i32_array_element_addr(context%session,  &
-                context%symbols(symbol_index)%array_size, &
-                context%symbols(symbol_index)%element_address, &
-                index_value, element_address, error_msg)) then
-                error_msg = 'arr2_gep: '//error_msg
-                return
+            if (vk == VALUE_F32) then
+                if (.not. emit_f32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        index_value, element_address, error_msg)) then
+                    error_msg = 'arr2_gep_f32: '//error_msg
+                    return
+                end if
+            else if (vk == VALUE_F64) then
+                if (.not. emit_f64_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        index_value, element_address, error_msg)) then
+                    error_msg = 'arr2_gep_f64: '//error_msg
+                    return
+                end if
+            else
+                if (.not. emit_i32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        index_value, element_address, error_msg)) then
+                    error_msg = 'arr2_gep: '//error_msg
+                    return
+                end if
             end if
         end if
 
         call set_empty(error_msg)
     end subroutine lower_i32_array_element_address
+
+    subroutine lower_real_array_element_address(arena, node, context, vk, &
+                                                element_address, error_msg, &
+                                                feature)
+        !! GEP for a real (f32 or f64) array element. Subscripts are lowered
+        !! as integers; the GEP type uses the appropriate element type.
+        !! vk must be VALUE_F32 or VALUE_F64.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: feature
+        character(len=:), allocatable :: diagnostic_feature
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: index_value
+        type(lr_operand_desc_t) :: offset
+        type(lr_operand_desc_t) :: lower_bound_value
+        type(lr_operand_desc_t) :: i_offset
+        type(lr_operand_desc_t) :: j_offset
+        type(lr_operand_desc_t) :: scaled_index
+        integer :: rank
+        integer :: arg_count
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'real array access requires an array name'
+            return
+        end if
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'real array identifier was not declared: '//trim(node%name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = trim(node%name)//' is not an array'
+            return
+        end if
+
+        rank = context%symbols(symbol_index)%array_rank
+        diagnostic_feature = 'array expression'
+        if (present(feature)) diagnostic_feature = feature
+        arg_count = 0
+        if (allocated(node%arg_indices)) arg_count = size(node%arg_indices)
+        if (arg_count /= rank) then
+            if (rank == 1) then
+                call unsupported_feature_error(diagnostic_feature, node%line, &
+                                               node%column, &
+                                               'array access requires exactly one '// &
+                                               'subscript', error_msg)
+            else
+                call unsupported_feature_error(diagnostic_feature, node%line, &
+                                               node%column, &
+                                               'array access requires exactly two '// &
+                                               'subscripts', error_msg)
+            end if
+            return
+        end if
+
+        call lower_i32_expression(arena, node%arg_indices(1), context, &
+                                  index_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (rank == 1) then
+            lower_bound_value = i32_immediate(context%session, &
+                                int(context%symbols(symbol_index)%array_lower_bound, &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, index_value, &
+                                      lower_bound_value, offset, error_msg)) then
+                error_msg = 'real_arr_sub: '//error_msg
+                return
+            end if
+            if (vk == VALUE_F32) then
+                if (.not. emit_f32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        offset, element_address, error_msg)) then
+                    error_msg = 'f32_arr_gep: '//error_msg
+                    return
+                end if
+            else
+                if (.not. emit_f64_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        offset, element_address, error_msg)) then
+                    error_msg = 'f64_arr_gep: '//error_msg
+                    return
+                end if
+            end if
+        else
+            lower_bound_value = i32_immediate(context%session, &
+                                int(context%symbols(symbol_index)%array_dim_lowers(1), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, index_value, &
+                                      lower_bound_value, offset, error_msg)) then
+                error_msg = 'real_arr2_i_off: '//error_msg
+                return
+            end if
+            call lower_i32_expression(arena, node%arg_indices(2), context, &
+                                      i_offset, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lower_bound_value = i32_immediate(context%session, &
+                                int(context%symbols(symbol_index)%array_dim_lowers(2), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, i_offset, &
+                                      lower_bound_value, j_offset, error_msg)) then
+                error_msg = 'real_arr2_j_off: '//error_msg
+                return
+            end if
+            lower_bound_value = i32_immediate(context%session, &
+                                int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, j_offset, &
+                                      lower_bound_value, scaled_index, error_msg)) then
+                error_msg = 'real_arr2_stride: '//error_msg
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, offset, &
+                                      scaled_index, index_value, error_msg)) then
+                error_msg = 'real_arr2_add: '//error_msg
+                return
+            end if
+            if (vk == VALUE_F32) then
+                if (.not. emit_f32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        index_value, element_address, error_msg)) then
+                    error_msg = 'f32_arr2_gep: '//error_msg
+                    return
+                end if
+            else
+                if (.not. emit_f64_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, &
+                        index_value, element_address, error_msg)) then
+                    error_msg = 'f64_arr2_gep: '//error_msg
+                    return
+                end if
+            end if
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_real_array_element_address
 
     recursive subroutine validate_i32_array_subscript(arena, node_index, context, &
                                                       error_msg)

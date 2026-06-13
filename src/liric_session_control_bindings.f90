@@ -18,7 +18,9 @@ module liric_session_control_bindings
     integer(c_int), parameter, public :: LR_CMP_SGE = 3_c_int
     integer(c_int), parameter, public :: LR_CMP_SLT = 4_c_int
     integer(c_int), parameter, public :: LR_CMP_SLE = 5_c_int
+    integer(c_int), parameter, public :: LR_FCMP_OGT = 2_c_int
     integer(c_int), parameter, public :: LR_FCMP_OGE = 3_c_int
+    integer(c_int), parameter, public :: LR_FCMP_OLT = 4_c_int
     integer(c_int), parameter, public :: LR_FCMP_OLE = 5_c_int
 
     integer(c_int), parameter :: LR_OP_BR = 2_c_int
@@ -31,6 +33,7 @@ module liric_session_control_bindings
     public :: create_liric_block
     public :: set_liric_block
     public :: emit_liric_br
+    public :: emit_liric_f32_fcmp
     public :: emit_liric_f64_fcmp
     public :: emit_liric_i32_icmp
     public :: emit_liric_condbr
@@ -135,6 +138,28 @@ contains
         call set_empty(error_msg)
         emit_liric_i32_icmp = .true.
     end function emit_liric_i32_icmp
+
+    logical function emit_liric_f32_fcmp(session, pred, lhs, rhs, result, &
+                                         error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int), intent(in) :: pred
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f32_fcmp = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_fcmp(session%handle, pred, lhs, rhs, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i1_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_liric_f32_fcmp = .true.
+    end function emit_liric_f32_fcmp
 
     logical function emit_liric_f64_fcmp(session, pred, lhs, rhs, result, &
                                          error_msg)

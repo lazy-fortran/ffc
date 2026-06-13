@@ -40,7 +40,7 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
                                       lr_type_ptr_s, &
                                       LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
-                                      LR_OP_MUL, &
+                                      LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
                                       LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
@@ -57,17 +57,24 @@ use liric_session_bindings, only: destroy, begin_i32_main, &
                                                emit_i64_store_at, &
                                                emit_i32_array_alloca, &
                                               emit_i32_array_element_addr, &
+                                              emit_f32_array_alloca, &
+                                              emit_f32_array_element_addr, &
+                                              emit_f64_array_alloca, &
+                                              emit_f64_array_element_addr, &
                                               emit_ptr_offset, emit_ptr_offset_dyn, &
                                               ptr_param
     use liric_session_control_bindings, only: create_liric_block, &
                                               emit_liric_br, &
                                               emit_liric_condbr, &
+                                              emit_liric_f32_fcmp, &
                                               emit_liric_f64_fcmp, &
                                               emit_liric_i32_icmp, &
                                               emit_liric_i32_phi, &
                                               emit_liric_phi, &
                                               emit_liric_phi_n, &
+                                              LR_FCMP_OGT, &
                                               LR_FCMP_OGE, &
+                                              LR_FCMP_OLT, &
                                               LR_FCMP_OLE, &
                                               LR_CMP_SGE, &
                                               LR_CMP_SGT, &
@@ -102,6 +109,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                           emit_liric_print_f64_value, &
                                           emit_liric_print_i32, &
                                           emit_liric_print_i32_value, &
+                                          emit_liric_print_i64, &
+                                          emit_liric_print_i64_value, &
                                           emit_liric_print_newline, &
                                           emit_liric_print_space, &
                                           emit_liric_print_string_operand, &
@@ -146,7 +155,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 module_exports_t, &
                                                 external_procedure_t, &
                                                 MAX_PROC_ARGS, &
-                                                VALUE_I32, VALUE_F32, VALUE_F64, &
+                                                VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
@@ -236,14 +245,26 @@ contains
         if (node%is_array) then
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (value_kind /= VALUE_I32) then
+            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+                value_kind /= VALUE_F64) then
                 call unsupported_feature_error('array declaration', node%line, &
                                                node%column, &
                                                'ffc direct-session lowering only '// &
-                                               'supports integer arrays', error_msg)
+                                               'supports integer and real arrays', &
+                                               error_msg)
                 return
             end if
             if (node%is_allocatable) then
+                if (value_kind /= VALUE_I32) then
+                    call unsupported_feature_error('allocatable array declaration', &
+                                                   node%line, node%column, &
+                                                   'ffc direct-session lowering only '// &
+                                                   'supports integer arrays for '// &
+                                                   'allocatable; real allocatables '// &
+                                                   'land in a later issue', &
+                                                   error_msg)
+                    return
+                end if
                 call lower_allocatable_declaration(node, context, error_msg)
                 return
             end if
@@ -254,13 +275,13 @@ contains
                 do i = 1, size(node%var_names)
                     call define_declared_array_symbol( &
                         context, node, node%var_names(i), array_lower_bound, &
-                        array_size, error_msg)
+                        array_size, value_kind, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(node%var_name)) then
                 call define_declared_array_symbol(context, node, node%var_name, &
                                                   array_lower_bound, array_size, &
-                                                  error_msg)
+                                                  value_kind, error_msg)
             else
                 error_msg = 'array declaration did not expose a variable name'
             end if
@@ -318,6 +339,9 @@ contains
                                           value, error_msg)
         case (VALUE_I32)
             call lower_i32_expression(context%arena, init_index, context, value, &
+                                      error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(context%arena, init_index, context, value, &
                                       error_msg)
         case default
             return
@@ -519,6 +543,8 @@ contains
         end if
         if (value_kind == VALUE_I32) then
             call define_i32_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_I64) then
+            call define_i64_symbol(context, name, error_msg)
         else if (value_kind == VALUE_F32) then
             call define_f32_symbol(context, name, error_msg)
         else if (value_kind == VALUE_F64) then
@@ -580,6 +606,24 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_i32_symbol
+
+    subroutine define_i64_symbol(context, name, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate integer(8) declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_I64
+        context%symbols(index)%value = i64_immediate(context%session, 0_c_int64_t)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_i64_symbol
     subroutine define_f32_symbol(context, name, error_msg)
         use, intrinsic :: iso_c_binding, only: c_float
         type(lowering_context_t), intent(inout) :: context
@@ -681,9 +725,17 @@ contains
             return
         end if
         if (context%symbols(symbol_index)%is_allocatable) then
+            if (node_exists(arena, node%value_index)) then
+                select type (rhs => arena%entries(node%value_index)%node)
+                type is (array_literal_node)
+                    call lower_allocatable_constructor_assignment(arena, rhs, &
+                        symbol_index, context, error_msg)
+                    return
+                end select
+            end if
             call unsupported_feature_error('allocatable array assignment', &
-                node%line, node%column, 'assignment to an allocatable array '// &
-                'is not supported; element access lands in a later issue', &
+                node%line, node%column, 'allocatable whole-array assignment '// &
+                'supports only array constructors; other forms land in later issues', &
                 error_msg)
             return
         end if
@@ -724,7 +776,10 @@ contains
                                                            error_msg)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
+        if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
+            call lower_i64_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
             call lower_f32_expression(arena, node%value_index, context, value, &
                                       error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
