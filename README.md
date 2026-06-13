@@ -25,23 +25,27 @@ Current slices include compound formatted `print` with literal `I`, `X`,
 `F`, and `A` descriptors on stdout; fixed-size rank-1 and rank-2 arrays with
 `integer`, `real`, and `real(8)` elements; scalar element access, array
 sections, whole-array copy, elemental arithmetic, and the array intrinsics
-`size`, `shape`, `sum`, `product`, `maxval`, and `minval`; scalar element read
-and write on an allocated 1-D integer allocatable (`a(i)`); and whole-array
-assignment from an array constructor to a 1-D integer allocatable with
-auto-reallocation (`a = [e1, e2, ...]`). Scalar integer
-`pointer`/`target` with `p => t`, read/write through `p`, `associated(p)`,
-and `nullify(p)` is supported, as are constant-folded `selected_int_kind` and
-`selected_real_kind` kind-selection intrinsics. Derived types support
-single inheritance (`type, extends(parent) :: child`) with parent-first
-component layout, so inherited components and inherited type-bound
-procedures are reachable on a child instance. A module procedure may
-`contains` internal procedures, lowered as flat functions like
-program-contained procedures. The `associate` construct binds scalar
-selectors (`associate (x => expr)`) for the construct scope. The real
-transcendental intrinsics lower to libm: `sqrt`, `exp`, `log`, `log10`,
-`sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`,
-`tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`, `log_gamma`,
-and `hypot`.
+`size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
+`matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, and
+`all`; scalar element read and write on an allocated 1-D integer allocatable
+(`a(i)`); and whole-array assignment from an array constructor to a 1-D
+integer allocatable with auto-reallocation (`a = [e1, e2, ...]`). Scalar
+integer `pointer`/`target` with `p => t`, read/write through `p`,
+`associated(p)`, and `nullify(p)` is supported, as are constant-folded
+`selected_int_kind` and `selected_real_kind`. Derived types support single
+inheritance (`type, extends(parent) :: child`) with parent-first component
+layout. A module procedure may `contains` internal procedures, lowered as
+flat functions. Module-level integer variables persist as globals and are
+visible across `use`. The `associate` construct binds scalar selectors. The
+scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
+`floor`, `ceiling`, `real`, `dble` are supported, as are the bit intrinsics
+`iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and
+`mvbits`. The character intrinsics `len`, `len_trim`, `trim`, `adjustl`,
+`adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, and `iachar` are
+supported. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
+`log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
+`sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
+`log_gamma`, and `hypot`.
 
 ## Build
 

@@ -1,5 +1,5 @@
 program test_session_array_intrinsics_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -8,6 +8,15 @@ program test_session_array_intrinsics_compiler
 
     all_passed = .true.
     if (.not. test_rank2_array_intrinsics()) all_passed = .false.
+    if (.not. test_lbound_default_lower()) all_passed = .false.
+    if (.not. test_lbound_nondefault_lower()) all_passed = .false.
+    if (.not. test_ubound_default()) all_passed = .false.
+    if (.not. test_ubound_nondefault()) all_passed = .false.
+    if (.not. test_count_true_elements()) all_passed = .false.
+    if (.not. test_any_returns_nonzero()) all_passed = .false.
+    if (.not. test_any_all_false_returns_zero()) all_passed = .false.
+    if (.not. test_all_all_true()) all_passed = .false.
+    if (.not. test_all_mixed_returns_zero()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: array intrinsics lower through direct LIRIC'
@@ -50,5 +59,110 @@ contains
                     '          10'//new_line('a'), &
             '/tmp/ffc_session_array_intrinsics_test')
     end function test_rank2_array_intrinsics
+
+    logical function test_lbound_default_lower()
+        ! lbound(a, 1) on a(5) is 1 (default lower bound).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(5)'//new_line('a')// &
+            '  stop lbound(a, 1)'//new_line('a')// &
+            'end program main'
+        test_lbound_default_lower = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_lbound_default_test')
+    end function test_lbound_default_lower
+
+    logical function test_lbound_nondefault_lower()
+        ! lbound(a, 1) on a(3:7) is 3.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(3:7)'//new_line('a')// &
+            '  stop lbound(a, 1)'//new_line('a')// &
+            'end program main'
+        test_lbound_nondefault_lower = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_lbound_nondefault_test')
+    end function test_lbound_nondefault_lower
+
+    logical function test_ubound_default()
+        ! ubound(a, 1) on a(5) is 5.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(5)'//new_line('a')// &
+            '  stop ubound(a, 1)'//new_line('a')// &
+            'end program main'
+        test_ubound_default = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_ubound_default_test')
+    end function test_ubound_default
+
+    logical function test_ubound_nondefault()
+        ! ubound(a, 1) on a(3:7) is 7.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(3:7)'//new_line('a')// &
+            '  stop ubound(a, 1)'//new_line('a')// &
+            'end program main'
+        test_ubound_nondefault = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_ubound_nondefault_test')
+    end function test_ubound_nondefault
+
+    logical function test_count_true_elements()
+        ! count(mask) with 3 nonzero elements in a 4-element integer array.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: mask(4)'//new_line('a')// &
+            '  mask = [1, 0, 1, 1]'//new_line('a')// &
+            '  stop count(mask)'//new_line('a')// &
+            'end program main'
+        test_count_true_elements = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_count_test')
+    end function test_count_true_elements
+
+    logical function test_any_returns_nonzero()
+        ! any(mask) returns nonzero when at least one element is nonzero.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: mask(3)'//new_line('a')// &
+            '  mask = [0, 1, 0]'//new_line('a')// &
+            '  stop any(mask)'//new_line('a')// &
+            'end program main'
+        ! stop exits with 1 (any returns nonzero OR of elements).
+        test_any_returns_nonzero = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_any_nonzero_test')
+    end function test_any_returns_nonzero
+
+    logical function test_any_all_false_returns_zero()
+        ! any(mask) returns 0 when all elements are 0.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: mask(3)'//new_line('a')// &
+            '  mask = [0, 0, 0]'//new_line('a')// &
+            '  stop any(mask)'//new_line('a')// &
+            'end program main'
+        test_any_all_false_returns_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_any_false_test')
+    end function test_any_all_false_returns_zero
+
+    logical function test_all_all_true()
+        ! all(mask) returns 1 when every element is nonzero.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: mask(3)'//new_line('a')// &
+            '  mask = [1, 1, 1]'//new_line('a')// &
+            '  stop all(mask)'//new_line('a')// &
+            'end program main'
+        test_all_all_true = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_all_true_test')
+    end function test_all_all_true
+
+    logical function test_all_mixed_returns_zero()
+        ! all(mask) returns 0 when any element is 0.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: mask(3)'//new_line('a')// &
+            '  mask = [1, 0, 1]'//new_line('a')// &
+            '  stop all(mask)'//new_line('a')// &
+            'end program main'
+        test_all_mixed_returns_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_all_mixed_test')
+    end function test_all_mixed_returns_zero
 
 end program test_session_array_intrinsics_compiler

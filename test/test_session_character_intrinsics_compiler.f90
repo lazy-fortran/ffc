@@ -21,6 +21,11 @@ program test_session_character_intrinsics_compiler
     if (.not. test_index_not_found_returns_zero()) all_passed = .false.
     if (.not. test_adjustl_left_justifies()) all_passed = .false.
     if (.not. test_adjustr_right_justifies()) all_passed = .false.
+    if (.not. test_scan_finds_first_char_in_set()) all_passed = .false.
+    if (.not. test_scan_not_found_returns_zero()) all_passed = .false.
+    if (.not. test_verify_first_non_set_char()) all_passed = .false.
+    if (.not. test_verify_all_in_set_returns_zero()) all_passed = .false.
+    if (.not. test_repeat_builds_string()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: len/len_trim lower through direct LIRIC session'
@@ -185,5 +190,55 @@ contains
         test_adjustr_right_justifies = expect_output( &
             source, '   hi'//new_line('a'), '/tmp/ffc_session_adjustr_test')
     end function test_adjustr_right_justifies
+
+    logical function test_scan_finds_first_char_in_set()
+        ! scan("hello", "aeiou") == 2 ("e" is at position 2).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop scan("hello", "aeiou")'//new_line('a')// &
+            'end program main'
+        test_scan_finds_first_char_in_set = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_scan_found_test')
+    end function test_scan_finds_first_char_in_set
+
+    logical function test_scan_not_found_returns_zero()
+        ! scan("xyz", "aeiou") == 0 (no vowels in "xyz").
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop scan("xyz", "aeiou")'//new_line('a')// &
+            'end program main'
+        test_scan_not_found_returns_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_scan_notfound_test')
+    end function test_scan_not_found_returns_zero
+
+    logical function test_verify_first_non_set_char()
+        ! verify("hello", "aeiou") == 1 ("h" is not a vowel, at position 1).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop verify("hello", "aeiou")'//new_line('a')// &
+            'end program main'
+        test_verify_first_non_set_char = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_verify_nonset_test')
+    end function test_verify_first_non_set_char
+
+    logical function test_verify_all_in_set_returns_zero()
+        ! verify("aei", "aeiou") == 0 (all characters are in the set).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  stop verify("aei", "aeiou")'//new_line('a')// &
+            'end program main'
+        test_verify_all_in_set_returns_zero = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_verify_allinset_test')
+    end function test_verify_all_in_set_returns_zero
+
+    logical function test_repeat_builds_string()
+        ! repeat("ab", 3) == "ababab"; print adds one leading space.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, repeat("ab", 3)'//new_line('a')// &
+            'end program main'
+        test_repeat_builds_string = expect_output( &
+            source, ' ababab'//new_line('a'), '/tmp/ffc_session_repeat_test')
+    end function test_repeat_builds_string
 
 end program test_session_character_intrinsics_compiler
