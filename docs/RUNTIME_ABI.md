@@ -77,6 +77,36 @@ with a diagnostic. Only single-variable, one-dimensional, default-lower-bound
   through LIRIC scalar operations, comparisons, branch control, casts, and PHI
   values.
 
+### Scalar pointer and target (#245 B3a)
+
+A `target` local lives in a stable stack slot. On declaration, `ffc` emits an
+`i32 alloca` for the slot and stores the initial value (zero) into it. The slot
+address is recorded in the lowering symbol; reads and writes go through
+`emit_i32_load`/`emit_i32_store` on that address, so any write to the target
+is immediately visible through any pointer that shares the slot.
+
+A `pointer` variable carries no separate storage. Instead, the lowering symbol
+holds a copy of the target's slot address after pointer assignment. Three flags
+track its state at compile time:
+
+| Flag | Meaning |
+|---|---|
+| `is_pointer` | the variable was declared `pointer` |
+| `has_address` / `is_reference` | an address is in scope; reads and writes dereference it |
+| `is_associated` | the pointer is currently associated (not nullified) |
+
+`p => t` copies the target's address operand into `p`'s lowering symbol and
+sets all three flags. Subsequent reads of `p` emit `emit_i32_load` from that
+address; writes emit `emit_i32_store` to the same slot, mutating `t`.
+
+`nullify(p)` clears `has_address`, `is_reference`, and `is_associated` but
+emits no code. `associated(p)` (one-argument form) is a compile-time boolean
+derived from the `is_associated` flag; it folds to an `i32` immediate `0` or `1`.
+
+This is a straight-line compile-time model. Re-pointing across a branch
+(`if (cond) p => a; else p => b`) and the two-argument `associated(p, t)` are
+not covered by this slice; they need runtime pointer comparison and land in B3c.
+
 ## Derived Types
 
 - The MVP derived-type layout supports only scalar integer components.
