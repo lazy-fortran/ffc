@@ -28,6 +28,10 @@
 
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
+        ! __MULTI_UNIT__ containers for standalone procedures have no internal
+        ! functions to register; the procedure itself is lowered by
+        ! lower_standalone_unit later.
+        if (is_standalone_procedure_root(arena, root_index)) return
         call get_program_body_info(arena, root_index, &
                                    prog_name, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
@@ -427,6 +431,8 @@
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
+        ! Standalone procedures are lowered directly by lower_standalone_unit.
+        if (is_standalone_procedure_root(arena, root_index)) return
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
@@ -497,6 +503,8 @@
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
+        ! Standalone procedures have no module procedures to lower.
+        if (is_standalone_procedure_root(arena, root_index)) return
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
@@ -856,6 +864,7 @@
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
+            call collect_goto_labels(arena, node%body_indices, context)
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
             if (len_trim(error_msg) > 0) return

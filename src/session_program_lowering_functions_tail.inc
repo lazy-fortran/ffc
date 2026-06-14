@@ -47,6 +47,7 @@
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
+            call collect_goto_labels(arena, node%body_indices, context)
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
             if (len_trim(error_msg) > 0) return

@@ -165,12 +165,14 @@
         if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, error_msg)) &
             return
 
-        ! bytes = M * N * 4 (all in i64 to avoid overflow and reuse issues)
+        ! bytes = M * N * element_bytes (all in i64 to avoid overflow and reuse issues)
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, m_i64, n_i64, &
                 total_i64, error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
-                i64_immediate(context%session, 4_c_int64_t), bytes_i64, &
-                error_msg)) return
+                i64_immediate(context%session, &
+                    allocatable_element_bytes( &
+                        context%symbols(symbol_index)%value_kind)), &
+                bytes_i64, error_msg)) return
         if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
             return
 
@@ -195,7 +197,7 @@
     end subroutine lower_allocate_i32_2d
 
     subroutine lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
-        ! data = malloc(N*4); descriptor.data = data; .lower = 1; .upper = N
+        ! data = malloc(N*element_bytes); descriptor.data = data; .lower = 1; .upper = N
         ! n_i32 is the already-lowered size operand (i32).
         type(lr_operand_desc_t), intent(in) :: n_i32
         integer, intent(in) :: symbol_index
@@ -203,10 +205,13 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: bytes_i32, bytes_i64, n_i64, data_ptr
         type(lr_operand_desc_t) :: descriptor
+        integer(c_int64_t) :: element_bytes
 
+        element_bytes = allocatable_element_bytes( &
+            context%symbols(symbol_index)%value_kind)
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, n_i32, &
-                i32_immediate(context%session, 4_c_int64_t), bytes_i32, &
+                i32_immediate(context%session, element_bytes), bytes_i32, &
                 error_msg)) return
         if (.not. emit_liric_i32_to_i64(context%session, bytes_i32, bytes_i64, &
                 error_msg)) return
@@ -511,12 +516,28 @@
         end if
 
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, linear_i64, &
-                i64_immediate(context%session, 4_c_int64_t), byte_offset, &
-                error_msg)) return
+                i64_immediate(context%session, &
+                    allocatable_element_bytes( &
+                        context%symbols(symbol_index)%value_kind)), &
+                byte_offset, error_msg)) return
         if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
                 element_address, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocatable_element_address
+
+    pure function allocatable_element_bytes(value_kind) result(nbytes)
+        ! Return the byte width of one element for an allocatable array.
+        integer, intent(in) :: value_kind
+        integer(c_int64_t) :: nbytes
+
+        select case (value_kind)
+        case (VALUE_F64)
+            nbytes = 8_c_int64_t
+        case default
+            ! VALUE_I32, VALUE_F32, VALUE_LOGICAL: all 4-byte elements
+            nbytes = 4_c_int64_t
+        end select
+    end function allocatable_element_bytes
 
     subroutine declare_allocatable_i32(context, name, rank, error_msg)
         ! Stack-allocate a 40-byte descriptor and zero it. Layout:

@@ -386,6 +386,8 @@
     subroutine import_use_renames(arena, export_idx, use_node, context, error_msg)
         ! use m, only: local => remote binds module symbol `remote` under the
         ! local name. rename_list is a flat [local, remote, ...] array.
+        ! Handles parameters (constants), module variables, and procedures.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: export_idx
         type(use_statement_node), intent(in) :: use_node
@@ -394,6 +396,7 @@
         integer :: i
         integer :: j
         integer :: param_idx
+        integer :: var_idx
         integer :: value_kind
         logical :: found
         integer(c_int64_t) :: constant_value
@@ -403,12 +406,16 @@
         integer :: symbol_idx
         character(len=:), allocatable :: decl_name
         character(len=:), allocatable :: decl_type_name
+        character(len=:), allocatable :: mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: global_id
 
         call set_empty(error_msg)
         if (.not. allocated(use_node%rename_list)) return
 
         do i = 1, size(use_node%rename_list) - 1, 2
             found = .false.
+            ! 1. Search exported parameters (compile-time integer constants).
             do j = 1, context%module_exports(export_idx)%parameter_count
                 param_idx = context%module_exports(export_idx)%parameter_indices(j)
                 if (.not. node_exists(arena, param_idx)) cycle
@@ -449,9 +456,8 @@
                                        constant_value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (find_symbol(context, trim(use_node%rename_list(i)%s)) > 0) then
-                    error_msg = 'duplicate use rename local name: '// &
-                                trim(use_node%rename_list(i)%s)
-                    return
+                    found = .true.
+                    exit
                 end if
                 call grow_symbols(context)
                 symbol_idx = context%symbol_count + 1
@@ -464,16 +470,95 @@
                 context%symbols(symbol_idx)%i32_constant = constant_value
                 context%symbol_count = symbol_idx
                 found = .true.
-                if (found) exit
+                exit
             end do
+            if (found) cycle
+            ! 2. Search exported module variables.
+            do j = 1, context%module_exports(export_idx)%variable_count
+                var_idx = context%module_exports(export_idx)%variable_indices(j)
+                if (.not. node_exists(arena, var_idx)) cycle
+                if (.not. is_declaration_node(arena, var_idx)) cycle
+                call get_declaration_var_name(arena, var_idx, decl_name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. same_name(decl_name, use_node%rename_list(i + 1)%s)) &
+                    cycle
+                call get_declaration_type_name(arena, var_idx, decl_type_name, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                call type_name_value_kind(decl_type_name, 0, 0, value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (value_kind /= VALUE_I32) cycle
+                if (find_symbol(context, trim(use_node%rename_list(i)%s)) > 0) then
+                    found = .true.
+                    exit
+                end if
+                mangled = module_procedure_mangled( &
+                    trim(context%module_exports(export_idx)%module_name), &
+                    trim(decl_name))
+                call to_c_chars(mangled, c_name)
+                global_id = lr_session_intern(context%session%handle, c_name)
+                if (global_id < 0_c_int32_t) then
+                    error_msg = 'module variable global not found: '//trim(mangled)
+                    return
+                end if
+                call grow_symbols(context)
+                symbol_idx = context%symbol_count + 1
+                context%symbols(symbol_idx)%name = trim(use_node%rename_list(i)%s)
+                context%symbols(symbol_idx)%value_kind = VALUE_I32
+                context%symbols(symbol_idx)%has_address = .true.
+                context%symbols(symbol_idx)%is_reference = .true.
+                context%symbols(symbol_idx)%address%kind = LR_OP_KIND_GLOBAL
+                context%symbols(symbol_idx)%address%payload = int(global_id, c_int64_t)
+                context%symbols(symbol_idx)%address%typ = &
+                    lr_type_ptr_s(context%session%handle)
+                context%symbols(symbol_idx)%address%global_offset = 0_c_int64_t
+                context%symbol_count = symbol_idx
+                found = .true.
+                exit
+            end do
+            if (found) cycle
+            ! 3. Procedure renames need no symbol-table entry; calls resolve via
+            !    call_emit_name. Check the module's procedure list in the arena.
+            if (module_has_procedure(arena, use_node%module_name, &
+                                     use_node%rename_list(i + 1)%s)) then
+                found = .true.
+            end if
             if (.not. found) then
-                error_msg = 'use rename target is not an exported parameter of '// &
+                error_msg = 'use rename target is not exported by module '// &
                     trim(use_node%module_name)//': '// &
                     trim(use_node%rename_list(i + 1)%s)
                 return
             end if
         end do
     end subroutine import_use_renames
+
+    logical function module_has_procedure(arena, module_name, proc_name)
+        ! True when a module named module_name contains a procedure named proc_name.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_name, proc_name
+        integer :: n, p
+        character(len=:), allocatable :: node_type, mod_name, ff_error
+        integer, allocatable :: decl_idx(:), proc_idx(:)
+
+        module_has_procedure = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
+            call get_module_body_info(arena, n, mod_name, decl_idx, proc_idx, &
+                                      ff_error)
+            if (len_trim(ff_error) > 0) cycle
+            if (.not. same_name(mod_name, module_name)) cycle
+            if (.not. allocated(proc_idx)) return
+            do p = 1, size(proc_idx)
+                if (procedure_node_named(arena, proc_idx(p), proc_name)) then
+                    module_has_procedure = .true.
+                    return
+                end if
+            end do
+            return
+        end do
+    end function module_has_procedure
 
     subroutine import_renamed_parameter(decl, local_name, value_kind, context, &
                                         error_msg)

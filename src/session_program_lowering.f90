@@ -22,6 +22,7 @@ module session_program_lowering
                          case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
+                         goto_node, continue_node, &
                          if_node, &
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &

@@ -117,6 +117,23 @@
             call destroy(context%session)
             return
         end if
+        ! Standalone subroutine/function wrapped in __MULTI_UNIT__: emit the
+        ! procedure directly under its own name; no main entry point.
+        if (is_standalone_procedure_root(arena, root_index)) then
+            call lower_standalone_unit(arena, root_index, context, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call destroy(context%session)
+                return
+            end if
+            if (.not. finish_and_emit_object(context%session, output_path, &
+                                             error_msg)) then
+                call destroy(context%session)
+                return
+            end if
+            call destroy(context%session)
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
                                  argv_vreg)) then
             call destroy(context%session)
@@ -229,6 +246,9 @@
                     exit
                 end if
             end do
+            ! Pre-pass: allocate LIRIC blocks for every labeled statement so
+            ! forward GOTO references are always valid.
+            call collect_goto_labels(arena, body_indices, context)
             ! Process body elements
             do i = 1, size(body_indices)
                 if (is_internal_procedure_entry(arena, body_indices(i))) cycle
@@ -245,10 +265,16 @@
                     end if
                     cycle
                 end if
+                ! When the current block is terminated (e.g. after GOTO or STOP),
+                ! skip unlabeled statements: they are unreachable. A labeled
+                ! statement starts a new live block via enter_labeled_block.
+                if (context%current_block_terminated) then
+                    if (.not. allocated(arena%entries(body_indices(i))%node%stmt_label)) cycle
+                    if (len_trim(arena%entries(body_indices(i))%node%stmt_label) == 0) cycle
+                end if
                 call lower_statement(arena, body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (context%current_block_terminated) return
                 has_executable_statements = .true.
             end do
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
@@ -329,6 +355,80 @@
             module_declaration_is_parameter = decl%is_parameter
         end select
     end function module_declaration_is_parameter
+
+    logical function is_standalone_procedure_root(arena, root_index)
+        ! True when the AST root is FortFront's __MULTI_UNIT__ container wrapping
+        ! one or more bare subroutine or function definitions. FortFront wraps
+        ! standalone procedures in a synthetic program_node named __MULTI_UNIT__
+        ! rather than exposing the procedure node directly as the root.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(program_node), pointer :: prog
+        character(len=:), allocatable :: ntype
+        integer :: i
+
+        is_standalone_procedure_root = .false.
+        ntype = get_node_type_at(arena, root_index)
+        if (ntype /= 'program' .and. ntype /= 'program_node') return
+        prog => get_node_as_program(arena, root_index)
+        if (.not. associated(prog)) return
+        if (.not. allocated(prog%name)) return
+        if (trim(prog%name) /= '__MULTI_UNIT__') return
+        if (.not. allocated(prog%body_indices)) return
+        if (size(prog%body_indices) == 0) return
+        ! All body items must be procedure definitions.
+        do i = 1, size(prog%body_indices)
+            if (.not. is_internal_procedure_entry(arena, prog%body_indices(i))) return
+        end do
+        is_standalone_procedure_root = .true.
+    end function is_standalone_procedure_root
+
+    subroutine lower_standalone_unit(arena, root_index, context, error_msg)
+        ! Lower the procedures inside a __MULTI_UNIT__ wrapper to LIRIC.
+        ! Each subroutine or function is emitted under its own name with no
+        ! surrounding main entry point.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        integer, allocatable :: body_indices(:)
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer :: i
+
+        call set_empty(error_msg)
+        call get_program_body_info(arena, root_index, prog_name, body_indices, &
+                                   ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, body_indices(i))
+                if (.not. associated(sb_node)) then
+                    error_msg = 'standalone subroutine body item is not a node'
+                    return
+                end if
+                call lower_void_subroutine(arena, sb_node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, body_indices(i))
+                if (.not. associated(fn_node)) then
+                    error_msg = 'standalone function body item is not a node'
+                    return
+                end if
+                call lower_scalar_function(arena, fn_node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine lower_standalone_unit
+
     include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)
@@ -338,12 +438,21 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
-        context%current_block_terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'program body index does not reference an AST node'
             return
         end if
+        ! Switch to the pre-allocated block when a labeled statement is entered.
+        ! Must happen before resetting current_block_terminated so that
+        ! enter_labeled_block knows whether to emit a fallthrough branch.
+        if (allocated(arena%entries(node_index)%node%stmt_label)) then
+            if (len_trim(arena%entries(node_index)%node%stmt_label) > 0) then
+                call enter_labeled_block(arena, node_index, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end if
+        context%current_block_terminated = .false.
         if (is_subroutine_call_statement(arena, node_index)) then
             call lower_subroutine_call(arena, node_index, context, error_msg)
             return
@@ -359,6 +468,12 @@
             return
         end if
         select type (node => arena%entries(node_index)%node)
+        type is (goto_node)
+            call lower_goto(node, context, error_msg)
+        type is (continue_node)
+            ! CONTINUE's only role is as a label target; block switch already
+            ! done above by the stmt_label check.
+            call set_empty(error_msg)
         type is (parameter_declaration_node)
             call lower_parameter_declaration(node, context, error_msg)
         type is (declaration_node)
@@ -543,6 +658,7 @@
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
+    include 'session_program_lowering_goto.inc'
     include 'session_program_lowering_control.inc'
     include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_loops.inc'
@@ -570,11 +686,15 @@
             ! statement. Skip it here so a procedure that contains internals is
             ! lowered the same way a program-contained procedure is.
             if (is_internal_procedure_entry(arena, node_indices(i))) cycle
+            ! When the current block is terminated (e.g. after GOTO), skip
+            ! unlabeled statements: they are unreachable. A labeled statement
+            ! starts a new live block via enter_labeled_block.
+            if (context%current_block_terminated) then
+                if (.not. allocated(arena%entries(node_indices(i))%node%stmt_label)) cycle
+                if (len_trim(arena%entries(node_indices(i))%node%stmt_label) == 0) cycle
+            end if
             call lower_statement(arena, node_indices(i), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (context%current_block_terminated) then
-                terminated = .true.
-                return
-            end if
         end do
+        if (context%current_block_terminated) terminated = .true.
     end subroutine lower_statement_list

@@ -285,6 +285,12 @@ module session_program_lowering_types
         integer(c_int32_t) :: unit_table_id = -1_c_int32_t
         ! Next unit number assigned by newunit=. Start at 10 to avoid 0/1/6.
         integer(c_int32_t) :: next_file_unit = 10_c_int32_t
+        ! GOTO label -> LIRIC block table. Populated by a pre-pass before
+        ! lowering the body; each entry maps a numeric label string to the
+        ! pre-allocated block id. Size 64 covers all practical legacy routines.
+        character(len=32) :: goto_label_names(64) = ''
+        integer(c_int32_t) :: goto_label_blocks(64) = 0_c_int32_t
+        integer :: goto_label_count = 0
     end type lowering_context_t
 
     type, public :: branch_result_t
