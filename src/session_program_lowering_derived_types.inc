@@ -113,6 +113,10 @@
                 deallocate(context%module_exports(i)%variable_indices)
             end if
             context%module_exports(i)%variable_count = 0
+            if (allocated(context%module_exports(i)%procedure_node_indices)) then
+                deallocate(context%module_exports(i)%procedure_node_indices)
+            end if
+            context%module_exports(i)%procedure_count = 0
         end do
         context%module_export_count = 0
         call set_empty(error_msg)
@@ -138,9 +142,11 @@
         type(lowering_context_t), intent(inout) :: context
         integer :: j
         integer :: export_idx
+        character(len=:), allocatable :: node_type, proc_name
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         if (.not. allocated(mod_node%name)) return
-        if (.not. allocated(mod_node%declaration_indices)) return
         call grow_module_exports(context)
 
         export_idx = context%module_export_count + 1
@@ -151,44 +157,78 @@
         allocate(context%module_exports(export_idx)%parameter_indices(8))
         context%module_exports(export_idx)%variable_count = 0
         allocate(context%module_exports(export_idx)%variable_indices(8))
+        context%module_exports(export_idx)%procedure_count = 0
+        allocate(context%module_exports(export_idx)%procedure_node_indices(8))
 
-        do j = 1, size(mod_node%declaration_indices)
-            select type (decl => &
-                arena%entries(mod_node%declaration_indices(j))%node)
-            type is (derived_type_node)
-                if (.not. allocated(decl%name)) cycle
-                ! A private symbol is not exported through use (#149).
-                if (module_symbol_is_private(arena, mod_node, trim(decl%name))) cycle
-                call grow_module_export_derived_indices(context, export_idx)
-                context%module_exports(export_idx)%derived_type_indices( &
-                    context%module_exports(export_idx)%derived_type_count + 1) = &
-                    mod_node%declaration_indices(j)
-                context%module_exports(export_idx)%derived_type_count = &
-                    context%module_exports(export_idx)%derived_type_count + 1
-            type is (declaration_node)
-                if (.not. allocated(decl%var_name)) cycle
-                if (decl%is_parameter) then
-                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
-                        cycle
-                    call grow_module_export_parameter_indices(context, export_idx)
-                    context%module_exports(export_idx)%parameter_indices( &
-                        context%module_exports(export_idx)%parameter_count + 1) = &
+        if (allocated(mod_node%declaration_indices)) then
+            do j = 1, size(mod_node%declaration_indices)
+                select type (decl => &
+                    arena%entries(mod_node%declaration_indices(j))%node)
+                type is (derived_type_node)
+                    if (.not. allocated(decl%name)) cycle
+                    ! A private symbol is not exported through use (#149).
+                    if (module_symbol_is_private(arena, mod_node, trim(decl%name))) cycle
+                    call grow_module_export_derived_indices(context, export_idx)
+                    context%module_exports(export_idx)%derived_type_indices( &
+                        context%module_exports(export_idx)%derived_type_count + 1) = &
                         mod_node%declaration_indices(j)
-                    context%module_exports(export_idx)%parameter_count = &
-                        context%module_exports(export_idx)%parameter_count + 1
-                else if (.not. decl%is_array) then
-                    ! Non-parameter scalar: export as module variable (#249 B7a).
-                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
-                        cycle
-                    call grow_module_export_variable_indices(context, export_idx)
-                    context%module_exports(export_idx)%variable_indices( &
-                        context%module_exports(export_idx)%variable_count + 1) = &
-                        mod_node%declaration_indices(j)
-                    context%module_exports(export_idx)%variable_count = &
-                        context%module_exports(export_idx)%variable_count + 1
+                    context%module_exports(export_idx)%derived_type_count = &
+                        context%module_exports(export_idx)%derived_type_count + 1
+                type is (declaration_node)
+                    if (.not. allocated(decl%var_name)) cycle
+                    if (decl%is_parameter) then
+                        if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                            cycle
+                        call grow_module_export_parameter_indices(context, export_idx)
+                        context%module_exports(export_idx)%parameter_indices( &
+                            context%module_exports(export_idx)%parameter_count + 1) = &
+                            mod_node%declaration_indices(j)
+                        context%module_exports(export_idx)%parameter_count = &
+                            context%module_exports(export_idx)%parameter_count + 1
+                    else if (.not. decl%is_array) then
+                        ! Non-parameter scalar: export as module variable (#249 B7a).
+                        if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                            cycle
+                        call grow_module_export_variable_indices(context, export_idx)
+                        context%module_exports(export_idx)%variable_indices( &
+                            context%module_exports(export_idx)%variable_count + 1) = &
+                            mod_node%declaration_indices(j)
+                        context%module_exports(export_idx)%variable_count = &
+                            context%module_exports(export_idx)%variable_count + 1
+                    end if
+                end select
+            end do
+        end if
+
+        ! Register contained procedures so use-only validation accepts them.
+        if (allocated(mod_node%procedure_indices)) then
+            do j = 1, size(mod_node%procedure_indices)
+                if (.not. node_exists(arena, mod_node%procedure_indices(j))) cycle
+                node_type = get_node_type_at(arena, mod_node%procedure_indices(j))
+                call set_empty(proc_name)
+                if (node_type == 'function_def_node' .or. &
+                    node_type == 'function_def') then
+                    fn_node => get_node_as_function_def(arena, &
+                                                        mod_node%procedure_indices(j))
+                    if (associated(fn_node) .and. allocated(fn_node%name)) &
+                        proc_name = trim(fn_node%name)
+                else if (node_type == 'subroutine_def_node' .or. &
+                         node_type == 'subroutine_def') then
+                    sb_node => get_node_as_subroutine_def(arena, &
+                                                          mod_node%procedure_indices(j))
+                    if (associated(sb_node) .and. allocated(sb_node%name)) &
+                        proc_name = trim(sb_node%name)
                 end if
-            end select
-        end do
+                if (len_trim(proc_name) == 0) cycle
+                if (module_symbol_is_private(arena, mod_node, proc_name)) cycle
+                call grow_module_export_procedure_indices(context, export_idx)
+                context%module_exports(export_idx)%procedure_node_indices( &
+                    context%module_exports(export_idx)%procedure_count + 1) = &
+                    mod_node%procedure_indices(j)
+                context%module_exports(export_idx)%procedure_count = &
+                    context%module_exports(export_idx)%procedure_count + 1
+            end do
+        end if
 
         context%module_export_count = export_idx
     end subroutine collect_one_module_exports
@@ -815,6 +855,30 @@ subroutine collect_component_declaration(component_index, parent_line, &
         context%module_exports(export_idx)%variable_indices(1:old_size) = old_indices
         deallocate(old_indices)
     end subroutine grow_module_export_variable_indices
+
+    subroutine grow_module_export_procedure_indices(context, export_idx)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: export_idx
+        integer, allocatable :: old_indices(:)
+        integer :: new_size, old_size
+
+        old_size = context%module_exports(export_idx)%procedure_count
+        if (old_size > 0 .and. &
+            allocated(context%module_exports(export_idx)%procedure_node_indices)) then
+            if (old_size < &
+                size(context%module_exports(export_idx)%procedure_node_indices)) return
+        else
+            return
+        end if
+
+        old_indices = context%module_exports(export_idx)%procedure_node_indices
+        new_size = 2 * size(context%module_exports(export_idx)%procedure_node_indices)
+        deallocate(context%module_exports(export_idx)%procedure_node_indices)
+        allocate(context%module_exports(export_idx)%procedure_node_indices(new_size))
+        context%module_exports(export_idx)%procedure_node_indices(1:old_size) = &
+            old_indices
+        deallocate(old_indices)
+    end subroutine grow_module_export_procedure_indices
 
     subroutine lower_module_variables(arena, root_index, context, error_msg)
         ! Emit a zero-initialised i32 global for each scalar integer module

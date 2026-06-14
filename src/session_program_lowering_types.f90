@@ -214,6 +214,9 @@ module session_program_lowering_types
         ! Non-parameter variable declarations exported from the module (#249 B7a).
         integer, allocatable :: variable_indices(:)
         integer :: variable_count = 0
+        ! Procedure (function/subroutine) arena indices exported from the module.
+        integer, allocatable :: procedure_node_indices(:)
+        integer :: procedure_count = 0
     end type module_exports_t
 
     integer, parameter, public :: MAX_PROC_ARGS = 16

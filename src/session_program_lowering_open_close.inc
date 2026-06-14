@@ -96,7 +96,8 @@
     ! --- OPEN ----------------------------------------------------------------
 
     subroutine lower_open(arena, node, context, error_msg)
-        ! Emit fopen(file, mode) and store FILE* in the unit-variable's slot.
+        ! Emit fopen(file, mode) or tmpfile() and store FILE* in the unit slot.
+        ! OPEN with status='scratch' and no file= calls tmpfile().
         use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store, &
                                                   emit_i32_alloca, emit_i32_store
         use, intrinsic :: iso_c_binding, only: c_int64_t
@@ -108,6 +109,7 @@
         type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, file_handle
         type(lr_operand_desc_t) :: uval_op, ptr_slot
         type(lr_operand_desc_t) :: fa(2)
+        type(lr_operand_desc_t) :: no_args(0)
         integer :: unit_number, sym, ios
         character(len=64) :: fgn, mgn
         integer(c_int32_t) :: fgid, mgid
@@ -120,39 +122,46 @@
 
         call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, sstr, error_msg)
         if (len_trim(error_msg) > 0) return
+
         if (len_trim(fpath) == 0) then
-            call unsupported_feature_error('open statement', node%line, &
-                node%column, 'file= specifier required (#247 B5c)', error_msg)
-            return
+            ! No file= specifier: only status='scratch' (or no status) is supported.
+            ! Emit tmpfile() which creates an anonymous temporary file.
+            if (len_trim(sstr) > 0 .and. trim(sstr) /= 'scratch') then
+                call unsupported_feature_error('open statement', node%line, &
+                    node%column, 'file= required unless status=scratch', error_msg)
+                return
+            end if
+            if (.not. emit_ptr_call(context%session, 'tmpfile', no_args, &
+                                     file_handle, error_msg)) return
+        else
+            select case (trim(sstr))
+            case ('replace', 'new')
+                mode_str = 'w'
+            case ('old')
+                mode_str = 'r+'
+            case default
+                mode_str = 'w'
+            end select
+
+            context%string_literal_count = context%string_literal_count + 1
+            write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(fgn), &
+                                             trim(fpath), fgid, error_msg)
+            if (len_trim(error_msg) > 0) return
+            file_ptr_op = printf_format_ptr(context%session, fgid)
+
+            context%string_literal_count = context%string_literal_count + 1
+            write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(mgn), &
+                                             trim(mode_str), mgid, error_msg)
+            if (len_trim(error_msg) > 0) return
+            mode_ptr_op = printf_format_ptr(context%session, mgid)
+
+            fa(1) = file_ptr_op
+            fa(2) = mode_ptr_op
+            if (.not. emit_ptr_call(context%session, 'fopen', fa, &
+                                     file_handle, error_msg)) return
         end if
-
-        select case (trim(sstr))
-        case ('replace', 'new')
-            mode_str = 'w'
-        case ('old')
-            mode_str = 'r+'
-        case default
-            mode_str = 'w'
-        end select
-
-        context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
-        call create_printf_format_global(context%session, trim(fgn), &
-                                         trim(fpath), fgid, error_msg)
-        if (len_trim(error_msg) > 0) return
-        file_ptr_op = printf_format_ptr(context%session, fgid)
-
-        context%string_literal_count = context%string_literal_count + 1
-        write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
-        call create_printf_format_global(context%session, trim(mgn), &
-                                         trim(mode_str), mgid, error_msg)
-        if (len_trim(error_msg) > 0) return
-        mode_ptr_op = printf_format_ptr(context%session, mgid)
-
-        fa(1) = file_ptr_op
-        fa(2) = mode_ptr_op
-        if (.not. emit_ptr_call(context%session, 'fopen', fa, &
-                                 file_handle, error_msg)) return
 
         if (len_trim(nuvar) > 0) then
             unit_number = int(context%next_file_unit)

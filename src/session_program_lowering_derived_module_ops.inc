@@ -607,7 +607,52 @@
                 return
             end if
         end do
+        ! Check module procedures: their names are valid in use-only lists even
+        ! though importing a procedure adds nothing to the symbol table (calls
+        ! are routed by call_emit_name via procedure_module).
+        if (procedure_exported_by_name(arena, export_idx, context, name)) then
+            module_exports_name = .true.
+            return
+        end if
     end function module_exports_name
+
+    logical function procedure_exported_by_name(arena, export_idx, context, name)
+        ! Return true when a module procedure named `name` is in the export table.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+        character(len=:), allocatable :: node_type, proc_name, err
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        procedure_exported_by_name = .false.
+        do i = 1, context%module_exports(export_idx)%procedure_count
+            if (.not. node_exists(arena, &
+                context%module_exports(export_idx)%procedure_node_indices(i))) cycle
+            node_type = get_node_type_at(arena, &
+                context%module_exports(export_idx)%procedure_node_indices(i))
+            call set_empty(proc_name)
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, &
+                    context%module_exports(export_idx)%procedure_node_indices(i))
+                if (associated(fn_node) .and. allocated(fn_node%name)) &
+                    proc_name = trim(fn_node%name)
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, &
+                    context%module_exports(export_idx)%procedure_node_indices(i))
+                if (associated(sb_node) .and. allocated(sb_node%name)) &
+                    proc_name = trim(sb_node%name)
+            end if
+            if (len_trim(proc_name) > 0 .and. same_name(proc_name, name)) then
+                procedure_exported_by_name = .true.
+                return
+            end if
+        end do
+    end function procedure_exported_by_name
 
     subroutine import_module_constants(arena, export_idx, use_node, context, &
                                        error_msg)
