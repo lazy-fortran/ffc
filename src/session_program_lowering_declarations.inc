@@ -107,6 +107,12 @@
             else
                 value_kind = VALUE_F32
             end if
+        case ('complex')
+            if (complex_kind_is_c8(kind_spec)) then
+                value_kind = VALUE_C8
+            else
+                value_kind = VALUE_C4
+            end if
         case ('double precision')
             value_kind = VALUE_F64
         case ('logical')
@@ -178,6 +184,19 @@
             real_kind_is_f64 = .false.
         end select
     end function real_kind_is_f64
+
+    ! Returns true when the complex kind spec selects double precision (kind 8).
+    ! Bare complex and complex(4) are c4 (two f32s).
+    logical function complex_kind_is_c8(kind_spec)
+        character(len=*), intent(in) :: kind_spec
+
+        select case (trim(kind_spec))
+        case ('8', 'real64', 'c_double', 'c_double_complex')
+            complex_kind_is_c8 = .true.
+        case default
+            complex_kind_is_c8 = .false.
+        end select
+    end function complex_kind_is_c8
 
     subroutine declaration_value_kind(node, value_kind, error_msg)
         type(declaration_node), intent(in) :: node

@@ -1,24 +1,40 @@
     subroutine lower_interface_block(arena, node, context, error_msg)
         ! Register bind(c) external integer functions declared in an interface
-        ! block. Calls are lowered separately (#192). Non-bind(c) interfaces,
-        ! generic/operator/assignment interfaces, and non-integer results are
-        ! rejected.
+        ! block (#192). Generic named interfaces (interface foo ... module
+        ! procedure foo_int, foo_real) are registered in the generic table so
+        ! calls can be resolved to the matching specific (#249 B7c).
+        ! Operator/assignment interfaces and operator/assignment blocks are
+        ! silently skipped.
         type(ast_arena_t), intent(in) :: arena
         type(interface_block_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        character(len=:), allocatable :: lowered_kind
 
         call set_empty(error_msg)
         if (allocated(node%kind)) then
-            if (trim(lowercase_text(node%kind)) /= 'interface') then
+            lowered_kind = lowercase_text(trim(node%kind))
+            if (lowered_kind == 'operator' .or. &
+                lowered_kind == 'assignment') then
+                ! Operator/assignment overloading: not yet supported, skip.
+                return
+            end if
+            if (lowered_kind /= 'interface' .and. &
+                lowered_kind /= 'generic') then
                 call unsupported_feature_error('interface block', node%line, &
-                    node%column, 'only plain bind(c) interfaces are supported', &
-                    error_msg)
+                    node%column, 'only plain bind(c) and generic interfaces '// &
+                    'are supported', error_msg)
                 return
             end if
         end if
         if (.not. allocated(node%procedure_indices)) return
+
+        ! A generic interface has a name and module procedure lists inside.
+        if (allocated(node%name) .and. len_trim(node%name) > 0) then
+            call register_generic_interface(arena, node, context, error_msg)
+            return
+        end if
 
         do i = 1, size(node%procedure_indices)
             call register_interface_procedure(arena, node%procedure_indices(i), &
@@ -26,6 +42,219 @@
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_interface_block
+
+    subroutine register_generic_interface(arena, node, context, error_msg)
+        ! Collect the specific procedure names listed in a named generic
+        ! interface block and record them in context%generics so call sites
+        ! can resolve the generic name to the right specific (#249 B7c).
+        type(ast_arena_t), intent(in) :: arena
+        type(interface_block_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j, next
+        type(module_procedure_node), pointer :: mp_node
+        character(len=:), allocatable :: node_type
+
+        call set_empty(error_msg)
+        call grow_generics(context)
+        next = context%generic_count + 1
+        context%generics(next)%generic_name = trim(node%name)
+        context%generics(next)%specific_count = 0
+
+        do i = 1, size(node%procedure_indices)
+            if (.not. node_exists(arena, node%procedure_indices(i))) cycle
+            node_type = get_node_type_at(arena, node%procedure_indices(i))
+            if (node_type /= 'module_procedure_node' .and. &
+                node_type /= 'module_procedure') cycle
+            select type (n => arena%entries(node%procedure_indices(i))%node)
+            type is (module_procedure_node)
+                mp_node => n
+            class default
+                cycle
+            end select
+            if (.not. allocated(mp_node%procedure_names)) cycle
+            do j = 1, size(mp_node%procedure_names)
+                if (context%generics(next)%specific_count >= &
+                    MAX_GENERIC_SPECIFICS) then
+                    error_msg = 'generic interface '//trim(node%name)// &
+                                ' has too many specific procedures'
+                    return
+                end if
+                context%generics(next)%specific_count = &
+                    context%generics(next)%specific_count + 1
+                associate (sc => context%generics(next)%specific_count)
+                    context%generics(next)%specific_names(sc) = &
+                        trim(mp_node%procedure_names(j)%s)
+                    ! Look up the specific's return kind and first-arg kind
+                    ! from the function table (populated during
+                    ! collect_internal_function_names / register_module_procedures).
+                    call query_specific_kinds(context, &
+                        trim(mp_node%procedure_names(j)%s), &
+                        context%generics(next)%return_kinds(sc), &
+                        context%generics(next)%first_arg_kinds(sc))
+                end associate
+            end do
+        end do
+        context%generic_count = next
+    end subroutine register_generic_interface
+
+    subroutine query_specific_kinds(context, specific_name, &
+                                    return_kind, first_arg_kind)
+        ! Look up the return kind and first-argument kind of a specific
+        ! procedure from the function table. Falls back to VALUE_I32 when
+        ! the specific is not yet registered (registration order does not
+        ! guarantee functions come before the interface block).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: specific_name
+        integer, intent(out) :: return_kind, first_arg_kind
+        integer :: i
+
+        return_kind = VALUE_I32
+        first_arg_kind = VALUE_I32
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), specific_name)) then
+                return_kind = context%function_value_kinds(i)
+                ! First-arg kind: scan the specific's node for its first
+                ! parameter declaration.
+                first_arg_kind = specific_first_arg_kind(context, i)
+                return
+            end if
+        end do
+    end subroutine query_specific_kinds
+
+    integer function specific_first_arg_kind(context, fn_index) result(kind)
+        ! Determine the value kind of the first dummy argument of a registered
+        ! specific by looking at its body declarations.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: fn_index
+        integer :: node_idx, i
+        character(len=:), allocatable :: param_name, err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: body_indices(:), param_indices(:)
+
+        kind = VALUE_I32
+        node_idx = context%function_node_indices(fn_index)
+        if (node_idx <= 0) return
+        if (.not. node_exists(context%arena, node_idx)) return
+
+        node_type = get_node_type_at(context%arena, node_idx)
+        if (node_type == 'function_def_node' .or. &
+            node_type == 'function_def') then
+            fn_node => get_node_as_function_def(context%arena, node_idx)
+            if (.not. associated(fn_node)) return
+            if (.not. allocated(fn_node%param_indices)) return
+            if (size(fn_node%param_indices) == 0) return
+            call parameter_name(context%arena, fn_node%param_indices(1), &
+                                param_name, err)
+            if (len_trim(err) > 0) return
+            body_indices = fn_node%body_indices
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(context%arena, node_idx)
+            if (.not. associated(sb_node)) return
+            if (.not. allocated(sb_node%param_indices)) return
+            if (size(sb_node%param_indices) == 0) return
+            call parameter_name(context%arena, sb_node%param_indices(1), &
+                                param_name, err)
+            if (len_trim(err) > 0) return
+            body_indices = sb_node%body_indices
+        else
+            return
+        end if
+
+        ! Scan body declarations for the first parameter's type.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(context%arena, body_indices(i))) cycle
+            select type (decl => context%arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. allocated(decl%var_name)) cycle
+                if (.not. same_name(decl%var_name, param_name)) cycle
+                call type_name_value_kind(decl%type_name, decl%line, &
+                                          decl%column, kind, err)
+                return
+            end select
+        end do
+    end function specific_first_arg_kind
+
+    subroutine grow_generics(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(generic_interface_t), allocatable :: old(:)
+
+        if (.not. allocated(context%generics)) then
+            allocate (context%generics(4))
+            return
+        end if
+        if (context%generic_count < size(context%generics)) return
+        call move_alloc(context%generics, old)
+        allocate (context%generics(2 * size(old)))
+        context%generics(1:size(old)) = old
+    end subroutine grow_generics
+
+    integer function find_generic(context, name) result(idx)
+        ! Return the index of a registered generic interface, or 0 if not found.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        idx = 0
+        do i = 1, context%generic_count
+            if (same_name(context%generics(i)%generic_name, name)) then
+                idx = i
+                return
+            end if
+        end do
+    end function find_generic
+
+    function resolve_generic(context, generic_idx, first_arg_kind) &
+        result(specific_name)
+        ! Choose the specific procedure that matches first_arg_kind.
+        ! Returns the first specific whose first_arg_kind equals the actual,
+        ! or the first specific when no exact match exists.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: generic_idx, first_arg_kind
+        character(len=:), allocatable :: specific_name
+        integer :: i
+        type(generic_interface_t) :: g
+
+        g = context%generics(generic_idx)
+        if (g%specific_count == 0) then
+            specific_name = ''
+            return
+        end if
+        ! Exact match first.
+        do i = 1, g%specific_count
+            if (g%first_arg_kinds(i) == first_arg_kind) then
+                specific_name = trim(g%specific_names(i))
+                return
+            end if
+        end do
+        ! Fallback: first specific.
+        specific_name = trim(g%specific_names(1))
+    end function resolve_generic
+
+    integer function generic_return_kind(context, generic_idx, &
+                                         first_arg_kind) result(ret_kind)
+        ! Return kind of the specific selected for first_arg_kind.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: generic_idx, first_arg_kind
+        integer :: i
+        type(generic_interface_t) :: g
+
+        g = context%generics(generic_idx)
+        ret_kind = VALUE_I32
+        if (g%specific_count == 0) return
+        do i = 1, g%specific_count
+            if (g%first_arg_kinds(i) == first_arg_kind) then
+                ret_kind = g%return_kinds(i)
+                return
+            end if
+        end do
+        ret_kind = g%return_kinds(1)
+    end function generic_return_kind
 
     subroutine register_interface_procedure(arena, proc_index, block, context, &
                                             error_msg)
@@ -274,3 +503,37 @@
         allocate (context%external_procedures(2 * size(old)))
         context%external_procedures(1:size(old)) = old
     end subroutine grow_external_procedures
+
+    function degeneric_call_name(context, name, first_arg_kind) result(resolved)
+        ! If name is a registered generic, return the matching specific name;
+        ! otherwise return name unchanged (#249 B7c).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: first_arg_kind
+        character(len=:), allocatable :: resolved
+        integer :: g
+
+        g = find_generic(context, name)
+        if (g > 0) then
+            resolved = resolve_generic(context, g, first_arg_kind)
+        else
+            resolved = trim(name)
+        end if
+    end function degeneric_call_name
+
+    integer function generic_call_return_kind(context, name, first_arg_kind) &
+        result(ret_kind)
+        ! Return kind of the specific selected for a generic call, or 0 when
+        ! name is not a generic (#249 B7c).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: first_arg_kind
+        integer :: g
+
+        g = find_generic(context, name)
+        if (g > 0) then
+            ret_kind = generic_return_kind(context, g, first_arg_kind)
+        else
+            ret_kind = 0
+        end if
+    end function generic_call_return_kind

@@ -1,6 +1,6 @@
 module session_program_lowering
-    use, intrinsic :: iso_c_binding, only: c_double, c_float, c_int, c_int32_t, &
-                                                                              c_int64_t
+    use, intrinsic :: iso_c_binding, only: c_char, c_double, c_float, c_int, &
+                                           c_int32_t, c_int64_t
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
                                 range_expression_node
@@ -10,7 +10,9 @@ module session_program_lowering
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_io, only: open_statement_node, close_statement_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
-                              visibility_statement_node, data_statement_node
+                              module_procedure_node, &
+                              visibility_statement_node, data_statement_node, &
+                              complex_literal_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
@@ -41,9 +43,11 @@ module session_program_lowering
                                        finish_function, finish_and_emit_exe, &
                                        finish_and_emit_object, emit_void_call, &
                                        emit_i32_call, emit_ptr_call, &
+                                       emit_i32_indirect_call, &
+                                       emit_void_indirect_call, &
                                        liric_session_create, &
                                        i32_immediate, i32_vreg, lr_operand_desc_t, &
-                                       lr_type_ptr_s, lr_type_i64_s, &
+                                       lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
                                        lr_type_array_s, &
                                        lr_session_global, lr_session_intern, &
                                        lr_session_emit, lr_inst_desc_t, lr_error_t, &
@@ -109,6 +113,10 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf, emit_scanf, &
                                                  emit_fprintf
+    use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
+                                                    synthesize_complex8_printer, &
+                                                    emit_complex4_print_call, &
+                                                    emit_complex8_print_call
     use liric_session_io_bindings, only: emit_liric_f32_binary, &
                                           emit_liric_i32_to_f32, &
                                           emit_liric_f32_to_i32, &
@@ -176,13 +184,16 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 derived_type_info_t, &
                                                 module_exports_t, &
                                                 external_procedure_t, &
+                                                generic_interface_t, &
                                                 MAX_PROC_ARGS, &
+                                                MAX_GENERIC_SPECIFICS, &
                                                 VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
+                                                VALUE_C4, VALUE_C8, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
                                                  VALUE_DERIVED, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
                                                  VALUE_SUBROUTINE, VALUE_C_PTR, &
-                                                 VALUE_CLASS_STAR, &
+                                                 VALUE_CLASS_STAR, VALUE_PROC_PTR, &
                                                  TYPE_ID_INTEGER, TYPE_ID_REAL, &
                                                  TYPE_ID_LOGICAL, &
                                                  I32_INTRINSIC_NONE, &
@@ -245,6 +256,15 @@ contains
             call lower_derived_type_declaration(node, context, derived_type_index, &
                                                 error_msg)
             return
+        end if
+        ! Procedure pointer: procedure(iface), pointer :: fp (#245 B3d).
+        ! Detected by type_name starting with "procedure" and is_pointer.
+        if (node%is_pointer .and. allocated(node%type_name)) then
+            if (lowercase_text(trim(adjustl(node%type_name(1:min(9, &
+                    len_trim(node%type_name)))))) == 'procedure') then
+                call lower_proc_pointer_declaration(node, context, error_msg)
+                return
+            end if
         end if
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
             call unsupported_feature_error('pointer/target array declaration', &
@@ -589,6 +609,10 @@ contains
             call define_character_symbol(context, name, 1, error_msg)
         else if (value_kind == VALUE_C_PTR) then
             call define_c_ptr_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_C4) then
+            call define_c4_symbol(context, name, error_msg)
+        else if (value_kind == VALUE_C8) then
+            call define_c8_symbol(context, name, error_msg)
         else
             error_msg = 'unknown scalar value kind for direct LIRIC session'
         end if
@@ -732,6 +756,57 @@ contains
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_f64_symbol
+    subroutine define_c4_symbol(context, name, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_float
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate complex declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_C4
+        ! Alloca re and im slots; re in address, im in element_address.
+        if (.not. emit_liric_f32_alloca(context%session, &
+                                        context%symbols(index)%address, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_alloca(context%session, &
+                                        context%symbols(index)%element_address, &
+                                        error_msg)) return
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%value = liric_f32_immediate(context%session, 0.0_c_float)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_c4_symbol
+    subroutine define_c8_symbol(context, name, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_double
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate complex declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_C8
+        if (.not. emit_liric_f64_alloca(context%session, &
+                                        context%symbols(index)%address, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_alloca(context%session, &
+                                        context%symbols(index)%element_address, &
+                                        error_msg)) return
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%value = liric_f64_immediate(context%session, 0.0_c_double)
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_c8_symbol
     subroutine define_logical_symbol(context, name, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
@@ -872,6 +947,14 @@ contains
         else if (context%symbols(symbol_index)%value_kind == VALUE_C_PTR) then
             call lower_c_ptr_expression(arena, node%value_index, context, value, &
                                         error_msg)
+        else if (context%symbols(symbol_index)%value_kind == VALUE_C4) then
+            call lower_c4_assignment(arena, node%value_index, symbol_index, &
+                                     context, error_msg)
+            return
+        else if (context%symbols(symbol_index)%value_kind == VALUE_C8) then
+            call lower_c8_assignment(arena, node%value_index, symbol_index, &
+                                     context, error_msg)
+            return
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -932,6 +1015,7 @@ contains
     include 'session_program_lowering_print_ops.inc'
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
+    include 'session_program_lowering_complex.inc'
     include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
@@ -944,38 +1028,57 @@ contains
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name
+        character(len=:), allocatable :: name, call_name
         integer, allocatable :: arg_indices(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        integer :: first_arg_kind
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! Indirect subroutine call through a procedure pointer (B3d).
+        if (is_proc_pointer_call(context, name)) then
+            call lower_void_proc_ptr_call(arena, node_index, context, error_msg)
+            return
+        end if
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
-        if (same_name(name, 'get_command_argument')) then
+        ! Resolve generic -> specific (#249 B7c).
+        first_arg_kind = VALUE_I32
+        if (allocated(arg_indices)) then
+            if (size(arg_indices) > 0) then
+                first_arg_kind = expression_value_kind(arena, arg_indices(1), &
+                                                       context, VALUE_I32)
+            end if
+        end if
+        call_name = degeneric_call_name(context, name, first_arg_kind)
+        if (same_name(call_name, 'get_command_argument')) then
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
             return
         end if
-        if (same_name(name, 'c_f_pointer')) then
+        if (same_name(call_name, 'c_f_pointer')) then
             call lower_c_f_pointer(arena, arg_indices, context, error_msg)
             return
         end if
-        if (is_method_subroutine_call(name)) then
-            call lower_method_subroutine_call(arena, name, arg_indices, context, &
-                                              error_msg)
+        if (same_name(call_name, 'move_alloc')) then
+            call lower_move_alloc(arena, arg_indices, context, error_msg)
             return
         end if
-        if (external_procedure_index(context, name) > 0) then
+        if (is_method_subroutine_call(call_name)) then
+            call lower_method_subroutine_call(arena, call_name, arg_indices, &
+                                              context, error_msg)
+            return
+        end if
+        if (external_procedure_index(context, call_name) > 0) then
             call lower_external_void_call(arena, node_index, &
-                external_procedure_index(context, name), context, error_msg)
+                external_procedure_index(context, call_name), context, error_msg)
             return
         end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
-                                    name, args, copyback_indices, error_msg)
+                                    call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_call_with_optional_padding(context, &
-                call_emit_name(arena, name), args, error_msg)) &
+                call_emit_name(arena, call_name), args, error_msg)) &
             return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call

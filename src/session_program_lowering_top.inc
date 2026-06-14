@@ -72,6 +72,14 @@
             call destroy(context%session)
             return
         end if
+        if (.not. synthesize_complex4_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        if (.not. synthesize_complex8_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
         call collect_program_parameters(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)

@@ -179,6 +179,7 @@
       type(lr_operand_desc_t), allocatable :: args(:)
       integer, allocatable :: copyback_indices(:)
       integer :: intrinsic_id
+      character(len=:), allocatable :: call_name
 
       if (node%base_expr_index > 0) then
           call lower_derived_component_element_load(arena, node, context, value, &
@@ -197,6 +198,10 @@
           error_msg = 'direct LIRIC session function call requires a name'
           return
       end if
+
+      ! Resolve generic -> specific (#249 B7c).
+      call_name = degeneric_call_name(context, node%name, &
+          first_call_arg_kind(arena, node, context, VALUE_I32))
 
       if (external_procedure_index(context, node%name) > 0) then
           call lower_external_i32_call(arena, node, &
@@ -304,8 +309,13 @@
           return
       end if
 
-      intrinsic_id = i32_intrinsic_id(node%name)
-      if (.not. is_contained_i32_function(context, node%name)) then
+      ! Procedure pointer indirect call (B3d): fp(args).
+      if (is_proc_pointer_call(context, node%name)) then
+          call lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
+          return
+      end if
+      intrinsic_id = i32_intrinsic_id(call_name)
+      if (.not. is_contained_i32_function(context, call_name)) then
           if (intrinsic_id /= I32_INTRINSIC_NONE) then
               call lower_i32_intrinsic_call(arena, node, intrinsic_id, &
                                             context, value, error_msg)
@@ -326,7 +336,7 @@
 
       if (allocated(node%arg_indices)) then
           call prepare_reference_args(arena, node%arg_indices, context, &
-                                      VALUE_I32, node%name, args, &
+                                      VALUE_I32, call_name, args, &
                                       copyback_indices, error_msg)
           if (len_trim(error_msg) > 0) return
       else
@@ -334,7 +344,7 @@
           allocate (copyback_indices(0))
       end if
 
-      if (.not. emit_i32_call(context%session, call_emit_name(arena, node%name), &
+      if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name), &
                               args, value, error_msg)) return
       call copy_back_reference_args(context, args, copyback_indices, error_msg)
   end subroutine lower_i32_call

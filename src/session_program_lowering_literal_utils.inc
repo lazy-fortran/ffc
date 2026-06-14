@@ -57,6 +57,36 @@
              context%symbols(sym)%value_kind == vk
     end function is_real_array_reduction
 
+    logical function is_real_dot_product(arena, node, context, vk) result(ok)
+        !! True when node is a dot_product call whose two arguments are
+        !! rank-1 arrays of value kind vk.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: vk
+        character(len=:), allocatable :: a_name, b_name, err
+        integer :: a_sym, b_sym
+
+        ok = .false.
+        if (.not. allocated(node%name)) return
+        if (trim(node%name) /= 'dot_product') return
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 2) return
+        call get_identifier_name(arena, node%arg_indices(1), a_name, err)
+        if (len_trim(err) > 0) return
+        call get_identifier_name(arena, node%arg_indices(2), b_name, err)
+        if (len_trim(err) > 0) return
+        a_sym = find_symbol(context, a_name)
+        b_sym = find_symbol(context, b_name)
+        if (a_sym <= 0 .or. b_sym <= 0) return
+        ok = context%symbols(a_sym)%is_array .and. &
+             context%symbols(a_sym)%array_rank == 1 .and. &
+             context%symbols(a_sym)%value_kind == vk .and. &
+             context%symbols(b_sym)%is_array .and. &
+             context%symbols(b_sym)%array_rank == 1 .and. &
+             context%symbols(b_sym)%value_kind == vk
+    end function is_real_dot_product
+
     subroutine real_opcode(source_op, line, column, opcode, error_msg)
         character(len=*), intent(in) :: source_op
         integer, intent(in) :: line

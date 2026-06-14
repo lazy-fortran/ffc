@@ -1031,10 +1031,13 @@
                         ': '//trim(arg_name)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
-            error_msg = trim(intrinsic_name)//' only supports integer arrays'
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64)
+            ! integer, real(4), and real(8) arrays are supported
+        case default
+            error_msg = trim(intrinsic_name)//' only supports integer and real arrays'
             return
-        end if
+        end select
 
         call set_empty(error_msg)
     end subroutine resolve_i32_array_argument
@@ -1098,7 +1101,7 @@
                 return
             end if
             if (context%symbols(symbol_index)%array_rank /= 2) then
-                error_msg = 'matmul result must be assigned to a rank-2 integer array'
+                error_msg = 'matmul result must be assigned to a rank-2 array'
                 return
             end if
 
@@ -1124,9 +1127,16 @@
             b_row_base = int(context%symbols(b_index)%array_dim_lowers(1), c_int64_t)
             b_col_base = int(context%symbols(b_index)%array_dim_lowers(2), c_int64_t)
 
+            associate (vk => context%symbols(symbol_index)%value_kind)
             do j = 0, int(target_cols) - 1
                 do i = 0, int(target_rows) - 1
-                    sum = i32_immediate(context%session, 0_c_int64_t)
+                    if (vk == VALUE_F32) then
+                        sum = liric_f32_immediate(context%session, 0.0_c_float)
+                    else if (vk == VALUE_F64) then
+                        sum = liric_f64_immediate(context%session, 0.0_c_double)
+                    else
+                        sum = i32_immediate(context%session, 0_c_int64_t)
+                    end if
                     do k = 0, int(a_cols) - 1
                         a_row = a_row_base + int(i, c_int64_t)
                         a_col = a_col_base + int(k, c_int64_t)
@@ -1138,11 +1148,27 @@
                         call load_i32_array_element(context, b_index, b_row, &
                                                     b_value, error_msg, b_col)
                         if (len_trim(error_msg) > 0) return
-                        if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
-                                                  a_value, b_value, product, &
-                                                  error_msg)) return
-                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, sum, &
-                                                  product, next_sum, error_msg)) return
+                        if (vk == VALUE_F32) then
+                            if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                                                            a_value, b_value, product, &
+                                                            error_msg)) return
+                            if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                                                            sum, product, next_sum, &
+                                                            error_msg)) return
+                        else if (vk == VALUE_F64) then
+                            if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                                                            a_value, b_value, product, &
+                                                            error_msg)) return
+                            if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                                                            sum, product, next_sum, &
+                                                            error_msg)) return
+                        else
+                            if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                                                      a_value, b_value, product, &
+                                                      error_msg)) return
+                            if (.not. emit_i32_binary(context%session, LR_OP_ADD, sum, &
+                                                      product, next_sum, error_msg)) return
+                        end if
                         sum = next_sum
                     end do
                     linear_index = int(i, c_int64_t) + target_rows * int(j, c_int64_t)
@@ -1151,6 +1177,7 @@
                     if (len_trim(error_msg) > 0) return
                 end do
             end do
+            end associate
             call set_empty(error_msg)
         class default
             error_msg = 'matmul requires an intrinsic call'
@@ -1197,7 +1224,7 @@
                 return
             end if
             if (context%symbols(symbol_index)%array_rank /= 2) then
-                error_msg = 'transpose result must be assigned to a rank-2 integer array'
+                error_msg = 'transpose result must be assigned to a rank-2 array'
                 return
             end if
 
@@ -1271,7 +1298,7 @@
             if (len_trim(error_msg) > 0) return
             if (context%symbols(symbol_index)%array_rank < 1 .or. &
                 context%symbols(symbol_index)%array_rank > 2) then
-                error_msg = 'reshape result must be assigned to a rank-1 or rank-2 integer array'
+                error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
                 return
             end if
 

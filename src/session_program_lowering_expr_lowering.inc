@@ -131,6 +131,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: call_name
 
         if (node%is_array_access) then
             call unsupported_feature_error('array expression', &
@@ -144,19 +145,22 @@
             error_msg = 'direct LIRIC session logical function call requires a name'
             return
         end if
-        if (same_name(node%name, 'c_associated') .and. .not. &
-            is_contained_logical_function(context, node%name)) then
+        ! Resolve generic -> specific (#249 B7c).
+        call_name = degeneric_call_name(context, node%name, &
+            first_call_arg_kind(arena, node, context, VALUE_LOGICAL))
+        if (same_name(call_name, 'c_associated') .and. .not. &
+            is_contained_logical_function(context, call_name)) then
             call lower_c_associated(arena, node%arg_indices, context, value, &
                                     error_msg)
             return
         end if
-        if (same_name(node%name, 'associated') .and. .not. &
-            is_contained_logical_function(context, node%name)) then
+        if (same_name(call_name, 'associated') .and. .not. &
+            is_contained_logical_function(context, call_name)) then
             call lower_associated(arena, node%arg_indices, context, value, &
                                   error_msg)
             return
         end if
-        if (.not. is_contained_logical_function(context, node%name)) then
+        if (.not. is_contained_logical_function(context, call_name)) then
             call unsupported_feature_error('scalar logical function call', &
                                            node%line, node%column, &
                                            'direct LIRIC session only '// &
@@ -167,7 +171,7 @@
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_LOGICAL, node%name, args, &
+                                        VALUE_LOGICAL, call_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
@@ -175,7 +179,7 @@
             allocate (copyback_indices(0))
         end if
 
-        if (.not. emit_i32_call(context%session, call_emit_name(arena, node%name), &
+        if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name), &
                                 args, value, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_logical_call
@@ -280,6 +284,7 @@
         type(lr_operand_desc_t) :: element_addr
         integer, allocatable :: copyback_indices(:)
         integer :: intrinsic_id
+        character(len=:), allocatable :: call_name
 
         if (node%is_array_access) then
             call lower_real_array_element_address(arena, node, context, VALUE_F32, &
@@ -297,7 +302,11 @@
             return
         end if
 
-        intrinsic_id = f64_intrinsic_id(node%name)
+        ! Resolve generic -> specific (#249 B7c).
+        call_name = degeneric_call_name(context, node%name, &
+            first_call_arg_kind(arena, node, context, VALUE_F32))
+
+        intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f32_intrinsic_call(arena, node, intrinsic_id, context, &
                                           value, error_msg)
@@ -306,11 +315,17 @@
 
         if (is_real_array_reduction(arena, node, context, VALUE_F32)) then
             call lower_array_reduction_intrinsic(arena, node, context, value, &
-                                                 error_msg, trim(node%name))
+                                                 error_msg, trim(call_name))
             return
         end if
 
-        if (.not. is_contained_f32_function(context, node%name)) then
+        if (is_real_dot_product(arena, node, context, VALUE_F32)) then
+            call lower_f32_dot_product_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+            return
+        end if
+
+        if (.not. is_contained_f32_function(context, call_name)) then
             call unsupported_feature_error('scalar real(4) function call', &
                                            node%line, node%column, &
                                            'direct LIRIC session only '// &
@@ -322,7 +337,7 @@
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_F32, node%name, args, &
+                                        VALUE_F32, call_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
@@ -331,7 +346,7 @@
         end if
 
         if (.not. emit_liric_f32_call(context%session, &
-                call_emit_name(arena, node%name), args, value, &
+                call_emit_name(arena, call_name), args, value, &
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_f32_call
@@ -380,9 +395,14 @@
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
                     end if
                 else
-                    is_f32 = is_contained_f32_function(context, node%name)
+                    is_f32 = is_contained_f32_function(context, node%name) .or. &
+                        generic_call_return_kind(context, node%name, &
+                            first_call_arg_kind(arena, node, context, &
+                                                VALUE_I32)) == VALUE_F32
                     if (.not. is_f32) &
                         is_f32 = is_real_array_reduction(arena, node, context, VALUE_F32)
+                    if (.not. is_f32) &
+                        is_f32 = is_real_dot_product(arena, node, context, VALUE_F32)
                 end if
             end if
         end select
@@ -483,6 +503,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: element_addr
         integer :: intrinsic_id
+        character(len=:), allocatable :: call_name
 
         if (node%is_array_access) then
             call lower_real_array_element_address(arena, node, context, VALUE_F64, &
@@ -500,25 +521,37 @@
             return
         end if
 
-        intrinsic_id = f64_intrinsic_id(node%name)
+        ! Resolve generic -> specific (#249 B7c).
+        call_name = degeneric_call_name(context, node%name, &
+            first_call_arg_kind(arena, node, context, VALUE_F64))
+
+        intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                           value, error_msg)
             return
         end if
         ! dble(x) is identical to real(x, kind=8): promote/convert any type to f64.
-        if (same_name(node%name, 'dble') .and. .not. &
-            is_contained_f64_function(context, node%name)) then
+        if (same_name(call_name, 'dble') .and. .not. &
+            is_contained_f64_function(context, call_name)) then
             call lower_f64_real_intrinsic(arena, node, context, value, error_msg)
             return
         end if
         if (is_real_array_reduction(arena, node, context, VALUE_F64)) then
             call lower_array_reduction_intrinsic(arena, node, context, value, &
-                                                 error_msg, trim(node%name))
+                                                 error_msg, trim(call_name))
             return
         end if
-        if (is_contained_f64_function(context, node%name)) then
-            call lower_contained_f64_call(arena, node, context, value, error_msg)
+
+        if (is_real_dot_product(arena, node, context, VALUE_F64)) then
+            call lower_f64_dot_product_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+            return
+        end if
+
+        if (is_contained_f64_function(context, call_name)) then
+            call lower_contained_f64_call_named(arena, node, context, call_name, &
+                                                value, error_msg)
             return
         end if
         if (node%is_intrinsic) then
@@ -539,12 +572,25 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_contained_f64_call_named(arena, node, context, node%name, &
+                                            value, error_msg)
+    end subroutine lower_contained_f64_call
+
+    subroutine lower_contained_f64_call_named(arena, node, context, call_name, &
+                                              value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: call_name
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_F64, node%name, args, &
+                                        VALUE_F64, call_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
@@ -553,10 +599,10 @@
         end if
 
         if (.not. emit_liric_f64_call(context%session, &
-                call_emit_name(arena, node%name), args, value, &
+                call_emit_name(arena, call_name), args, value, &
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
-    end subroutine lower_contained_f64_call
+    end subroutine lower_contained_f64_call_named
 
     recursive logical function is_f64_expression(arena, node_index, context) &
         result(is_f64)
@@ -610,10 +656,15 @@
                         is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
                     end if
                 else
-                    is_f64 = is_contained_f64_function(context, node%name)
+                    is_f64 = is_contained_f64_function(context, node%name) .or. &
+                        generic_call_return_kind(context, node%name, &
+                            first_call_arg_kind(arena, node, context, &
+                                                VALUE_I32)) == VALUE_F64
                     is_f64 = is_f64 .or. is_f64_intrinsic_expression(arena, node, context)
                     if (.not. is_f64) &
                         is_f64 = is_real_array_reduction(arena, node, context, VALUE_F64)
+                    if (.not. is_f64) &
+                        is_f64 = is_real_dot_product(arena, node, context, VALUE_F64)
                 end if
             else
                 is_f64 = is_f64_intrinsic_expression(arena, node, context)

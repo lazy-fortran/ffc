@@ -104,8 +104,49 @@ emits no code. `associated(p)` (one-argument form) is a compile-time boolean
 derived from the `is_associated` flag; it folds to an `i32` immediate `0` or `1`.
 
 This is a straight-line compile-time model. Re-pointing across a branch
-(`if (cond) p => a; else p => b`) and the two-argument `associated(p, t)` are
-not covered by this slice; they need runtime pointer comparison and land in B3c.
+(`if (cond) p => a; else p => b`) requires runtime pointer comparison; that
+case is not yet supported.
+
+### Two-argument ASSOCIATED (#245 B3c)
+
+`associated(p, t)` returns true when `p` is associated and points to `t`.
+In straight-line code `p => t` leaves both `p` and `t` sharing the same
+address operand. The two-argument form checks whether `is_associated` is set
+and whether the address payload stored in `p`'s symbol matches the address
+payload of the named target. If so, it folds to `i32` immediate `1`; otherwise
+`0`. No code is emitted; the comparison is entirely at compile time.
+
+This covers the common single-block pattern. If `p` was pointed at a different
+target in a preceding branch, the compile-time address payload may be stale and
+the check is unsupported.
+
+### Procedure pointers (#245 B3d)
+
+A `procedure(...), pointer :: fp` declaration allocates one `ptr` alloca slot
+on the stack. The slot holds the function address as an opaque pointer, zero on
+entry. The lowering symbol records `is_proc_pointer = .true.` and
+`value_kind = VALUE_PROC_PTR`.
+
+`fp => my_func` writes the address of `my_func` into the slot with a
+`ptr store`. The address is obtained through `lr_session_intern`, which returns
+a symbol id for the function name, wrapped as a `global_operand`. `fp => null()`
+clears `is_associated` on the symbol and emits no store.
+
+A call through `fp` loads the slot with a `ptr load` to get the callee address,
+then emits `LR_OP_CALL` with that loaded `ptr` vreg as the first operand
+(indirect call). For a function result the return type is `i32`; for a
+subroutine the return type is `void`. The argument list is passed to the same
+reference-slot ABI used for direct contained-procedure calls.
+
+The call site in the IR looks like:
+
+```
+%0 = ptr load <fp_alloca>          ; load function address
+%1 = i32 call %0(arg1, arg2, ...)  ; indirect call through ptr
+```
+
+Re-pointing `fp` to a different function in a later statement replaces the slot
+contents; the next call through `fp` picks up the new address.
 
 ## Derived Types
 

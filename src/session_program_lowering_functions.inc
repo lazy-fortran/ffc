@@ -634,7 +634,6 @@
             error_msg = ff_error
             return
         end if
-        if (size(procedure_indices) == 0) return
         do p = 1, size(procedure_indices)
             if (.not. node_exists(arena, procedure_indices(p))) cycle
             node_type = get_node_type_at(arena, procedure_indices(p))
@@ -662,6 +661,24 @@
                                                     context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
+        end do
+        ! Register named generic interfaces from the module declaration section
+        ! (#249 B7c). This must run after the procedure loop so the specific
+        ! procedures are already in the function table when query_specific_kinds
+        ! is called.
+        if (.not. allocated(declaration_indices)) return
+        do p = 1, size(declaration_indices)
+            if (.not. node_exists(arena, declaration_indices(p))) cycle
+            node_type = get_node_type_at(arena, declaration_indices(p))
+            if (node_type /= 'interface_block_node' .and. &
+                node_type /= 'interface_block') cycle
+            select type (iblock => arena%entries(declaration_indices(p))%node)
+            type is (interface_block_node)
+                if (.not. allocated(iblock%name)) cycle
+                if (len_trim(iblock%name) == 0) cycle
+                call register_generic_interface(arena, iblock, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
         end do
     end subroutine register_module_procedures
 

@@ -70,6 +70,7 @@
 
     subroutine lower_pointer_assignment(arena, node, context, error_msg)
         ! p => t : the pointer adopts the target's storage address.
+        ! Dispatches to lower_proc_pointer_assignment when p is a procedure pointer.
         type(ast_arena_t), intent(in) :: arena
         type(pointer_assignment_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -80,6 +81,10 @@
         call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
         ptr_index = find_symbol(context, ptr_name)
+        if (ptr_index > 0 .and. context%symbols(ptr_index)%is_proc_pointer) then
+            call lower_proc_pointer_assignment(arena, node, context, error_msg)
+            return
+        end if
         if (ptr_index <= 0) then
             error_msg = 'pointer assignment target was not declared: '//trim(ptr_name)
             return
@@ -152,44 +157,264 @@
     end subroutine lower_nullify
 
     subroutine lower_associated(arena, arg_indices, context, value, error_msg)
-        ! associated(p) : a compile-time logical for straight-line association
-        ! state (#245 slice B3a). The two-argument form lands in B3c.
+        ! associated(p) / associated(p, t): compile-time association check
+        ! (#245 B3a / B3c). One-argument form folds to the `is_associated` flag.
+        ! Two-argument form additionally checks that p and t point to the same
+        ! target (identical address operand in compile-time straight-line code).
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name
-        integer :: symbol_index
+        character(len=:), allocatable :: ptr_name, target_name
+        integer :: ptr_idx, tgt_idx
+        logical :: same_target
 
         call set_empty(error_msg)
         if (.not. allocated(arg_indices)) then
-            error_msg = 'associated requires one argument'
+            error_msg = 'associated requires at least one argument'
             return
         end if
-        if (size(arg_indices) /= 1) then
-            error_msg = 'direct LIRIC session supports only one-argument '// &
-                        'associated (#245 slice B3a)'
+        if (size(arg_indices) < 1 .or. size(arg_indices) > 2) then
+            error_msg = 'associated requires one or two arguments'
             return
         end if
         if (.not. is_identifier(arena, arg_indices(1))) then
-            error_msg = 'associated argument must be a pointer variable'
+            error_msg = 'associated first argument must be a pointer variable'
             return
         end if
-        call get_identifier_name(arena, arg_indices(1), name, error_msg)
+        call get_identifier_name(arena, arg_indices(1), ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
-        if (symbol_index <= 0) then
-            error_msg = 'associated argument was not declared: '//trim(name)
+        ptr_idx = find_symbol(context, ptr_name)
+        if (ptr_idx <= 0) then
+            error_msg = 'associated argument was not declared: '//trim(ptr_name)
             return
         end if
-        if (.not. context%symbols(symbol_index)%is_pointer) then
-            error_msg = 'associated argument is not a pointer: '//trim(name)
+        if (.not. context%symbols(ptr_idx)%is_pointer .and. &
+            .not. context%symbols(ptr_idx)%is_proc_pointer) then
+            error_msg = 'associated argument is not a pointer: '//trim(ptr_name)
             return
         end if
-        if (context%symbols(symbol_index)%is_associated) then
+        if (size(arg_indices) == 1) then
+            ! One-argument: fold to compile-time association flag.
+            if (context%symbols(ptr_idx)%is_associated) then
+                value = i32_immediate(context%session, 1_c_int64_t)
+            else
+                value = i32_immediate(context%session, 0_c_int64_t)
+            end if
+            return
+        end if
+        ! Two-argument form: also require same target (B3c).
+        if (.not. is_identifier(arena, arg_indices(2))) then
+            error_msg = 'associated second argument must be a target variable'
+            return
+        end if
+        call get_identifier_name(arena, arg_indices(2), target_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        tgt_idx = find_symbol(context, target_name)
+        if (tgt_idx <= 0) then
+            error_msg = 'associated second argument was not declared: '// &
+                        trim(target_name)
+            return
+        end if
+        ! For compile-time straight-line code compare address vreg payloads.
+        same_target = .false.
+        if (context%symbols(ptr_idx)%is_associated .and. &
+            context%symbols(tgt_idx)%has_address) then
+            same_target = &
+                context%symbols(ptr_idx)%address%payload == &
+                context%symbols(tgt_idx)%address%payload
+        end if
+        if (same_target) then
             value = i32_immediate(context%session, 1_c_int64_t)
         else
             value = i32_immediate(context%session, 0_c_int64_t)
         end if
     end subroutine lower_associated
+
+    subroutine lower_proc_pointer_declaration(node, context, error_msg)
+        ! procedure(iface), pointer :: fp => null() (#245 slice B3d).
+        ! A procedure pointer is stored as a ptr alloca slot; the callee address
+        ! is loaded from that slot at each indirect call site.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call define_proc_pointer_symbol(context, node%var_names(i), &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call define_proc_pointer_symbol(context, node%var_name, error_msg)
+        else
+            error_msg = 'procedure pointer declaration has no variable name'
+        end if
+    end subroutine lower_proc_pointer_declaration
+
+    subroutine define_proc_pointer_symbol(context, name, error_msg)
+        ! Allocate a ptr slot on the stack; the slot holds the function address.
+        ! Initially null (zeroed by alloca semantics at declaration).
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: idx
+
+        idx = find_symbol(context, name)
+        if (idx > 0) then
+            ! Already declared (e.g. a dummy re-declaration); benign.
+            call set_empty(error_msg)
+            return
+        end if
+        call grow_symbols(context)
+        idx = context%symbol_count + 1
+        context%symbols(idx)%name = trim(name)
+        context%symbols(idx)%value_kind = VALUE_PROC_PTR
+        context%symbols(idx)%is_pointer = .true.
+        context%symbols(idx)%is_proc_pointer = .true.
+        context%symbols(idx)%is_associated = .false.
+        ! Allocate a ptr slot on the stack; address stores the slot address.
+        if (.not. emit_ptr_alloca(context%session, &
+                                  context%symbols(idx)%address, error_msg)) return
+        context%symbols(idx)%has_address = .true.
+        context%symbol_count = idx
+        call set_empty(error_msg)
+    end subroutine define_proc_pointer_symbol
+
+    subroutine lower_proc_pointer_assignment(arena, node, context, error_msg)
+        ! fp => my_func : store the function address into fp's ptr slot.
+        ! Also handles fp => null() which clears the association.
+        type(ast_arena_t), intent(in) :: arena
+        type(pointer_assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: ptr_name, target_name
+        integer :: ptr_idx, target_idx
+        type(lr_operand_desc_t) :: callee_global
+        integer(c_int32_t) :: symbol_id
+        character(kind=c_char), allocatable :: c_name(:)
+
+        call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ptr_idx = find_symbol(context, ptr_name)
+        if (ptr_idx <= 0) then
+            error_msg = 'procedure pointer was not declared: '//trim(ptr_name)
+            return
+        end if
+        if (.not. context%symbols(ptr_idx)%is_proc_pointer) then
+            error_msg = 'left of => is not a procedure pointer: '//trim(ptr_name)
+            return
+        end if
+        if (.not. is_identifier(arena, node%target_index)) then
+            error_msg = 'procedure pointer assignment requires a procedure name'
+            return
+        end if
+        call get_identifier_name(arena, node%target_index, target_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! null() clears the association.
+        if (same_name(target_name, 'null')) then
+            context%symbols(ptr_idx)%is_associated = .false.
+            call set_empty(error_msg)
+            return
+        end if
+        ! Check whether target is another procedure pointer being copied.
+        target_idx = find_symbol(context, target_name)
+        if (target_idx > 0 .and. context%symbols(target_idx)%is_proc_pointer) then
+            ! Copy the callee ptr from the source slot into the destination slot.
+            if (.not. emit_ptr_load(context%session, &
+                                    context%symbols(target_idx)%address, &
+                                    callee_global, error_msg)) return
+            if (.not. emit_ptr_store(context%session, callee_global, &
+                                     context%symbols(ptr_idx)%address, &
+                                     error_msg)) return
+            context%symbols(ptr_idx)%is_associated = &
+                context%symbols(target_idx)%is_associated
+            call set_empty(error_msg)
+            return
+        end if
+        ! Target is a named procedure: intern its symbol and store as ptr.
+        call to_c_chars(trim(call_emit_name(context%arena, target_name)), c_name)
+        symbol_id = lr_session_intern(context%session%handle, c_name)
+        if (symbol_id < 0_c_int32_t) then
+            error_msg = 'could not intern procedure symbol: '//trim(target_name)
+            return
+        end if
+        callee_global%kind = LR_OP_KIND_GLOBAL
+        callee_global%payload = int(symbol_id, c_int64_t)
+        callee_global%typ = lr_type_ptr_s(context%session%handle)
+        callee_global%global_offset = 0_c_int64_t
+        if (.not. emit_ptr_store(context%session, callee_global, &
+                                 context%symbols(ptr_idx)%address, error_msg)) return
+        context%symbols(ptr_idx)%is_associated = .true.
+        call set_empty(error_msg)
+    end subroutine lower_proc_pointer_assignment
+
+    logical function is_proc_pointer_call(context, name) result(ok)
+        ! Return .true. when name is a declared procedure pointer symbol.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: idx
+
+        idx = find_symbol(context, name)
+        ok = idx > 0 .and. context%symbols(idx)%is_proc_pointer
+    end function is_proc_pointer_call
+
+    subroutine lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
+        ! Indirect integer function call through a procedure pointer.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee_ptr
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: idx
+
+        idx = find_symbol(context, node%name)
+        if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
+                                callee_ptr, error_msg)) return
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_I32, node%name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+        if (.not. emit_i32_indirect_call(context%session, callee_ptr, args, &
+                                         value, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_i32_proc_ptr_call
+
+    subroutine lower_void_proc_ptr_call(arena, node_index, context, error_msg)
+        ! Indirect void (subroutine) call through a procedure pointer.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer, allocatable :: arg_indices(:)
+        type(lr_operand_desc_t) :: callee_ptr
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: idx
+
+        call get_subroutine_call_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        idx = find_symbol(context, name)
+        if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
+                                callee_ptr, error_msg)) return
+        call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
+        call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
+                                    name, args, copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_void_indirect_call(context%session, callee_ptr, args, &
+                                          error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_void_proc_ptr_call

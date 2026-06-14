@@ -389,7 +389,12 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
-                if (is_contained_f32_function(context, node%name)) then
+                ! Generic interface: resolve first-argument kind and look up
+                ! the return kind of the matching specific (#249 B7c).
+                if (find_generic(context, node%name) > 0) then
+                    value_kind = generic_call_return_kind(context, node%name, &
+                        first_call_arg_kind(arena, node, context, default_kind))
+                else if (is_contained_f32_function(context, node%name)) then
                     value_kind = VALUE_F32
                 else if (is_contained_f64_function(context, node%name)) then
                     value_kind = VALUE_F64
@@ -401,6 +406,22 @@
             value_kind = VALUE_I32
         end select
     end function expression_value_kind
+
+    integer function first_call_arg_kind(arena, node, context, default_kind) &
+        result(kind)
+        ! Return the value kind of the first actual argument of a function call
+        ! node, for use in generic resolution.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: default_kind
+
+        kind = default_kind
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) == 0) return
+        kind = expression_value_kind(arena, node%arg_indices(1), context, &
+                                     default_kind)
+    end function first_call_arg_kind
 
     subroutine lower_expression_by_kind(arena, node_index, context, value_kind, &
                                         value, error_msg)

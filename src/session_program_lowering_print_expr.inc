@@ -162,6 +162,14 @@
                                                    value, error_msg)) return
                     return
                 end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_C4) then
+                    call lower_print_complex4(symbol_index, context, error_msg)
+                    return
+                end if
+                if (context%symbols(symbol_index)%value_kind == VALUE_C8) then
+                    call lower_print_complex8(symbol_index, context, error_msg)
+                    return
+                end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
                     if (.not. context%symbols(symbol_index)%has_character_value) then
                         call unsupported_feature_error( &

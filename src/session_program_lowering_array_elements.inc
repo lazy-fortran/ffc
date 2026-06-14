@@ -42,10 +42,13 @@
             error_msg = 'array section requires an array: '//trim(source_name)
             return
         end if
-        if (context%symbols(source_index)%value_kind /= VALUE_I32) then
-            error_msg = 'array sections only support integer arrays'
+        select case (context%symbols(source_index)%value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64)
+            ! supported element types for array sections
+        case default
+            error_msg = 'array sections support integer, real(4), and real(8) arrays'
             return
-        end if
+        end select
 
         source_rank = context%symbols(source_index)%array_rank
         if (source_rank < 1 .or. source_rank > 2) then
@@ -386,6 +389,7 @@
         type(lr_operand_desc_t) :: value
         integer(c_int64_t) :: linear_index
         integer(c_int64_t) :: total_elements
+        integer :: vk
 
         call describe_array_section(arena, slice_node, context, info, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -394,14 +398,23 @@
             error_msg = 'array section has no elements'
             return
         end if
+        vk = context%symbols(info%source_index)%value_kind
         do linear_index = 0_c_int64_t, total_elements - 1_c_int64_t
             if (.not. emit_liric_print_space(context%session, error_msg)) return
             call lower_array_section_element_from_info(info, linear_index, context, &
                                                        value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_print_i32_value(context%session, &
-                                                 context%i32_print_format_id, &
-                                                 value, error_msg)) return
+            if (vk == VALUE_F32) then
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+            else if (vk == VALUE_F64) then
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
+            else
+                if (.not. emit_liric_print_i32_value(context%session, &
+                                                     context%i32_print_format_id, &
+                                                     value, error_msg)) return
+            end if
         end do
         if (.not. emit_liric_print_newline(context%session, error_msg)) return
         call set_empty(error_msg)
@@ -756,7 +769,14 @@
                         'rank-2 sections'
             return
         end if
-        call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        select case (context%symbols(tinfo%source_index)%value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node%value_index, context, value, error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node%value_index, context, value, error_msg)
+        case default
+            call lower_i32_expression(arena, node%value_index, context, value, error_msg)
+        end select
         if (len_trim(error_msg) > 0) return
         if (tinfo%result_rank == 1) then
             do k = 0, n - 1

@@ -18,12 +18,19 @@ module session_program_lowering_types
     integer, parameter, public :: VALUE_I8 = 12
     ! VALUE_I16 is integer(2)/integer(int16). Field width 7 (gfortran); %6d.
     integer, parameter, public :: VALUE_I16 = 13
+    ! VALUE_C4 is complex(4): two f32 components.  `address` = re ptr, `element_address` = im ptr.
+    integer, parameter, public :: VALUE_C4 = 14
+    ! VALUE_C8 is complex(8): two f64 components.  Same layout as VALUE_C4.
+    integer, parameter, public :: VALUE_C8 = 15
     integer, parameter, public :: VALUE_CHARACTER = 4
     integer, parameter, public :: VALUE_DERIVED = 5
     integer, parameter, public :: VALUE_DEFERRED_CHARACTER_RESULT = 6
     integer, parameter, public :: VALUE_SUBROUTINE = 7
     integer, parameter, public :: VALUE_C_PTR = 8
     integer, parameter, public :: VALUE_CLASS_STAR = 9
+    ! VALUE_PROC_PTR is a procedure pointer; stored as a ptr alloca slot holding
+    ! the callee function address.  Lowering for #245 slice B3d.
+    integer, parameter, public :: VALUE_PROC_PTR = 16
     ! Runtime type ids carried in a class(*) descriptor's type slot. Intrinsic
     ! ids are fixed and disjoint from derived-type ids (a derived type's id is
     ! its 1-based table index, always small).
@@ -157,6 +164,9 @@ module session_program_lowering_types
         logical :: is_pointer = .false.
         logical :: is_target = .false.
         logical :: is_associated = .false.
+        ! Procedure pointer (#245 B3d): `address` holds the ptr alloca slot;
+        ! after assignment `value` holds the loaded callee ptr operand.
+        logical :: is_proc_pointer = .false.
         ! File I/O (#247 B5c). When this symbol holds a Fortran unit number that
         ! was opened via OPEN, file_ptr_address is the alloca'd ptr holding the
         ! FILE* handle. is_file_unit is set to .true. at that point.
@@ -207,6 +217,20 @@ module session_program_lowering_types
     end type module_exports_t
 
     integer, parameter, public :: MAX_PROC_ARGS = 16
+    integer, parameter, public :: MAX_GENERIC_SPECIFICS = 8
+
+    ! A generic interface: maps a generic name to up to MAX_GENERIC_SPECIFICS
+    ! specific procedure names (#249 B7c). At a call site the first specific
+    ! whose first-argument kind matches the actual is selected.
+    type, public :: generic_interface_t
+        character(len=64) :: generic_name = ''
+        integer :: specific_count = 0
+        character(len=64) :: specific_names(MAX_GENERIC_SPECIFICS) = ''
+        ! Value kind of the first dummy of each specific (used for dispatch).
+        integer :: first_arg_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+        ! Return value kind of each specific.
+        integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+    end type generic_interface_t
 
     type, public :: external_procedure_t
         character(len=64) :: fortran_name = ''
@@ -242,6 +266,9 @@ module session_program_lowering_types
         integer :: function_count = 0
         type(external_procedure_t), allocatable :: external_procedures(:)
         integer :: external_procedure_count = 0
+        ! Generic interface table (#249 B7c).
+        type(generic_interface_t), allocatable :: generics(:)
+        integer :: generic_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
         integer :: current_function_result_index = 0
