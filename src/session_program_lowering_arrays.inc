@@ -303,8 +303,58 @@
         end select
 
         context%symbol_count = index
+
+        if (node%has_initializer .and. node%initializer_index > 0) then
+            if (node_exists(context%arena, node%initializer_index)) then
+                select type (init => context%arena%entries( &
+                             node%initializer_index)%node)
+                type is (array_literal_node)
+                    call lower_array_constructor_assignment(context%arena, init, &
+                                                            index, context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                class default
+                    call broadcast_scalar_initializer(context, index, &
+                                                      node%initializer_index, &
+                                                      array_size, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end select
+            end if
+        end if
+
         call set_empty(error_msg)
     end subroutine define_declared_array_symbol
+
+    subroutine broadcast_scalar_initializer(context, symbol_index, value_index, &
+                                            array_size, error_msg)
+        !! Scalar inline initializer (integer :: a(n) = expr): lower the scalar
+        !! once and store it into every element of linear storage.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: value_index
+        integer, intent(in) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: i
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(context%arena, value_index, context, &
+                                      value, error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(context%arena, value_index, context, &
+                                      value, error_msg)
+        case default
+            call lower_i32_expression(context%arena, value_index, context, &
+                                      value, error_msg)
+        end select
+        if (len_trim(error_msg) > 0) return
+        do i = 1, array_size
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i - 1, c_int64_t), value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine broadcast_scalar_initializer
 
     subroutine lower_array_constructor_assignment(arena, ctor, symbol_index, &
                                                   context, error_msg)
