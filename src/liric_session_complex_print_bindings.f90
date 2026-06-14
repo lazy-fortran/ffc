@@ -625,7 +625,7 @@ contains
         synthesize_fmt_r8_helper = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        if (.not. cx_create_cstring(session, '.ffc.c8.fe', '%.16e', g_fe, &
+        if (.not. cx_create_cstring(session, '.ffc.c8.fe', '%.17e', g_fe, &
                                     error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c8.ff', '%#.*f', g_ff, &
                                     error_msg)) return
@@ -784,7 +784,7 @@ contains
         type(liric_session_t), intent(inout) :: session
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: re, im, re_f64, im_f64, re_buf, im_buf
-        type(lr_operand_desc_t) :: w1, w2, wsum, pad, empty, g_pf, g_nl
+        type(lr_operand_desc_t) :: w1, w2, wsum, pad, empty, g_pf
         type(lr_operand_desc_t) :: args(5)
         type(c_ptr), target :: params(2)
         type(c_ptr) :: out_addr
@@ -802,8 +802,6 @@ contains
         if (.not. cx_create_cstring(session, '.ffc.c4.pf', '%*s(%s,%s)', g_pf, &
                                     error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c4.es', '', empty, &
-                                    error_msg)) return
-        if (.not. cx_create_cstring(session, '.ffc.c4.nl', char(10), g_nl, &
                                     error_msg)) return
 
         params(1) = lr_type_f32_s(session%handle)
@@ -863,12 +861,6 @@ contains
         if (.not. cx_emit_call(session, 'printf', args, lr_type_i32_s(session%handle), &
                                1_c_int32_t, c_true, vreg, error_msg)) return
 
-        ! printf("\n")
-        args(1) = g_nl
-        if (.not. cx_emit_call(session, 'printf', args(1:1), &
-                               lr_type_i32_s(session%handle), 1_c_int32_t, &
-                               c_true, vreg, error_msg)) return
-
         if (.not. cx_ret_void(session, error_msg)) return
 
         call clear_liric_error(error)
@@ -887,7 +879,7 @@ contains
         type(liric_session_t), intent(inout) :: session
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: re, im, re_buf, im_buf
-        type(lr_operand_desc_t) :: w1, w2, wsum, pad, empty, g_pf, g_nl
+        type(lr_operand_desc_t) :: w1, w2, wsum, pad, empty, g_pf
         type(lr_operand_desc_t) :: args(5)
         type(c_ptr), target :: params(2)
         type(c_ptr) :: out_addr
@@ -905,8 +897,6 @@ contains
         if (.not. cx_create_cstring(session, '.ffc.c8.pf', '%*s(%s,%s)', g_pf, &
                                     error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c8.es', '', empty, &
-                                    error_msg)) return
-        if (.not. cx_create_cstring(session, '.ffc.c8.nl', char(10), g_nl, &
                                     error_msg)) return
 
         params(1) = lr_type_f64_s(session%handle)
@@ -956,11 +946,6 @@ contains
         args(5) = im_buf
         if (.not. cx_emit_call(session, 'printf', args, lr_type_i32_s(session%handle), &
                                1_c_int32_t, c_true, vreg, error_msg)) return
-
-        args(1) = g_nl
-        if (.not. cx_emit_call(session, 'printf', args(1:1), &
-                               lr_type_i32_s(session%handle), 1_c_int32_t, &
-                               c_true, vreg, error_msg)) return
 
         if (.not. cx_ret_void(session, error_msg)) return
 
