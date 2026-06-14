@@ -446,7 +446,7 @@
         type(lr_operand_desc_t) :: lower1, upper1, lower2
         type(lr_operand_desc_t) :: idx1_i32, idx1_i64, offset1_i64
         type(lr_operand_desc_t) :: idx2_i32, idx2_i64, offset2_i64
-        type(lr_operand_desc_t) :: extent1, linear_i64, byte_offset
+        type(lr_operand_desc_t) :: extent1, linear_i64, byte_offset, tmp
         integer :: rank, arg_count
 
         rank = context%symbols(symbol_index)%array_rank
@@ -486,9 +486,10 @@
             if (.not. emit_i64_load_at(context%session, descriptor, 24_c_int64_t, &
                     lower2, error_msg)) return
             ! extent1 = upper1 - lower1 + 1
+            ! Use tmp to avoid aliasing (extent1 as both lhs and result is UB).
             if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper1, lower1, &
-                    extent1, error_msg)) return
-            if (.not. emit_i64_binary(context%session, LR_OP_ADD, extent1, &
+                    tmp, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, tmp, &
                     i64_immediate(context%session, 1_c_int64_t), extent1, &
                     error_msg)) return
             call validate_i32_array_subscript(arena, node%arg_indices(2), context, &
@@ -502,10 +503,11 @@
             if (.not. emit_i64_binary(context%session, LR_OP_SUB, idx2_i64, lower2, &
                     offset2_i64, error_msg)) return
             ! linear = offset1 + extent1 * offset2
+            ! Use tmp to avoid aliasing (linear_i64 as both rhs and result is UB).
             if (.not. emit_i64_binary(context%session, LR_OP_MUL, extent1, &
-                    offset2_i64, linear_i64, error_msg)) return
+                    offset2_i64, tmp, error_msg)) return
             if (.not. emit_i64_binary(context%session, LR_OP_ADD, offset1_i64, &
-                    linear_i64, linear_i64, error_msg)) return
+                    tmp, linear_i64, error_msg)) return
         end if
 
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, linear_i64, &

@@ -68,6 +68,12 @@ module liric_session_memory_bindings
             type(c_ptr) :: typ
         end function lr_type_i64_s
 
+        function lr_type_i8_s(handle) result(typ) bind(c)
+            import :: c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr) :: typ
+        end function lr_type_i8_s
+
         function lr_type_ptr_s(handle) result(typ) bind(c)
             import :: c_ptr
             type(c_ptr), value :: handle
@@ -395,12 +401,12 @@ contains
         offset_op%typ = lr_type_i64_s(session%handle)
         offset_op%global_offset = 0_c_int64_t
 
-        ! GEP: gep_result = base + offset (byte offset for ptr type)
+        ! GEP: gep_result = base + offset (byte offset; i8 type gives scale=1)
         operands(1) = base
         operands(2) = offset_op
 
         gep_inst%op = LR_OP_GEP
-        gep_inst%typ = lr_type_ptr_s(session%handle)
+        gep_inst%typ = lr_type_i8_s(session%handle)
         gep_inst%dest = 0_c_int32_t
         gep_inst%operands = c_loc(operands)
         gep_inst%num_operands = 2_c_int32_t
@@ -467,7 +473,7 @@ contains
         operands(2) = offset_op
 
         inst%op = LR_OP_GEP
-        inst%typ = lr_type_ptr_s(session%handle)
+        inst%typ = lr_type_i8_s(session%handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
         inst%num_operands = 2_c_int32_t
@@ -508,7 +514,7 @@ contains
         operands(2) = offset
 
         inst%op = LR_OP_GEP
-        inst%typ = lr_type_ptr_s(session%handle)
+        inst%typ = lr_type_i8_s(session%handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
         inst%num_operands = 2_c_int32_t
@@ -553,12 +559,12 @@ contains
         offset_op%typ = lr_type_i64_s(session%handle)
         offset_op%global_offset = 0_c_int64_t
 
-        ! GEP: addr = base + offset
+        ! GEP: addr = base + offset (byte offset; i8 type gives scale=1)
         operands(1) = base
         operands(2) = offset_op
 
         gep_inst%op = LR_OP_GEP
-        gep_inst%typ = lr_type_ptr_s(session%handle)
+        gep_inst%typ = lr_type_i8_s(session%handle)
         gep_inst%dest = 0_c_int32_t
         gep_inst%operands = c_loc(operands)
         gep_inst%num_operands = 2_c_int32_t
