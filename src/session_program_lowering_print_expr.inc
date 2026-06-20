@@ -202,6 +202,14 @@
                                                      error_msg)
                 return
             end if
+            ! any()/all() return LOGICAL and print as T/F (intrinsic agent).
+            if (is_logical_reduction_call(arena, node_index, context)) then
+                call lower_i32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_print_logical_value(context, value, error_msg)
+                return
+            end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -436,6 +444,14 @@
             if (is_contained_complex_function(context, node%name)) then
                 call lower_print_complex_result_call(arena, node_index, context, &
                                                      error_msg)
+                return
+            end if
+            ! any()/all() return LOGICAL and print as T/F (intrinsic agent).
+            if (is_logical_reduction_call(arena, node_index, context)) then
+                call lower_i32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_print_logical_value(context, value, error_msg)
                 return
             end if
             if (is_f32_expression(arena, node_index, context)) then

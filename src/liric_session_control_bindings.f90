@@ -18,10 +18,12 @@ module liric_session_control_bindings
     integer(c_int), parameter, public :: LR_CMP_SGE = 3_c_int
     integer(c_int), parameter, public :: LR_CMP_SLT = 4_c_int
     integer(c_int), parameter, public :: LR_CMP_SLE = 5_c_int
+    integer(c_int), parameter, public :: LR_FCMP_OEQ = 1_c_int
     integer(c_int), parameter, public :: LR_FCMP_OGT = 2_c_int
     integer(c_int), parameter, public :: LR_FCMP_OGE = 3_c_int
     integer(c_int), parameter, public :: LR_FCMP_OLT = 4_c_int
     integer(c_int), parameter, public :: LR_FCMP_OLE = 5_c_int
+    integer(c_int), parameter, public :: LR_FCMP_ONE = 6_c_int
 
     integer(c_int), parameter :: LR_OP_BR = 2_c_int
     integer(c_int), parameter :: LR_OP_CONDBR = 3_c_int

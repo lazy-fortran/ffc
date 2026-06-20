@@ -101,6 +101,8 @@ module session_program_lowering
                                               LR_FCMP_OGE, &
                                               LR_FCMP_OLT, &
                                               LR_FCMP_OLE, &
+                                              LR_FCMP_OEQ, &
+                                              LR_FCMP_ONE, &
                                               LR_CMP_SGE, &
                                               LR_CMP_SGT, &
                                               LR_CMP_SLE, &
