@@ -1933,15 +1933,6 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
-        character(len=:), allocatable :: source_name
-        integer :: source_index
-        integer :: i
-        integer :: shape_rank
-        integer(c_int64_t) :: shape_value
-        integer(c_int64_t) :: target_size
-        integer(c_int64_t) :: source_size
-        integer(c_int64_t) :: linear_index
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -1953,59 +1944,195 @@
                 error_msg = 'reshape requires a source array and a shape array'
                 return
             end if
-            call resolve_i32_array_argument(arena, rhs, 1, context, 'reshape', &
-                                            'source array', source_index, error_msg)
-            if (len_trim(error_msg) > 0) return
             if (context%symbols(symbol_index)%array_rank < 1 .or. &
                 context%symbols(symbol_index)%array_rank > 2) then
                 error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
                 return
             end if
-
-            select type (shape_node => arena%entries(rhs%arg_indices(2))%node)
-            type is (array_literal_node)
-                if (.not. allocated(shape_node%element_indices)) then
-                    error_msg = 'reshape requires a non-empty shape literal'
-                    return
-                end if
-                shape_rank = size(shape_node%element_indices)
-                if (shape_rank /= context%symbols(symbol_index)%array_rank) then
-                    error_msg = 'reshape shape rank does not match the target array'
-                    return
-                end if
-                do i = 1, shape_rank
-                    call parse_i32_constant(arena, shape_node%element_indices(i), &
-                                            shape_value, 'reshape shape', error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    if (shape_value /= int(context%symbols(symbol_index)%array_dim_sizes(i), &
-                                           c_int64_t)) then
-                        error_msg = 'reshape shape does not match the target array'
-                        return
-                    end if
-                end do
-            class default
-                error_msg = 'reshape requires a literal integer shape argument'
-                return
-            end select
-
-            source_size = int(context%symbols(source_index)%array_size, c_int64_t)
-            target_size = int(context%symbols(symbol_index)%array_size, c_int64_t)
-            if (source_size /= target_size) then
-                error_msg = 'reshape requires source and target arrays of equal size'
-                return
-            end if
-
-            do linear_index = 0_c_int64_t, target_size - 1_c_int64_t
-                call load_array_linear_element(context, source_index, linear_index, &
-                                               value, error_msg)
-                if (len_trim(error_msg) > 0) return
-                call store_array_linear_element(context, symbol_index, linear_index, &
-                                                value, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end do
-            call set_empty(error_msg)
+            call check_reshape_shape(arena, rhs%arg_indices(2), symbol_index, &
+                                     context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_reshape_source(arena, rhs%arg_indices(1), symbol_index, &
+                                      context, error_msg)
         class default
             error_msg = 'reshape requires an intrinsic call'
             return
         end select
     end subroutine lower_reshape_assignment
+
+    subroutine check_reshape_shape(arena, shape_index, symbol_index, context, &
+                                   error_msg)
+        !! The shape argument must be a literal whose rank and extents match the
+        !! target array. reshape produces column-major order, so the linear copy
+        !! below is correct only when the target's compile-time shape is known.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: shape_rank
+        integer(c_int64_t) :: shape_value
+
+        select type (shape_node => arena%entries(shape_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(shape_node%element_indices)) then
+                error_msg = 'reshape requires a non-empty shape literal'
+                return
+            end if
+            shape_rank = size(shape_node%element_indices)
+            if (shape_rank /= context%symbols(symbol_index)%array_rank) then
+                error_msg = 'reshape shape rank does not match the target array'
+                return
+            end if
+            do i = 1, shape_rank
+                call parse_i32_constant(arena, shape_node%element_indices(i), &
+                                        shape_value, 'reshape shape', error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (shape_value /= &
+                    int(context%symbols(symbol_index)%array_dim_sizes(i), c_int64_t)) then
+                    error_msg = 'reshape shape does not match the target array'
+                    return
+                end if
+            end do
+        class default
+            error_msg = 'reshape requires a literal integer shape argument'
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine check_reshape_shape
+
+    subroutine lower_reshape_source(arena, source_index_in, symbol_index, &
+                                    context, error_msg)
+        !! Copy the source elements into the target's linear storage. The source
+        !! is either a declared rank-1 array or an inline array literal; both are
+        !! already laid out in column-major order, so a flat copy suffices.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_index_in
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: source_sym
+        integer(c_int64_t) :: target_size
+        integer(c_int64_t) :: linear_index
+        logical :: source_is_literal
+
+        target_size = int(context%symbols(symbol_index)%array_size, c_int64_t)
+
+        source_is_literal = .false.
+        if (node_exists(arena, source_index_in)) then
+            select type (s => arena%entries(source_index_in)%node)
+            type is (array_literal_node)
+                source_is_literal = .true.
+            end select
+        end if
+        if (source_is_literal) then
+            call lower_reshape_literal_source(arena, source_index_in, &
+                                              symbol_index, context, error_msg)
+            return
+        end if
+
+        call resolve_reshape_identifier_source(arena, source_index_in, context, &
+                                               source_sym, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (int(context%symbols(source_sym)%array_size, c_int64_t) /= target_size) then
+            error_msg = 'reshape requires source and target arrays of equal size'
+            return
+        end if
+        do linear_index = 0_c_int64_t, target_size - 1_c_int64_t
+            call load_array_linear_element(context, source_sym, linear_index, &
+                                           value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, symbol_index, linear_index, &
+                                            value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_reshape_source
+
+    subroutine lower_reshape_literal_source(arena, source_index, symbol_index, &
+                                            context, error_msg)
+        !! reshape([...], shape): the literal supplies the column-major elements
+        !! directly. Lower each in the target's element kind and store linearly.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer, allocatable :: flat(:)
+        integer :: i
+        integer :: vk
+
+        select type (lit => arena%entries(source_index)%node)
+        type is (array_literal_node)
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, lit%element_indices, flat, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'reshape source literal is not an array constructor'
+            return
+        end select
+
+        if (size(flat) /= context%symbols(symbol_index)%array_size) then
+            error_msg = 'reshape requires source and target arrays of equal size'
+            return
+        end if
+
+        vk = context%symbols(symbol_index)%value_kind
+        do i = 1, size(flat)
+            if (vk == VALUE_F32) then
+                call lower_f32_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_F64) then
+                call lower_f64_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, flat(i), context, value, error_msg)
+            else
+                call lower_constructor_i32_element(arena, flat(i), context, value, &
+                                                   error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i - 1, c_int64_t), value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_reshape_literal_source
+
+    subroutine resolve_reshape_identifier_source(arena, source_index, context, &
+                                                 source_sym, error_msg)
+        !! A declared array source must be a named array of a supported element
+        !! kind; its column-major storage is copied linearly into the target.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: source_sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+
+        source_sym = 0
+        if (.not. is_identifier(arena, source_index)) then
+            error_msg = 'reshape requires identifier or literal source array arguments'
+            return
+        end if
+        call get_identifier_name(arena, source_index, arg_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_sym = find_symbol(context, arg_name)
+        if (source_sym <= 0) then
+            error_msg = 'reshape source array was not declared: '//trim(arg_name)
+            return
+        end if
+        if (.not. context%symbols(source_sym)%is_array) then
+            error_msg = 'reshape requires array source array: '//trim(arg_name)
+            return
+        end if
+        select case (context%symbols(source_sym)%value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64)
+        case default
+            error_msg = 'reshape only supports integer and real arrays'
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine resolve_reshape_identifier_source

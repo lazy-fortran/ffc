@@ -46,7 +46,6 @@ issue_1410_pointer_null.lf
 issue_1413_array_function.lf
 issue_1414_implied_do.lf
 issue_1534_multi_dimension_allocatable.lf
-issue_1539_reshape.lf
 issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf
 issue_1781_allocate_deallocate.lf
@@ -60,7 +59,6 @@ issue_1887_subroutine_param_type.lf
 issue_1890_lazy_function_return.lf
 issue_1894_nested_calls.lf
 issue_1961_array_reduction_intrinsics.lf
-issue_1962_matmul_rank.lf
 issue_1963_debug_output.lf
 issue_1964_nested_function_calls.lf
 issue_1968_lazy_function_result.lf
@@ -106,7 +104,6 @@ issue_509_mixed_constructs_input.lf
 issue_652_multi_var_allocatable.lf
 issue_935_allocate_param.lf
 issue_935_multidim_arrays.lf
-issue_allocatable_without_allocate.lf
 issue_missing_intent_in_function.lf
 issue_nested_internal_procedures.lf
 issue_playtest5_function_no_return_type.lf
@@ -114,7 +111,6 @@ issue_playtest5_nested_function_chaos.lf
 issue_playtest5_reshape_allocatable_never_allocated.lf
 issue_playtest5_subroutine_name_collision.lf
 logical_ops.lf
-matrix_literal_addition.lf
 module_contains_suite.lf
 monomorphization_add_three_types.lf
 monomorphization_scale_subroutine.lf
@@ -123,9 +119,6 @@ namelist_weather.lf
 nested_function_calls_forward_ref.lf
 nested_loops.lf
 read_statement.lf
-reshape_integer_matrices.lf
-reshape_mixed_operations.lf
-reshape_real_matrix.lf
 string_transform_complex_expression.lf
 test_209_all.lf
 test_209_complex.lf
