@@ -385,12 +385,34 @@
         type(array_slice_node), intent(in) :: slice_node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        logical :: handled
+
+        call emit_array_section_print_items(arena, slice_node, context, handled, &
+                                            error_msg)
+        if (.not. handled .or. len_trim(error_msg) > 0) return
+        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_array_section_print
+
+    subroutine emit_array_section_print_items(arena, slice_node, context, handled, &
+                                              error_msg)
+        !! Emit every element of an array-section print item (a(lo:hi:st)) in
+        !! storage order with list-directed spacing and no trailing newline, so
+        !! a section can sit among other items in a multi-item print. handled
+        !! stays false on an unsupported base/kind, leaving the caller to fall
+        !! through rather than fail.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
         type(array_section_info_t) :: info
         type(lr_operand_desc_t) :: value
         integer(c_int64_t) :: linear_index
         integer(c_int64_t) :: total_elements
         integer :: vk
 
+        handled = .false.
         call describe_array_section(arena, slice_node, context, info, error_msg)
         if (len_trim(error_msg) > 0) return
         total_elements = array_section_total_elements(info)
@@ -398,6 +420,7 @@
             error_msg = 'array section has no elements'
             return
         end if
+        handled = .true.
         vk = context%symbols(info%source_index)%value_kind
         do linear_index = 0_c_int64_t, total_elements - 1_c_int64_t
             if (.not. emit_liric_print_space(context%session, error_msg)) return
@@ -416,9 +439,8 @@
                                                      value, error_msg)) return
             end if
         end do
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_array_section_print
+    end subroutine emit_array_section_print_items
 
     subroutine lower_whole_array_print(arena, expr_index, context, handled, error_msg)
         !! print *, a for a bare integer or real array: emit each element in

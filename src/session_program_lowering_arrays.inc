@@ -1302,6 +1302,18 @@
             error_msg = trim(reduction_name)//' requires exactly one array argument'
             return
         end if
+
+        ! A section argument (sum(a(lo:hi))) reduces over the section extent
+        ! rather than the whole declared array.
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (arg => arena%entries(node%arg_indices(1))%node)
+            type is (array_slice_node)
+                call lower_section_reduction(arena, arg, context, value, &
+                                             reduction_name, error_msg)
+                return
+            end select
+        end if
+
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
         source_index = find_symbol(context, array_name)
@@ -1522,6 +1534,124 @@
 
         call set_empty(error_msg)
     end subroutine lower_array_reduction_intrinsic
+
+    subroutine lower_section_reduction(arena, slice_node, context, value, &
+                                       reduction_name, error_msg)
+        !! Reduce sum/product/maxval/minval over an array section a(lo:hi:st).
+        !! Walks the section in storage order via the section element loader and
+        !! folds with the accumulator step matching the section's element kind.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=*), intent(in) :: reduction_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: candidate
+        integer(c_int64_t) :: total, k
+        integer :: vk
+
+        call describe_array_section(arena, slice_node, context, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        total = array_section_total_elements(info)
+        if (total <= 0_c_int64_t) then
+            error_msg = trim(reduction_name)//' requires a non-empty section'
+            return
+        end if
+        vk = context%symbols(info%source_index)%value_kind
+
+        call lower_array_section_element_from_info(info, 0_c_int64_t, context, &
+                                                   value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (trim(reduction_name))
+        case ('sum', 'product', 'maxval', 'minval')
+        case default
+            error_msg = 'unsupported array reduction intrinsic: '// &
+                        trim(reduction_name)
+            return
+        end select
+        do k = 1_c_int64_t, total - 1_c_int64_t
+            call lower_array_section_element_from_info(info, k, context, &
+                                                       candidate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call fold_reduction_step(context, vk, reduction_name, value, &
+                                     candidate, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_section_reduction
+
+    subroutine fold_reduction_step(context, vk, reduction_name, acc, candidate, &
+                                   error_msg)
+        !! One accumulation step for a section reduction: acc := acc op candidate
+        !! for the element kind vk. maxval/minval pick the candidate via a typed
+        !! comparison and select.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        character(len=*), intent(in) :: reduction_name
+        type(lr_operand_desc_t), intent(inout) :: acc
+        type(lr_operand_desc_t), intent(in) :: candidate
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: next_value, condition, selected
+        integer(c_int) :: predicate
+
+        call set_empty(error_msg)
+        select case (trim(reduction_name))
+        case ('sum')
+            if (vk == VALUE_F32) then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, acc, &
+                                                candidate, next_value, error_msg)) return
+            else if (vk == VALUE_F64) then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, acc, &
+                                                candidate, next_value, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, &
+                                          candidate, next_value, error_msg)) return
+            end if
+            acc = next_value
+        case ('product')
+            if (vk == VALUE_F32) then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, acc, &
+                                                candidate, next_value, error_msg)) return
+            else if (vk == VALUE_F64) then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, acc, &
+                                                candidate, next_value, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, &
+                                          candidate, next_value, error_msg)) return
+            end if
+            acc = next_value
+        case ('maxval', 'minval')
+            if (vk == VALUE_F32) then
+                if (trim(reduction_name) == 'maxval') then
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGT, &
+                            candidate, acc, condition, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OLT, &
+                            candidate, acc, condition, error_msg)) return
+                end if
+            else if (vk == VALUE_F64) then
+                if (trim(reduction_name) == 'maxval') then
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGT, &
+                            candidate, acc, condition, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OLT, &
+                            candidate, acc, condition, error_msg)) return
+                end if
+            else
+                if (trim(reduction_name) == 'maxval') then
+                    predicate = LR_CMP_SGT
+                else
+                    predicate = LR_CMP_SLT
+                end if
+                if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                        candidate, acc, condition, error_msg)) return
+            end if
+            call select_value(context, condition, candidate, acc, selected, error_msg)
+            if (len_trim(error_msg) > 0) return
+            acc = selected
+        end select
+    end subroutine fold_reduction_step
 
     subroutine resolve_i32_array_argument(arena, node, arg_pos, context, &
                                           intrinsic_name, arg_role, symbol_index, &
