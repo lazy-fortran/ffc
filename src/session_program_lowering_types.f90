@@ -5,6 +5,11 @@ module session_program_lowering_types
     implicit none
     private
 
+    ! Module-variable classification (#263): MODVAR_OK means a scalar module
+    ! variable that can be lowered to a global; MODVAR_UNSUPPORTED keeps the
+    ! unit xfail with a clean diagnostic.
+    integer, parameter, public :: MODVAR_OK = 0
+    integer, parameter, public :: MODVAR_UNSUPPORTED = 1
     integer, parameter, public :: VALUE_I32 = 1
     integer, parameter, public :: VALUE_F64 = 2
     integer, parameter, public :: VALUE_LOGICAL = 3

@@ -29,6 +29,7 @@
         context%function_value_kinds = VALUE_I32
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
+        call copy_module_exports(parent_context, context)
         context%in_internal_function = .true.
         context%in_internal_subroutine = .true.
 
@@ -44,6 +45,10 @@
 
         call define_reference_parameters(arena, node%param_indices, context, &
                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Host-associate scalar module variables as addressed globals (#263).
+        call bind_module_variables_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
