@@ -61,6 +61,12 @@
         end if
 
         if (is_binary_op(arena, node_index)) then
+            ! Character // concatenation prints as a runtime string buffer; only
+            ! the // operands case is handled here (intrinsic agent, bug 2).
+            if (is_character_concat(arena, node_index, context)) then
+                call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -291,6 +297,12 @@
         end if
 
         if (is_binary_op(arena, node_index)) then
+            ! Character // concatenation prints as a runtime string buffer; only
+            ! the // operands case is handled here (intrinsic agent, bug 2).
+            if (is_character_concat(arena, node_index, context)) then
+                call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)

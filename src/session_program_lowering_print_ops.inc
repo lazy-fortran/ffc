@@ -750,7 +750,8 @@
                 end if
             end if
         end if
-        if (is_char_expr_call(arena, node_index)) then
+        if (is_char_expr_call(arena, node_index) .or. &
+            is_character_concat(arena, node_index, context)) then
             call char_expr_operands(arena, node_index, context, data_ptr, &
                                     length, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -781,6 +782,10 @@
             symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) &
                 is_char = context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
+            return
+        end if
+        if (is_character_concat(arena, node_index, context)) then
+            is_char = .true.
             return
         end if
         select type (node => arena%entries(node_index)%node)
