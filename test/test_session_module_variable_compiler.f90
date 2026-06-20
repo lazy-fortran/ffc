@@ -12,6 +12,7 @@ program test_session_module_variable_compiler
     if (.not. test_module_variable_only_clause()) all_passed = .false.
     if (.not. test_module_procedure_reads_and_writes()) all_passed = .false.
     if (.not. test_logical_module_variable()) all_passed = .false.
+    if (.not. test_protected_module_variable()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: module-level integer variables persist across use'
@@ -117,5 +118,30 @@ contains
             source, ' F'//new_line('a'), &
             '/tmp/ffc_session_modvar_logical')
     end function test_logical_module_variable
+
+    logical function test_protected_module_variable()
+        ! A protected module variable is writable from a module procedure and
+        ! readable from the using program (#274). PROTECTED only restricts
+        ! external writes, which the frontend enforces; ffc emits storage.
+        character(len=*), parameter :: source = &
+            'module pmod'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer, protected :: value = 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine set_value(v)'//new_line('a')// &
+            '    integer, intent(in) :: v'//new_line('a')// &
+            '    value = v'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end module pmod'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use pmod'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  call set_value(33)'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main'
+
+        test_protected_module_variable = expect_exit_status( &
+            source, 33, '/tmp/ffc_session_modvar_protected')
+    end function test_protected_module_variable
 
 end program test_session_module_variable_compiler
