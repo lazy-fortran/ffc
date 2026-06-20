@@ -420,6 +420,10 @@
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
+            if (allocated(node%namelist_group)) then
+                call lower_namelist_read(node, context, error_msg)
+                return
+            end if
             if (is_internal_read(node, context)) then
                 call lower_internal_read(arena, node, context, error_msg)
                 return
@@ -438,7 +442,9 @@
                                            'support this read form yet', &
                                            error_msg)
         type is (write_statement_node)
-            if (is_internal_write(node, context)) then
+            if (allocated(node%namelist_group)) then
+                call lower_namelist_write(node, context, error_msg)
+            else if (is_internal_write(node, context)) then
                 call lower_internal_write(arena, node, context, error_msg)
             else if (is_stdout_write(node)) then
                 call lower_write_stdout(arena, node, context, error_msg)
@@ -577,6 +583,10 @@
             ! A BLOCK DATA unit only initialises COMMON storage; its values were
             ! folded into the slot globals by the pre-pass, so it emits no code.
             call set_empty(error_msg)
+        type is (namelist_statement_node)
+            ! A NAMELIST declaration emits no code; it records the group's
+            ! member list so a later WRITE(unit, nml=group) can format them.
+            call record_namelist_group(node, context, error_msg)
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'
@@ -633,6 +643,7 @@
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'
     include 'session_program_lowering_enum.inc'
+    include 'session_program_lowering_namelist.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
