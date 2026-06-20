@@ -81,17 +81,22 @@
         integer :: open_pos
 
         lowered = trim(lowercase_text(type_spec))
-        if (len_trim(lowered) >= 5) then
-            if (lowered(1:5) == 'type(') then
-                open_pos = index(lowered, '(')
-                close_pos = index(lowered, ')', back=.true.)
-                if (close_pos > open_pos + 1) then
-                    type_name = lowered(open_pos + 1:close_pos - 1)
-                else
-                    type_name = ''
-                end if
-                return
+        ! type(t) and class(t) both name derived type t. class(*) is unlimited
+        ! polymorphic and stays non-derived (it routes to VALUE_CLASS_STAR). For
+        ! a non-polymorphic declared-type object class(t) lowers exactly like
+        ! type(t): the passed-object dummy is taken by reference (static
+        ! dispatch), so both spellings share the derived-type path here.
+        if ((len_trim(lowered) >= 5 .and. lowered(1:5) == 'type(') .or. &
+            (len_trim(lowered) >= 6 .and. lowered(1:6) == 'class(')) then
+            open_pos = index(lowered, '(')
+            close_pos = index(lowered, ')', back=.true.)
+            if (close_pos > open_pos + 1) then
+                type_name = lowered(open_pos + 1:close_pos - 1)
+            else
+                type_name = ''
             end if
+            if (type_name == '*') type_name = ''
+            return
         end if
 
         if (lowered /= 'integer' .and. lowered /= 'real' .and. &
