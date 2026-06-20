@@ -84,7 +84,6 @@ issue_playtest5_function_no_return_type.lf
 issue_playtest5_nested_function_chaos.lf
 issue_playtest5_reshape_allocatable_never_allocated.lf
 issue_playtest5_subroutine_name_collision.lf
-logical_ops.lf
 module_contains_suite.lf
 monomorphization_add_three_types.lf
 monomorphization_scale_subroutine.lf

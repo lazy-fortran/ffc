@@ -11,6 +11,7 @@ program test_session_elseif_chain_compiler
 
     if (.not. test_middle_arm_selected()) all_passed = .false.
     if (.not. test_arithmetic_if_zero()) all_passed = .false.
+    if (.not. test_logical_connectives()) all_passed = .false.
 
     if (all_passed) then
         print *, 'PASS: ELSE IF cascades lower through direct LIRIC session'
@@ -60,5 +61,25 @@ contains
         test_arithmetic_if_zero = expect_exit_status( &
             source, 2, '/tmp/ffc_arith_if_zero_test')
     end function test_arithmetic_if_zero
+
+    logical function test_logical_connectives()
+        ! .and./.or./.eqv./.neqv. combine sub-conditions in an IF (#270). Each
+        ! satisfied connective adds 1 to r; the final value confirms all four.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: a, b, r'//new_line('a')// &
+            '  logical :: p, q'//new_line('a')// &
+            '  a = 1; b = 2; r = 0'//new_line('a')// &
+            '  p = .true.; q = .false.'//new_line('a')// &
+            '  if (a == 1 .and. b == 2) r = r + 1'//new_line('a')// &
+            '  if (a == 9 .or. b == 2) r = r + 1'//new_line('a')// &
+            '  if (p .eqv. .true.) r = r + 1'//new_line('a')// &
+            '  if (p .neqv. q) r = r + 1'//new_line('a')// &
+            '  print *, r'//new_line('a')// &
+            'end program main'
+        test_logical_connectives = expect_output( &
+            source, '           4'//new_line('a'), '/tmp/ffc_logical_conn_test')
+    end function test_logical_connectives
 
 end program test_session_elseif_chain_compiler

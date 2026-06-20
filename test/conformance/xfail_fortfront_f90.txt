@@ -68,7 +68,6 @@ issue_2070_entry_loses_argument_declarations.f90
 issue_2078_include_statement_silently_dropped.f90
 issue_2162_entry_wrapping.f90
 issue_2236_optional_assumed_rank_bridge.f90
-issue_2237_multiline_stmt_if.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90

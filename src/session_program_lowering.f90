@@ -1493,6 +1493,14 @@ contains
                 call set_empty(error_msg)
                 return
             end if
+            if (is_logical_connective(bin_op)) then
+                ! .and./.or./.eqv./.neqv. combine two i1 sub-conditions. Both
+                ! operands are lowered (Fortran does not short-circuit), then
+                ! combined with the matching bitwise op on the i1 values.
+                call lower_logical_connective(arena, bin_op, bin_left, &
+                                              bin_right, context, value, error_msg)
+                return
+            end if
             call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
             call lower_i32_expression(arena, bin_right, context, rhs, error_msg)
@@ -1546,6 +1554,55 @@ contains
                         'comparison or logical expression'
         end select
     end subroutine lower_i1_condition
+
+    logical function is_logical_connective(op)
+        character(len=*), intent(in) :: op
+        select case (trim(adjustl(lowercase_text(op))))
+        case ('.and.', '.or.', '.eqv.', '.neqv.')
+            is_logical_connective = .true.
+        case default
+            is_logical_connective = .false.
+        end select
+    end function is_logical_connective
+
+    subroutine lower_logical_connective(arena, op, left_index, right_index, &
+                                        context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: op
+        integer, intent(in) :: left_index, right_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs, rhs
+        integer(c_int) :: opcode
+
+        call lower_i1_condition(arena, left_index, context, lhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i1_condition(arena, right_index, context, rhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (trim(adjustl(lowercase_text(op))))
+        case ('.and.')
+            opcode = LR_OP_AND
+        case ('.or.')
+            opcode = LR_OP_OR
+        case ('.neqv.')
+            opcode = LR_OP_XOR
+        case ('.eqv.')
+            ! a .eqv. b is .not. (a .neqv. b): xor then invert the i1.
+            if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, rhs, &
+                                      value, error_msg)) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, value, &
+                    i32_immediate(context%session, 0_c_int64_t), value, &
+                    error_msg)) return
+            return
+        case default
+            error_msg = 'unsupported logical connective: '//trim(op)
+            return
+        end select
+        if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+                                  error_msg)) return
+    end subroutine lower_logical_connective
+
     subroutine identifier_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
