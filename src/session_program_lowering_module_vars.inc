@@ -35,14 +35,10 @@
                 'variables', error_msg)
             return
         end if
-        ! PROTECTED is out of scope: it constrains write access from using units,
-        ! which the addressed-global model does not enforce (#263).
-        if (module_declaration_is_protected(arena, var_idx)) then
-            call unsupported_feature_error('protected module variable', line, &
-                column, 'direct LIRIC session does not yet enforce the '// &
-                'protected attribute on module variables', error_msg)
-            return
-        end if
+        ! PROTECTED restricts write access from using units; the frontend
+        ! enforces that at semantic analysis. ffc emits ordinary storage so the
+        ! defining module's own procedures (the only legitimate writers) work
+        ! (#274).
         call get_declaration_type_name(arena, var_idx, type_name, kind_err)
         if (len_trim(kind_err) > 0) then
             error_msg = kind_err
@@ -87,17 +83,6 @@
             module_declaration_is_multi = decl%is_multi_declaration
         end select
     end function module_declaration_is_multi
-
-    logical function module_declaration_is_protected(arena, node_index)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        module_declaration_is_protected = .false.
-        if (.not. node_exists(arena, node_index)) return
-        select type (decl => arena%entries(node_index)%node)
-        type is (declaration_node)
-            module_declaration_is_protected = decl%is_protected
-        end select
-    end function module_declaration_is_protected
 
     subroutine lower_module_variables(arena, root_index, context, error_msg)
         ! Emit a global with its declared initializer for each scalar module

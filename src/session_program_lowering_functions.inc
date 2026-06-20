@@ -141,6 +141,73 @@
         call register_internal_subroutine_name(node, context, error_msg, node_index)
     end subroutine register_internal_subroutine_by_index
 
+    subroutine register_procedure_alias(context, source_name, alias_name, &
+                                         error_msg)
+        ! Add a function-table entry under alias_name that shares the node
+        ! index, value kind, and parameter count of an already-registered
+        ! procedure source_name. Used for USE rename of a module procedure
+        ! (#274).
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: source_name
+        character(len=*), intent(in) :: alias_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, source_index, next_index
+
+        call set_empty(error_msg)
+        source_index = 0
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), source_name)) then
+                source_index = i
+                exit
+            end if
+        end do
+        if (source_index == 0) then
+            error_msg = 'use rename source procedure not registered: '// &
+                        trim(source_name)
+            return
+        end if
+        call grow_function_names(context)
+        next_index = context%function_count + 1
+        context%function_names(next_index) = trim(alias_name)
+        context%function_value_kinds(next_index) = &
+            context%function_value_kinds(source_index)
+        context%function_param_counts(next_index) = &
+            context%function_param_counts(source_index)
+        context%function_node_indices(next_index) = &
+            context%function_node_indices(source_index)
+        context%function_count = next_index
+        ! Record the alias so a call to alias_name mangles to the real
+        ! procedure symbol at call_emit_name time.
+        call record_proc_alias(context, alias_name, source_name)
+    end subroutine register_procedure_alias
+
+    subroutine record_proc_alias(context, local_name, target_name)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: local_name
+        character(len=*), intent(in) :: target_name
+        character(len=64), allocatable :: tmp_locals(:), tmp_targets(:)
+        integer :: cap, idx
+
+        if (.not. allocated(context%proc_alias_locals)) then
+            allocate (context%proc_alias_locals(8))
+            allocate (context%proc_alias_targets(8))
+            context%proc_alias_count = 0
+        end if
+        cap = size(context%proc_alias_locals)
+        if (context%proc_alias_count >= cap) then
+            call move_alloc(context%proc_alias_locals, tmp_locals)
+            call move_alloc(context%proc_alias_targets, tmp_targets)
+            allocate (context%proc_alias_locals(2 * cap))
+            allocate (context%proc_alias_targets(2 * cap))
+            context%proc_alias_locals(1:cap) = tmp_locals
+            context%proc_alias_targets(1:cap) = tmp_targets
+        end if
+        idx = context%proc_alias_count + 1
+        context%proc_alias_locals(idx) = trim(local_name)
+        context%proc_alias_targets(idx) = trim(target_name)
+        context%proc_alias_count = idx
+    end subroutine record_proc_alias
+
     integer function proc_param_count(context, name) result(count)
         ! Declared parameter count of a contained procedure, or -1 if unknown.
         type(lowering_context_t), intent(in) :: context
