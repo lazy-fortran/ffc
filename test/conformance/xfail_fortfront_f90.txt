@@ -32,9 +32,6 @@ issue_1353_class_pointer_declaration.f90
 issue_1565_use_associated_rename.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90
-issue_1583_computed_goto.f90
-issue_1583_computed_goto_basic.f90
-issue_1583_computed_goto_minimal.f90
 issue_1604_type_bound_procedures.f90
 issue_1607_final_procedures.f90
 issue_1611_allocate_class_typespec.f90

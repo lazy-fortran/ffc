@@ -190,7 +190,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                      get_declaration_has_initializer, &
                                      get_declaration_initializer_index, &
                                      get_node_stmt_label, get_goto_label, &
-                                     goto_is_computed
+                                     goto_is_computed, get_goto_label_list, &
+                                     get_goto_selector_index
     use fortfront_utils, only: get_node_as_function_def, &
                                get_node_as_program, &
                                get_node_as_subroutine_def

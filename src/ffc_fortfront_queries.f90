@@ -14,6 +14,7 @@ module ffc_fortfront_queries
     private
     public :: ast_arena_t, node_exists, get_node_type_at
     public :: get_node_stmt_label, get_goto_label, goto_is_computed
+    public :: get_goto_label_list, get_goto_selector_index
     public :: get_program_body_info, get_module_body_info
     public :: get_function_body_info, get_subroutine_body_info
     public :: get_select_case_info, get_case_block_info
@@ -184,6 +185,34 @@ contains
                           allocated(node%label_list)
         end select
     end function goto_is_computed
+
+    ! Comma-separated target labels of a computed `goto (L1, L2, ...), expr`.
+    ! Empty string for a non-computed goto.
+    function get_goto_label_list(arena, node_index) result(label_list)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: label_list
+
+        call set_empty(label_list)
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (goto_node)
+            if (allocated(node%label_list)) label_list = node%label_list
+        end select
+    end function get_goto_label_list
+
+    ! Arena index of the selector expression of a computed goto; 0 otherwise.
+    integer function get_goto_selector_index(arena, node_index) result(idx)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        idx = 0
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (goto_node)
+            idx = node%selector_index
+        end select
+    end function get_goto_selector_index
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value
