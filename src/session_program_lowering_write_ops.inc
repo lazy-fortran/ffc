@@ -1,12 +1,30 @@
     logical function is_stdout_write(node)
-        ! True when write's unit is stdout: '*' or '6'.
+        ! True when write's unit is stdout: '*', '6', or the iso_fortran_env
+        ! named constant output_unit (which is the standard-output unit).
         type(write_statement_node), intent(in) :: node
 
         is_stdout_write = .false.
         if (.not. allocated(node%unit_spec)) return
         is_stdout_write = trim(node%unit_spec) == '*' .or. &
-                          trim(node%unit_spec) == '6'
+                          trim(node%unit_spec) == '6' .or. &
+                          unit_spec_is_output_unit(node%unit_spec)
     end function is_stdout_write
+
+    logical function unit_spec_is_output_unit(unit_spec)
+        ! True when the unit spec names iso_fortran_env's output_unit constant.
+        ! Fortran identifiers are case-insensitive, so fold to lowercase first.
+        character(len=*), intent(in) :: unit_spec
+        character(len=:), allocatable :: folded
+        integer :: i, c
+
+        folded = trim(unit_spec)
+        do i = 1, len(folded)
+            c = iachar(folded(i:i))
+            if (c >= iachar('A') .and. c <= iachar('Z')) &
+                folded(i:i) = achar(c + (iachar('a') - iachar('A')))
+        end do
+        unit_spec_is_output_unit = folded == 'output_unit'
+    end function unit_spec_is_output_unit
 
     logical function is_stdin_read(node)
         ! True when read's unit is stdin: '*' or '5'.
