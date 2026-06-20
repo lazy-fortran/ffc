@@ -23,7 +23,7 @@ supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
 `F`, and `A` descriptors on stdout; fixed-size rank-1 and rank-2 arrays with
-`integer`, `real`, and `real(8)` elements; scalar element access, array
+`integer`, `real`, `real(8)`, and `logical` elements; scalar element access, array
 sections, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, and

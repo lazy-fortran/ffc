@@ -343,6 +343,9 @@
         case (VALUE_F64)
             call lower_f64_expression(context%arena, value_index, context, &
                                       value, error_msg)
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(context%arena, value_index, context, &
+                                          value, error_msg)
         case default
             call lower_i32_expression(context%arena, value_index, context, &
                                       value, error_msg)
@@ -401,6 +404,9 @@
                 call lower_f32_expression(arena, flat(i), context, value, error_msg)
             else if (vk == VALUE_F64) then
                 call lower_f64_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, flat(i), context, value, &
+                                              error_msg)
             else
                 call lower_i32_expression(arena, flat(i), context, value, error_msg)
             end if
@@ -606,6 +612,9 @@
             case (VALUE_F64)
                 call lower_f64_expression(arena, node%value_index, context, &
                                           value, error_msg)
+            case (VALUE_LOGICAL)
+                call lower_logical_expression(arena, node%value_index, context, &
+                                              value, error_msg)
             case default
                 call lower_i32_expression(arena, node%value_index, context, &
                                           value, error_msg)
