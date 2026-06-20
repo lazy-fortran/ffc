@@ -395,7 +395,13 @@ contains
         end if
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (node%is_parameter) then
+        ! A true PARAMETER constant never carries an INTENT. Lazy-mode
+        ! standardization restates a dummy (integer, intent(in) :: a) as a
+        ! declaration that also sets is_parameter; routing that to the constant
+        ! path demands an initializer the dummy has not got. An intent marks it
+        ! as the already-bound dummy, so take the normal scalar path, which
+        ! benignly refreshes the dummy's kind (#2812).
+        if (node%is_parameter .and. .not. node%has_intent) then
             call lower_constant_declaration(node, context, value_kind, error_msg)
             return
         end if
