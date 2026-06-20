@@ -98,7 +98,6 @@ issue_2073_cmplx_aimag.lf
 issue_2073_cmplx_real.lf
 issue_2073_cmplx_result_not_inferred_complex.lf
 issue_2075_stop_keyword_collision_in_function_param.lf
-issue_2077_goto_drops_labeled_statements.lf
 issue_2106_missing_intent_monomorphization.lf
 issue_2110_array_param_hardcoded.lf
 issue_2111_recursive_missing_result.lf

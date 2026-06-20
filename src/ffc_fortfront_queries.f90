@@ -9,9 +9,11 @@ module ffc_fortfront_queries
     use fortfront_utils, only: node_exists, get_node_type_at
     use fortfront, only: is_derived_type_node, derived_type_node, &
                          is_declaration_node, declaration_node
+    use ast_nodes_control, only: goto_node
     implicit none
     private
     public :: ast_arena_t, node_exists, get_node_type_at
+    public :: get_node_stmt_label, get_goto_label, goto_is_computed
     public :: get_program_body_info, get_module_body_info
     public :: get_function_body_info, get_subroutine_body_info
     public :: get_select_case_info, get_case_block_info
@@ -138,6 +140,50 @@ contains
             end if
         end select
     end function get_declaration_initializer_index
+
+    ! Statement label attached to any node (e.g. the 100 in `100 continue`).
+    ! Empty string when the statement carries no label.
+    function get_node_stmt_label(arena, node_index) result(label)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: label
+
+        call set_empty(label)
+        if (.not. node_exists(arena, node_index)) return
+        if (allocated(arena%entries(node_index)%node%stmt_label)) then
+            label = arena%entries(node_index)%node%stmt_label
+        end if
+    end function get_node_stmt_label
+
+    ! Target label of a simple `goto N`. Empty string for a non-goto node or a
+    ! computed goto (which carries label_list instead).
+    function get_goto_label(arena, node_index) result(label)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: label
+
+        call set_empty(label)
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (goto_node)
+            if (allocated(node%label)) label = node%label
+        end select
+    end function get_goto_label
+
+    ! A computed goto carries a comma-separated label_list and a selector;
+    ! it is out of scope for the simple branch lowering.
+    logical function goto_is_computed(arena, node_index) result(is_computed)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_computed = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (goto_node)
+            is_computed = node%selector_index /= 0 .or. &
+                          allocated(node%label_list)
+        end select
+    end function goto_is_computed
 
     subroutine set_empty(value)
         character(len=:), allocatable, intent(out) :: value
