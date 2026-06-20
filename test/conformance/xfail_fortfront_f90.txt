@@ -48,7 +48,6 @@ issue_1338_where.f90
 issue_1344_character_length.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
-issue_1352_optional_module_if_control.f90
 issue_1353_class_pointer_declaration.f90
 issue_1353_module_type_definition.f90
 issue_1541_save_attribute.f90
@@ -76,7 +75,6 @@ issue_1621_intent_out_array_shape.f90
 issue_1664_function_result.f90
 issue_1696_stop_statements.f90
 issue_1705_real_literal_generic.f90
-issue_1735_result_type.f90
 issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
 issue_1744_operator_interface.f90
@@ -111,7 +109,6 @@ issue_2065_extra_spaces_in_string_literals.f90
 issue_2070_entry_loses_argument_declarations.f90
 issue_2076_pause_statement_silently_dropped.f90
 issue_2078_include_statement_silently_dropped.f90
-issue_2113_real64_roundtrip.f90
 issue_2140_array_and_loop_body_lost.f90
 issue_2162_entry_wrapping.f90
 issue_2226_uppercase_statement_if.f90
@@ -122,7 +119,6 @@ issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
 issue_2251_data_implied_do.f90
 issue_2252_data_value_implied_do.f90
-issue_2253_procedure_interface.f90
 issue_2265_module_program.f90
 issue_2280_statement_function.f90
 issue_2281_header_only_declarations.f90
@@ -130,7 +126,6 @@ issue_2283_nested_modules.f90
 issue_2285_openmp_directives.f90
 issue_2286_openacc_internal.f90
 issue_2287_where_elsewhere.f90
-issue_2347_bare_end_module.f90
 issue_2349_data_boz_literals.f90
 issue_2349_data_boz_postfix.f90
 issue_2349_data_boz_x_prefix.f90
@@ -199,20 +194,12 @@ issue_playtest5_array_parameter_rank_lost.f90
 issue_playtest5_array_type_changed_real_to_int.f90
 issue_playtest5_derived_type_field_lost.f90
 issue_playtest5_interface_result_duplicate.f90
-lazy_standard_module.f90
 library_usage_ast_node_counter.f90
 library_usage_ast_node_position.f90
-module_implicit_none_insertion.f90
-module_interface_block.f90
-module_parsing_basic.f90
 pause_in_if_block.f90
 pause_with_string_in_loop.f90
 pause_without_message.f90
 result_out_keyword.f90
-roundtrip_declaration_attributes.f90
-roundtrip_interface_blocks.f90
-roundtrip_module_features.f90
-roundtrip_procedure_attributes.f90
 roundtrip_type_preservation.f90
 select_rank_simple.f90
 tmp_goto_ast.f90

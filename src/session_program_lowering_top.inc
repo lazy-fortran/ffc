@@ -288,24 +288,12 @@
 
         ! A module of compile-time exports (named constants and derived-type
         ! definitions) lowers to no runtime code: the constants are folded at
-        ! use sites and the types are layout-only. Module variables that need
-        ! storage and module procedures land in follow-up issues (#150, #164,
-        ! #119). An empty module is a no-op.
-        do i = 1, size(procedure_indices)
-            if (.not. node_exists(arena, procedure_indices(i))) cycle
-            node_type = get_node_type_at(arena, procedure_indices(i))
-            if (node_type == 'subroutine_def_node' .or. &
-                node_type == 'subroutine_def' .or. &
-                node_type == 'function_def_node' .or. &
-                node_type == 'function_def') then
-                call unsupported_feature_error('module-defined procedure', &
-                    get_node_line(arena, procedure_indices(i)), &
-                    get_node_column(arena, procedure_indices(i)), &
-                    'direct LIRIC session does not yet lower module '// &
-                    'procedures', error_msg)
-                return
-            end if
-        end do
+        ! use sites and the types are layout-only. Module procedures are emitted
+        ! upstream by lower_module_procedures (#119, #263); an unsupported
+        ! signature aborts there before this point, so by the time control
+        ! reaches here the procedures are already lowered. Module variables that
+        ! need storage land in a follow-up (#150, #164). An empty module is a
+        ! no-op. procedure_indices is consumed upstream, not here.
         do i = 1, size(declaration_indices)
             if (.not. node_exists(arena, declaration_indices(i))) cycle
             node_type = get_node_type_at(arena, declaration_indices(i))

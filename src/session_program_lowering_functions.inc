@@ -581,22 +581,26 @@
     end subroutine lower_one_internal_function
 
     subroutine lower_module_procedures(arena, root_index, context, error_msg)
-        ! Emit module-defined procedures (of a module+program unit) under their
-        ! mangled symbol __<module>_MOD_<name> (#119). A procedure with nested
-        ! internal procedures is not lowered (skipped, never reached unless it
-        ! is also unsupported elsewhere); module-only units are handled by
-        ! lower_module_unit's diagnostic.
+        ! Emit module-defined procedures under their mangled symbol
+        ! __<module>_MOD_<name> (#119, #263). Two unit shapes are handled: a
+        ! program with embedded module(s), and a bare module root (module-only
+        ! source compiled to an object or a no-main executable). A procedure with
+        ! an unsupported signature leaves error_msg set so the unit stays xfail.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: prog_name, mod_name, ff_error, node_type
-        integer, allocatable :: body_indices(:), decl_indices(:), proc_indices(:)
-        integer :: i, p
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        integer, allocatable :: body_indices(:)
+        integer :: i
 
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
-        if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            call lower_one_module_unit_procedures(arena, root_index, context, &
+                                                  error_msg)
+            return
+        end if
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
@@ -607,21 +611,36 @@
         do i = 1, size(body_indices)
             node_type = get_node_type_at(arena, body_indices(i))
             if (node_type /= 'module_node' .and. node_type /= 'module') cycle
-            call get_module_body_info(arena, body_indices(i), mod_name, &
-                                      decl_indices, proc_indices, ff_error)
-            if (len_trim(ff_error) > 0) then
-                error_msg = ff_error
-                return
-            end if
-            if (size(proc_indices) == 0) cycle
-            do p = 1, size(proc_indices)
-                call lower_one_module_procedure(arena, proc_indices(p), &
-                                                trim(mod_name), context, &
-                                                error_msg)
-                if (len_trim(error_msg) > 0) return
-            end do
+            call lower_one_module_unit_procedures(arena, body_indices(i), &
+                                                  context, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_module_procedures
+
+    subroutine lower_one_module_unit_procedures(arena, module_index, context, &
+                                                error_msg)
+        ! Lower every procedure of one module node under its mangled name.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: module_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mod_name, ff_error
+        integer, allocatable :: decl_indices(:), proc_indices(:)
+        integer :: p
+
+        call set_empty(error_msg)
+        call get_module_body_info(arena, module_index, mod_name, &
+                                  decl_indices, proc_indices, ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        do p = 1, size(proc_indices)
+            call lower_one_module_procedure(arena, proc_indices(p), &
+                                            trim(mod_name), context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_one_module_unit_procedures
 
     subroutine lower_one_module_procedure(arena, node_index, module_name, &
                                           context, error_msg)

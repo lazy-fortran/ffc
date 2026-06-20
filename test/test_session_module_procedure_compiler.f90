@@ -1,5 +1,5 @@
 program test_session_module_procedure_compiler
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -12,6 +12,7 @@ program test_session_module_procedure_compiler
     if (.not. test_two_modules_same_procedure_name()) all_passed = .false.
     if (.not. test_module_subroutine_with_real_arg()) all_passed = .false.
     if (.not. test_module_subroutine_with_logical_arg()) all_passed = .false.
+    if (.not. test_bare_module_compiles_and_runs()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: module procedures lower under mangled symbols'
@@ -133,5 +134,25 @@ contains
         test_module_subroutine_with_logical_arg = expect_exit_status( &
             source, 7, '/tmp/ffc_session_mod_logical_test')
     end function test_module_subroutine_with_logical_arg
+
+    logical function test_bare_module_compiles_and_runs()
+        ! #263: a module-only source (no program) lowers its procedures under
+        ! mangled names and emits a runnable no-main executable that produces
+        ! no output and exits 0. This is the dominant conformance-corpus shape.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function square(x) result(r)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    r = x * x'//new_line('a')// &
+            '  end function square'//new_line('a')// &
+            '  subroutine noop()'//new_line('a')// &
+            '  end subroutine noop'//new_line('a')// &
+            'end module m'
+
+        test_bare_module_compiles_and_runs = expect_output( &
+            source, '', '/tmp/ffc_session_bare_module_test')
+    end function test_bare_module_compiles_and_runs
 
 end program test_session_module_procedure_compiler

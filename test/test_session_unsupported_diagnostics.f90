@@ -90,15 +90,15 @@ contains
     end function test_unassigned_character_print_diagnostic
 
     logical function test_module_diagnostic()
+        ! Module procedures lower since #263; a module variable still needs
+        ! storage that is not yet emitted, so it remains a clean diagnostic.
         character(len=*), parameter :: source = &
                                        'module m'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine s'//new_line('a')// &
-                                       '  end subroutine s'//new_line('a')// &
+                                       '  integer :: counter'//new_line('a')// &
                                        'end module m'
 
         test_module_diagnostic = expect_error_contains( &
-                                 source, 'unsupported module-defined procedure', &
+                                 source, 'unsupported module-defined declaration', &
                                  '/tmp/ffc_session_module_diagnostic_test')
     end function test_module_diagnostic
 
@@ -350,15 +350,15 @@ contains
     end function test_cli_unassigned_character_print_diagnostic
 
     logical function test_cli_module_diagnostic()
+        ! Module procedures lower since #263; a module variable still needs
+        ! storage that is not yet emitted, so it remains a clean diagnostic.
         character(len=*), parameter :: source = &
                                        'module m'//new_line('a')// &
-                                       'contains'//new_line('a')// &
-                                       '  subroutine s'//new_line('a')// &
-                                       '  end subroutine s'//new_line('a')// &
+                                       '  integer :: counter'//new_line('a')// &
                                        'end module m'
 
         test_cli_module_diagnostic = expect_cli_error_contains( &
-                                     source, 'unsupported module-defined procedure', &
+                                     source, 'unsupported module-defined declaration', &
                                      '/tmp/ffc_cli_module_diagnostic_test')
     end function test_cli_module_diagnostic
 
