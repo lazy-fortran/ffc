@@ -75,7 +75,6 @@ issue_2265_module_program.f90
 issue_2281_header_only_declarations.f90
 issue_2285_openmp_directives.f90
 issue_2286_openacc_internal.f90
-issue_2287_where_elsewhere.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2390_module_implicit_rules.f90
