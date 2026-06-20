@@ -46,6 +46,9 @@
             if (allocated(context%derived_types(i)%component_names)) then
                 deallocate(context%derived_types(i)%component_names)
             end if
+            if (allocated(context%derived_types(i)%component_value_kind)) then
+                deallocate(context%derived_types(i)%component_value_kind)
+            end if
         end do
         context%derived_type_count = 0
         call set_empty(error_msg)
@@ -484,7 +487,8 @@
                     parent%component_names(c), node%line, node%column, &
                     parent%component_has_default(c), &
                     parent%component_default_value(c), &
-                    parent%component_array_size(c), error_msg)
+                    parent%component_array_size(c), &
+                    parent%component_value_kind(c), error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end associate
@@ -531,6 +535,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         logical :: has_default
         integer(c_int64_t) :: default_value
         integer :: array_size
+        integer :: value_kind
 
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
@@ -542,6 +547,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
             call validate_component_declaration(component, parent_line, &
                                                 parent_column, context, &
                                                 error_msg)
+            if (len_trim(error_msg) > 0) return
+            call declaration_value_kind(component, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             ! A component default initialiser must be a compile-time integer.
             has_default = .false.
@@ -579,14 +586,14 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                component%var_names(i), &
                                                component%line, component%column, &
                                                has_default, default_value, &
-                                               array_size, error_msg)
+                                               array_size, value_kind, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
                 call add_derived_component(context, type_index, component%var_name, &
                                            component%line, component%column, &
                                            has_default, default_value, array_size, &
-                                           error_msg)
+                                           value_kind, error_msg)
             else
                 error_msg = 'derived type component declaration did not expose a name'
                 return
@@ -626,21 +633,31 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                            'scalar integer components', error_msg)
             return
         end if
-        ! Accept any component that resolves to an integer-sized slot, including
-        ! interop kinds (integer(c_int32_t)) and the opaque c_ptr. Other kinds
-        ! (real, character, deferred-length) are rejected: the MVP derived-type
-        ! layout stores only i32-sized components.
+        ! Accept scalar integer (incl. interop kinds and c_ptr), real (f32/f64),
+        ! and logical components. Each occupies whole 4-byte slots: f64 spans two
+        ! slots, the rest one. Array, character, and nested components stay
+        ! unsupported in this layout.
         call type_name_value_kind(component%type_name, component%line, &
                                   component%column, comp_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (comp_kind /= VALUE_I32 .and. comp_kind /= VALUE_C_PTR) then
+        select case (comp_kind)
+        case (VALUE_I32, VALUE_C_PTR)
+            ! Already supported.
+        case (VALUE_F64, VALUE_F32, VALUE_LOGICAL)
+            if (component%is_array) then
+                call unsupported_feature_error('derived type array component', &
+                    component%line, component%column, 'real and logical array '// &
+                    'components are not supported; only scalar', error_msg)
+                return
+            end if
+        case default
             call unsupported_feature_error('derived type component', &
                                            component%line, component%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'scalar integer (or c_ptr) components', &
-                                           error_msg)
+                                           'direct LIRIC session supports scalar '// &
+                                           'integer, real, logical, and c_ptr '// &
+                                           'components', error_msg)
             return
-        end if
+        end select
         call set_empty(error_msg)
     end subroutine validate_component_declaration
 
@@ -667,7 +684,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
 
     subroutine add_derived_component(context, type_index, name, line, column, &
                                      has_default, default_value, array_size, &
-                                     error_msg)
+                                     value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -675,6 +692,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         logical, intent(in) :: has_default
         integer(c_int64_t), intent(in) :: default_value
         integer, intent(in) :: array_size
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: component_index
 
@@ -694,6 +712,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
             default_value
         context%derived_types(type_index)%component_array_size(component_index) = &
             array_size
+        context%derived_types(type_index)%component_value_kind(component_index) = &
+            value_kind
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
@@ -712,9 +732,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_has_default(8))
             allocate(context%derived_types(type_index)%component_default_value(8))
             allocate(context%derived_types(type_index)%component_array_size(8))
+            allocate(context%derived_types(type_index)%component_value_kind(8))
             context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_array_size = 1
+            context%derived_types(type_index)%component_value_kind = VALUE_I32
             context%derived_types(type_index)%component_count = 0
             return
         end if
@@ -729,22 +751,28 @@ subroutine collect_component_declaration(component_index, parent_line, &
             logical, allocatable :: old_hd(:)
             integer(c_int64_t), allocatable :: old_dv(:)
             integer, allocatable :: old_as(:)
+            integer, allocatable :: old_vk(:)
             associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
                 old_dv = dt%component_default_value
                 old_as = dt%component_array_size
+                old_vk = dt%component_value_kind
                 deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
                 deallocate(dt%component_array_size)
+                deallocate(dt%component_value_kind)
                 allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
                 allocate(dt%component_array_size(new_size))
+                allocate(dt%component_value_kind(new_size))
                 dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
                 dt%component_array_size = 1
+                dt%component_value_kind = VALUE_I32
                 dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
                 dt%component_array_size(1:old_size) = old_as
+                dt%component_value_kind(1:old_size) = old_vk
             end associate
         end block
     end subroutine grow_derived_type_components

@@ -164,15 +164,20 @@ contains
     end function test_component_stop_code
 
     logical function test_real_component_diagnostic()
+        ! Real scalar components round-trip through the i32-slot layout: store a
+        ! real value and print it back with the real format.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: sample_t'//new_line('a')// &
                                        '    real :: value'//new_line('a')// &
                                        '  end type sample_t'//new_line('a')// &
+                                       '  type(sample_t) :: s'//new_line('a')// &
+                                       '  s%value = 7.0'//new_line('a')// &
+                                       '  print *, s%value'//new_line('a')// &
                                        'end program main'
 
-        test_real_component_diagnostic = expect_error_contains( &
-                                         source, 'unsupported derived type component', &
+        test_real_component_diagnostic = expect_output( &
+                                         source, '   7.00000000    '//new_line('a'), &
                                          '/tmp/ffc_session_derived_real_test')
     end function test_real_component_diagnostic
 

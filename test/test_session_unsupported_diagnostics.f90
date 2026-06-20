@@ -181,10 +181,12 @@ contains
     end function test_do_terminating_body_diagnostic
 
     logical function test_derived_type_diagnostic()
+        ! Character components stay unsupported (the layout stores only whole
+        ! 4-byte i32 slots); scalar integer, real, and logical are accepted.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
-                                       '    real :: x'//new_line('a')// &
+                                       '    character(len=4) :: name'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
                                        'end program main'
 
@@ -439,10 +441,12 @@ contains
     end function test_cli_do_terminating_body_diagnostic
 
     logical function test_cli_derived_type_diagnostic()
+        ! Character components stay unsupported; scalar integer, real, and
+        ! logical components are accepted.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
-                                       '    real :: x'//new_line('a')// &
+                                       '    character(len=4) :: name'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
                                        'end program main'
 

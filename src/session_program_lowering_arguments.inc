@@ -403,7 +403,7 @@
                 end if
             end if
         type is (component_access_node)
-            value_kind = VALUE_I32
+            value_kind = derived_component_access_kind(arena, node, context)
         end select
     end function expression_value_kind
 
