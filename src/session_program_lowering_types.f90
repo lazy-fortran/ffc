@@ -96,6 +96,8 @@ module session_program_lowering_types
     integer, parameter, public :: F64_INTRINSIC_HYPOT = 27
     integer, parameter, public :: F64_INTRINSIC_MOD = 28
     integer, parameter, public :: F64_INTRINSIC_MODULO = 29
+    integer, parameter, public :: F64_INTRINSIC_AINT = 30
+    integer, parameter, public :: F64_INTRINSIC_ANINT = 31
     character(len=18), parameter, public :: I32_INTRINSIC_NAMES(23) = &
                                    [character(len=18) :: 'abs', 'min', 'max', 'mod', &
                                     'iand', 'ior', 'ieor', 'not', 'ishft', &
@@ -114,14 +116,14 @@ module session_program_lowering_types
                            I32_INTRINSIC_RESHAPE, I32_INTRINSIC_SELECTED_INT_KIND, &
                            I32_INTRINSIC_SELECTED_REAL_KIND, I32_INTRINSIC_MODULO, &
                            I32_INTRINSIC_DIM]
-    character(len=9), parameter, public :: F64_INTRINSIC_NAMES(29) = &
+    character(len=9), parameter, public :: F64_INTRINSIC_NAMES(31) = &
                                    [character(len=9) :: 'abs', 'min', 'max', 'real', &
                                     'sign', 'sqrt', 'exp', 'log', 'sin', 'cos', &
                                     'tan', 'atan', 'atan2', 'asin', 'acos', 'sinh', &
                                     'cosh', 'tanh', 'asinh', 'acosh', 'atanh', &
                                     'log10', 'erf', 'erfc', 'gamma', 'log_gamma', &
-                                    'hypot', 'mod', 'modulo']
-    integer, parameter, public :: F64_INTRINSIC_IDS(29) = &
+                                    'hypot', 'mod', 'modulo', 'aint', 'anint']
+    integer, parameter, public :: F64_INTRINSIC_IDS(31) = &
                           [F64_INTRINSIC_ABS, F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                            F64_INTRINSIC_REAL, F64_INTRINSIC_SIGN, F64_INTRINSIC_SQRT, &
                            F64_INTRINSIC_EXP, F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
@@ -134,7 +136,8 @@ module session_program_lowering_types
                            F64_INTRINSIC_ERF, F64_INTRINSIC_ERFC, &
                            F64_INTRINSIC_GAMMA, F64_INTRINSIC_LOG_GAMMA, &
                            F64_INTRINSIC_HYPOT, F64_INTRINSIC_MOD, &
-                           F64_INTRINSIC_MODULO]
+                           F64_INTRINSIC_MODULO, F64_INTRINSIC_AINT, &
+                           F64_INTRINSIC_ANINT]
 
     ! COMMON-block slot (#1578, #1900): one shared global per variable in a
     ! COMMON block, keyed by block name and position. has_init/init_text carry

@@ -245,6 +245,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 F64_INTRINSIC_ERFC, F64_INTRINSIC_GAMMA, &
                                                 F64_INTRINSIC_LOG_GAMMA, &
                                                 F64_INTRINSIC_HYPOT, &
+                                                F64_INTRINSIC_AINT, &
+                                                F64_INTRINSIC_ANINT, &
                                                 F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
                                                 F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                                                 F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
