@@ -316,3 +316,48 @@
         context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_one_module_variable
+
+    subroutine bind_module_constants_in_context(context, error_msg)
+        ! Host-associate module-scope named constants into a fresh procedure
+        ! context so a contained or module procedure body can reference them
+        ! (#1826). Scalar integer/real/logical/character parameters and enum
+        ! enumerators are folded into value-based symbols, exactly as the main
+        ! program scope binds them. Array parameters and non-literal
+        ! initializers stay out of scope: the constant is simply left unbound,
+        ! so a body reference surfaces the usual clean "not declared" diagnostic.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(ast_arena_t) :: arena
+        integer :: m, i, param_idx, value_kind
+        logical :: enum_handled
+        character(len=:), allocatable :: kind_err, decl_err
+
+        call set_empty(error_msg)
+        arena = context%arena
+        do m = 1, context%module_export_count
+            do i = 1, context%module_exports(m)%parameter_count
+                param_idx = context%module_exports(m)%parameter_indices(i)
+                if (.not. node_exists(arena, param_idx)) cycle
+                select type (node => arena%entries(param_idx)%node)
+                type is (declaration_node)
+                    if (find_symbol(context, node%var_name) > 0) cycle
+                    if (node%is_array .or. node%is_multi_declaration) cycle
+                    call declaration_value_kind(node, value_kind, kind_err)
+                    if (len_trim(kind_err) > 0) cycle
+                    ! Out-of-scope kinds leave the symbol unbound; do not fail.
+                    call lower_constant_declaration(node, context, value_kind, &
+                                                    decl_err)
+                end select
+            end do
+            do i = 1, context%module_exports(m)%enum_count
+                param_idx = context%module_exports(m)%enum_indices(i)
+                if (.not. node_exists(arena, param_idx)) cycle
+                call lower_enum_block(arena, param_idx, context, decl_err, &
+                                      enum_handled)
+                if (len_trim(decl_err) > 0) then
+                    error_msg = decl_err
+                    return
+                end if
+            end do
+        end do
+    end subroutine bind_module_constants_in_context
