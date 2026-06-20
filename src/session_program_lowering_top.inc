@@ -110,6 +110,13 @@
             call destroy(context%session)
             return
         end if
+        ! COMMON-block globals share the same up-front emission requirement so
+        ! BLOCK DATA initialisers reach the data section (#1578, #1900).
+        call emit_common_block_globals(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -551,6 +558,19 @@
             call set_empty(error_msg)
         type is (goto_node)
             call lower_goto(arena, node_index, context, error_msg)
+        type is (comment_node)
+            ! A COMMON statement survives as a comment. Reaching it during the
+            ! body walk rebinds its variables to their shared slot globals; any
+            ! other comment carries no executable semantics (#1578).
+            if (is_common_text(node%text)) then
+                call bind_common_block_symbols(arena, context, error_msg)
+            else
+                call set_empty(error_msg)
+            end if
+        type is (block_data_node)
+            ! A BLOCK DATA unit only initialises COMMON storage; its values were
+            ! folded into the slot globals by the pre-pass, so it emits no code.
+            call set_empty(error_msg)
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'
@@ -602,6 +622,7 @@
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_save.inc'
+    include 'session_program_lowering_common.inc'
     include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'
