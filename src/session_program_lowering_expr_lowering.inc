@@ -116,10 +116,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (node%is_array_access .and. &
-                array_access_value_kind(node, context) == VALUE_LOGICAL) then
+            if ((node%is_array_access .and. &
+                 array_access_value_kind(node, context) == VALUE_LOGICAL) .or. &
+                is_allocatable_element_ref(node, context)) then
                 ! Logical array element occupies an i32 slot; the load yields the
-                ! 0/1 value the logical-context callers expect.
+                ! 0/1 value the logical-context callers expect. Allocatable
+                ! logical refs reuse the same i32-slot load.
                 call lower_i32_array_element(arena, node, context, value, &
                                              error_msg)
             else
@@ -307,10 +309,9 @@
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
 
-        if (node%is_array_access) then
-            call lower_real_array_element_address(arena, node, context, VALUE_F32, &
-                                                  element_addr, error_msg, &
-                                                  'array expression')
+        if (node%is_array_access .or. is_allocatable_element_ref(node, context)) then
+            call lower_array_element_address_for_kind(arena, node, context, &
+                VALUE_F32, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f32_load(context%session, element_addr, value, &
                                           error_msg)) then
@@ -556,10 +557,9 @@
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
 
-        if (node%is_array_access) then
-            call lower_real_array_element_address(arena, node, context, VALUE_F64, &
-                                                  element_addr, error_msg, &
-                                                  'array expression')
+        if (node%is_array_access .or. is_allocatable_element_ref(node, context)) then
+            call lower_array_element_address_for_kind(arena, node, context, &
+                VALUE_F64, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f64_load(context%session, element_addr, value, &
                                           error_msg)) then

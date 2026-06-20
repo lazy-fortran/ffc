@@ -43,32 +43,46 @@ is closed with ABI documentation and executable tests.
 
 ### Allocatable array descriptor
 
-An `integer, allocatable :: a(:)` declaration lowers to a 24-byte,
-8-byte-aligned descriptor on the stack, zero-initialised at declaration:
+An `integer/real/logical, allocatable :: a(:)` declaration lowers to a 40-byte,
+8-byte-aligned descriptor on the stack, zero-initialised at declaration. The
+descriptor is element-kind-agnostic; the element kind lives on the symbol and
+drives the per-element byte stride:
 
 ```
-struct ffc_alloc_i32_1d {
-    i32*  data;    // offset 0; 0 means unallocated
-    i64   lower;   // offset 8; the lower bound (1 once allocated)
-    i64   upper;   // offset 16; the upper bound (0 when unallocated)
+struct ffc_alloc_1d {
+    ptr   data;    // offset 0; 0 means unallocated
+    i64   lower1;  // offset 8;  lower bound (1 once allocated)
+    i64   upper1;  // offset 16; upper bound (0 when unallocated)
+    i64   lower2;  // offset 24; rank-2 only (0 for rank-1)
+    i64   upper2;  // offset 32; rank-2 only (0 for rank-1)
 };
 ```
 
+The element byte stride is 4 for `integer`/`real(4)`/`logical` and 8 for
+`real(8)`/`integer(8)`. Logical occupies a 4-byte slot, matching the fixed-array
+representation.
+
 `data == 0` marks the array unallocated. `allocate(a(N))` (N a literal or
-runtime integer) calls `malloc(N*4)`, stores the pointer in `data`, sets
-`lower = 1` and `upper = N`. `deallocate(a)` calls `free(data)` then zeroes
-`data` and `upper`. `free(NULL)` is a no-op, so deallocating an unallocated
+runtime integer) calls `malloc(N*stride)`, stores the pointer in `data`, sets
+`lower1 = 1` and `upper1 = N`. `deallocate(a)` calls `free(data)` then zeroes
+`data` and `upper1`. `free(NULL)` is a no-op, so deallocating an unallocated
 variable exits cleanly rather than erroring (a deliberate divergence from the
 standard, which makes it a runtime error).
 
-Element access on an allocated 1-D integer allocatable is supported as an
-rvalue and an assignment target. `a(i)` loads `data` from offset 0 and `lower`
-from offset 8 at runtime, computes the element address as
-`data + (i - lower) * 4`, and emits an i32 load or store. No alloc/free happens
-inside element loops: `allocate` once and index many. Bounds are not checked.
-Whole-array assignment on allocatables is not yet supported and is rejected
-with a diagnostic. Only single-variable, one-dimensional, default-lower-bound
-`allocate`/`deallocate` are supported.
+Element access on an allocated 1-D allocatable is supported as an rvalue and an
+assignment target. `a(i)` loads `data` from offset 0 and `lower1` from offset 8
+at runtime, computes the element address as `data + (i - lower1) * stride`, and
+emits a kind-typed load or store. No alloc/free happens inside element loops:
+`allocate` once and index many. Bounds are not checked.
+
+Whole-array constructor assignment (`a = [e1, e2, ...]`) is supported for 1-D
+integer, real, and logical allocatables: it frees the old storage, reallocates
+for the constructor's element count, and stores each element. Whole-array print
+(`print *, a`) is supported when the most recent allocation extent is a
+compile-time constant; the print is unrolled over that extent. A runtime-only
+extent leaves whole-array print unsupported. Rank-2 allocatables remain
+integer-only. Only single-variable, default-lower-bound `allocate`/`deallocate`
+are supported.
 
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the
   call boundary.

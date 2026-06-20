@@ -1,9 +1,20 @@
     subroutine lower_allocatable_declaration(node, context, error_msg)
-        ! integer, allocatable :: a(:) or a(:,:)
+        ! integer/real/logical, allocatable :: a(:) or a(:,:)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, rank
+        integer :: i, rank, value_kind
+
+        call declaration_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+            call unsupported_feature_error('allocatable declaration', &
+                node%line, node%column, &
+                'direct LIRIC session supports integer, real, and logical '// &
+                'allocatable arrays only', error_msg)
+            return
+        end if
 
         rank = 1
         if (allocated(node%dimension_indices)) then
@@ -12,19 +23,28 @@
                 call unsupported_feature_error('allocatable declaration', &
                     node%line, node%column, &
                     'direct LIRIC session supports rank-1 and rank-2 '// &
-                    'integer allocatables', error_msg)
+                    'allocatables', error_msg)
+                return
+            end if
+            ! Only integer rank-2 is wired through allocate/element/print.
+            if (rank == 2 .and. value_kind /= VALUE_I32) then
+                call unsupported_feature_error('allocatable declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports rank-2 allocatables for '// &
+                    'integer elements only', error_msg)
                 return
             end if
         end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call declare_allocatable_i32(context, node%var_names(i), rank, &
-                                             error_msg)
+                call declare_allocatable(context, node%var_names(i), rank, &
+                                         value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
-            call declare_allocatable_i32(context, node%var_name, rank, error_msg)
+            call declare_allocatable(context, node%var_name, rank, value_kind, &
+                                     error_msg)
         else
             error_msg = 'allocatable declaration did not expose a variable name'
         end if
@@ -75,8 +95,29 @@
         else
             call lower_allocate_i32_1d(arena, size_index1, symbol_index, &
                                        context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call record_allocatable_static_size(arena, size_index1, &
+                                                    symbol_index, context)
         end if
     end subroutine lower_allocate_statement
+
+    subroutine record_allocatable_static_size(arena, size_index, symbol_index, &
+                                              context)
+        ! Remember the rank-1 allocation extent when it is a compile-time
+        ! constant; this lets whole-array print unroll without a runtime loop.
+        ! A non-constant size leaves the size unknown (0), keeping print xfail.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: size_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t) :: n
+        character(len=:), allocatable :: eval_err
+
+        context%symbols(symbol_index)%allocatable_static_size = 0
+        call eval_i32_constant(arena, size_index, context, n, eval_err)
+        if (len_trim(eval_err) == 0 .and. n >= 0_c_int64_t) &
+            context%symbols(symbol_index)%allocatable_static_size = int(n)
+    end subroutine record_allocatable_static_size
 
     subroutine allocate_target(arena, node, name, size_index1, size_index2, &
                                error_msg)
@@ -169,8 +210,9 @@
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, m_i64, n_i64, &
                 total_i64, error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
-                i64_immediate(context%session, 4_c_int64_t), bytes_i64, &
-                error_msg)) return
+                i64_immediate(context%session, &
+                    allocatable_elem_size(context%symbols(symbol_index)%value_kind)), &
+                bytes_i64, error_msg)) return
         if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
             return
 
@@ -206,8 +248,9 @@
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, n_i32, &
-                i32_immediate(context%session, 4_c_int64_t), bytes_i32, &
-                error_msg)) return
+                i32_immediate(context%session, &
+                    allocatable_elem_size(context%symbols(symbol_index)%value_kind)), &
+                bytes_i32, error_msg)) return
         if (.not. emit_liric_i32_to_i64(context%session, bytes_i32, bytes_i64, &
                 error_msg)) return
         if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
@@ -227,8 +270,9 @@
 
     subroutine lower_allocatable_constructor_assignment(arena, ctor, symbol_index, &
                                                        context, error_msg)
-        ! a = [e1, e2, ...] where a is an integer 1-D allocatable (B2c).
-        ! Deallocates old storage, allocates for N elements, then stores each.
+        ! a = [e1, e2, ...] where a is a 1-D allocatable of integer, real, or
+        ! logical elements (B2c). Deallocates old storage, allocates for N
+        ! elements, then stores each at the kind-specific stride.
         type(ast_arena_t), intent(in) :: arena
         type(array_literal_node), intent(in) :: ctor
         integer, intent(in) :: symbol_index
@@ -236,7 +280,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: n_i32, elem_addr, value
         type(lr_operand_desc_t) :: descriptor, data_ptr
-        integer :: i, n
+        integer :: i, n, vk
+        integer(c_int64_t) :: stride
         integer, allocatable :: flat(:)
 
         if (.not. allocated(ctor%element_indices)) then
@@ -263,21 +308,83 @@
         n_i32 = i32_immediate(context%session, int(n, c_int64_t))
         call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
         if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%allocatable_static_size = n
 
         ! Store each element. After lower_allocate_i32_1d_operand the descriptor
         ! data pointer points to the fresh allocation with lower = 1.
+        vk = context%symbols(symbol_index)%value_kind
+        stride = allocatable_elem_size(vk)
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
             return
         do i = 1, n
-            call lower_i32_expression(arena, flat(i), context, value, error_msg)
+            call lower_allocatable_element_value(arena, flat(i), vk, context, &
+                                                 value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_ptr_offset(context%session, data_ptr, &
-                    int((i - 1) * 4, c_int64_t), elem_addr, error_msg)) return
-            if (.not. emit_i32_store(context%session, value, elem_addr, &
-                                     error_msg)) return
+                    int(i - 1, c_int64_t) * stride, elem_addr, error_msg)) return
+            if (.not. emit_allocatable_element_store(context, vk, value, &
+                                                     elem_addr, error_msg)) return
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
+
+    subroutine lower_allocatable_element_value(arena, expr_index, vk, context, &
+                                               value, error_msg)
+        ! Lower one element-typed value for an allocatable, by element kind.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        integer, intent(in) :: vk
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (vk)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, expr_index, context, value, error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, expr_index, context, value, error_msg)
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(arena, expr_index, context, value, &
+                                          error_msg)
+        case default
+            call lower_i32_expression(arena, expr_index, context, value, error_msg)
+        end select
+    end subroutine lower_allocatable_element_value
+
+    logical function emit_allocatable_element_store(context, vk, value, addr, &
+                                                    error_msg) result(ok)
+        ! Typed store of one allocatable element by element kind.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: value, addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        select case (vk)
+        case (VALUE_F32)
+            ok = emit_liric_f32_store(context%session, value, addr, error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_store(context%session, value, addr, error_msg)
+        case default
+            ok = emit_i32_store(context%session, value, addr, error_msg)
+        end select
+    end function emit_allocatable_element_store
+
+    logical function emit_allocatable_element_load(context, vk, addr, value, &
+                                                   error_msg) result(ok)
+        ! Typed load of one allocatable element by element kind.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: addr
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        select case (vk)
+        case (VALUE_F32)
+            ok = emit_liric_f32_load(context%session, addr, value, error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_load(context%session, addr, value, error_msg)
+        case default
+            ok = emit_i32_load(context%session, addr, value, error_msg)
+        end select
+    end function emit_allocatable_element_load
 
     subroutine lower_deallocate_statement(arena, node, context, error_msg)
         ! deallocate(a) for one integer 1-D allocatable.
@@ -511,24 +618,39 @@
         end if
 
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, linear_i64, &
-                i64_immediate(context%session, 4_c_int64_t), byte_offset, &
-                error_msg)) return
+                i64_immediate(context%session, &
+                    allocatable_elem_size(context%symbols(symbol_index)%value_kind)), &
+                byte_offset, error_msg)) return
         if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
                 element_address, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocatable_element_address
 
-    subroutine declare_allocatable_i32(context, name, rank, error_msg)
+    pure integer(c_int64_t) function allocatable_elem_size(value_kind) result(sz)
+        ! Byte stride of one allocatable element. i32/f32/logical occupy 4 bytes;
+        ! i64/f64 occupy 8. Logical uses an i32 slot, matching the array path.
+        integer, intent(in) :: value_kind
+        select case (value_kind)
+        case (VALUE_F64, VALUE_I64)
+            sz = 8_c_int64_t
+        case default
+            sz = 4_c_int64_t
+        end select
+    end function allocatable_elem_size
+
+    subroutine declare_allocatable(context, name, rank, value_kind, error_msg)
         ! Stack-allocate a 40-byte descriptor and zero it. Layout:
         !   offset  0: data pointer (i64)
         !   offset  8: lower1 (i64)
         !   offset 16: upper1 (i64)
         !   offset 24: lower2 (i64, rank-2; 0 for rank-1)
         !   offset 32: upper2 (i64, rank-2; 0 for rank-1)
-        ! data == 0 marks the array unallocated.
+        ! data == 0 marks the array unallocated. The element kind lives on the
+        ! symbol's value_kind; the descriptor itself is kind-agnostic.
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: rank
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: descriptor, zero
         integer :: index, k
@@ -550,19 +672,10 @@
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
-        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%value_kind = value_kind
         context%symbols(index)%is_allocatable = .true.
         context%symbols(index)%array_rank = rank
         context%symbols(index)%allocatable_descriptor_address = descriptor
         context%symbol_count = index
         call set_empty(error_msg)
-    end subroutine declare_allocatable_i32
-
-    subroutine declare_allocatable_i32_1d(context, name, error_msg)
-        ! Backward-compatible wrapper: declare a rank-1 integer allocatable.
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        call declare_allocatable_i32(context, name, 1, error_msg)
-    end subroutine declare_allocatable_i32_1d
+    end subroutine declare_allocatable

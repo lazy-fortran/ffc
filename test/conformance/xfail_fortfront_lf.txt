@@ -48,9 +48,7 @@ issue_1407_character_function.lf
 issue_1410_pointer_null.lf
 issue_1413_array_function.lf
 issue_1414_implied_do.lf
-issue_1534_allocatable.lf
 issue_1534_multi_dimension_allocatable.lf
-issue_1534_single_dimension_allocatable.lf
 issue_1539_reshape.lf
 issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf
@@ -105,7 +103,6 @@ issue_2163_character_substring_lengths.lf
 issue_2165_undeclared_argument.lf
 issue_216_comparison_chain.lf
 issue_2426_function_with_execution.lf
-issue_2594_allocatable_lhs_realloc.lf
 issue_2659_implicit_contains_pure_subroutine.lf
 issue_2691_implied_do_static_size_known.lf
 issue_2691_implied_do_static_size_unknown.lf
