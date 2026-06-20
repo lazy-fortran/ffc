@@ -45,7 +45,6 @@ issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
 issue_1337_forall.f90
 issue_1338_where.f90
-issue_1344_character_length.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1352_optional_module_if_control.f90

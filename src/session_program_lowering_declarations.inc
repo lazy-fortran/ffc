@@ -14,18 +14,11 @@
                                            'by direct LIRIC session', error_msg)
             return
         end if
-        if (value_kind /= VALUE_I32) then
-            call unsupported_feature_error('parameter declaration', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'integer scalar parameters', error_msg)
-            return
-        end if
         if (node%is_multi_declaration) then
             call unsupported_feature_error('parameter declaration', &
                                            node%line, node%column, &
                                            'direct LIRIC session only supports '// &
-                                           'single integer parameters', error_msg)
+                                           'single scalar parameters', error_msg)
             return
         end if
         if (.not. allocated(node%var_name)) then
@@ -33,8 +26,17 @@
             return
         end if
         if (.not. node%has_initializer .or. node%initializer_index <= 0) then
-            error_msg = 'integer parameter requires a compile-time initializer: '// &
+            error_msg = 'parameter requires a compile-time initializer: '// &
                         trim(node%var_name)
+            return
+        end if
+
+        ! Real/logical/character named constants bind a typed value into the
+        ! symbol; integer scalars stay on the dedicated path because the
+        ! derived-type bound pre-pass caches their folded i32 constant.
+        if (value_kind /= VALUE_I32) then
+            call lower_nonint_constant_declaration(node, context, value_kind, &
+                                                   error_msg)
             return
         end if
 
@@ -68,6 +70,86 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine lower_constant_declaration
+
+    subroutine lower_nonint_constant_declaration(node, context, value_kind, &
+                                                 error_msg)
+        ! Bind a scalar REAL/LOGICAL/CHARACTER (or non-default integer) named
+        ! constant: define a symbol of the declared kind, fold the literal
+        ! initializer into its value operand, and mark it a parameter so later
+        ! references read the constant directly.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: index
+
+        name = node%var_name
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate parameter declaration: '//trim(name)
+            return
+        end if
+
+        if (value_kind == VALUE_CHARACTER) then
+            call lower_character_constant_declaration(node, context, name, &
+                                                      error_msg)
+            return
+        end if
+
+        call define_symbol(context, name, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        index = find_symbol(context, name)
+        if (index <= 0) then
+            error_msg = 'parameter declaration did not register a symbol: '// &
+                        trim(name)
+            return
+        end if
+        context%symbols(index)%is_parameter = .true.
+        call lower_scalar_initializer(context, name, value_kind, &
+                                      node%initializer_index, error_msg)
+    end subroutine lower_nonint_constant_declaration
+
+    subroutine lower_character_constant_declaration(node, context, name, error_msg)
+        ! A character named constant takes its length from the folded literal
+        ! (character(len=*), parameter :: s = "Hello"). The value operand holds
+        ! a materialized LIRIC string so references and print read it directly.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: literal_text
+        character(len=64) :: string_name
+        logical :: fold_ok
+        integer :: index
+
+        call concat_character_literals(context%arena, node%initializer_index, &
+                                       literal_text, fold_ok)
+        if (.not. fold_ok) then
+            call unsupported_feature_error('character parameter declaration', &
+                node%line, node%column, 'only character-literal initializers '// &
+                'are supported for named constants', error_msg)
+            return
+        end if
+
+        call define_character_symbol(context, name, len(literal_text), error_msg)
+        if (len_trim(error_msg) > 0) return
+        index = find_symbol(context, name)
+        if (index <= 0) then
+            error_msg = 'character parameter did not register a symbol: '// &
+                        trim(name)
+            return
+        end if
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.char.', context%string_literal_count
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      literal_text, &
+                                      context%symbols(index)%value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(index)%has_character_value = .true.
+        context%symbols(index)%is_parameter = .true.
+        call set_empty(error_msg)
+    end subroutine lower_character_constant_declaration
 
     subroutine type_name_value_kind(type_name, line, column, value_kind, error_msg)
         character(len=*), intent(in) :: type_name

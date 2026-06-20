@@ -25,7 +25,7 @@ closed with executable tests.
 | Input | Standard Fortran source parsed by FortFront's compiler-facing API. Lazy Fortran and Infer-mode inputs are accepted only when FortFront produces the same supported semantic constructs. |
 | Output | Native executable or object file emitted by LIRIC. |
 | Program unit | One main program plus contained procedures. |
-| Scalars | Scalar `integer`, `real`, and `logical` declarations and assignments. Compound declarations (`integer :: a, b, c`). |
+| Scalars | Scalar `integer`, `real`, and `logical` declarations and assignments. Compound declarations (`integer :: a, b, c`). Scalar `parameter` named constants for `integer`, `real` (incl. `real(8)`/`real(dp)`), `logical`, and assumed-length `character(len=*)` with a compile-time literal initializer; the constant folds into uses in expressions, conditions, and `print`. Array, derived-type, and non-literal-expression parameters stay unsupported. |
 | Characters | Character literals, fixed-length `character(len=N)` variables, deferred-length `character(len=:), allocatable` with assignment, concatenation including self-aliasing and three-way concat, and compile-time `//` folding for character literal chains. |
 | Expressions | Integer and real literals, scalar variable references, integer and real arithmetic, integer comparisons, scalar logical conditions. |
 | Termination | Falling off `program main` returns zero. `stop <integer expression>` returns the integer expression as process status. |
