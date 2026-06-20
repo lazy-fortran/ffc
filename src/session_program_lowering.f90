@@ -345,16 +345,6 @@ contains
                 return
             end if
             if (node%is_allocatable) then
-                if (value_kind /= VALUE_I32) then
-                    call unsupported_feature_error('allocatable array declaration', &
-                                                   node%line, node%column, &
-                                                   'ffc direct-session lowering only '// &
-                                                   'supports integer arrays for '// &
-                                                   'allocatable; real allocatables '// &
-                                                   'land in a later issue', &
-                                                   error_msg)
-                    return
-                end if
                 call lower_allocatable_declaration(node, context, error_msg)
                 return
             end if

@@ -132,7 +132,6 @@ issue_2486_class_type_multidecl.f90
 issue_2487_parameter_statement.f90
 issue_2489_interface_in_procedure.f90
 issue_2490_hollerith_format.f90
-issue_2491_standalone_allocatable.f90
 issue_2493_char_array_constructor.f90
 issue_2494_line_continuation_strings.f90
 issue_2495_data_null_intrinsic.f90

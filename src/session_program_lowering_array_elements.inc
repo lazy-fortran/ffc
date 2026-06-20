@@ -463,10 +463,14 @@
         end if
         sym = find_symbol(context, name)
         if (sym <= 0) return
-        if (.not. context%symbols(sym)%is_array) return
-        if (context%symbols(sym)%is_allocatable) return
+        if (.not. context%symbols(sym)%is_array .and. &
+            .not. context%symbols(sym)%is_allocatable) return
         vk = context%symbols(sym)%value_kind
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64) return
+        if (context%symbols(sym)%is_allocatable) then
+            call emit_allocatable_print_items(context, sym, vk, handled, error_msg)
+            return
+        end if
 
         handled = .true.
         n = int(context%symbols(sym)%array_size, c_int64_t)
@@ -488,6 +492,51 @@
         end do
         call set_empty(error_msg)
     end subroutine emit_whole_array_print_items
+
+    subroutine emit_allocatable_print_items(context, sym, vk, handled, error_msg)
+        !! Whole-array print of a rank-1 allocatable whose extent is known at
+        !! compile time (allocatable_static_size). Loads the descriptor data
+        !! pointer and emits one typed print per element with list-directed
+        !! spacing. A runtime-only extent leaves handled false (xfail).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        integer, intent(in) :: vk
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, addr, value
+        integer(c_int64_t) :: stride, k, n
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%symbols(sym)%array_rank == 2) return
+        n = int(context%symbols(sym)%allocatable_static_size, c_int64_t)
+        if (n <= 0_c_int64_t) return
+
+        handled = .true.
+        stride = allocatable_elem_size(vk)
+        descriptor = context%symbols(sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, data_ptr, k * stride, &
+                                      addr, error_msg)) return
+            if (.not. emit_allocatable_element_load(context, vk, addr, value, &
+                                                    error_msg)) return
+            if (vk == VALUE_F32) then
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+            else if (vk == VALUE_F64) then
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
+            else
+                if (.not. emit_liric_print_i32_value(context%session, &
+                                                     context%i32_print_format_id, &
+                                                     value, error_msg)) return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_allocatable_print_items
 
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &
@@ -964,9 +1013,9 @@
         if (len_trim(error_msg) > 0) return
 
         if (vk == VALUE_F32 .or. vk == VALUE_F64) then
-            call lower_real_array_element_address(arena, target, context, vk, &
-                                                  element_address, error_msg, &
-                                                  'array assignment target')
+            call lower_array_element_address_for_kind(arena, target, context, vk, &
+                                                      element_address, error_msg, &
+                                                      'array assignment target')
         else
             call lower_i32_array_element_address(arena, target, context, &
                                                  element_address, error_msg, &
@@ -1192,6 +1241,34 @@
 
         call set_empty(error_msg)
     end subroutine lower_i32_array_element_address
+
+    subroutine lower_array_element_address_for_kind(arena, node, context, vk, &
+                                                    element_address, error_msg, &
+                                                    feature)
+        !! Real (f32/f64) array element address, routing allocatable references
+        !! through the descriptor-based path. Fixed arrays use the GEP path.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: feature
+        integer :: symbol_index
+
+        if (allocated(node%name)) then
+            symbol_index = find_symbol(context, node%name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_allocatable) then
+                    call lower_allocatable_element_address(arena, node, &
+                        symbol_index, context, element_address, error_msg)
+                    return
+                end if
+            end if
+        end if
+        call lower_real_array_element_address(arena, node, context, vk, &
+                                              element_address, error_msg, feature)
+    end subroutine lower_array_element_address_for_kind
 
     subroutine lower_real_array_element_address(arena, node, context, vk, &
                                                 element_address, error_msg, &

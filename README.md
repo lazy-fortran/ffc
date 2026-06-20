@@ -32,9 +32,11 @@ access, array
 sections, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, and
-`all`; scalar element read and write on an allocated 1-D integer allocatable
-(`a(i)`); and whole-array assignment from an array constructor to a 1-D
-integer allocatable with auto-reallocation (`a = [e1, e2, ...]`). Scalar
+`all`; scalar element read and write on an allocated 1-D integer, real, or
+logical allocatable (`a(i)`); whole-array assignment from an array constructor
+to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`); and
+whole-array `print` of a 1-D allocatable whose extent is a compile-time
+constant. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Derived types take scalar

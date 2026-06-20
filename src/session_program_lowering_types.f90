@@ -162,6 +162,10 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: deferred_length
         logical :: is_allocatable = .false.
         type(lr_operand_desc_t) :: allocatable_descriptor_address
+        ! Compile-time element count of a rank-1 allocatable when the most
+        ! recent allocate/constructor used a constant size; 0 when unknown.
+        ! Drives compile-time-unrolled whole-array print without a runtime loop.
+        integer :: allocatable_static_size = 0
         ! Scalar POINTER/TARGET (#245, slice B3a). A target lives in memory at
         ! `address`; a pointer carries the current target's `address` once
         ! associated. `is_associated` tracks straight-line association at compile
