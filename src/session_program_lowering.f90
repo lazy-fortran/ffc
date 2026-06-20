@@ -366,6 +366,14 @@ contains
                 call lower_allocatable_declaration(node, context, error_msg)
                 return
             end if
+            ! Assumed-rank dummy arr(..): no static rank, so bind it to the
+            ! parameter base and take its rank from the caller's actual; a later
+            ! select rank dispatches on that resolved rank (#273).
+            if (declaration_is_assumed_rank(node, context)) then
+                call lower_assumed_rank_declaration(node, context, value_kind, &
+                                                    error_msg)
+                return
+            end if
             ! Assumed-shape dummy a(:): no compile-time bound on the colon
             ! dimensions, so bind it to the parameter base and take its extent
             ! from the caller's actual instead of folding the declaration.
@@ -550,7 +558,9 @@ contains
     subroutine define_declared_class_star_symbol(context, name, error_msg)
         ! A class(*) dummy: the parameter pointer addresses a 16-byte
         ! {void* data; i64 type_id} descriptor (#141). data is at offset 0 and
-        ! the runtime type id at offset 8.
+        ! the runtime type id at offset 8. A local class(*) allocatable gets the
+        ! same descriptor layout in a stack slot, allocated empty and populated
+        ! by a typed allocate (#273).
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
@@ -558,13 +568,11 @@ contains
 
         index = find_symbol(context, name)
         if (index <= 0) then
-            error_msg = 'class(*) is only supported as a dummy argument: '// &
-                        trim(name)
+            call define_local_class_star_symbol(context, name, error_msg)
             return
         end if
         if (.not. context%symbols(index)%is_parameter) then
-            error_msg = 'class(*) is only supported as a dummy argument: '// &
-                        trim(name)
+            call define_local_class_star_symbol(context, name, error_msg)
             return
         end if
         context%symbols(index)%value_kind = VALUE_CLASS_STAR
@@ -576,6 +584,43 @@ contains
             context%symbols(index)%deferred_length, error_msg)) return
         call set_empty(error_msg)
     end subroutine define_declared_class_star_symbol
+
+    subroutine define_local_class_star_symbol(context, name, error_msg)
+        ! A local class(*) allocatable: stack-allocate the 16-byte
+        ! {void* data; i64 type_id} descriptor, zero both slots (unallocated),
+        ! and expose the slot addresses through deferred_data/deferred_length so
+        ! select type and a typed allocate share the dummy descriptor path (#273).
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        if (find_symbol(context, name) > 0) then
+            error_msg = 'duplicate class(*) declaration: '//trim(name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_CLASS_STAR
+        context%symbols(index)%is_allocatable = .true.
+        context%symbol_count = index
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, 16_c_int64_t), &
+            context%symbols(index)%address, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 0_c_int64_t, &
+            context%symbols(index)%deferred_data, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 8_c_int64_t, &
+            context%symbols(index)%deferred_length, error_msg)) return
+        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+            context%symbols(index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), &
+            context%symbols(index)%deferred_length, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine define_local_class_star_symbol
     subroutine lower_parameter_declaration(node, context, error_msg)
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context

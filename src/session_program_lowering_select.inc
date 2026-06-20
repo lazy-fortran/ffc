@@ -592,16 +592,18 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: sel_name, assoc_name
-        integer :: sel_index, g, i
+        integer :: sel_index, g
         type(lr_operand_desc_t) :: sel_type_id, data_ptr, cond, guard_id
         integer(c_int32_t) :: arm_block, next_block, merge_block
-        type(symbol_t), allocatable :: saved(:)
-        integer :: saved_count
-        type(lr_operand_desc_t) :: value
+        type(symbol_t), allocatable :: baseline(:)
+        integer :: baseline_count
         logical :: terminated
         integer :: selector_idx
         integer, allocatable :: guard_indices(:)
         integer :: default_idx
+        type(branch_result_t), allocatable :: results(:)
+        integer :: nresults
+        logical :: captured
 
         call set_empty(error_msg)
         call get_select_type_info(arena, node_index, selector_idx, &
@@ -629,11 +631,18 @@
             context%symbols(sel_index)%deferred_data, data_ptr, error_msg)) return
 
         merge_block = create_liric_block(context%session)
-        allocate (saved(context%symbol_count))
-        do i = 1, context%symbol_count
-            saved(i) = context%symbols(i)
-        end do
-        saved_count = context%symbol_count
+        ! Each arm is a separate predecessor of the merge block; carry every
+        ! baseline symbol's per-arm value across so an SSA scalar reassigned in
+        ! one arm (e.g. i = 1) reaches the trailing statement through a phi,
+        ! exactly as select case does. The associate name is local to each arm
+        ! and is restored to baseline before capture so it never diverges.
+        call snapshot_symbols(context, baseline, baseline_count)
+        nresults = 0
+        if (allocated(guard_indices)) then
+            allocate (results(size(guard_indices) + 1))
+        else
+            allocate (results(1))
+        end if
 
         if (allocated(guard_indices)) then
             do g = 1, size(guard_indices)
@@ -648,40 +657,77 @@
                                             next_block, error_msg)) return
                 if (.not. set_liric_block(context%session, arm_block, &
                                           error_msg)) return
+                context%current_block_id = arm_block
                 context%current_block_terminated = .false.
-                call restore_select_symbols(context, saved, saved_count)
+                call restore_symbols(context, baseline, baseline_count)
                 call lower_select_type_arm(arena, guard_indices(g), &
                     assoc_name, data_ptr, context, terminated, error_msg)
                 if (len_trim(error_msg) > 0) return
+                call select_type_capture_arm(context, baseline, baseline_count, &
+                    terminated, results(nresults + 1), captured)
+                if (captured) nresults = nresults + 1
                 if (.not. terminated) then
                     if (.not. emit_liric_br(context%session, merge_block, &
                                             error_msg)) return
                 end if
                 if (.not. set_liric_block(context%session, next_block, &
                                           error_msg)) return
+                context%current_block_id = next_block
                 context%current_block_terminated = .false.
             end do
         end if
 
-        call restore_select_symbols(context, saved, saved_count)
+        call restore_symbols(context, baseline, baseline_count)
         if (default_idx > 0) then
             call lower_select_type_default(arena, default_idx, context, &
                                            terminated, error_msg)
             if (len_trim(error_msg) > 0) return
+            call select_type_capture_arm(context, baseline, baseline_count, &
+                terminated, results(nresults + 1), captured)
+            if (captured) nresults = nresults + 1
             if (.not. terminated) then
                 if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
                     return
             end if
         else
+            ! No default: the unguarded fall-through path branches straight to
+            ! the merge carrying the (already-restored) baseline symbols.
+            call capture_select_result(context, .false., results(nresults + 1))
+            nresults = nresults + 1
             if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
         end if
 
-        call restore_select_symbols(context, saved, saved_count)
-        deallocate (saved)
-        if (.not. set_liric_block(context%session, merge_block, &
-                                  error_msg)) return
-        context%current_block_terminated = .false.
+        call restore_symbols(context, baseline, baseline_count)
+        call finish_select_merge(context, merge_block, results, nresults, &
+                                 error_msg)
     end subroutine lower_select_type
+
+    subroutine select_type_capture_arm(context, baseline, baseline_count, &
+                                       terminated, result, captured)
+        ! Capture a select type arm's symbol state for the merge phi, but only
+        ! the baseline symbols: the associate name lives beyond baseline (or
+        ! rebinds a baseline slot inside the arm) and must not enter the merge.
+        ! A baseline slot rebound as the associate name is reverted first.
+        type(lowering_context_t), intent(inout) :: context
+        type(symbol_t), intent(in) :: baseline(:)
+        integer, intent(in) :: baseline_count
+        logical, intent(in) :: terminated
+        type(branch_result_t), intent(out) :: result
+        logical, intent(out) :: captured
+        integer :: i
+
+        captured = .not. terminated
+        if (.not. captured) return
+        ! Drop any associate-name symbol appended past the baseline and revert a
+        ! baseline slot whose kind changed (the associate bound onto it), keeping
+        ! the merge's symbol set identical across arms.
+        do i = 1, baseline_count
+            if (context%symbols(i)%value_kind /= baseline(i)%value_kind) &
+                context%symbols(i) = baseline(i)
+        end do
+        context%symbol_count = baseline_count
+        call capture_select_result(context, terminated, result)
+    end subroutine select_type_capture_arm
 
     subroutine select_type_selector(arena, selector_index, sel_name, &
                                     assoc_name, error_msg)
@@ -722,17 +768,6 @@
         end select
     end subroutine select_type_selector
 
-    subroutine restore_select_symbols(context, saved, saved_count)
-        type(lowering_context_t), intent(inout) :: context
-        type(symbol_t), intent(in) :: saved(:)
-        integer, intent(in) :: saved_count
-        integer :: i
-
-        do i = 1, saved_count
-            context%symbols(i) = saved(i)
-        end do
-        context%symbol_count = saved_count
-    end subroutine restore_select_symbols
 
     subroutine select_type_guard_id(arena, guard_index, context, guard_id, &
                                     error_msg)
@@ -990,3 +1025,80 @@
             if (allocated(blk%body_indices)) body = blk%body_indices
         end select
     end subroutine select_rank_block_body
+
+    logical function allocate_targets_class_star(arena, node, context)
+        ! True for `allocate(<type> :: x)` where x is a class(*) allocatable.
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, err
+        integer :: idx
+
+        allocate_targets_class_star = .false.
+        if (.not. allocated(node%type_spec)) return
+        if (len_trim(node%type_spec) == 0) return
+        if (.not. allocated(node%var_indices)) return
+        if (size(node%var_indices) /= 1) return
+        if (.not. is_identifier(arena, node%var_indices(1))) return
+        call get_identifier_name(arena, node%var_indices(1), name, err)
+        if (len_trim(err) > 0) return
+        idx = find_symbol(context, name)
+        if (idx <= 0) return
+        allocate_targets_class_star = &
+            context%symbols(idx)%value_kind == VALUE_CLASS_STAR
+    end function allocate_targets_class_star
+
+    subroutine lower_class_star_allocate(arena, node, context, error_msg)
+        ! allocate(<type> :: x): malloc storage for the concrete type, point the
+        ! descriptor's data slot at it, and record the runtime type id so a later
+        ! select type dispatches to the matching arm (#273).
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: idx, byte_size, type_id
+        type(lr_operand_desc_t) :: data_ptr
+
+        call set_empty(error_msg)
+        call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        idx = find_symbol(context, name)
+        if (idx <= 0) then
+            error_msg = 'allocate target is not declared: '//trim(name)
+            return
+        end if
+        call class_star_type_spec(node%type_spec, byte_size, type_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_malloc(context%session, &
+            i64_immediate(context%session, int(byte_size, c_int64_t)), &
+            data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+            context%symbols(idx)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, int(type_id, c_int64_t)), &
+            context%symbols(idx)%deferred_length, error_msg)) return
+    end subroutine lower_class_star_allocate
+
+    subroutine class_star_type_spec(type_spec, byte_size, type_id, error_msg)
+        ! Map a class(*) allocate type-spec to its storage size and runtime id.
+        character(len=*), intent(in) :: type_spec
+        integer, intent(out) :: byte_size, type_id
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(lowercase_text(type_spec)))
+        case ('integer')
+            byte_size = 4
+            type_id = TYPE_ID_INTEGER
+        case ('real', 'double precision')
+            byte_size = 8
+            type_id = TYPE_ID_REAL
+        case ('logical')
+            byte_size = 4
+            type_id = TYPE_ID_LOGICAL
+        case default
+            error_msg = 'allocate(<type> :: x) supports integer, real, '// &
+                        'and logical for class(*): '//trim(type_spec)
+        end select
+    end subroutine class_star_type_spec

@@ -477,7 +477,13 @@
                                                '(#247)', error_msg)
             end if
         type is (allocate_statement_node)
-            call lower_allocate_statement(arena, node, context, error_msg)
+            ! allocate(<type> :: x) on a class(*) allocatable populates the
+            ! polymorphic descriptor; everything else uses the array path.
+            if (allocate_targets_class_star(arena, node, context)) then
+                call lower_class_star_allocate(arena, node, context, error_msg)
+            else
+                call lower_allocate_statement(arena, node, context, error_msg)
+            end if
         type is (deallocate_statement_node)
             call lower_deallocate_statement(arena, node, context, error_msg)
         type is (return_node)
