@@ -122,6 +122,13 @@
             call destroy(context%session)
             return
         end if
+        ! EQUIVALENCE groups share storage; emit their globals up front for the
+        ! same data-section reason as COMMON (#280, issue_1745).
+        call emit_equivalence_globals(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -565,10 +572,9 @@
         type is (interface_block_node)
             call lower_interface_block(arena, node, context, error_msg)
         type is (pause_node)
-            ! PAUSE halts an interactive run waiting for input; under batch
-            ! conformance it carries no observable semantics, so execution
-            ! continues (#270).
-            call set_empty(error_msg)
+            ! PAUSE writes a banner to stderr and waits on stdin; end-of-input
+            ! terminates the job, matching gfortran (#280).
+            call lower_pause(node, context, error_msg)
         type is (continue_node)
             ! CONTINUE is a no-op; it commonly only anchors a statement label
             ! that a GOTO targets (the labeled-body driver owns the branch).
@@ -581,6 +587,10 @@
             ! other comment carries no executable semantics (#1578).
             if (is_common_text(node%text)) then
                 call bind_common_block_symbols(arena, context, error_msg)
+            else if (is_equivalence_text(node%text)) then
+                ! An EQUIVALENCE statement also survives as a comment; reaching it
+                ! rebinds its members onto the shared group global (#280).
+                call bind_equivalence_symbols(arena, context, error_msg)
             else
                 call set_empty(error_msg)
             end if
@@ -651,6 +661,7 @@
     include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_save.inc'
     include 'session_program_lowering_common.inc'
+    include 'session_program_lowering_equivalence.inc'
     include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'

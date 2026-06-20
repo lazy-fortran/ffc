@@ -1,5 +1,6 @@
 program test_session_goto_compiler
-    use ffc_test_support, only: expect_output, expect_exit_status
+    use ffc_test_support, only: expect_output, expect_exit_status, &
+                                expect_eof_stderr_and_exit
     implicit none
 
     print *, '=== direct session goto/pause compiler test ==='
@@ -32,17 +33,20 @@ program test_session_goto_compiler
          '/tmp/ffc_session_goto_backward_test')) stop 1
     print *, 'PASS: backward goto loops until the condition fails'
 
-    ! PAUSE continues execution under batch conformance.
-    if (.not. expect_output( &
+    ! PAUSE writes its banner to stderr and waits on stdin; end-of-input ends
+    ! the job after flushing earlier output, so "after" is never printed (#280).
+    if (.not. expect_eof_stderr_and_exit( &
          'program main'//new_line('a')// &
          '    implicit none'//new_line('a')// &
          '    print *, "before"'//new_line('a')// &
          '    pause "halt"'//new_line('a')// &
          '    print *, "after"'//new_line('a')// &
          'end program main', &
-         ' before'//new_line('a')//' after'//new_line('a'), &
+         'PAUSE halt'//new_line('a')// &
+         'To resume execution, type go.  Other input will terminate the job.'// &
+         new_line('a')//' before'//new_line('a'), 0, &
          '/tmp/ffc_session_pause_test')) stop 1
-    print *, 'PASS: pause continues execution'
+    print *, 'PASS: pause halts on end-of-input'
 
     print *, 'PASS: goto and pause lower through direct LIRIC session'
 end program test_session_goto_compiler

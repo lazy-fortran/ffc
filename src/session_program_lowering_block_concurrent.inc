@@ -9,17 +9,26 @@
         type(lr_operand_desc_t) :: value
         logical :: terminated
         integer :: saved_symbol_count
+        integer :: saved_floor
 
         call set_empty(error_msg)
         saved_symbol_count = context%symbol_count
+        saved_floor = context%block_scope_floor
+        ! Everything declared so far is an enclosing scope for this block. A
+        ! BLOCK-local declaration that reuses an outer name then lands in a fresh
+        ! slot above the floor, so its writes never touch the outer storage,
+        ! while writes to a non-shadowed outer variable still update it (#280).
+        context%block_scope_floor = saved_symbol_count
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
             if (len_trim(error_msg) > 0) return
             if (terminated) context%current_block_terminated = terminated
         end if
-        ! Discard BLOCK-local symbols so they are not visible outside.
+        ! Discard BLOCK-local symbols so they are not visible outside; a shadowed
+        ! outer name reverts to its (untouched) outer slot automatically.
         context%symbol_count = saved_symbol_count
+        context%block_scope_floor = saved_floor
     end subroutine lower_block_construct
 
     subroutine lower_do_concurrent(arena, node, context, value, error_msg)

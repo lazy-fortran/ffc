@@ -3,7 +3,6 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Promote entries by removing them from this file when ffc starts passing.
-arithmetic_if_whitespace_labels.f90
 ast_coverage_control_flow.f90
 ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
@@ -56,7 +55,6 @@ issue_1705_real_literal_generic.f90
 issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
 issue_1744_operator_interface.f90
-issue_1745_equivalence.f90
 issue_1771_module_parameter_types.f90
 issue_1774_user_defined_operator.f90
 issue_1782_procedure_pointer.f90
@@ -76,7 +74,6 @@ issue_2017_assumed_shape_duplicate_monomorph.f90
 issue_2018_function_returns_array_duplicate_var.f90
 issue_2024_char_function_duplicate_and_missing.f90
 issue_2070_entry_loses_argument_declarations.f90
-issue_2076_pause_statement_silently_dropped.f90
 issue_2078_include_statement_silently_dropped.f90
 issue_2162_entry_wrapping.f90
 issue_2236_optional_assumed_rank_bridge.f90
@@ -142,9 +139,6 @@ issue_509_mixed_constructs_expected.f90
 issue_playtest5_array_parameter_rank_lost.f90
 library_usage_ast_node_counter.f90
 library_usage_ast_node_position.f90
-pause_in_if_block.f90
-pause_with_string_in_loop.f90
-pause_without_message.f90
 result_out_keyword.f90
 tmp_goto_ast.f90
 tooling_lightweight_ast.f90
@@ -152,5 +146,4 @@ undefined_var_recursive_type.f90
 undefined_var_segfault.f90
 use_intrinsic_only.f90
 variable_tracking_function_calls.f90
-variable_usage_shadowed_block.f90
 issue_2348_interface_block_procedures.f90
