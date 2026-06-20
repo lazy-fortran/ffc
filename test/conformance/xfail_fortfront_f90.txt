@@ -77,7 +77,6 @@ issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
 issue_2265_module_program.f90
-issue_2281_header_only_declarations.f90
 issue_2285_openmp_directives.f90
 issue_2286_openacc_internal.f90
 issue_2287_where_elsewhere.f90

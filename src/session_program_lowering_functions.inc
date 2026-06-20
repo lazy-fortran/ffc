@@ -1,10 +1,46 @@
+    ! Return the unit body for the body-walking passes. A program root yields its
+    ! body_indices. A mixed_construct_container root (lazy source mixing a
+    ! top-level procedure with bare main-program statements) yields its explicit
+    ! program units followed by the implicit main statements, so the existing
+    ! walk lowers the procedures as contained functions and the statements as the
+    ! main body (#266, #275).
+    subroutine get_unit_body_indices(arena, root_index, body_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        integer, allocatable, intent(out) :: body_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error
+        integer :: n_expl, n_impl
+
+        call set_empty(error_msg)
+        select type (root => arena%entries(root_index)%node)
+        type is (mixed_construct_container_node)
+            n_expl = 0
+            n_impl = 0
+            if (allocated(root%explicit_program_indices)) &
+                n_expl = size(root%explicit_program_indices)
+            if (allocated(root%implicit_declaration_indices)) &
+                n_impl = size(root%implicit_declaration_indices)
+            allocate(body_indices(n_expl + n_impl))
+            if (n_expl > 0) &
+                body_indices(1:n_expl) = root%explicit_program_indices
+            if (n_impl > 0) &
+                body_indices(n_expl + 1:n_expl + n_impl) = &
+                    root%implicit_declaration_indices
+        class default
+            call get_program_body_info(arena, root_index, prog_name, &
+                                       body_indices, ff_error)
+            if (len_trim(ff_error) > 0) error_msg = ff_error
+        end select
+    end subroutine get_unit_body_indices
+
     subroutine collect_internal_function_names(arena, root_index, context, &
                                                error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: prog_name, ff_error, node_type
+        character(len=:), allocatable :: ff_error, node_type
         character(len=:), allocatable :: fn_name, fn_result, sb_name
         integer, allocatable :: body_indices(:), fn_params(:), fn_body(:), &
                                sb_params(:), sb_body(:)
@@ -35,8 +71,7 @@
             return
         end if
         if (node_type == 'block_data_node' .or. node_type == 'block_data') return
-        call get_program_body_info(arena, root_index, &
-                                   prog_name, body_indices, ff_error)
+        call get_unit_body_indices(arena, root_index, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
             error_msg = ff_error
             return
@@ -541,7 +576,7 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: prog_name, ff_error, node_type
+        character(len=:), allocatable :: ff_error, node_type
         integer, allocatable :: body_indices(:)
         integer :: i
 
@@ -549,8 +584,7 @@
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
         if (node_type == 'block_data_node' .or. node_type == 'block_data') return
-        call get_program_body_info(arena, root_index, prog_name, body_indices, &
-                                   ff_error)
+        call get_unit_body_indices(arena, root_index, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
             error_msg = ff_error
             return
@@ -612,7 +646,7 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: prog_name, ff_error, node_type
+        character(len=:), allocatable :: ff_error, node_type
         integer, allocatable :: body_indices(:)
         integer :: i
 
@@ -624,8 +658,7 @@
             return
         end if
         if (node_type == 'block_data_node' .or. node_type == 'block_data') return
-        call get_program_body_info(arena, root_index, prog_name, body_indices, &
-                                   ff_error)
+        call get_unit_body_indices(arena, root_index, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
             error_msg = ff_error
             return

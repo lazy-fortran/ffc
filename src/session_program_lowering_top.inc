@@ -207,6 +207,14 @@
         if (get_node_type_at(arena, root_index) == 'program_node' .or. &
             get_node_type_at(arena, root_index) == 'program') then
             continue
+        else if (get_node_type_at(arena, root_index) == &
+                 'mixed_construct_container') then
+            ! Lazy source mixing a top-level procedure with bare main-program
+            ! statements parses to a mixed_construct_container. It lowers like a
+            ! program: explicit procedures become contained functions, implicit
+            ! statements become the main body (#266, #275). Constructs the body
+            ! still rejects (derived types, modules) keep their own diagnostics.
+            continue
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
                  get_node_type_at(arena, root_index) == 'module') then
             ! A bare module unit is accepted only when it declares no symbols;
@@ -234,7 +242,7 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: program_name, mod_name, ff_error
+        character(len=:), allocatable :: mod_name, ff_error
         integer, allocatable :: body_indices(:), mod_declaration_indices(:), &
                                 mod_procedure_indices(:)
         integer :: i
@@ -248,9 +256,9 @@
         has_nested_program = .false.
         call set_empty(error_msg)
         if (get_node_type_at(arena, root_index) == 'program_node' .or. &
-            get_node_type_at(arena, root_index) == 'program') then
-            call get_program_body_info(arena, root_index, &
-                                       program_name, body_indices, ff_error)
+            get_node_type_at(arena, root_index) == 'program' .or. &
+            get_node_type_at(arena, root_index) == 'mixed_construct_container') then
+            call get_unit_body_indices(arena, root_index, body_indices, ff_error)
             if (len_trim(ff_error) > 0) then
                 error_msg = ff_error
                 return

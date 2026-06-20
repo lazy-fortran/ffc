@@ -33,6 +33,32 @@ program test_session_lazy_toplevel_function_compiler
             'call show(7)'//new_line('a'), &
             '           7', 'ffc_lazy_toplevel_show')) ok = .false.
 
+    ! A top-level subroutine with an explicit local declaration plus bare main
+    ! statements parses to a mixed_construct_container root rather than a
+    ! synthetic multi-unit program. The container must lower like a program:
+    ! the subroutine becomes a contained procedure, the bare statements the
+    ! main body (#266, #275). Mirrors monomorphization_scale_subroutine.lf.
+    if (.not. lazy_runs( &
+            'subroutine bump(v)'//new_line('a')// &
+            '    integer :: v'//new_line('a')// &
+            '    v = v + 1'//new_line('a')// &
+            '    print *, v'//new_line('a')// &
+            'end subroutine'//new_line('a')// &
+            ''//new_line('a')// &
+            'integer :: k'//new_line('a')// &
+            'k = 41'//new_line('a')// &
+            'call bump(k)'//new_line('a'), &
+            '          42', 'ffc_mixed_container_subroutine')) ok = .false.
+
+    ! A declaration-only unit (no executable statements) parses to a
+    ! mixed_construct_container whose body holds only specification nodes. It
+    ! must lower to a runnable empty main rather than a blanket "unsupported
+    ! program unit" rejection (#266, #275). Mirrors the header-only corpus case.
+    if (.not. lazy_runs_empty( &
+            'integer :: x'//new_line('a')// &
+            'real :: y'//new_line('a'), &
+            'ffc_mixed_container_decls_only')) ok = .false.
+
     if (.not. ok) stop 1
     print *, 'PASS: top-level lazy function and subroutine lower and run'
 
@@ -84,6 +110,42 @@ contains
         end if
         ok = .true.
     end function lazy_runs
+
+    ! Compile and run a lazy fragment that produces no stdout, asserting only a
+    ! clean compile and a zero exit. Used for declaration-only units that lower
+    ! to an empty main.
+    logical function lazy_runs_empty(source, stem) result(ok)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: stem
+        character(len=:), allocatable :: src_path, exe_path, command
+        integer :: unit, exit_stat, cmd_stat
+
+        ok = .false.
+        src_path = '/tmp/'//stem//'.lf'
+        exe_path = '/tmp/'//stem//'.exe'
+        call execute_command_line('rm -f '//src_path//' '//exe_path)
+
+        open (newunit=unit, file=src_path, status='replace', action='write')
+        write (unit, '(A)', advance='no') source
+        close (unit)
+
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | head -n 1); "// &
+                  "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
+        call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: ffc rejected declaration-only source ', stem, &
+                ' exit=', exit_stat
+            return
+        end if
+
+        call execute_command_line(exe_path, exitstat=exit_stat, cmdstat=cmd_stat)
+        call execute_command_line('rm -f '//src_path//' '//exe_path)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: declaration-only executable did not run cleanly: ', stem
+            return
+        end if
+        ok = .true.
+    end function lazy_runs_empty
 
     function read_first_line(path) result(line)
         character(len=*), intent(in) :: path

@@ -17,10 +17,8 @@ boolean_assign_bare_true.lf
 chained_comparison.lf
 character_function_len.lf
 debug_mixed_constructs.lf
-derived_type_end_field.lf
 derived_type_multiple_components.lf
 derived_type_nested.lf
-derived_type_simple.lf
 docs_character_arrays.lf
 docs_unsigned_integers.lf
 error_missing_then.lf
@@ -87,7 +85,6 @@ issue_playtest5_subroutine_name_collision.lf
 logical_ops.lf
 module_contains_suite.lf
 monomorphization_add_three_types.lf
-monomorphization_scale_subroutine.lf
 monomorphization_simple.lf
 read_statement.lf
 test_209_all.lf
