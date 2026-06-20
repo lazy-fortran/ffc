@@ -21,6 +21,14 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: io_status
 
+        ! BOZ constants (DATA initializers, #2349) carry a base prefix or
+        ! postfix that list-directed read cannot parse; decode them by radix.
+        call parse_boz_literal(text, value, io_status)
+        if (io_status == 0) then
+            call set_empty(error_msg)
+            return
+        end if
+
         read (text, *, iostat=io_status) value
         if (io_status == 0) then
             call set_empty(error_msg)
@@ -29,6 +37,92 @@ contains
                         trim(text)
         end if
     end subroutine parse_i32_literal
+
+    subroutine parse_boz_literal(text, value, status)
+        !! Decode a BOZ constant into an integer value. Recognises the standard
+        !! prefix forms B'..'/O'..'/Z'..', the gfortran-rejected X'..' hex
+        !! alias, and the nonstandard postfix forms '..'B/'..'O/'..'Z/'..'X.
+        !! status==0 on success; nonzero leaves the value untouched so the
+        !! caller falls back to ordinary integer parsing.
+        character(len=*), intent(in) :: text
+        integer(c_int64_t), intent(out) :: value
+        integer, intent(out) :: status
+        character(len=:), allocatable :: trimmed, digits
+        character(len=1) :: base
+        integer :: radix, n, qopen, qclose
+
+        status = 1
+        value = 0_c_int64_t
+        trimmed = trim(adjustl(text))
+        n = len(trimmed)
+        if (n < 3) return
+        if (trimmed(1:1) /= "'" .and. trimmed(1:1) /= '"') then
+            base = to_lower(trimmed(1:1))
+        else
+            base = to_lower(trimmed(n:n))
+        end if
+        radix = boz_radix(base)
+        if (radix == 0) return
+        qopen = index(trimmed, "'")
+        if (qopen == 0) qopen = index(trimmed, '"')
+        if (qopen == 0) return
+        qclose = index(trimmed(qopen + 1:), trimmed(qopen:qopen))
+        if (qclose == 0) return
+        qclose = qopen + qclose
+        if (qclose <= qopen + 1) return
+        digits = trimmed(qopen + 1:qclose - 1)
+        call decode_radix_digits(digits, radix, value, status)
+    end subroutine parse_boz_literal
+
+    integer function boz_radix(base)
+        character(len=1), intent(in) :: base
+        select case (base)
+        case ('b')
+            boz_radix = 2
+        case ('o')
+            boz_radix = 8
+        case ('z', 'x')
+            boz_radix = 16
+        case default
+            boz_radix = 0
+        end select
+    end function boz_radix
+
+    subroutine decode_radix_digits(digits, radix, value, status)
+        character(len=*), intent(in) :: digits
+        integer, intent(in) :: radix
+        integer(c_int64_t), intent(out) :: value
+        integer, intent(out) :: status
+        integer :: i, d
+        character(len=1) :: c
+
+        status = 1
+        value = 0_c_int64_t
+        if (len_trim(digits) == 0) return
+        do i = 1, len(digits)
+            c = to_lower(digits(i:i))
+            if (c >= '0' .and. c <= '9') then
+                d = iachar(c) - iachar('0')
+            else if (c >= 'a' .and. c <= 'f') then
+                d = iachar(c) - iachar('a') + 10
+            else
+                return
+            end if
+            if (d >= radix) return
+            value = value*int(radix, c_int64_t) + int(d, c_int64_t)
+        end do
+        status = 0
+    end subroutine decode_radix_digits
+
+    pure function to_lower(c) result(lc)
+        character(len=1), intent(in) :: c
+        character(len=1) :: lc
+        if (c >= 'A' .and. c <= 'Z') then
+            lc = achar(iachar(c) + 32)
+        else
+            lc = c
+        end if
+    end function to_lower
 
     subroutine integer_opcode(source_op, opcode, error_msg)
         character(len=*), intent(in) :: source_op

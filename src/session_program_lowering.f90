@@ -8,7 +8,8 @@ module session_program_lowering
                               pointer_assignment_node, literal_node
     use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
-    use ast_nodes_io, only: open_statement_node, close_statement_node
+    use ast_nodes_io, only: open_statement_node, close_statement_node, &
+                            io_implied_do_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
@@ -244,6 +245,18 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     private
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
+
+    ! Pull-based cursor over a DATA value list. A scalar value yields once; an
+    ! implied-do value (e.g. (i*1.0, i=1,2)) unrolls its inner expression,
+    ! binding the control variable before each is handed to the consumer.
+    type :: data_value_cursor_t
+        integer :: vpos = 0      ! index into value_indices
+        integer :: count = 0     ! values remaining in active implied-do
+        integer :: var_sym = 0   ! control symbol of active implied-do
+        integer :: cur = 0       ! current control value
+        integer :: step = 1
+        integer :: inner = 0     ! single inner value expression index
+    end type data_value_cursor_t
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node, node_index, context, error_msg)
@@ -438,70 +451,7 @@ contains
         end if
     end subroutine lower_scalar_initializer
 
-    subroutine lower_data_statement(arena, node, context, error_msg)
-        !! Apply a DATA statement (data i, j / 1, 2 / ; data arr / 1, 2, 3 /).
-        !! Objects and values are flat parallel lists; an array object consumes
-        !! one value per element in storage order. Only explicit value lists are
-        !! handled (no repeat counts or BOZ literals): a value/object count
-        !! mismatch returns an error so unsupported forms stay xfail.
-        type(ast_arena_t), intent(in) :: arena
-        type(data_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name
-        type(lr_operand_desc_t) :: value
-        integer :: oi, vi, sym, k, asz
-
-        call set_empty(error_msg)
-        if (.not. allocated(node%object_indices) .or. &
-            .not. allocated(node%value_indices)) return
-        vi = 0
-        do oi = 1, size(node%object_indices)
-            call identifier_name(arena, node%object_indices(oi), name, error_msg)
-            if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, name)
-            if (sym <= 0) then
-                error_msg = 'data statement target was not declared: '//trim(name)
-                return
-            end if
-            if (context%symbols(sym)%is_array) then
-                if (context%symbols(sym)%value_kind /= VALUE_I32) then
-                    error_msg = 'data statement supports integer arrays only'
-                    return
-                end if
-                asz = context%symbols(sym)%array_size
-                do k = 0, asz - 1
-                    vi = vi + 1
-                    if (vi > size(node%value_indices)) then
-                        error_msg = 'data statement value count does not match '// &
-                                    'objects'
-                        return
-                    end if
-                    call lower_i32_expression(arena, node%value_indices(vi), &
-                                              context, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    call store_array_linear_element(context, sym, &
-                                                    int(k, c_int64_t), value, &
-                                                    error_msg)
-                    if (len_trim(error_msg) > 0) return
-                end do
-            else
-                vi = vi + 1
-                if (vi > size(node%value_indices)) then
-                    error_msg = 'data statement value count does not match objects'
-                    return
-                end if
-                call lower_scalar_initializer(context, name, &
-                                              context%symbols(sym)%value_kind, &
-                                              node%value_indices(vi), error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-        end do
-        if (vi /= size(node%value_indices)) then
-            error_msg = 'data statement has unmatched values (repeat counts not '// &
-                        'supported)'
-        end if
-    end subroutine lower_data_statement
+    include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
