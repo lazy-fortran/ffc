@@ -415,6 +415,8 @@
             call lower_open(arena, node, context, error_msg)
         type is (close_statement_node)
             call lower_close(node, context, error_msg)
+        type is (rewind_statement_node)
+            call lower_rewind(node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
@@ -424,6 +426,10 @@
             end if
             if (is_stdin_read(node)) then
                 call lower_read_stdin(arena, node, context, error_msg)
+                return
+            end if
+            if (is_file_unit_read(node, context)) then
+                call lower_read_file(arena, node, context, error_msg)
                 return
             end if
             call unsupported_feature_error('read statement', node%line, &

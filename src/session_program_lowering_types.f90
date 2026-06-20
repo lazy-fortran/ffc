@@ -193,6 +193,12 @@ module session_program_lowering_types
         ! FILE* handle. is_file_unit is set to .true. at that point.
         logical :: is_file_unit = .false.
         type(lr_operand_desc_t) :: file_ptr_address
+        ! Straight-line constant integer assigned to this scalar, tracked only to
+        ! link a unit number used by name (unit = 10) with WRITE/READ/REWIND that
+        ! reference it by number. Kept separate from has_i32_constant so it does
+        ! not affect array-bound or kind-inquiry constant folding.
+        logical :: has_unit_const = .false.
+        integer :: unit_const = 0
     end type symbol_t
 
     type, public :: array_section_info_t
