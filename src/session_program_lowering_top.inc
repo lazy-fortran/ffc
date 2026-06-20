@@ -422,6 +422,8 @@
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
+                call emit_stop_banner(node, value, context, error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (context%in_internal_function .or. &
                     context%in_internal_subroutine) then
                     ! stop terminates the whole program. From a contained

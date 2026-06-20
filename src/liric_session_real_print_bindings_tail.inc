@@ -286,6 +286,20 @@
                                  c_true, vreg, error_msg)
     end function emit_fprintf
 
+    logical function emit_dprintf(session, args, error_msg)
+        ! Variadic dprintf(int fd, fmt, ...) call. args(1) is the file
+        ! descriptor, args(2) the format-string pointer; the rest are values.
+        ! Used for STOP banners, which gfortran writes to stderr (fd 2).
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_dprintf = emit_call(session, 'dprintf', args, &
+                                 lr_type_i32_s(session%handle), 2_c_int32_t, &
+                                 c_true, vreg, error_msg)
+    end function emit_dprintf
+
     logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
                                vararg, vreg, error_msg)
         type(liric_session_t), intent(inout) :: session
