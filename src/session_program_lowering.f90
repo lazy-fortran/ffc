@@ -351,6 +351,14 @@ contains
                 call lower_allocatable_declaration(node, context, error_msg)
                 return
             end if
+            ! Assumed-shape dummy a(:): no compile-time bound on the colon
+            ! dimensions, so bind it to the parameter base and take its extent
+            ! from the caller's actual instead of folding the declaration.
+            if (declaration_is_assumed_shape(node, context)) then
+                call lower_assumed_shape_declaration(node, context, value_kind, &
+                                                     error_msg)
+                return
+            end if
             call get_array_bounds(node, context, array_lower_bound, array_size, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
