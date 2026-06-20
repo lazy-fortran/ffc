@@ -72,63 +72,29 @@
     end subroutine lower_print
 
     subroutine lower_formatted_print(arena, node, context, error_msg)
-        ! Formatted print with an explicit literal format string: a single
-        ! edit descriptor (Iw / A[w]) applied to each item, one record newline.
+        ! Formatted print with an explicit literal format string. The compound
+        ! lowerer walks every edit descriptor (data, control, string-literal),
+        ! applies repeat counts, and reverts the format across records, so it is
+        ! a strict superset of the single-descriptor case.
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: printf_fmt
         character(len=:), allocatable :: format_body
-        character :: kind_char
-        integer(c_int32_t) :: fmt_id
-        integer :: i
-        character(len=64) :: fmt_name
 
         call normalize_format_body(node%format_spec, format_body)
-        if (index(format_body, ',') > 0) then
-            call lower_compound_formatted_print(arena, node, context, &
-                                                format_body, error_msg)
-            if (len_trim(error_msg) > 0) then
-                call unsupported_feature_error('formatted print', node%line, &
-                                               node%column, trim(error_msg), &
-                                               error_msg)
-            end if
-            return
-        end if
-
-        call parse_single_edit_descriptor(node%format_spec, kind_char, &
-                                          printf_fmt, error_msg)
-        if (len_trim(error_msg) > 0) then
-            call unsupported_feature_error('formatted print', node%line, &
-                                           node%column, trim(error_msg), error_msg)
-            return
-        end if
-
-        if (.not. allocated(node%expression_indices)) then
+        if (len_trim(format_body) == 0) then
+            ! An empty format still terminates one record.
             if (.not. emit_liric_print_newline(context%session, error_msg)) return
             call set_empty(error_msg)
             return
         end if
-
-        context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.fmt.user.', context%string_literal_count
-        call create_printf_format_global(context%session, trim(fmt_name), &
-                                         printf_fmt, fmt_id, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        do i = 1, size(node%expression_indices)
-            if (kind_char == 'I') then
-                call lower_formatted_int_item(arena, node%expression_indices(i), &
-                                              context, fmt_id, error_msg)
-            else
-                call lower_formatted_char_item(arena, node%expression_indices(i), &
-                                               context, fmt_id, error_msg)
-            end if
-            if (len_trim(error_msg) > 0) return
-        end do
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
-        call set_empty(error_msg)
+        call lower_compound_formatted_print(arena, node, context, format_body, &
+                                            error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('formatted print', node%line, &
+                                           node%column, trim(error_msg), error_msg)
+        end if
     end subroutine lower_formatted_print
 
     subroutine parse_single_edit_descriptor(spec, kind_char, printf_fmt, error_msg)
@@ -179,6 +145,10 @@
 
     subroutine lower_compound_formatted_print(arena, node, context, format_body, &
                                               error_msg)
+        ! Walk the compound format once per record. When the format is exhausted
+        ! but data items remain (format reversion, F2018 13.4), terminate the
+        ! record with a newline and restart the format from the beginning until
+        ! every item is consumed.
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -186,36 +156,53 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: pos
         integer :: item_index
+        integer :: pass_start_index
+        integer :: item_total
+        logical :: exhausted
 
         call set_empty(error_msg)
-        pos = 1
         item_index = 1
-        do
-            call skip_format_separators(format_body, pos)
-            if (pos > len_trim(format_body)) exit
-            call lower_next_compound_descriptor(arena, node, context, &
-                                                format_body, pos, item_index, &
-                                                error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
+        exhausted = .false.
         if (allocated(node%expression_indices)) then
-            if (item_index <= size(node%expression_indices)) then
-                error_msg = 'format reversion is not supported'
+            item_total = size(node%expression_indices)
+        else
+            item_total = 0
+        end if
+        do
+            pos = 1
+            pass_start_index = item_index
+            do
+                call skip_format_separators(format_body, pos)
+                if (pos > len_trim(format_body)) exit
+                call lower_next_compound_descriptor(arena, node, context, &
+                                                    format_body, pos, item_index, &
+                                                    exhausted, error_msg)
+                if (len_trim(error_msg) > 0) return
+                ! A data descriptor with no remaining item terminates format
+                ! processing immediately (F2018 13.4): write the record and stop.
+                if (exhausted) exit
+            end do
+            if (.not. emit_liric_print_newline(context%session, error_msg)) return
+            if (exhausted .or. item_index > item_total) exit
+            ! No item consumed in a full pass with items still pending means the
+            ! format has no data descriptor: reversion would loop forever.
+            if (item_index == pass_start_index) then
+                error_msg = 'format has no data descriptor for remaining items'
                 return
             end if
-        end if
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        end do
         call set_empty(error_msg)
     end subroutine lower_compound_formatted_print
 
     subroutine lower_next_compound_descriptor(arena, node, context, format_body, &
-                                              pos, item_index, error_msg)
+                                              pos, item_index, exhausted, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: format_body
         integer, intent(inout) :: pos
         integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: prefix
         character(len=:), allocatable :: width
@@ -231,40 +218,48 @@
         character(len=32) :: precision_text
 
         call set_empty(error_msg)
+        exhausted = .false.
+        ! A '/' edit descriptor terminates the current record; no repeat prefix.
+        if (format_body(pos:pos) == '/') then
+            pos = pos + 1
+            if (.not. emit_liric_print_newline(context%session, error_msg)) return
+            return
+        end if
+        ! A quoted character-string edit descriptor prints its literal text.
+        if (format_body(pos:pos) == "'" .or. format_body(pos:pos) == '"') then
+            call lower_format_string_literal(context, format_body, pos, error_msg)
+            return
+        end if
         call parse_decimal_digits(format_body, pos, prefix)
         if (pos > len_trim(format_body)) then
             error_msg = 'dangling repeat count in compound format'
             return
         end if
+        repeat_count = 1
+        if (len(prefix) > 0) then
+            call read_decimal_value(prefix, repeat_count, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         kind_char = format_body(pos:pos)
-        if (kind_char == 'i') kind_char = 'I'
-        if (kind_char == 'f') kind_char = 'F'
-        if (kind_char == 'x') kind_char = 'X'
-        if (kind_char == 'a') kind_char = 'A'
+        if (kind_char >= 'a' .and. kind_char <= 'z') &
+            kind_char = char(ichar(kind_char) - 32)
         pos = pos + 1
 
         select case (kind_char)
         case ('X')
-            repeat_count = 1
-            if (len(prefix) > 0) then
-                call read_decimal_value(prefix, repeat_count, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
+            ! nX writes n blanks; the count is the X repeat, not a data repeat.
             do i = 1, repeat_count
                 if (.not. emit_liric_print_space(context%session, error_msg)) &
                     return
             end do
-            call set_empty(error_msg)
         case ('I')
-            if (len(prefix) > 0) then
-                error_msg = 'repeat counts are not supported for I descriptors'
-                return
-            end if
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0) then
                 error_msg = 'I edit descriptor requires width'
                 return
             end if
+            ! Iw.m: ignore the minimum-digit count m for printf width mapping.
+            call skip_dot_modifier(format_body, pos)
             call read_decimal_value(width, width_value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (width_value == 0) then
@@ -273,14 +268,10 @@
                 write (width_text, '(I0)') width_value
                 printf_fmt = '%'//trim(width_text)//'d'
             end if
-            call lower_compound_data_descriptor(arena, node, context, kind_char, &
-                                                printf_fmt, 0, item_index, &
-                                                error_msg)
+            call repeat_data_descriptor(arena, node, context, kind_char, &
+                                        printf_fmt, 0, repeat_count, item_index, &
+                                        exhausted, error_msg)
         case ('F')
-            if (len(prefix) > 0) then
-                error_msg = 'repeat counts are not supported for F descriptors'
-                return
-            end if
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0 .or. pos > len_trim(format_body) .or. &
                 format_body(pos:pos) /= '.') then
@@ -301,14 +292,48 @@
             write (precision_text, '(I0)') precision_value
             printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'f'
             buffer_size = max(64, width_value + precision_value + 32)
-            call lower_compound_data_descriptor(arena, node, context, kind_char, &
-                                                printf_fmt, buffer_size, &
-                                                item_index, error_msg)
-        case ('A')
-            if (len(prefix) > 0) then
-                error_msg = 'repeat counts are not supported for A descriptors'
+            call repeat_data_descriptor(arena, node, context, kind_char, &
+                                        printf_fmt, buffer_size, repeat_count, &
+                                        item_index, exhausted, error_msg)
+        case ('E')
+            ! Only ESw.d maps to a printf conversion: %E prints one nonzero digit
+            ! before the point, exactly like ES. Plain Ew.d (0.xxxE+nn) and ENw.d
+            ! (exponent a multiple of 3) follow rules printf cannot reproduce.
+            if (pos > len_trim(format_body)) then
+                error_msg = 'E edit descriptor requires width and precision'
                 return
             end if
+            if (format_body(pos:pos) /= 'S' .and. format_body(pos:pos) /= 's') then
+                error_msg = 'only the ES edit descriptor is supported'
+                return
+            end if
+            pos = pos + 1
+            call parse_decimal_digits(format_body, pos, width)
+            if (len(width) == 0 .or. pos > len_trim(format_body) .or. &
+                format_body(pos:pos) /= '.') then
+                error_msg = 'E edit descriptor requires width and precision'
+                return
+            end if
+            pos = pos + 1
+            call parse_decimal_digits(format_body, pos, precision)
+            if (len(precision) == 0) then
+                error_msg = 'E edit descriptor requires precision'
+                return
+            end if
+            call read_decimal_value(width, width_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call read_decimal_value(precision, precision_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            write (width_text, '(I0)') width_value
+            ! gfortran ESw.d prints d fraction digits and an uppercase two-digit
+            ! exponent: printf %w.dE matches (E+NN, min two exponent digits).
+            write (precision_text, '(I0)') precision_value
+            printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'E'
+            buffer_size = max(64, width_value + precision_value + 32)
+            call repeat_data_descriptor(arena, node, context, 'E', printf_fmt, &
+                                        buffer_size, repeat_count, item_index, &
+                                        exhausted, error_msg)
+        case ('A')
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0) then
                 printf_fmt = '%s'
@@ -318,18 +343,154 @@
                 write (width_text, '(I0)') width_value
                 printf_fmt = '%'//trim(width_text)//'s'
             end if
-            call lower_compound_data_descriptor(arena, node, context, kind_char, &
-                                                printf_fmt, 0, item_index, &
-                                                error_msg)
+            call repeat_data_descriptor(arena, node, context, kind_char, &
+                                        printf_fmt, 0, repeat_count, item_index, &
+                                        exhausted, error_msg)
+        case ('L')
+            ! Lw prints right-justified T/F in a field of width w (min 1).
+            call parse_decimal_digits(format_body, pos, width)
+            if (len(width) == 0) then
+                width_value = 1
+            else
+                call read_decimal_value(width, width_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            do i = 1, repeat_count
+                call lower_compound_logical_descriptor(arena, node, context, &
+                                                       width_value, item_index, &
+                                                       exhausted, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (exhausted) exit
+            end do
         case default
             error_msg = 'unsupported edit descriptor in compound format: '// &
                         kind_char
         end select
     end subroutine lower_next_compound_descriptor
 
+    subroutine skip_dot_modifier(format_body, pos)
+        ! Skip a trailing ".m" modifier (e.g. I5.3) without consuming the next
+        ! descriptor.
+        character(len=*), intent(in) :: format_body
+        integer, intent(inout) :: pos
+        character(len=:), allocatable :: dummy
+
+        if (pos <= len_trim(format_body)) then
+            if (format_body(pos:pos) == '.') then
+                pos = pos + 1
+                call parse_decimal_digits(format_body, pos, dummy)
+            end if
+        end if
+    end subroutine skip_dot_modifier
+
+    subroutine repeat_data_descriptor(arena, node, context, kind_char, &
+                                      printf_fmt, buffer_size, repeat_count, &
+                                      item_index, exhausted, error_msg)
+        ! Apply one data edit descriptor to repeat_count consecutive items,
+        ! stopping early when the item list runs out.
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character, intent(in) :: kind_char
+        character(len=*), intent(in) :: printf_fmt
+        integer, intent(in) :: buffer_size
+        integer, intent(in) :: repeat_count
+        integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        exhausted = .false.
+        do i = 1, repeat_count
+            call lower_compound_data_descriptor(arena, node, context, kind_char, &
+                                                printf_fmt, buffer_size, &
+                                                item_index, exhausted, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (exhausted) return
+        end do
+    end subroutine repeat_data_descriptor
+
+    subroutine lower_format_string_literal(context, format_body, pos, error_msg)
+        ! Emit a quoted character-string edit descriptor. Fortran doubles the
+        ! delimiter to embed it ('' inside '...'); collapse those to one.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: format_body
+        integer, intent(inout) :: pos
+        character(len=:), allocatable, intent(out) :: error_msg
+        character :: quote
+        character(len=:), allocatable :: text
+        integer :: n
+        character(len=64) :: string_name
+
+        call set_empty(error_msg)
+        quote = format_body(pos:pos)
+        pos = pos + 1
+        text = ''
+        n = len_trim(format_body)
+        do
+            if (pos > n) then
+                error_msg = 'unterminated string literal in format'
+                return
+            end if
+            if (format_body(pos:pos) == quote) then
+                if (pos < n .and. format_body(pos + 1:pos + 1) == quote) then
+                    text = text//quote
+                    pos = pos + 2
+                    cycle
+                end if
+                pos = pos + 1
+                exit
+            end if
+            text = text//format_body(pos:pos)
+            pos = pos + 1
+        end do
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.str.', context%string_literal_count
+        if (.not. emit_liric_print_string_value(context%session, &
+                context%str_print_format_id, trim(string_name), text, &
+                error_msg)) return
+    end subroutine lower_format_string_literal
+
+    subroutine lower_compound_logical_descriptor(arena, node, context, width, &
+                                                 item_index, exhausted, error_msg)
+        ! Lw output: width-1 leading blanks then T/F (gfortran right-justifies).
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: width
+        integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: i
+
+        call set_empty(error_msg)
+        exhausted = .false.
+        if (.not. allocated(node%expression_indices)) then
+            exhausted = .true.
+            return
+        end if
+        if (item_index > size(node%expression_indices)) then
+            exhausted = .true.
+            return
+        end if
+        do i = 1, max(width - 1, 0)
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+        end do
+        call lower_logical_expression(arena, node%expression_indices(item_index), &
+                                      context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_print_logical_value(context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        item_index = item_index + 1
+    end subroutine lower_compound_logical_descriptor
+
     subroutine lower_compound_data_descriptor(arena, node, context, kind_char, &
                                               printf_fmt, buffer_size, &
-                                              item_index, error_msg)
+                                              item_index, exhausted, error_msg)
+        ! Encountering a data descriptor with no remaining item terminates the
+        ! format (exhausted=.true.); it is not an error (F2018 13.4).
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -337,16 +498,19 @@
         character(len=*), intent(in) :: printf_fmt
         integer, intent(in) :: buffer_size
         integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: fmt_id
         character(len=64) :: fmt_name
 
+        call set_empty(error_msg)
+        exhausted = .false.
         if (.not. allocated(node%expression_indices)) then
-            error_msg = 'formatted print item is missing'
+            exhausted = .true.
             return
         end if
         if (item_index > size(node%expression_indices)) then
-            error_msg = 'formatted print item is missing'
+            exhausted = .true.
             return
         end if
 
@@ -461,13 +625,16 @@
     subroutine normalize_format_body(spec, body)
         character(len=*), intent(in) :: spec
         character(len=:), allocatable, intent(out) :: body
+        character :: outer_quote
         integer :: n
 
         body = trim(adjustl(spec))
+        outer_quote = ' '
         n = len(body)
         if (n >= 2) then
             if ((body(1:1) == "'" .and. body(n:n) == "'") .or. &
                 (body(1:1) == '"' .and. body(n:n) == '"')) then
+                outer_quote = body(1:1)
                 if (n == 2) then
                     body = ''
                 else
@@ -475,6 +642,10 @@
                 end if
             end if
         end if
+        ! The format literal's own delimiter is doubled inside the source token
+        ! (e.g. '(...''...)' ); collapse it now so descriptor parsing sees the
+        ! real text.
+        if (outer_quote /= ' ') call collapse_doubled_quote(body, outer_quote)
         body = trim(adjustl(body))
         n = len(body)
         if (n >= 2 .and. body(1:1) == '(' .and. body(n:n) == ')') then
@@ -486,6 +657,28 @@
         end if
         body = trim(adjustl(body))
     end subroutine normalize_format_body
+
+    subroutine collapse_doubled_quote(text, quote)
+        ! Replace every doubled quote (quote//quote) with a single quote.
+        character(len=:), allocatable, intent(inout) :: text
+        character, intent(in) :: quote
+        character(len=:), allocatable :: out
+        integer :: i, n
+
+        n = len(text)
+        out = ''
+        i = 1
+        do while (i <= n)
+            if (i < n .and. text(i:i) == quote .and. text(i + 1:i + 1) == quote) then
+                out = out//quote
+                i = i + 2
+            else
+                out = out//text(i:i)
+                i = i + 1
+            end if
+        end do
+        text = out
+    end subroutine collapse_doubled_quote
 
     subroutine lower_formatted_int_item(arena, node_index, context, fmt_id, &
                                         error_msg)
