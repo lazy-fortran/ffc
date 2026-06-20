@@ -41,6 +41,16 @@ program test_session_complex_compiler
         'end program main', &
         'c4_zero')) all_passed = .false.
 
+    ! complex(4) large exponent: exponential components carry 9 fraction
+    ! digits (d.dddddddddE+nn), matching gfortran's 9-significant output.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  complex :: z'//new_line('a')// &
+        '  z = (1.5e10, -2.3e-5)'//new_line('a')// &
+        '  print *, z'//new_line('a')// &
+        'end program main', &
+        'c4_exp')) all_passed = .false.
+
     ! complex(8) declaration and print
     if (.not. matches_gfortran( &
         'program main'//new_line('a')// &
