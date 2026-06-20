@@ -1425,7 +1425,10 @@ contains
         integer :: i
         index = 0
         do i = 1, context%symbol_count
-            if (trim(context%symbols(i)%name) == trim(name)) then
+            ! Fortran identifiers are case-insensitive. FortFront lowercases
+            ! declared names but can preserve the source case at use sites, so a
+            ! case-folded comparison is required to match them.
+            if (same_name(trim(context%symbols(i)%name), trim(name))) then
                 index = i
                 return
             end if
