@@ -315,9 +315,22 @@ integer function resolve_concat_operand(arena, node_index, context, &
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_op
         type(lr_operand_desc_t) :: len_op
+        integer :: fixed_length
+        character(len=:), allocatable :: stored_text
 
-        call materialize_concat_literal(context, literal_text, data_op, &
-                                        len_op, error_msg)
+        ! A fixed-length destination (character(len=N)) pads or truncates the
+        ! literal to N before storing; a deferred destination keeps the literal
+        ! length unchanged.
+        fixed_length = context%symbols(dest_symbol_index)%character_length
+        if (fixed_length > 0) then
+            allocate (character(len=fixed_length) :: stored_text)
+            stored_text = literal_text
+            call materialize_concat_literal(context, stored_text, data_op, &
+                                            len_op, error_msg)
+        else
+            call materialize_concat_literal(context, literal_text, data_op, &
+                                            len_op, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         if (.not. emit_ptr_store(context%session, data_op, &
@@ -532,6 +545,73 @@ integer function resolve_concat_operand(arena, node_index, context, &
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_char_result_call
+
+    ! A fixed-length scalar destination receiving a character-returning
+    ! contained function. The callee returns its result through a {data,len}
+    ! descriptor passed as the leading sret pointer; bind the destination value
+    ! to the returned data so later reads (print) see the produced text.
+    subroutine lower_fixed_char_result_call(arena, node, context, &
+                                            dest_symbol_index, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: call_node
+        type(lr_operand_desc_t), allocatable :: user_args(:)
+        type(lr_operand_desc_t), allocatable :: all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t) :: descriptor_ptr
+        type(lr_operand_desc_t) :: data_addr
+        type(lr_operand_desc_t) :: len_addr
+        integer :: i
+        character(len=:), allocatable :: func_name
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%value_index)) then
+            error_msg = 'character call assignment value does not reference an AST node'
+            return
+        end if
+        select type (value_node => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            call_node = value_node
+        class default
+            error_msg = 'expected function call for character result'
+            return
+        end select
+        func_name = call_node%name
+
+        call allocate_deferred_char_descriptor(context, descriptor_ptr, &
+                                               data_addr, len_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (allocated(call_node%arg_indices)) then
+            call prepare_deferred_char_call_args(arena, call_node%arg_indices, &
+                context, user_args, copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (user_args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        allocate (all_args(size(user_args) + 1))
+        all_args(1) = descriptor_ptr
+        do i = 1, size(user_args)
+            all_args(i + 1) = user_args(i)
+        end do
+
+        if (.not. emit_void_call(context%session, trim(func_name), all_args, &
+                                 error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, &
+                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_ptr_load(context%session, data_addr, &
+            context%symbols(dest_symbol_index)%value, error_msg)) return
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_fixed_char_result_call
 
     subroutine lower_print_deferred_char_call(arena, node, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_int64_t

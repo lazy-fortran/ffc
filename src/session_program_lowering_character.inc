@@ -10,23 +10,32 @@
         if (existing_index > 0) then
             if (context%in_internal_function .and. &
                 existing_index == context%current_function_result_index) then
-                call declaration_character_length(node, character_length, &
-                                                  error_msg)
-                if (len_trim(error_msg) > 0) return
+                call declaration_character_length(context, node, &
+                                                  character_length, error_msg)
+                ! A runtime length (character(len=n) where n is a dummy arg or
+                ! other non-constant) keeps the deferred descriptor ABI: the
+                ! length is resolved when the body assigns the result value.
+                if (len_trim(error_msg) > 0) then
+                    if (runtime_character_length(context, node)) then
+                        call set_empty(error_msg)
+                    end if
+                    return
+                end if
+                ! A fixed-length result (character(len=N) :: s) reuses the
+                ! descriptor-return ABI of the deferred result but pads its
+                ! assigned value to N; record the length so the assignment
+                ! lowering knows the fixed width.
                 if (character_length > 0 .and. &
                     context%symbols(existing_index)%is_deferred_character) then
-                    call unsupported_feature_error( &
-                        'character function result declaration', node%line, &
-                        node%column, 'deferred character result lowering '// &
-                        'requires character(len=:)', error_msg)
-                    return
+                    context%symbols(existing_index)%character_length = &
+                        character_length
                 end if
                 call set_empty(error_msg)
                 return
             end if
             if (context%symbols(existing_index)%is_parameter) then
-                call declaration_character_length(node, character_length, &
-                                                  error_msg)
+                call declaration_character_length(context, node, &
+                                                  character_length, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (character_length > 0) then
                     call unsupported_feature_error( &
@@ -41,12 +50,15 @@
                 return
             end if
         end if
-        call declaration_character_length(node, character_length, error_msg)
+        call declaration_character_length(context, node, character_length, &
+                                          error_msg)
         if (len_trim(error_msg) > 0) return
         call define_character_symbol(context, name, character_length, error_msg)
     end subroutine define_declared_character_symbol
 
-    subroutine declaration_character_length(node, character_length, error_msg)
+    subroutine declaration_character_length(context, node, character_length, &
+                                            error_msg)
+        type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
@@ -64,12 +76,75 @@
             return
         end if
         call parse_character_length(node%type_name, character_length, parse_error)
+        if (len_trim(parse_error) == 0) return
+
+        ! A non-literal length such as character(max_len) keeps the length
+        ! text in character_length_expr. Resolve a named integer parameter
+        ! against the symbol table before reporting it unsupported.
+        call resolve_named_character_length(context, node, character_length, &
+                                            parse_error)
         if (len_trim(parse_error) > 0) then
             call unsupported_feature_error('character length declaration', &
                                            node%line, node%column, &
                                            trim(parse_error), error_msg)
         end if
     end subroutine declaration_character_length
+
+    ! Resolve character(<name>) where <name> is a compile-time integer
+    ! parameter already in the symbol table. Leaves error_msg set when the
+    ! length text is not a single resolvable parameter name.
+    subroutine resolve_named_character_length(context, node, character_length, &
+                                              error_msg)
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+
+        character_length = -1
+        error_msg = 'character length must be a positive integer literal'
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        name = trim(adjustl(node%character_length_expr))
+        if (len(name) == 0) return
+        if (verify(name, &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%has_i32_constant) return
+        if (context%symbols(symbol_index)%i32_constant <= 0) return
+        character_length = int(context%symbols(symbol_index)%i32_constant)
+        call set_empty(error_msg)
+    end subroutine resolve_named_character_length
+
+    ! True when the character length is a simple runtime identifier (such as a
+    ! dummy argument) rather than a literal or compile-time parameter. Such a
+    ! length is only valid for a function result here, lowered through the
+    ! deferred descriptor ABI.
+    logical function runtime_character_length(context, node)
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+
+        runtime_character_length = .false.
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        name = trim(adjustl(node%character_length_expr))
+        if (len(name) == 0) return
+        if (verify(name, &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        ! A declared identifier that is not a compile-time integer parameter is
+        ! a runtime length.
+        runtime_character_length = &
+            .not. context%symbols(symbol_index)%has_i32_constant
+    end function runtime_character_length
 
     subroutine define_character_symbol(context, name, character_length, &
                                        error_msg)
@@ -132,6 +207,26 @@
                         if (is_contained_deferred_char_function(context, &
                             val%name)) then
                             call lower_deferred_char_result_call(arena, node, &
+                                context, symbol_index, error_msg)
+                            return
+                        end if
+                    end if
+                end select
+            end if
+        end if
+
+        ! A fixed-length scalar may receive the result of a character-returning
+        ! contained function (e.g. character(len=5) :: r; r = make(...)). The
+        ! callee returns a {data,len} descriptor; bind the destination's value
+        ! to the returned data so later uses (print) see the result text.
+        if (.not. context%symbols(symbol_index)%is_deferred_character) then
+            if (node_exists(arena, node%value_index)) then
+                select type (val => arena%entries(node%value_index)%node)
+                type is (call_or_subscript_node)
+                    if (.not. val%is_array_access .and. allocated(val%name)) then
+                        if (is_contained_deferred_char_function(context, &
+                            val%name)) then
+                            call lower_fixed_char_result_call(arena, node, &
                                 context, symbol_index, error_msg)
                             return
                         end if
