@@ -209,6 +209,7 @@
         integer :: j
         logical :: has_executable_statements
         logical :: has_nested_program
+        logical :: data_flushed
         value = i32_immediate(context%session, 0_c_int64_t)
         context%current_block_terminated = .false.
         has_executable_statements = .false.
@@ -240,7 +241,11 @@
                                                 value, error_msg)
                 return
             end if
-            ! Process body elements
+            ! Process body elements. DATA statements are specification-class:
+            ! they initialise variables before execution begins regardless of
+            ! their textual position, so they are deferred and flushed once,
+            ! ahead of the first executable statement (#2349/#2251/#2252).
+            data_flushed = .false.
             do i = 1, size(body_indices)
                 if (is_internal_procedure_entry(arena, body_indices(i))) cycle
                 if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
@@ -256,12 +261,30 @@
                     end if
                     cycle
                 end if
+                ! FortFront expands each DATA statement into the data_statement
+                ! node plus suppress_codegen assignments at the DATA's textual
+                ! position. Both are skipped here; DATA values are applied once
+                ! by flush_data_statements as program initialisation so source
+                ! ordering against executable assignments matches gfortran.
+                if (is_data_statement_at(arena, body_indices(i))) cycle
+                if (is_suppressed_assignment_at(arena, body_indices(i))) cycle
+                if (.not. data_flushed .and. &
+                    .not. is_specification_statement_at(arena, body_indices(i))) then
+                    call flush_data_statements(arena, body_indices, context, &
+                                               error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    data_flushed = .true.
+                end if
                 call lower_statement(arena, body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (context%current_block_terminated) return
                 has_executable_statements = .true.
             end do
+            if (.not. data_flushed) then
+                call flush_data_statements(arena, body_indices, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
                  get_node_type_at(arena, root_index) == 'module') then
             call get_module_body_info(arena, root_index, &
