@@ -196,6 +196,96 @@
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_logical_call
 
+    ! Mixed int/real arithmetic: an integer operand in a real expression
+    ! coerces to the expression's real kind (Fortran type promotion). Detect
+    ! integer-typed subexpressions and emit SITOFP rather than rejecting them.
+    recursive subroutine lower_f32_operand(arena, node_index, context, &
+                                           value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: int_value
+
+        if (is_integer_operand(arena, node_index, context)) then
+            call lower_i32_expression(arena, node_index, context, int_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_f32(context%session, int_value, value, &
+                                            error_msg)) return
+            return
+        end if
+        call lower_f32_expression(arena, node_index, context, value, error_msg)
+    end subroutine lower_f32_operand
+
+    recursive subroutine lower_f64_operand(arena, node_index, context, &
+                                           value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: int_value
+
+        if (is_integer_operand(arena, node_index, context)) then
+            call lower_i32_expression(arena, node_index, context, int_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_f64(context%session, int_value, value, &
+                                            error_msg)) return
+            return
+        end if
+        call lower_f64_expression(arena, node_index, context, value, error_msg)
+    end subroutine lower_f64_operand
+
+    ! True when the node is an integer-typed scalar subexpression: an integer
+    ! literal, an i32 identifier, or a binary op whose operands are both
+    ! integer. Used to decide whether a real expression's operand needs
+    ! int->real coercion. A mixed op (one real operand) is not integer, so the
+    ! coercion happens one level down on the integer sub-operand.
+    recursive function is_integer_operand(arena, node_index, context) &
+        result(is_int)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        logical :: is_int
+        integer :: symbol_index, bl, br, blin, bcol
+        character(len=:), allocatable :: id_name, id_err, bin_op
+        character(len=:), allocatable :: lit_value, lit_type
+
+        is_int = .false.
+        if (.not. node_exists(arena, node_index)) return
+
+        if (is_literal(arena, node_index)) then
+            if (is_real_literal(arena, node_index)) return
+            if (is_logical_literal(arena, node_index)) return
+            if (is_character_literal(arena, node_index)) return
+            call get_literal_info(arena, node_index, lit_value, lit_type, id_err)
+            if (len_trim(id_err) > 0) return
+            is_int = trim(lit_type) == 'integer'
+            return
+        end if
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            if (len_trim(id_err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) return
+            if (context%symbols(symbol_index)%is_array) return
+            is_int = context%symbols(symbol_index)%value_kind == VALUE_I32
+            return
+        end if
+
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bl, br, &
+                                    blin, bcol, id_err)
+            if (len_trim(id_err) > 0) return
+            is_int = is_integer_operand(arena, bl, context) .and. &
+                     is_integer_operand(arena, br, context)
+        end if
+    end function is_integer_operand
+
     recursive subroutine lower_f32_expression(arena, node_index, context, &
                                               value, error_msg)
         use, intrinsic :: iso_c_binding, only: c_float
@@ -244,9 +334,9 @@
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f32_expression(arena, bin_left, context, lhs, error_msg)
+            call lower_f32_operand(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f32_expression(arena, bin_right, context, rhs, error_msg)
+            call lower_f32_operand(arena, bin_right, context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
             if (trim(bin_op) == '**') then
                 ! f32 exponentiation: call libm powf(f32, f32).
@@ -494,9 +584,9 @@
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, bin_left, context, lhs, error_msg)
+            call lower_f64_operand(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, bin_right, context, rhs, error_msg)
+            call lower_f64_operand(arena, bin_right, context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
             if (trim(bin_op) == '**') then
                 ! Real exponentiation lowers to a libm pow(f64, f64) call.

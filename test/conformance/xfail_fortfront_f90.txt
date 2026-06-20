@@ -20,7 +20,6 @@ control_flow_associate_construct.f90
 control_flow_nested_select_case.f90
 data_statement_scalar_upgrade.f90
 docs_character_arrays_out.f90
-docs_mixed_type_operations_out.f90
 docs_unsigned_integers_out.f90
 dtio_interface_basic.f90
 dtio_interface_read_write.f90
@@ -87,7 +86,6 @@ issue_2237_multiline_stmt_if.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
-issue_2252_data_value_implied_do.f90
 issue_2265_module_program.f90
 issue_2280_statement_function.f90
 issue_2281_header_only_declarations.f90
@@ -147,7 +145,6 @@ issue_2753_unsigned_argument_mixing_error.f90
 issue_2753_unsigned_assignment_mixing_error.f90
 issue_509_mixed_constructs_expected.f90
 issue_playtest5_array_parameter_rank_lost.f90
-issue_playtest5_array_type_changed_real_to_int.f90
 issue_playtest5_interface_result_duplicate.f90
 library_usage_ast_node_counter.f90
 library_usage_ast_node_position.f90
