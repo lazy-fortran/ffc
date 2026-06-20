@@ -624,6 +624,12 @@
         integer :: comp_kind
 
         comp_kind = derived_component_access_kind(arena, target, context)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('derived type character component '// &
+                'access', target%line, target%column, 'writing a character '// &
+                'component is not supported by direct LIRIC session', error_msg)
+            return
+        end if
         call lower_component_rhs_value(arena, node%value_index, comp_kind, &
                                        context, value, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -648,6 +654,11 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
 
+        if (comp_kind == VALUE_CHARACTER) then
+            error_msg = 'character component access is not supported by direct '// &
+                        'LIRIC session'
+            return
+        end if
         select case (comp_kind)
         case (VALUE_F64)
             call lower_f64_expression(arena, value_index, context, value, error_msg)
@@ -671,6 +682,12 @@
         integer :: comp_kind
 
         comp_kind = derived_component_access_kind(arena, node, context)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('derived type character component '// &
+                'access', node%line, node%column, 'reading a character '// &
+                'component is not supported by direct LIRIC session', error_msg)
+            return
+        end if
         call lower_derived_component_address(arena, node, context, &
                                              component_address, error_msg, &
                                              'derived type component expression')
@@ -986,6 +1003,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: ok
 
+        if (comp_kind == VALUE_CHARACTER) then
+            error_msg = 'character component access is not supported by direct '// &
+                        'LIRIC session'
+            return
+        end if
         select case (comp_kind)
         case (VALUE_F64)
             ok = emit_liric_f64_store(context%session, value, addr, error_msg)
@@ -1006,6 +1028,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: ok
 
+        if (comp_kind == VALUE_CHARACTER) then
+            error_msg = 'character component access is not supported by direct '// &
+                        'LIRIC session'
+            return
+        end if
         select case (comp_kind)
         case (VALUE_F64)
             ok = emit_liric_f64_load(context%session, addr, value, error_msg)

@@ -630,8 +630,25 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call component_array_count(component, context, array_size, &
                                            error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (value_kind == VALUE_CHARACTER) then
+                ! Reuse array_size as the component's slot count: a character
+                ! value occupies ceil(len/4) byte-storage slots at width 1.
+                block
+                    integer :: char_length
+                    call declaration_character_length(context, component, &
+                                                      char_length, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    array_size = character_component_slots(char_length)
+                end block
             end if
             if (component%has_initializer .and. component%initializer_index > 0) then
+                if (value_kind == VALUE_CHARACTER) then
+                    call unsupported_feature_error( &
+                        'derived type character component initializer', &
+                        component%line, component%column, 'character components '// &
+                        'cannot carry a default initialiser', error_msg)
+                    return
+                end if
                 if (component%is_array) then
                     call unsupported_feature_error( &
                         'derived type array component initializer', &
@@ -757,9 +774,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
             return
         end if
         ! Accept scalar integer (incl. interop kinds and c_ptr), real (f32/f64),
-        ! and logical components. Each occupies whole 4-byte slots: f64 spans two
-        ! slots, the rest one. Array, character, and nested components stay
-        ! unsupported in this layout.
+        ! logical, and fixed-length character components. Numeric/logical
+        ! components occupy whole 4-byte slots (f64 spans two, the rest one); a
+        ! character(len=N) component occupies ceil(N/4) byte-storage slots.
+        ! Arrays of these and nested components are handled elsewhere.
         call type_name_value_kind(component%type_name, component%line, &
                                   component%column, comp_kind, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -773,6 +791,17 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     'components are not supported; only scalar', error_msg)
                 return
             end if
+        case (VALUE_CHARACTER)
+            if (component%is_array) then
+                call unsupported_feature_error('derived type array component', &
+                    component%line, component%column, 'character array '// &
+                    'components are not supported; only scalar', error_msg)
+                return
+            end if
+            ! A fixed positive length is required; deferred/runtime-length
+            ! character components have no static slot footprint.
+            call validate_character_component_length(component, context, error_msg)
+            if (len_trim(error_msg) > 0) return
         case default
             call unsupported_feature_error('derived type component', &
                                            component%line, component%column, &
@@ -783,6 +812,42 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end select
         call set_empty(error_msg)
     end subroutine validate_component_declaration
+
+    ! A character(len=N) component needs a fixed positive length so its
+    ! byte-storage slot footprint (ceil(N/4)) is known at layout time.
+    subroutine validate_character_component_length(component, context, error_msg)
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: character_length
+
+        call declaration_character_length(context, component, character_length, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('derived type character component', &
+                component%line, component%column, 'character components need a '// &
+                'fixed positive length', error_msg)
+            return
+        end if
+        if (character_length <= 0) then
+            call unsupported_feature_error('derived type character component', &
+                component%line, component%column, 'deferred and assumed-length '// &
+                'character components are not supported', error_msg)
+            return
+        end if
+    end subroutine validate_character_component_length
+
+    ! i32 slots a character(len=N) value occupies: one slot per 4 bytes,
+    ! rounded up. len<=0 yields zero slots (rejected before this point).
+    integer function character_component_slots(character_length)
+        integer, intent(in) :: character_length
+
+        if (character_length <= 0) then
+            character_component_slots = 0
+        else
+            character_component_slots = (character_length + 3) / 4
+        end if
+    end function character_component_slots
 
     subroutine component_array_count(component, context, array_size, error_msg)
         ! Compile-time element count of an array component (literal or
