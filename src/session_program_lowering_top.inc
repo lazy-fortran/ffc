@@ -102,6 +102,14 @@
             call destroy(context%session)
             return
         end if
+        ! Saved-local globals must exist before any function body is compiled:
+        ! a global created mid-compile is direct-address patched and skips its
+        ! data-section initializer, so emit them all up front (#1541).
+        call emit_saved_local_globals(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -358,7 +366,7 @@
         type is (parameter_declaration_node)
             call lower_parameter_declaration(node, context, error_msg)
         type is (declaration_node)
-            call lower_declaration(node, context, error_msg)
+            call lower_declaration(node, node_index, context, error_msg)
         type is (assignment_node)
             call lower_assignment(arena, node, context, error_msg)
         type is (pointer_assignment_node)
@@ -562,6 +570,7 @@
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_module_vars.inc'
+    include 'session_program_lowering_save.inc'
     include 'session_program_lowering_block_concurrent.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
