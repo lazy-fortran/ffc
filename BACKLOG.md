@@ -35,27 +35,38 @@ The direct LIRIC session lowerer covers the subset documented in
   and integer-to-real `real()` conversion;
 - CLI: `-o`, `-c`, `-I <dir>` (`-I` stored, not yet consumed).
 
-Open work is tracked as GitHub issues; #167 tracks self-hosting.
+This surface is the baseline. The path to Fortran 95 / 2003 compliance and
+100% corpus pass is tracked in #272.
+
+## P1: Compliance path
+
+#272 measures the path as 100% corpus pass with output matching `gfortran -w`
+and `lfortran`. Phase-ordered epics:
+
+- Phase 0, unblocks the most: E1 inferred-declaration lowering #262, E2 module
+  system and separate compilation #263.
+- Phase 1, type coverage: E3 arrays #264, E4 derived types #265, E5 procedure
+  results/dummies/args #266, E6 scalars #267.
+- Phase 2, runtime: E7 `ffc/runtime/` I/O library #268, E8 precision and
+  intrinsics #269.
+- Phase 3: E9 control flow and statement nodes #270.
+- Phase 4: E10 drive corpora to 100% and gate in CI #271.
+
+Open bugs #257-#261 fold into E5/E8/E10.
 
 ## P2: FortFront API boundary
 
-Tracked by #58 / #173. `ffc` still walks the FortFront AST arena with
-`select type` for most lowering. New compiler-facing FortFront queries
-should replace those reach-ins one slice at a time. The queries needed
-for #173 are listed there.
+`ffc` still walks the FortFront AST arena with `select type` for most lowering.
+New compiler-facing FortFront queries should replace those reach-ins one slice
+at a time.
 
 ## P3: Runtime and ABI
 
-The current direct-session ABI is in `docs/RUNTIME_ABI.md`. Each new
-feature must update that document and grow executable tests in the same
-change. Tracked categories:
-
-- non-integer scalar procedure ABI: see open issues under #50 / #164.
-- character value + length representation: #51 and the deferred-length
-  series tracked from #167.
-- print/runtime call surface beyond the current `printf` shim: #55.
-- array descriptors and allocatables: #53, plus the slice issues
-  #184-#186.
+The current direct-session ABI is in `docs/RUNTIME_ABI.md`. Each new feature
+must update that document and grow executable tests in the same change. The
+Fortran I/O and intrinsics runtime lives in `ffc/runtime/`, linked through
+LIRIC's `lr_session_set_runtime_archive`; LIRIC stays backend-neutral.
+Tracked by E7 #268 and E8 #269.
 
 ## Verification
 
