@@ -48,15 +48,12 @@ issue_1355_lazy_matrix.lf
 issue_1356_function_name.lf
 issue_1406_namelist.lf
 issue_1407_character_function.lf
-issue_1408_module_visibility.lf
 issue_1410_pointer_null.lf
-issue_1411_generic_module.lf
 issue_1413_array_function.lf
 issue_1414_implied_do.lf
 issue_1534_allocatable.lf
 issue_1534_multi_dimension_allocatable.lf
 issue_1534_single_dimension_allocatable.lf
-issue_1538_module_main.lf
 issue_1539_reshape.lf
 issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf

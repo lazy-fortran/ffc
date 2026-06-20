@@ -204,6 +204,15 @@
         call set_empty(error_msg)
         if (.not. allocated(node%return_type)) return
 
+        ! When the result type is declared in the body (result(r) with
+        ! `<type> :: r`) rather than on the function statement, return_type is
+        ! empty. Resolve the intrinsic scalar kind from that body declaration.
+        if (len_trim(node%return_type) == 0) then
+            call result_var_scalar_kind(node, context, value_kind, &
+                                        derived_type_index, error_msg)
+            return
+        end if
+
         ! Split "real(kind)" into base and kind_spec; double precision has none.
         paren = index(node%return_type, '(')
         if (paren > 0) then
@@ -232,6 +241,13 @@
             end if
         case ('double precision')
             value_kind = VALUE_F64
+        case ('complex')
+            ! Bare complex and complex(4) are two f32s; complex(8) is two f64s.
+            if (complex_kind_is_c8(kind_spec)) then
+                value_kind = VALUE_C8
+            else
+                value_kind = VALUE_C4
+            end if
         case ('logical')
             value_kind = VALUE_LOGICAL
         case default
@@ -265,13 +281,97 @@
                 call unsupported_feature_error('function result type', &
                                                 node%line, node%column, &
                                                 'direct LIRIC session supports '// &
-                                                'integer, real, logical, '// &
+                                                'integer, real, logical, complex, '// &
                                                 'deferred-length character, and '// &
                                                 'derived-type contained functions', &
                                                 error_msg)
             end if
         end select
     end subroutine function_value_kind
+
+    subroutine result_var_scalar_kind(node, context, value_kind, &
+                                      derived_type_index, error_msg)
+        ! Resolve the result value kind from the body declaration of the result
+        ! variable, used when return_type is empty (result(r) with `<type> :: r`
+        ! declared in the body). Handles intrinsic scalar kinds (integer, real,
+        ! logical, complex) and derived types. Array-valued results are out of
+        ! scope and keep the unsupported diagnostic.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: derived_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: result_name
+        integer :: i, k
+        logical :: is_array
+
+        value_kind = VALUE_I32
+        derived_type_index = 0
+        call set_empty(error_msg)
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+
+        if (allocated(node%body_indices)) then
+            do i = 1, size(node%body_indices)
+                if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+                select type (decl => context%arena%entries(node%body_indices(i))%node)
+                type is (declaration_node)
+                    if (allocated(decl%var_name)) then
+                        if (trim(decl%var_name) == result_name) then
+                            call resolve_result_decl_kind(decl, context, &
+                                value_kind, derived_type_index, is_array, error_msg)
+                            if (.not. is_array) return
+                        end if
+                    end if
+                    if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                        do k = 1, size(decl%var_names)
+                            if (trim(decl%var_names(k)) == result_name) then
+                                call resolve_result_decl_kind(decl, context, &
+                                    value_kind, derived_type_index, is_array, &
+                                    error_msg)
+                                if (.not. is_array) return
+                            end if
+                        end do
+                    end if
+                end select
+            end do
+        end if
+
+        ! Either no matching declaration or an array-valued result.
+        call unsupported_feature_error('function result type', &
+                                        node%line, node%column, &
+                                        'direct LIRIC session supports '// &
+                                        'integer, real, logical, complex, '// &
+                                        'deferred-length character, and '// &
+                                        'derived-type contained functions', &
+                                        error_msg)
+    end subroutine result_var_scalar_kind
+
+    subroutine resolve_result_decl_kind(decl, context, value_kind, &
+                                        derived_type_index, is_array, error_msg)
+        type(declaration_node), intent(in) :: decl
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: derived_type_index
+        logical, intent(out) :: is_array
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        value_kind = VALUE_I32
+        derived_type_index = 0
+        is_array = decl%is_array
+        call set_empty(error_msg)
+        if (is_array) return
+
+        derived_type_index = declaration_derived_type_index(context, decl)
+        if (derived_type_index > 0) then
+            value_kind = VALUE_DERIVED
+            return
+        end if
+        call declaration_value_kind(decl, value_kind, error_msg)
+    end subroutine resolve_result_decl_kind
 
     integer function result_var_derived_type(node, context) result(type_index)
         ! Find the derived type of the function result variable from its body
@@ -798,7 +898,10 @@
             if (.not. begin_liric_f64_function(context%session, emit_name, &
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
-                 value_kind == VALUE_DERIVED) then
+                 value_kind == VALUE_DERIVED .or. &
+                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            ! Aggregate / complex results return via a leading sret pointer:
+            ! the caller passes the result buffer address as param 0.
             if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
         else
@@ -839,6 +942,29 @@
                 rsym%element_address = ptr_param(context%session, 0)
             end associate
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            ! Result re/im live in the sret buffer: re at +0, im at +4 (c4) or
+            ! +8 (c8). Complex assignment stores through these address slots.
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = value_kind
+                rsym%has_address = .true.
+                if (.not. emit_ptr_offset(context%session, &
+                    ptr_param(context%session, 0), 0_c_int64_t, &
+                    rsym%address, error_msg)) return
+                if (value_kind == VALUE_C4) then
+                    if (.not. emit_ptr_offset(context%session, &
+                        ptr_param(context%session, 0), 4_c_int64_t, &
+                        rsym%element_address, error_msg)) return
+                else
+                    if (.not. emit_ptr_offset(context%session, &
+                        ptr_param(context%session, 0), 8_c_int64_t, &
+                        rsym%element_address, error_msg)) return
+                end if
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -846,7 +972,8 @@
                                                                 result_name)
         end if
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
-            value_kind == VALUE_DERIVED) then
+            value_kind == VALUE_DERIVED .or. &
+            value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg, 1)
         else
@@ -869,7 +996,8 @@
         end if
         if (.not. context%current_block_terminated) then
             if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
-                value_kind == VALUE_DERIVED) then
+                value_kind == VALUE_DERIVED .or. &
+                value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
             else
                 value = context%symbols(result_index)%value
