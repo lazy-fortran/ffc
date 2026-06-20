@@ -200,8 +200,10 @@
     end function callee_dummy_char_writable
 
     logical function dummy_is_class_star(arena, body_indices, param_name)
-        ! A dummy is class(*) when a body declaration names it with a type
-        ! beginning 'class'.
+        ! A dummy is class(*) (unlimited polymorphic) when a body declaration
+        ! names it with the type class(*). A class(t) dummy names a concrete
+        ! derived type and is passed by reference (static dispatch), not boxed,
+        ! so it must not match here.
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: body_indices(:)
         character(len=*), intent(in) :: param_name
@@ -216,6 +218,9 @@
             type is (declaration_node)
                 if (.not. allocated(decl%type_name)) cycle
                 if (index(lowercase_text(decl%type_name), 'class') /= 1) cycle
+                ! class(t) names a concrete type and is passed by reference, not
+                ! boxed; only class(*) is the unlimited-polymorphic box.
+                if (is_derived_type_spec(decl%type_name)) cycle
                 matches = .false.
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == trim(param_name)) matches = .true.
