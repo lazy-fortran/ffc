@@ -55,7 +55,37 @@
                                          info%derived_types(i), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
+        ! Scalar module variables round-trip so a separately compiled program
+        ! can bind the shared global on USE (#274).
+        allocate (info%variables(export%variable_count))
+        do i = 1, export%variable_count
+            call build_fmod_variable(arena, export%variable_indices(i), &
+                                     info%variables(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
     end subroutine build_module_info
+
+    subroutine build_fmod_variable(arena, node_index, var, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(fmod_variable_t), intent(out) :: var
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, type_name
+
+        call set_empty(error_msg)
+        var%name = ''
+        var%kind = ''
+        if (.not. is_declaration_node(arena, node_index)) then
+            error_msg = 'module variable export is not a declaration'
+            return
+        end if
+        call get_declaration_var_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        var%name = trim(name)
+        call get_declaration_type_name(arena, node_index, type_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        var%kind = fmod_kind_string(type_name)
+    end subroutine build_fmod_variable
 
     subroutine build_fmod_parameter(arena, node_index, param, error_msg)
         type(ast_arena_t), intent(in) :: arena

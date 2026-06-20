@@ -13,6 +13,7 @@ program test_session_emit_fmod_compiler
     if (.not. test_compile_module_emits_fmod_with_constant()) all_passed = .false.
     if (.not. test_compile_module_with_derived_type_emits_fmod_with_type()) &
         all_passed = .false.
+    if (.not. test_compile_module_emits_fmod_with_variable()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: module .fmod artefact emission'
@@ -69,6 +70,36 @@ contains
         end if
         test_compile_module_with_derived_type_emits_fmod_with_type = .true.
     end function test_compile_module_with_derived_type_emits_fmod_with_type
+
+    logical function test_compile_module_emits_fmod_with_variable()
+        ! A scalar module variable round-trips through the .fmod so a
+        ! separately compiled program can bind the shared global (#274).
+        character(len=*), parameter :: source = &
+            'module state'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: counter = 5'//new_line('a')// &
+            'end module state'
+        character(len=*), parameter :: fmod = '/tmp/ffc_fmod_test_state/state.fmod'
+
+        test_compile_module_emits_fmod_with_variable = .false.
+        call execute_command_line('mkdir -p /tmp/ffc_fmod_test_state')
+        call execute_command_line('rm -f '//fmod)
+        if (.not. compile_module(source, &
+                '/tmp/ffc_fmod_test_state/state.o')) return
+        if (.not. file_contains(fmod, '[[variable]]')) then
+            print *, 'FAIL: .fmod missing variable section'
+            return
+        end if
+        if (.not. file_contains(fmod, 'name = "counter"')) then
+            print *, 'FAIL: .fmod missing variable name'
+            return
+        end if
+        if (.not. file_contains(fmod, 'kind = "integer"')) then
+            print *, 'FAIL: .fmod missing variable kind'
+            return
+        end if
+        test_compile_module_emits_fmod_with_variable = .true.
+    end function test_compile_module_emits_fmod_with_variable
 
     logical function compile_module(source, object_path) result(ok)
         character(len=*), intent(in) :: source
