@@ -32,6 +32,133 @@
         is_assumed = .true.
     end function declaration_is_assumed_shape
 
+    logical function declaration_is_assumed_rank(node, context) result(is_rank)
+        ! An assumed-rank dummy arr(..) parses to a single array_bounds_node
+        ! flagged is_assumed_rank. Its runtime rank comes from the caller's
+        ! actual, so it bypasses compile-time bound folding (#273).
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: dim_index
+
+        is_rank = .false.
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) return
+        dim_index = node%dimension_indices(1)
+        if (.not. node_exists(context%arena, dim_index)) return
+        select type (dim_node => context%arena%entries(dim_index)%node)
+        type is (array_bounds_node)
+            is_rank = dim_node%is_assumed_rank
+        end select
+    end function declaration_is_assumed_rank
+
+    subroutine lower_assumed_rank_declaration(node, context, value_kind, &
+                                              error_msg)
+        ! Bind an assumed-rank dummy arr(..) to its parameter base and to the
+        ! rank of the caller's actual. ffc resolves that rank statically from
+        ! the single call site (matching the assumed-shape extent recovery), so
+        ! a later select rank dispatches to the matching arm at compile time.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            call unsupported_feature_error('assumed-rank array', node%line, &
+                node%column, 'one assumed-rank dummy per declaration', error_msg)
+            return
+        end if
+        if (.not. allocated(node%var_name)) then
+            error_msg = 'assumed-rank declaration did not expose a variable name'
+            return
+        end if
+        call bind_one_assumed_rank(node, context, node%var_name, value_kind, &
+                                   error_msg)
+    end subroutine lower_assumed_rank_declaration
+
+    subroutine bind_one_assumed_rank(node, context, name, value_kind, error_msg)
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index, actual_rank
+        logical :: ok
+        type(lr_operand_desc_t) :: param_base
+
+        if (.not. allocated(context%current_proc_name)) then
+            call unsupported_feature_error('assumed-rank array', node%line, &
+                node%column, 'assumed-rank dummies are supported only inside a '// &
+                'contained procedure', error_msg)
+            return
+        end if
+        index = find_symbol(context, name)
+        ! Guard the symbol-table access on its own line: .or. does not
+        ! short-circuit, so index <= 0 must gate the array read separately.
+        if (index <= 0) then
+            call unsupported_feature_error('assumed-rank array', node%line, &
+                node%column, 'assumed-rank declaration must name a dummy '// &
+                'argument', error_msg)
+            return
+        end if
+        if (.not. context%symbols(index)%is_parameter) then
+            call unsupported_feature_error('assumed-rank array', node%line, &
+                node%column, 'assumed-rank declaration must name a dummy '// &
+                'argument', error_msg)
+            return
+        end if
+        param_base = context%symbols(index)%address
+        call resolve_assumed_rank(context, context%current_proc_name, name, &
+                                  actual_rank, ok)
+        if (.not. ok) then
+            call unsupported_feature_error('assumed-rank array', node%line, &
+                node%column, 'assumed-rank dummy rank must come from a '// &
+                'whole-array or scalar actual', error_msg)
+            return
+        end if
+        context%symbols(index)%value_kind = value_kind
+        context%symbols(index)%is_array = actual_rank > 0
+        context%symbols(index)%array_rank = actual_rank
+        context%symbols(index)%element_address = param_base
+        call set_empty(error_msg)
+    end subroutine bind_one_assumed_rank
+
+    subroutine resolve_assumed_rank(context, proc_name, param_name, rank, ok)
+        ! Recover an assumed-rank dummy's runtime rank from the caller's actual:
+        ! find the call to proc_name and the rank of the actual at the dummy's
+        ! position. A whole-array actual contributes its declared rank; a scalar
+        ! actual contributes rank 0.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: proc_name
+        character(len=*), intent(in) :: param_name
+        integer, intent(out) :: rank
+        logical, intent(out) :: ok
+        integer :: param_pos, n
+        character(len=:), allocatable :: actual_name
+        type(declaration_node), pointer :: decl
+
+        ok = .false.
+        rank = 0
+        param_pos = proc_param_position(context%arena, proc_name, param_name)
+        if (param_pos <= 0) return
+        call find_call_actual_identifier(context%arena, proc_name, param_pos, &
+                                         actual_name)
+        if (.not. allocated(actual_name)) return
+        if (len_trim(actual_name) == 0) return
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            decl => declaration_named(context%arena, n, actual_name)
+            if (.not. associated(decl)) cycle
+            if (decl%is_array .and. allocated(decl%dimension_indices)) then
+                rank = size(decl%dimension_indices)
+            else
+                rank = 0
+            end if
+            ok = .true.
+            return
+        end do
+    end subroutine resolve_assumed_rank
+
     subroutine lower_assumed_shape_declaration(node, context, value_kind, &
                                                error_msg)
         ! Bind an assumed-shape dummy a(:) (or a(:,:)) to its parameter base and
