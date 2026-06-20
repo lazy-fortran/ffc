@@ -35,9 +35,6 @@ function_simple.lf
 function_test.lf
 implicit_do_print.lf
 intrinsic_functions.lf
-issue_1238_concatenation_addition_precedence.lf
-issue_1238_nested_expressions.lf
-issue_1238_parentheses_preservation.lf
 issue_1330_missing_declarations.lf
 issue_1343_lazy_function.lf
 issue_1343_lazy_function_inference.lf
@@ -66,7 +63,6 @@ issue_1961_array_reduction_intrinsics.lf
 issue_1962_matmul_rank.lf
 issue_1963_debug_output.lf
 issue_1964_nested_function_calls.lf
-issue_1965_trim_concat.lf
 issue_1968_lazy_function_result.lf
 issue_1969_case_insensitive_variables.lf
 issue_1973_empty_typed_array_constructor.lf
@@ -92,9 +88,7 @@ issue_2106_missing_intent_monomorphization.lf
 issue_2110_array_param_hardcoded.lf
 issue_2111_recursive_missing_result.lf
 issue_2142_mono_wrong_return_types.lf
-issue_2145_intrinsic_return_type.lf
 issue_2147_mono_name_collision_wrong_types.lf
-issue_214_comprehensive_precedence.lf
 issue_2150_reshape_variable_vs_literal_shape.lf
 issue_2151_array_function_broken.lf
 issue_2153_array_call_scalar_param.lf
@@ -132,16 +126,11 @@ read_statement.lf
 reshape_integer_matrices.lf
 reshape_mixed_operations.lf
 reshape_real_matrix.lf
-string_concat.lf
-string_operations.lf
 string_transform_complex_expression.lf
-string_transform_concat.lf
-string_transform_non_character.lf
 test_209_all.lf
 test_209_complex.lf
 test_209_mixed.lf
 test_209_none.lf
-test_comprehensive_precedence.lf
 test_sem_ctor.lf
 test_sem_scope.lf
 test_std_slice.lf

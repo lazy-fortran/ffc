@@ -58,7 +58,9 @@ scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
 `iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and
 `mvbits`. The character intrinsics `len`, `len_trim`, `trim`, `adjustl`,
 `adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, and `iachar` are
-supported. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
+supported. A `//` concatenation of character variables, literals, and these
+intrinsics assigns into a fixed-length scalar, truncating or blank-padding to
+the declared length. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
 `log_gamma`, and `hypot`.
