@@ -13,6 +13,11 @@
         character(len=:), allocatable :: lowered_kind
 
         call set_empty(error_msg)
+        ! An abstract interface declares a signature template for procedure
+        ! pointers and dummy procedures; it binds no symbol and emits no code.
+        ! Dispatch through such a pointer is resolved at the use site, so the
+        ! declaration alone needs no registration here.
+        if (node%is_abstract) return
         if (allocated(node%kind)) then
             lowered_kind = lowercase_text(trim(node%kind))
             if (lowered_kind == 'operator' .or. &
@@ -505,7 +510,7 @@
         type(interface_block_node), intent(in) :: block
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: ret_kind, j, n
+        integer :: ret_kind, n
         character(len=:), allocatable :: c_name
 
         if (.not. node_exists(arena, proc_index)) then
@@ -515,9 +520,13 @@
         select type (proc => arena%entries(proc_index)%node)
         type is (function_def_node)
             if (.not. has_bind_c(proc%bind_c_clause)) then
-                call unsupported_feature_error('interface declaration', &
-                    block%line, block%column, 'only bind(c) interface '// &
-                    'procedures are supported', error_msg)
+                ! A plain explicit interface gives an external or dummy
+                ! procedure its signature so call sites type-check. The
+                ! interface node carries the parameter declarations and return
+                ! type, so registering it lets the ordinary contained-call path
+                ! lower arguments by reference; the symbol resolves at link.
+                call register_internal_function_by_index(arena, proc_index, &
+                                                         context, error_msg)
                 return
             end if
             ret_kind = VALUE_I32
@@ -542,9 +551,11 @@
             call add_external_procedure(context, proc%name, c_name, VALUE_I32, n)
         type is (subroutine_def_node)
             if (.not. has_bind_c(proc%bind_c_clause)) then
-                call unsupported_feature_error('interface declaration', &
-                    block%line, block%column, 'only bind(c) interface '// &
-                    'procedures are supported', error_msg)
+                ! Plain explicit interface for an external/dummy subroutine:
+                ! record the signature so the CALL type-checks and lowers by
+                ! reference through the ordinary path; the symbol links later.
+                call register_internal_subroutine_by_index(arena, proc_index, &
+                                                          context, error_msg)
                 return
             end if
             call bind_c_name(proc%bind_c_clause, proc%name, c_name)

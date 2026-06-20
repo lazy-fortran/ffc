@@ -29,7 +29,6 @@ f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
-interface_only_block.f90
 intrinsic_statement_program.f90
 issue2456.f90
 issue_104_if_condition_identifiers.f90
@@ -92,11 +91,9 @@ issue_2286_openacc_internal.f90
 issue_2287_where_elsewhere.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
-issue_2389_interface_unit_split.f90
 issue_2390_module_implicit_rules.f90
 issue_2394_allocatable_function.f90
 issue_2394_bind_c_interface.f90
-issue_2394_uppercase_function_interface.f90
 issue_2413_interface_function_result_valid.f90
 issue_2414_module_internal_implicit_none.f90
 issue_2416_io_format_variable.f90
@@ -143,7 +140,6 @@ issue_2753_unsigned_argument_mixing_error.f90
 issue_2753_unsigned_assignment_mixing_error.f90
 issue_509_mixed_constructs_expected.f90
 issue_playtest5_array_parameter_rank_lost.f90
-issue_playtest5_interface_result_duplicate.f90
 library_usage_ast_node_counter.f90
 library_usage_ast_node_position.f90
 pause_in_if_block.f90

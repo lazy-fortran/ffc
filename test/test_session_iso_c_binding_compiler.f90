@@ -18,7 +18,7 @@ program test_session_iso_c_binding_compiler
         all_passed = .false.
     if (.not. test_interface_bind_c_integer_function_compiles()) &
         all_passed = .false.
-    if (.not. test_non_bind_c_interface_rejected()) all_passed = .false.
+    if (.not. test_non_bind_c_interface_lowers()) all_passed = .false.
     if (.not. test_call_bind_c_integer_function()) all_passed = .false.
     if (.not. test_call_external_void_subroutine_with_c_ptr()) &
         all_passed = .false.
@@ -156,7 +156,9 @@ contains
             source, 0, '/tmp/ffc_session_iface_bindc_test')
     end function test_interface_bind_c_integer_function_compiles
 
-    logical function test_non_bind_c_interface_rejected()
+    logical function test_non_bind_c_interface_lowers()
+        ! A plain (non-bind(c)) explicit interface records its signature and
+        ! emits no code; an unused declaration lowers cleanly.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  interface'//new_line('a')// &
@@ -167,9 +169,9 @@ contains
             '  stop 0'//new_line('a')// &
             'end program main'
 
-        test_non_bind_c_interface_rejected = expect_error_contains( &
-            source, 'interface declaration', '/tmp/ffc_session_iface_plain_test')
-    end function test_non_bind_c_interface_rejected
+        test_non_bind_c_interface_lowers = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_iface_plain_test')
+    end function test_non_bind_c_interface_lowers
 
     logical function test_call_bind_c_integer_function()
         ! Calling a registered bind(c) integer function targets the C symbol
