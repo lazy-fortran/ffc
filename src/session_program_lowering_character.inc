@@ -271,11 +271,10 @@
             call concat_character_literals(arena, node%value_index, &
                                            literal_text, fold_ok)
             if (.not. fold_ok) then
-                call unsupported_feature_error('character assignment', &
-                                               node%line, node%column, &
-                                               'only character literal '// &
-                                               'assignment is supported', &
-                                               error_msg)
+                ! A // chain with variable or intrinsic operands concatenates at
+                ! runtime into a fresh buffer bound to the target's value.
+                call lower_fixed_concat_assignment(arena, node, context, &
+                                                   symbol_index, error_msg)
                 return
             end if
         else if (is_literal(arena, node%value_index)) then

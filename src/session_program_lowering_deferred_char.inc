@@ -665,3 +665,182 @@ integer function resolve_concat_operand(arena, node_index, context, &
             context%str_print_format_id, data_value, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_print_deferred_char_call
+
+    ! Flatten a // operand tree into its leaf character operands, resolving each
+    ! leaf to (data pointer, i32 length) via char_expr_operands. A leaf is any
+    ! node that is not itself a // binary operator: a literal, a character
+    ! variable, or a character intrinsic (trim, adjustl, ...). stat_len carries
+    ! each leaf's compile-time length, or -1 when only known at runtime (trim),
+    ! so the caller can statically clamp to the fixed target length.
+    recursive subroutine collect_concat_operands(arena, node_index, context, &
+                                                 data_ops, len_ops, stat_len, &
+                                                 count, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), allocatable, intent(inout) :: data_ops(:)
+        type(lr_operand_desc_t), allocatable, intent(inout) :: len_ops(:)
+        integer, allocatable, intent(inout) :: stat_len(:)
+        integer, intent(inout) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bin_op
+
+        call set_empty(error_msg)
+        if (is_binary_op(arena, node_index)) then
+            block
+                integer :: left_idx, right_idx, bin_line, bin_col
+                call get_binary_op_info(arena, node_index, bin_op, left_idx, &
+                                        right_idx, bin_line, bin_col, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (trim(bin_op) == '//') then
+                    call collect_concat_operands(arena, left_idx, context, &
+                        data_ops, len_ops, stat_len, count, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call collect_concat_operands(arena, right_idx, context, &
+                        data_ops, len_ops, stat_len, count, error_msg)
+                    return
+                end if
+            end block
+        end if
+        count = count + 1
+        stat_len(count) = concat_leaf_static_len(arena, node_index, context)
+        call char_expr_operands(arena, node_index, context, data_ops(count), &
+                                len_ops(count), error_msg)
+    end subroutine collect_concat_operands
+
+    ! Compile-time length of a // leaf, or -1 when only known at runtime. A
+    ! literal contributes its text length; a fixed-length character variable its
+    ! declared length. trim() and deferred-length operands are runtime-only.
+    integer function concat_leaf_static_len(arena, node_index, context) &
+            result(static_len)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: lit_value, lit_type, id_name
+        character(len=:), allocatable :: stripped, err
+        integer :: symbol_index
+
+        static_len = -1
+        if (is_literal(arena, node_index)) then
+            if (.not. is_character_literal(arena, node_index)) return
+            call get_literal_info(arena, node_index, lit_value, lit_type, err)
+            if (len_trim(err) > 0) return
+            call strip_literal_quotes(lit_value, stripped)
+            static_len = len(stripped)
+        else if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, err)
+            if (len_trim(err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) return
+            if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
+                .and. .not. context%symbols(symbol_index)%is_deferred_character) &
+                static_len = context%symbols(symbol_index)%character_length
+        end if
+    end function concat_leaf_static_len
+
+    ! Assign a // concatenation to a fixed-length character target. The result
+    ! buffer is exactly the target's declared length, blank-padded then
+    ! overwritten left to right, so truncation and padding match gfortran's
+    ! fixed-length assignment. Each leaf contributes its full declared length;
+    ! FortFront's lazy standardization usually sizes the target to the exact
+    ! total. Operands of compile-time-known length are clamped statically so an
+    ! over-long chain truncates without runtime min logic; trailing operands that
+    ! fall past the target are skipped entirely.
+    subroutine lower_fixed_concat_assignment(arena, node, context, &
+                                             dest_symbol_index, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: data_ops(:), len_ops(:)
+        integer, allocatable :: stat_len(:)
+        type(lr_operand_desc_t) :: buf, offset, null_ptr
+        character(len=64) :: null_name
+        integer :: count, dest_len
+
+        call set_empty(error_msg)
+        dest_len = context%symbols(dest_symbol_index)%character_length
+        allocate (data_ops(64), len_ops(64), stat_len(64))
+        count = 0
+        call collect_concat_operands(arena, node%value_index, context, data_ops, &
+                                     len_ops, stat_len, count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (count == 0) then
+            error_msg = 'character concatenation has no operands'
+            return
+        end if
+
+        ! Buffer holds dest_len content bytes plus a trailing null for %s prints.
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, int(dest_len + 1, c_int64_t)), buf, &
+            error_msg)) return
+        call fill_spaces(context, buf, &
+            i32_immediate(context%session, int(dest_len, c_int64_t)), error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call emit_concat_copies(context, data_ops, len_ops, stat_len, count, &
+                                dest_len, buf, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Null-terminate at the fixed end so the print path stops after dest_len.
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, &
+            i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
+            error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        write (null_name, '(A,I0)') '.ffc.fcat.term.', context%string_literal_count
+        call materialize_liric_string(context%session, trim(null_name), '', &
+                                      null_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_memcpy(context%session, offset, null_ptr, &
+            i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+
+        context%symbols(dest_symbol_index)%value = buf
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_fixed_concat_assignment
+
+    ! Copy each leaf operand into the blank-filled buffer, left to right. With
+    ! all lengths known, clamp to the target's end so an over-long chain
+    ! truncates and a short one keeps the blank padding. With a runtime-length
+    ! operand present (trim), the lazy target is sized to fit, so copy in full.
+    subroutine emit_concat_copies(context, data_ops, len_ops, stat_len, count, &
+                                  dest_len, buf, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ops(:), len_ops(:)
+        integer, intent(in) :: stat_len(:)
+        integer, intent(in) :: count, dest_len
+        type(lr_operand_desc_t), intent(in) :: buf
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: offset, next_offset, copy_len
+        integer :: i, written, room, copy_n
+        logical :: all_static
+
+        call set_empty(error_msg)
+        all_static = all(stat_len(1:count) >= 0)
+        offset = buf
+        written = 0
+        do i = 1, count
+            if (all_static) then
+                room = dest_len - written
+                if (room <= 0) exit
+                copy_n = min(stat_len(i), room)
+                if (copy_n <= 0) cycle
+                copy_len = i64_immediate(context%session, int(copy_n, c_int64_t))
+                written = written + copy_n
+            else if (stat_len(i) >= 0) then
+                copy_len = i64_immediate(context%session, &
+                                         int(stat_len(i), c_int64_t))
+            else
+                if (.not. emit_liric_i32_to_i64(context%session, len_ops(i), &
+                    copy_len, error_msg)) return
+            end if
+            if (.not. emit_memcpy(context%session, offset, data_ops(i), copy_len, &
+                error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, offset, &
+                copy_len, next_offset, error_msg)) return
+            offset = next_offset
+        end do
+    end subroutine emit_concat_copies
