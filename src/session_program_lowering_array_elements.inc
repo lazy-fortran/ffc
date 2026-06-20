@@ -429,6 +429,24 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
+
+        call emit_whole_array_print_items(arena, expr_index, context, handled, &
+                                          error_msg)
+        if (.not. handled .or. len_trim(error_msg) > 0) return
+        if (.not. emit_liric_print_newline(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_whole_array_print
+
+    subroutine emit_whole_array_print_items(arena, expr_index, context, handled, &
+                                            error_msg)
+        !! Emit every element of a bare integer/real array print item in storage
+        !! order with list-directed spacing, but no trailing newline, so it can
+        !! appear among other items in a multi-item list-directed print.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: value
         integer :: sym
@@ -468,9 +486,8 @@
                                                      value, error_msg)) return
             end if
         end do
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_whole_array_print
+    end subroutine emit_whole_array_print_items
 
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &

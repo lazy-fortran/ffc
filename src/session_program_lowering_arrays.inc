@@ -359,6 +359,29 @@
         call set_empty(error_msg)
     end subroutine broadcast_scalar_initializer
 
+    logical function is_implied_do_constructor(arena, ctor) result(is_implied)
+        !! True when a constructor is an implied-do: tagged syntax_style or a
+        !! lone do_loop_node element (fortfront omits the tag in some paths).
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+
+        is_implied = .false.
+        if (allocated(ctor%syntax_style)) then
+            if (ctor%syntax_style == 'implied_do') then
+                is_implied = .true.
+                return
+            end if
+        end if
+        if (.not. allocated(ctor%element_indices)) return
+        if (size(ctor%element_indices) /= 1) return
+        if (.not. node_exists(arena, ctor%element_indices(1))) return
+        select type (n => arena%entries(ctor%element_indices(1))%node)
+        type is (do_loop_node)
+            is_implied = .true.
+        class default
+        end select
+    end function is_implied_do_constructor
+
     subroutine lower_array_constructor_assignment(arena, ctor, symbol_index, &
                                                   context, error_msg)
         ! arr = [a, b, c] for any fixed-size array: lower each element and
@@ -374,12 +397,12 @@
         integer :: vk
         integer, allocatable :: flat(:)
 
-        if (allocated(ctor%syntax_style)) then
-            if (ctor%syntax_style == 'implied_do') then
-                call expand_implied_do_constructor(arena, ctor, symbol_index, &
-                                                   context, error_msg)
-                return
-            end if
+        ! An implied-do constructor wraps a single do_loop_node. fortfront does
+        ! not always tag syntax_style, so detect either marker structurally.
+        if (is_implied_do_constructor(arena, ctor)) then
+            call expand_implied_do_constructor(arena, ctor, symbol_index, &
+                                               context, error_msg)
+            return
         end if
 
         if (.not. allocated(ctor%element_indices)) then
@@ -408,7 +431,8 @@
                 call lower_logical_expression(arena, flat(i), context, value, &
                                               error_msg)
             else
-                call lower_i32_expression(arena, flat(i), context, value, error_msg)
+                call lower_constructor_i32_element(arena, flat(i), context, &
+                                                   value, error_msg)
             end if
             if (len_trim(error_msg) > 0) return
             call store_array_linear_element(context, symbol_index, &
@@ -417,6 +441,35 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    subroutine lower_constructor_i32_element(arena, node_index, context, value, &
+                                             error_msg)
+        !! Lower one element of an integer array constructor. A typed constructor
+        !! [integer :: 1.5, ...] may carry real literals; coerce them by Fortran
+        !! int() truncation toward zero so they store as integers.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type
+        real(c_double) :: rval
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (index(lit_value, '.') > 0 .or. index(lit_value, 'e') > 0 .or. &
+                index(lit_value, 'E') > 0 .or. index(lit_value, 'd') > 0 .or. &
+                index(lit_value, 'D') > 0) then
+                call parse_f64_literal(lit_value, rval, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = i32_immediate(context%session, int(rval, c_int64_t))
+                call set_empty(error_msg)
+                return
+            end if
+        end if
+        call lower_i32_expression(arena, node_index, context, value, error_msg)
+    end subroutine lower_constructor_i32_element
 
     recursive subroutine flatten_constructor_elements(arena, indices, flat, error_msg)
         !! Collect the leaf element indices of a (possibly nested) array
@@ -466,10 +519,9 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer(c_int64_t) :: lo, hi, step, ival, cval
+        integer(c_int64_t) :: lo, hi, step, ival
         integer :: vsym, b, slot
-        logical :: saved_has
-        integer(c_int64_t) :: saved_val
+        type(symbol_t) :: saved_sym
 
         if (.not. allocated(ctor%element_indices)) then
             error_msg = 'implied-do constructor has no loop'
@@ -508,42 +560,37 @@
                             trim(dnode%var_name)
                 return
             end if
-            saved_has = context%symbols(vsym)%has_i32_constant
-            saved_val = context%symbols(vsym)%i32_constant
+            saved_sym = context%symbols(vsym)
             context%symbols(vsym)%has_i32_constant = .true.
+            context%symbols(vsym)%value_kind = VALUE_I32
             slot = 0
             ival = lo
             do while ((step > 0 .and. ival <= hi) .or. (step < 0 .and. ival >= hi))
+                ! Bind the loop var as an i32 immediate both for compile-time
+                ! folding (eval_i32_constant) and for emit-time lowering of a
+                ! real body (lower_iX/fX read %value when has_address is off).
                 context%symbols(vsym)%i32_constant = ival
+                context%symbols(vsym)%value = i32_immediate(context%session, ival)
+                context%symbols(vsym)%has_address = .false.
+                context%symbols(vsym)%is_reference = .false.
                 do b = 1, size(dnode%body_indices)
                     if (slot >= context%symbols(symbol_index)%array_size) then
                         error_msg = 'implied-do constructor produces more '// &
                                     'elements than the array holds'
-                        context%symbols(vsym)%has_i32_constant = saved_has
-                        context%symbols(vsym)%i32_constant = saved_val
+                        context%symbols(vsym) = saved_sym
                         return
                     end if
-                    call eval_i32_constant(arena, dnode%body_indices(b), context, &
-                                           cval, error_msg)
+                    call lower_implied_do_element(arena, dnode%body_indices(b), &
+                        symbol_index, int(slot, c_int64_t), context, error_msg)
                     if (len_trim(error_msg) > 0) then
-                        context%symbols(vsym)%has_i32_constant = saved_has
-                        context%symbols(vsym)%i32_constant = saved_val
-                        return
-                    end if
-                    call store_array_linear_element(context, symbol_index, &
-                        int(slot, c_int64_t), i32_immediate(context%session, cval), &
-                        error_msg)
-                    if (len_trim(error_msg) > 0) then
-                        context%symbols(vsym)%has_i32_constant = saved_has
-                        context%symbols(vsym)%i32_constant = saved_val
+                        context%symbols(vsym) = saved_sym
                         return
                     end if
                     slot = slot + 1
                 end do
                 ival = ival + step
             end do
-            context%symbols(vsym)%has_i32_constant = saved_has
-            context%symbols(vsym)%i32_constant = saved_val
+            context%symbols(vsym) = saved_sym
             if (slot /= context%symbols(symbol_index)%array_size) then
                 error_msg = 'implied-do constructor element count does not match '// &
                             'the array size'
@@ -555,6 +602,38 @@
         end select
         call set_empty(error_msg)
     end subroutine expand_implied_do_constructor
+
+    subroutine lower_implied_do_element(arena, body_index, symbol_index, slot, &
+                                        context, error_msg)
+        !! Lower one implied-do body expression for the current loop-var binding
+        !! and store it at linear slot. Integer arrays fold to an immediate;
+        !! real arrays emit a real expression so bodies like real(i)/2.0 work.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_index
+        integer, intent(in) :: symbol_index
+        integer(c_int64_t), intent(in) :: slot
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer(c_int64_t) :: cval
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, body_index, context, value, error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, body_index, context, value, error_msg)
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(arena, body_index, context, value, &
+                                          error_msg)
+        case default
+            call eval_i32_constant(arena, body_index, context, cval, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i32_immediate(context%session, cval)
+        end select
+        if (len_trim(error_msg) > 0) return
+        call store_array_linear_element(context, symbol_index, slot, value, &
+                                        error_msg)
+    end subroutine lower_implied_do_element
 
     subroutine lower_array_whole_assignment(arena, node, symbol_index, context, &
                                             error_msg)
@@ -575,6 +654,12 @@
 
         if (node_exists(arena, node%value_index)) then
             select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                ! a = [...] / a = [(expr, i=lo,hi)]: reuse the constructor
+                ! lowering so implied-do, typed, and nested forms share one path.
+                call lower_array_constructor_assignment(arena, rhs, symbol_index, &
+                                                        context, error_msg)
+                return
             type is (call_or_subscript_node)
                 if (allocated(rhs%name)) then
                     if (same_name(rhs%name, 'shape')) then

@@ -22,7 +22,6 @@ control_flow_forall_construct.f90
 control_flow_nested_select_case.f90
 control_flow_where_construct.f90
 data_statement_scalar_upgrade.f90
-do_concurrent_real_array.f90
 docs_character_arrays_out.f90
 docs_mixed_type_operations_out.f90
 docs_unsigned_integers_out.f90
@@ -85,12 +84,10 @@ issue_1826_enum_module.f90
 issue_1826_enum_program.f90
 issue_1827_submodule_simple.f90
 issue_1827_submodule_with_contents.f90
-issue_1897_typed_array_constructor.f90
 issue_1900_block_data_after_program.f90
 issue_1900_block_data_labels.f90
 issue_1958_intent_preservation.f90
 issue_1960_pointer_assignment_if.f90
-issue_1970_implied_do_array_constructor.f90
 issue_2010_deferred_char_allocatable.f90
 issue_2013_nested_implied_do_duplicate_var.f90
 issue_2014_elemental_function_lost.f90
