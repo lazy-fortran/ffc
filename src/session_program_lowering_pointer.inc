@@ -1,30 +1,33 @@
-    subroutine lower_scalar_pointer_target(node, context, error_msg)
-        ! Scalar integer POINTER/TARGET (#245 slice B3a). A target is given a
-        ! stable in-memory slot so a pointer can address it; a pointer starts
-        ! unassociated.
+    subroutine lower_scalar_pointer_target(node, context, value_kind, error_msg)
+        ! Scalar integer/real/logical POINTER/TARGET (#245 slice B3a). A target
+        ! is given a stable in-memory slot so a pointer can address it; a pointer
+        ! starts unassociated.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_scalar_pointer_target_symbol(context, node, &
-                                                         node%var_names(i), error_msg)
+                                              node%var_names(i), value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
             call define_scalar_pointer_target_symbol(context, node, node%var_name, &
-                                                     error_msg)
+                                                     value_kind, error_msg)
         else
             error_msg = 'pointer/target declaration did not expose a variable name'
         end if
     end subroutine lower_scalar_pointer_target
 
-    subroutine define_scalar_pointer_target_symbol(context, node, name, error_msg)
+    subroutine define_scalar_pointer_target_symbol(context, node, name, value_kind, &
+                                                   error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
 
@@ -41,7 +44,7 @@
             call set_empty(error_msg)
             return
         end if
-        call define_i32_symbol(context, name, error_msg)
+        call define_symbol(context, name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) then
@@ -51,11 +54,8 @@
         if (node%is_target) then
             ! Materialise the target in memory so a pointer can hold its address.
             context%symbols(symbol_index)%is_target = .true.
-            if (.not. emit_i32_alloca(context%session, &
-                context%symbols(symbol_index)%address, error_msg)) return
-            if (.not. emit_i32_store(context%session, &
-                context%symbols(symbol_index)%value, &
-                context%symbols(symbol_index)%address, error_msg)) return
+            call emit_pointer_target_slot(context, symbol_index, value_kind, error_msg)
+            if (len_trim(error_msg) > 0) return
             context%symbols(symbol_index)%has_address = .true.
             context%symbols(symbol_index)%is_reference = .true.
         else
@@ -67,6 +67,41 @@
         end if
         call set_empty(error_msg)
     end subroutine define_scalar_pointer_target_symbol
+
+    subroutine emit_pointer_target_slot(context, symbol_index, value_kind, error_msg)
+        ! Allocate a typed slot for a target scalar and store its initial value,
+        ! so a pointer can later adopt the slot address (deref via the typed
+        ! is_reference load/store paths).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. emit_i32_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)) return
+            if (.not. emit_i32_store(context%session, &
+                context%symbols(symbol_index)%value, &
+                context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, &
+                context%symbols(symbol_index)%value, &
+                context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, &
+                context%symbols(symbol_index)%value, &
+                context%symbols(symbol_index)%address, error_msg)) return
+        case default
+            error_msg = 'unsupported target scalar kind for direct LIRIC session'
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine emit_pointer_target_slot
 
     subroutine lower_pointer_assignment(arena, node, context, error_msg)
         ! p => t : the pointer adopts the target's storage address.
