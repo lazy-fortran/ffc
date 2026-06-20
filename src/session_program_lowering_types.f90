@@ -321,6 +321,10 @@ module session_program_lowering_types
         type(ast_arena_t) :: arena
         type(symbol_t), allocatable :: symbols(:)
         integer :: symbol_count = 0
+        ! Symbols at index <= block_scope_floor belong to an enclosing scope. A
+        ! declaration inside a BLOCK whose name matches such a symbol creates a
+        ! fresh shadowing slot instead of reusing the outer storage (#280).
+        integer :: block_scope_floor = 0
         type(derived_type_info_t), allocatable :: derived_types(:)
         integer :: derived_type_count = 0
         type(module_exports_t), allocatable :: module_exports(:)

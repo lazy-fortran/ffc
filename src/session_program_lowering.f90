@@ -585,7 +585,10 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: existing_index
         existing_index = find_symbol(context, name)
-        if (existing_index > 0) then
+        ! A match in an enclosing scope must not be reused: a BLOCK-local
+        ! declaration shadows it with a fresh slot so the outer storage is left
+        ! intact (#280). Only same-scope matches take the benign-redeclare path.
+        if (existing_index > 0 .and. existing_index > context%block_scope_floor) then
             if (context%symbols(existing_index)%is_parameter) then
                 call update_parameter_symbol(context, existing_index, value_kind, &
                                              error_msg)
@@ -660,7 +663,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate integer declaration: '//trim(name)
             return
         end if
@@ -678,7 +681,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate integer(8) declaration: '//trim(name)
             return
         end if
@@ -696,7 +699,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate integer(1) declaration: '//trim(name)
             return
         end if
@@ -714,7 +717,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate integer(2) declaration: '//trim(name)
             return
         end if
@@ -733,7 +736,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate real declaration: '//trim(name)
             return
         end if
@@ -751,7 +754,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate real declaration: '//trim(name)
             return
         end if
@@ -770,7 +773,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate complex declaration: '//trim(name)
             return
         end if
@@ -796,7 +799,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate complex declaration: '//trim(name)
             return
         end if
@@ -820,7 +823,7 @@ contains
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_same_scope(context, name) > 0) then
             error_msg = 'duplicate logical declaration: '//trim(name)
             return
         end if
@@ -1438,7 +1441,10 @@ contains
         character(len=*), intent(in) :: name
         integer :: i
         index = 0
-        do i = 1, context%symbol_count
+        ! Search newest-first so a BLOCK-local declaration shadows an
+        ! identically named outer symbol (variable_usage_shadowed_block). Names
+        ! are unique outside nested scopes, so this matches forward search there.
+        do i = context%symbol_count, 1, -1
             ! Fortran identifiers are case-insensitive. FortFront lowercases
             ! declared names but can preserve the source case at use sites, so a
             ! case-folded comparison is required to match them.
@@ -1448,6 +1454,16 @@ contains
             end if
         end do
     end function find_symbol
+
+    integer function find_symbol_same_scope(context, name) result(index)
+        ! Like find_symbol, but ignores symbols belonging to an enclosing scope
+        ! (index <= block_scope_floor). A declaration that re-uses a name from an
+        ! outer BLOCK scope is a legal shadow, not a duplicate (#280).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        index = find_symbol(context, name)
+        if (index > 0 .and. index <= context%block_scope_floor) index = 0
+    end function find_symbol_same_scope
 
     logical function same_name(lhs, rhs)
         character(len=*), intent(in) :: lhs
