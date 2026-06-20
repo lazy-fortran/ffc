@@ -365,6 +365,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
+        logical :: enum_handled
         context%current_block_terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. node_exists(arena, node_index)) then
@@ -384,6 +385,11 @@
             call lower_program_body(arena, get_node_as_program(arena, node_index), &
                                     context, value, error_msg)
             return
+        end if
+        if (node_type == 'error_node') then
+            call lower_enum_block(arena, node_index, context, error_msg, &
+                                  enum_handled)
+            if (enum_handled) return
         end if
         select type (node => arena%entries(node_index)%node)
         type is (parameter_declaration_node)
@@ -597,6 +603,7 @@
     include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'
+    include 'session_program_lowering_enum.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena

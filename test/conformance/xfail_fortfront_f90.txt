@@ -77,7 +77,6 @@ issue_1810_parameter_array_allocatable.f90
 issue_1818_assumed_size_array.f90
 issue_1821_protected_attribute.f90
 issue_1826_enum_module.f90
-issue_1826_enum_program.f90
 issue_1827_submodule_simple.f90
 issue_1827_submodule_with_contents.f90
 issue_1900_block_data_after_program.f90
