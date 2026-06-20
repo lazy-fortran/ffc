@@ -221,6 +221,7 @@
         integer :: width_value
         integer :: precision_value
         integer :: buffer_size
+        integer :: e_mode
         integer :: i
         character(len=32) :: width_text
         character(len=32) :: precision_text
@@ -304,18 +305,19 @@
                                         printf_fmt, buffer_size, repeat_count, &
                                         item_index, exhausted, error_msg)
         case ('E')
-            ! Only ESw.d maps to a printf conversion: %E prints one nonzero digit
-            ! before the point, exactly like ES. Plain Ew.d (0.xxxE+nn) and ENw.d
-            ! (exponent a multiple of 3) follow rules printf cannot reproduce.
             if (pos > len_trim(format_body)) then
                 error_msg = 'E edit descriptor requires width and precision'
                 return
             end if
-            if (format_body(pos:pos) /= 'S' .and. format_body(pos:pos) /= 's') then
-                error_msg = 'only the ES edit descriptor is supported'
-                return
+            e_mode = 0
+            if (format_body(pos:pos) == 'S' .or. format_body(pos:pos) == 's') then
+                e_mode = -1
+                pos = pos + 1
+            else if (format_body(pos:pos) == 'N' .or. &
+                     format_body(pos:pos) == 'n') then
+                e_mode = 1
+                pos = pos + 1
             end if
-            pos = pos + 1
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0 .or. pos > len_trim(format_body) .or. &
                 format_body(pos:pos) /= '.') then
@@ -332,15 +334,23 @@
             if (len_trim(error_msg) > 0) return
             call read_decimal_value(precision, precision_value, error_msg)
             if (len_trim(error_msg) > 0) return
-            write (width_text, '(I0)') width_value
-            ! gfortran ESw.d prints d fraction digits and an uppercase two-digit
-            ! exponent: printf %w.dE matches (E+NN, min two exponent digits).
-            write (precision_text, '(I0)') precision_value
-            printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'E'
-            buffer_size = max(64, width_value + precision_value + 32)
-            call repeat_data_descriptor(arena, node, context, 'E', printf_fmt, &
-                                        buffer_size, repeat_count, item_index, &
-                                        exhausted, error_msg)
+            if (e_mode == -1) then
+                write (width_text, '(I0)') width_value
+                ! gfortran ESw.d prints d fraction digits and an uppercase
+                ! two-digit exponent: printf %w.dE matches.
+                write (precision_text, '(I0)') precision_value
+                printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'E'
+                buffer_size = max(64, width_value + precision_value + 32)
+                call repeat_data_descriptor(arena, node, context, 'E', &
+                                            printf_fmt, buffer_size, &
+                                            repeat_count, item_index, exhausted, &
+                                            error_msg)
+            else
+                call repeat_e_en_descriptor(arena, node, context, e_mode, &
+                                            width_value, precision_value, &
+                                            repeat_count, item_index, exhausted, &
+                                            error_msg)
+            end if
         case ('A')
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0) then
@@ -545,6 +555,35 @@
         call set_empty(error_msg)
     end subroutine lower_compound_data_descriptor
 
+    subroutine repeat_e_en_descriptor(arena, node, context, mode, width, &
+                                      precision, repeat_count, item_index, &
+                                      exhausted, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: mode, width, precision, repeat_count
+        integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        exhausted = .false.
+        do i = 1, repeat_count
+            if (item_index > size(node%expression_indices)) then
+                exhausted = .true.
+                return
+            end if
+            call lower_formatted_e_en_real_item(arena, &
+                                                node%expression_indices(item_index), &
+                                                context, mode, width, precision, &
+                                                error_msg)
+            if (len_trim(error_msg) > 0) return
+            item_index = item_index + 1
+        end do
+        call set_empty(error_msg)
+    end subroutine repeat_e_en_descriptor
+
     subroutine lower_formatted_real_item(arena, node_index, context, fmt_id, &
                                          buffer_size, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -581,6 +620,38 @@
                 context%str_print_format_id, field, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_formatted_real_item
+
+    subroutine lower_formatted_e_en_real_item(arena, node_index, context, mode, &
+                                             width, precision, error_msg)
+        use liric_session_format_bindings, only: emit_e_en_format_call
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, mode, width, precision
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: value_f64
+        type(lr_operand_desc_t) :: field
+
+        if (is_f32_expression(arena, node_index, context)) then
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_to_f64(context%session, value, value_f64, &
+                                             error_msg)) return
+            value = value_f64
+        else
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, 256_c_int64_t), field, &
+                error_msg)) return
+        if (.not. emit_e_en_format_call(context%session, value, mode, precision, &
+                                        width, field, error_msg)) return
+        if (.not. emit_liric_print_string_operand_value(context%session, &
+                context%str_print_format_id, field, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_formatted_e_en_real_item
 
     subroutine read_decimal_value(digits, value, error_msg)
         character(len=*), intent(in) :: digits
