@@ -33,6 +33,42 @@ program test_session_goto_compiler
          '/tmp/ffc_session_goto_backward_test')) stop 1
     print *, 'PASS: backward goto loops until the condition fails'
 
+    ! Computed goto branches to the selector-th label (1-based).
+    if (.not. expect_output( &
+         'program main'//new_line('a')// &
+         '    implicit none'//new_line('a')// &
+         '    integer :: choice'//new_line('a')// &
+         '    choice = 2'//new_line('a')// &
+         '    goto (100, 200, 300), choice'//new_line('a')// &
+         '100 print *, "one"'//new_line('a')// &
+         '    goto 999'//new_line('a')// &
+         '200 print *, "two"'//new_line('a')// &
+         '    goto 999'//new_line('a')// &
+         '300 print *, "three"'//new_line('a')// &
+         '999 continue'//new_line('a')// &
+         'end program main', &
+         ' two'//new_line('a'), &
+         '/tmp/ffc_session_computed_goto_test')) stop 1
+    print *, 'PASS: computed goto selects the second label'
+
+    ! Out-of-range selector falls through to the next statement.
+    if (.not. expect_output( &
+         'program main'//new_line('a')// &
+         '    implicit none'//new_line('a')// &
+         '    integer :: choice'//new_line('a')// &
+         '    choice = 5'//new_line('a')// &
+         '    goto (100, 200), choice'//new_line('a')// &
+         '    print *, "fell through"'//new_line('a')// &
+         '    goto 999'//new_line('a')// &
+         '100 print *, "one"'//new_line('a')// &
+         '    goto 999'//new_line('a')// &
+         '200 print *, "two"'//new_line('a')// &
+         '999 continue'//new_line('a')// &
+         'end program main', &
+         ' fell through'//new_line('a'), &
+         '/tmp/ffc_session_computed_goto_oob_test')) stop 1
+    print *, 'PASS: out-of-range computed goto falls through'
+
     ! PAUSE writes its banner to stderr and waits on stdin; end-of-input ends
     ! the job after flushing earlier output, so "after" is never printed (#280).
     if (.not. expect_eof_stderr_and_exit( &

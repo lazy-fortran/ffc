@@ -14,6 +14,7 @@ program test_session_structured_control_compiler
     if (.not. test_where_stmt_false()) all_passed = .false.
     if (.not. test_where_construct_true_branch()) all_passed = .false.
     if (.not. test_where_construct_elsewhere_branch()) all_passed = .false.
+    if (.not. test_where_nested_construct()) all_passed = .false.
     if (.not. test_forall_array_fill()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -138,6 +139,27 @@ contains
         test_where_construct_elsewhere_branch = expect_exit_status( &
             source, 42, '/tmp/ffc_where_else_test')
     end function test_where_construct_elsewhere_branch
+
+    logical function test_where_nested_construct()
+        ! Nested WHERE: the inner mask ANDs with the outer mask. Only element 4
+        ! satisfies both a > 2 and b == 1, so c(4) becomes 99 and the rest stay 0.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4), b(4), c(4)'//new_line('a')// &
+            '  a = [1, 2, 3, 4]'//new_line('a')// &
+            '  b = [0, 1, 0, 1]'//new_line('a')// &
+            '  c = 0'//new_line('a')// &
+            '  where (a > 2)'//new_line('a')// &
+            '    where (b == 1)'//new_line('a')// &
+            '      c = 99'//new_line('a')// &
+            '    end where'//new_line('a')// &
+            '  end where'//new_line('a')// &
+            '  stop c(1) + c(2) + c(3) + c(4)'//new_line('a')// &
+            'end program main'
+        ! Only c(4) = 99; sum = 99.
+        test_where_nested_construct = expect_exit_status( &
+            source, 99, '/tmp/ffc_where_nested_test')
+    end function test_where_nested_construct
 
     logical function test_forall_array_fill()
         ! B8f: FORALL masked assignment over a 1-D array.

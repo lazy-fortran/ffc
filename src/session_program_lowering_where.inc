@@ -24,20 +24,22 @@
             return
         end if
         call lower_where_masked_assignment(arena, node%assignment_index, &
-                                           node%mask_expr_index, .true., &
+                                           [node%mask_expr_index], &
                                            context, error_msg)
     end subroutine lower_where_stmt
 
     subroutine lower_where_construct(arena, node, context, error_msg)
         ! WHERE (mask) body [ELSEWHERE body] END WHERE.
         ! The body runs where the mask is true; a final unmasked ELSEWHERE runs
-        ! the complement. Masked ELSEWHERE and nested WHERE are out of scope and
-        ! produce a clean diagnostic.
+        ! the complement. The body may nest further WHERE constructs/statements,
+        ! whose masks AND with the enclosing mask element-wise. Masked ELSEWHERE
+        ! is out of scope and produces a clean diagnostic.
         type(ast_arena_t), intent(in) :: arena
         type(where_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        integer :: outer_masks(1)
 
         call set_empty(error_msg)
         if (node%mask_expr_index <= 0) then
@@ -58,11 +60,11 @@
             end do
         end if
 
+        outer_masks(1) = node%mask_expr_index
         if (allocated(node%where_body_indices)) then
             do i = 1, size(node%where_body_indices)
-                call lower_where_masked_assignment(arena, &
-                    node%where_body_indices(i), node%mask_expr_index, .true., &
-                    context, error_msg)
+                call lower_where_body_statement(arena, &
+                    node%where_body_indices(i), outer_masks, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
@@ -77,6 +79,68 @@
         end if
     end subroutine lower_where_construct
 
+    recursive subroutine lower_where_body_statement(arena, stmt_index, &
+                                                    masks, context, error_msg)
+        ! Lower one WHERE body statement under the conjunction of enclosing
+        ! masks. An array assignment is applied where every mask is true; a
+        ! nested WHERE construct/statement extends the mask list with its own
+        ! mask and recurses over its body.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: stmt_index
+        integer, intent(in) :: masks(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: nested_masks(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, stmt_index)) then
+            error_msg = 'WHERE body statement does not reference an AST node'
+            return
+        end if
+        select type (stmt => arena%entries(stmt_index)%node)
+        type is (where_node)
+            if (stmt%mask_expr_index <= 0) then
+                error_msg = 'nested WHERE construct requires a mask expression'
+                return
+            end if
+            if (allocated(stmt%elsewhere_clauses)) then
+                call unsupported_feature_error('nested elsewhere', &
+                    get_node_line(arena, stmt_index), &
+                    get_node_column(arena, stmt_index), &
+                    'ffc direct-session does not support ELSEWHERE in a '// &
+                    'nested WHERE', error_msg)
+                return
+            end if
+            nested_masks = [masks, stmt%mask_expr_index]
+            if (allocated(stmt%where_body_indices)) then
+                do i = 1, size(stmt%where_body_indices)
+                    call lower_where_body_statement(arena, &
+                        stmt%where_body_indices(i), nested_masks, context, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        type is (where_stmt_node)
+            if (stmt%mask_expr_index <= 0 .or. stmt%assignment_index <= 0) then
+                error_msg = 'nested WHERE statement is incomplete'
+                return
+            end if
+            nested_masks = [masks, stmt%mask_expr_index]
+            call lower_where_masked_assignment(arena, stmt%assignment_index, &
+                                               nested_masks, context, error_msg)
+        type is (assignment_node)
+            call lower_where_masked_assignment(arena, stmt_index, masks, &
+                                               context, error_msg)
+        class default
+            call unsupported_feature_error('where body statement', &
+                get_node_line(arena, stmt_index), &
+                get_node_column(arena, stmt_index), &
+                'WHERE body supports array assignments and nested WHERE', &
+                error_msg)
+        end select
+    end subroutine lower_where_body_statement
+
     subroutine lower_where_elsewhere_body(arena, clause, mask_index, context, &
                                           error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -89,24 +153,65 @@
         call set_empty(error_msg)
         if (.not. allocated(clause%body_indices)) return
         do j = 1, size(clause%body_indices)
-            call lower_where_masked_assignment(arena, clause%body_indices(j), &
-                                               mask_index, .false., context, &
-                                               error_msg)
+            call lower_where_complement_assignment(arena, &
+                clause%body_indices(j), mask_index, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_where_elsewhere_body
 
-    subroutine lower_where_masked_assignment(arena, assign_index, mask_index, &
-                                             take_when_true, context, error_msg)
-        ! Lower one WHERE body assignment under the mask. For each element:
-        !   lhs(i) := mask(i) ? rhs(i) : lhs(i)            (WHERE body)
-        !   lhs(i) := mask(i) ? lhs(i) : rhs(i)            (ELSEWHERE body)
-        ! The kept branch reads the current element, so the WHERE-result survives
-        ! into the complementary ELSEWHERE pass over the same target.
+    subroutine lower_where_masked_assignment(arena, assign_index, masks, &
+                                             context, error_msg)
+        ! Lower one WHERE body assignment under the conjunction of masks. For
+        ! each element where every mask is true:
+        !   lhs(i) := rhs(i)   otherwise lhs(i) keeps its current value.
+        ! The kept branch reads the current element, so an earlier WHERE result
+        ! survives into a complementary ELSEWHERE pass over the same target.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: assign_index
+        integer, intent(in) :: masks(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: target_symbol, value_index, i, array_size
+        type(lr_operand_desc_t) :: cond, rhs_val, cur_val, selected
+
+        call set_empty(error_msg)
+        call where_assignment_target(arena, assign_index, context, &
+                                     target_symbol, value_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        array_size = context%symbols(target_symbol)%array_size
+        if (array_size <= 0) then
+            error_msg = 'WHERE assignment requires a positive array size'
+            return
+        end if
+
+        do i = 0, array_size - 1
+            call lower_where_mask_conjunction(arena, masks, i, context, cond, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_array_elementwise_value(arena, value_index, &
+                                               target_symbol, i, context, &
+                                               rhs_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, target_symbol, &
+                                           int(i, c_int64_t), cur_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call select_value(context, cond, rhs_val, cur_val, selected, &
+                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, target_symbol, &
+                                            int(i, c_int64_t), selected, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_where_masked_assignment
+
+    subroutine lower_where_complement_assignment(arena, assign_index, &
+                                                 mask_index, context, error_msg)
+        ! ELSEWHERE body: lhs(i) := mask(i) ? lhs(i) : rhs(i). The kept branch
+        ! preserves the WHERE-true result computed in the prior pass.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: assign_index
         integer, intent(in) :: mask_index
-        logical, intent(in) :: take_when_true
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: target_symbol, value_index, i, array_size
@@ -134,19 +239,40 @@
             call load_array_linear_element(context, target_symbol, &
                                            int(i, c_int64_t), cur_val, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (take_when_true) then
-                call select_value(context, cond, rhs_val, cur_val, selected, &
-                                  error_msg)
-            else
-                call select_value(context, cond, cur_val, rhs_val, selected, &
-                                  error_msg)
-            end if
+            call select_value(context, cond, cur_val, rhs_val, selected, &
+                              error_msg)
             if (len_trim(error_msg) > 0) return
             call store_array_linear_element(context, target_symbol, &
                                             int(i, c_int64_t), selected, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine lower_where_masked_assignment
+    end subroutine lower_where_complement_assignment
+
+    subroutine lower_where_mask_conjunction(arena, masks, linear_index, &
+                                            context, cond, error_msg)
+        ! AND the per-element values of every enclosing mask into one i1.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: masks(:)
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: cond
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: next, combined
+        integer :: m
+
+        call set_empty(error_msg)
+        call lower_where_mask_element(arena, masks(1), linear_index, context, &
+                                      cond, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do m = 2, size(masks)
+            call lower_where_mask_element(arena, masks(m), linear_index, &
+                                          context, next, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_AND, cond, next, &
+                                      combined, error_msg)) return
+            cond = combined
+        end do
+    end subroutine lower_where_mask_conjunction
 
     subroutine where_assignment_target(arena, assign_index, context, &
                                        target_symbol, value_index, error_msg)

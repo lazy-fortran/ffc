@@ -61,19 +61,6 @@
         value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
 
-        ! Reject control-flow forms the simple branch lowering cannot honour
-        ! before we promote anything or emit blocks.
-        do i = 1, size(body_indices)
-            if (goto_is_computed(arena, body_indices(i))) then
-                call unsupported_feature_error('computed goto', &
-                    get_node_line(arena, body_indices(i)), &
-                    get_node_column(arena, body_indices(i)), &
-                    'direct LIRIC session lowers only simple goto to a label', &
-                    error_msg)
-                return
-            end if
-        end do
-
         ! Lower leading declarations with the normal path; labels never attach
         ! to them. Find where the executable region begins.
         first_exec = size(body_indices) + 1
@@ -270,11 +257,7 @@
             return
         end if
         if (goto_is_computed(arena, node_index)) then
-            call unsupported_feature_error('computed goto', &
-                get_node_line(arena, node_index), &
-                get_node_column(arena, node_index), &
-                'direct LIRIC session lowers only simple goto to a label', &
-                error_msg)
+            call lower_computed_goto(arena, node_index, context, error_msg)
             return
         end if
         label = get_goto_label(arena, node_index)
@@ -290,3 +273,70 @@
         if (.not. emit_liric_br(context%session, target_block, error_msg)) return
         context%current_block_terminated = .true.
     end subroutine lower_goto
+
+    ! Computed `goto (L1, L2, ..., Ln), expr`: branch to the block of the
+    ! expr-th label (1-based). An out-of-range selector falls through, as the
+    ! standard requires. Lowered as a chain of equality tests against 1..n.
+    subroutine lower_computed_goto(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: label_list, label
+        integer :: selector_index
+        type(lr_operand_desc_t) :: selector, ordinal, condition
+        integer(c_int32_t) :: target_block, next_block
+        logical :: found
+        integer :: pos, n_done, list_len, start
+
+        selector_index = get_goto_selector_index(arena, node_index)
+        if (selector_index == 0) then
+            error_msg = 'computed goto is missing a selector expression'
+            return
+        end if
+        call lower_i32_expression(arena, selector_index, context, selector, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        label_list = get_goto_label_list(arena, node_index)
+        list_len = len_trim(label_list)
+        if (list_len == 0) then
+            error_msg = 'computed goto has no target labels'
+            return
+        end if
+
+        n_done = 0
+        start = 1
+        do while (start <= list_len)
+            pos = index(label_list(start:list_len), ',')
+            if (pos == 0) then
+                label = adjustl(label_list(start:list_len))
+                start = list_len + 1
+            else
+                label = adjustl(label_list(start:start + pos - 2))
+                start = start + pos
+            end if
+            label = trim(label)
+            if (len_trim(label) == 0) cycle
+            n_done = n_done + 1
+            target_block = find_label_block(context, label, found)
+            if (.not. found) then
+                error_msg = 'computed goto targets undefined statement label: ' &
+                            //trim(label)
+                return
+            end if
+            ordinal = i32_immediate(context%session, int(n_done, c_int64_t))
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, selector, &
+                                          ordinal, condition, error_msg)) return
+            next_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, condition, &
+                                        target_block, next_block, error_msg)) &
+                return
+            if (.not. set_liric_block(context%session, next_block, error_msg)) &
+                return
+            context%current_block_id = next_block
+        end do
+        ! Fall through to the statement after the computed goto for an
+        ! out-of-range selector; the current block stays open.
+        context%current_block_terminated = .false.
+    end subroutine lower_computed_goto
