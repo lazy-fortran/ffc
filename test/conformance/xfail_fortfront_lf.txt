@@ -35,7 +35,6 @@ issue_1414_implied_do.lf
 issue_1534_multi_dimension_allocatable.lf
 issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf
-issue_1781_deallocate_if_block.lf
 issue_1784_subroutine_wrapping.lf
 issue_1814_nested_lazy_function.lf
 issue_1816_multiple_return_values.lf

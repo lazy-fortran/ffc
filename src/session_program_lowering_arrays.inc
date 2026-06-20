@@ -1491,16 +1491,32 @@
                         trim(array_name)
             return
         end if
-        if (.not. context%symbols(source_index)%is_array) then
-            error_msg = trim(reduction_name)//' requires an array argument: '// &
-                        trim(array_name)
-            return
-        end if
-
-        array_size = context%symbols(source_index)%array_size
-        if (array_size <= 0) then
-            error_msg = trim(reduction_name)//' requires a non-empty array'
-            return
+        ! A 1-D allocatable reduces over its compile-time extent recorded by the
+        ! preceding allocate(a(N)); the element loop loads from the descriptor.
+        if (context%symbols(source_index)%is_allocatable) then
+            if (context%symbols(source_index)%array_rank == 2) then
+                error_msg = trim(reduction_name)// &
+                            ' over a rank-2 allocatable is not supported'
+                return
+            end if
+            array_size = context%symbols(source_index)%allocatable_static_size
+            if (array_size <= 0) then
+                error_msg = trim(reduction_name)// &
+                            ' requires a constant allocatable extent: '// &
+                            trim(array_name)
+                return
+            end if
+        else
+            if (.not. context%symbols(source_index)%is_array) then
+                error_msg = trim(reduction_name)// &
+                            ' requires an array argument: '//trim(array_name)
+                return
+            end if
+            array_size = context%symbols(source_index)%array_size
+            if (array_size <= 0) then
+                error_msg = trim(reduction_name)//' requires a non-empty array'
+                return
+            end if
         end if
 
         select case (context%symbols(source_index)%value_kind)

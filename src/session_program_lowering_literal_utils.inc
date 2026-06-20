@@ -67,7 +67,10 @@
         if (len_trim(err) > 0) return
         sym = find_symbol(context, arg_name)
         if (sym <= 0) return
-        ok = context%symbols(sym)%is_array .and. &
+        ! A 1-D allocatable reduces over its element kind just like a fixed
+        ! array, so the result print kind follows the allocatable element kind.
+        ok = (context%symbols(sym)%is_array .or. &
+              context%symbols(sym)%is_allocatable) .and. &
              context%symbols(sym)%value_kind == vk
     end function is_real_array_reduction
 

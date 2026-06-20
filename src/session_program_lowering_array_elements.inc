@@ -748,6 +748,21 @@
         type(lr_operand_desc_t) :: addr
         integer :: vk
 
+        ! Allocatables hold no static stack base: read element linear_index from
+        ! the descriptor, bounded by the compile-time allocatable_static_size.
+        if (context%symbols(symbol_index)%is_allocatable) then
+            if (linear_index < 0_c_int64_t .or. &
+                linear_index >= int( &
+                    context%symbols(symbol_index)%allocatable_static_size, &
+                    c_int64_t)) then
+                error_msg = 'array linear index is out of range'
+                return
+            end if
+            call load_allocatable_linear_element(context, symbol_index, &
+                                                 linear_index, value, error_msg)
+            return
+        end if
+
         if (linear_index < 0_c_int64_t .or. &
             linear_index >= int(context%symbols(symbol_index)%array_size, &
                                 c_int64_t)) then
@@ -790,6 +805,33 @@
         end if
         call set_empty(error_msg)
     end subroutine load_array_linear_element
+
+    subroutine load_allocatable_linear_element(context, symbol_index, &
+                                               linear_index, value, error_msg)
+        ! Load element linear_index of a rank-1 allocatable from its descriptor
+        ! data pointer. The caller bounds linear_index against the compile-time
+        ! allocatable_static_size, so reductions can unroll over a constant
+        ! extent without a static stack array.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, addr
+        integer(c_int64_t) :: stride
+        integer :: vk
+
+        vk = context%symbols(symbol_index)%value_kind
+        stride = allocatable_elem_size(vk)
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_ptr_offset(context%session, data_ptr, &
+                linear_index * stride, addr, error_msg)) return
+        if (.not. emit_allocatable_element_load(context, vk, addr, value, &
+                                                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine load_allocatable_linear_element
 
     subroutine lower_array_section_assignment(arena, node, target, context, error_msg)
         !! Assign to a rank-1 integer array section: arr(lo:hi:st) = rhs, where
