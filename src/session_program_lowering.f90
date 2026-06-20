@@ -200,6 +200,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 MAX_GENERIC_SPECIFICS, &
                                                 MODVAR_OK, MODVAR_UNSUPPORTED, &
                                                 common_slot_t, COMMON_MAX_SLOTS, &
+                                                EQUIV_MAX_MEMBERS, &
                                                 namelist_group_t, &
                                                 statement_function_t, &
                                                 MAX_STMT_FN_ARGS, &

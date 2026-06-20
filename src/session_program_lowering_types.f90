@@ -140,6 +140,7 @@ module session_program_lowering_types
     ! COMMON block, keyed by block name and position. has_init/init_text carry
     ! a BLOCK DATA literal initialiser folded later into the global.
     integer, parameter, public :: COMMON_MAX_SLOTS = 64
+    integer, parameter, public :: EQUIV_MAX_MEMBERS = 32
     type, public :: common_slot_t
         character(len=:), allocatable :: block_name
         character(len=:), allocatable :: var_name
