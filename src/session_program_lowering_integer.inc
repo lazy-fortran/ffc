@@ -313,6 +313,18 @@
                                                  error_msg)
           return
       end if
+      if (same_name(node%name, 'maxloc') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_locate_intrinsic(arena, node, context, value, &
+                                            error_msg, .true.)
+          return
+      end if
+      if (same_name(node%name, 'minloc') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_array_locate_intrinsic(arena, node, context, value, &
+                                            error_msg, .false.)
+          return
+      end if
       if (same_name(node%name, 'scan') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_scan_intrinsic(arena, node, context, value, error_msg)

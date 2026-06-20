@@ -31,8 +31,9 @@ promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element
 access, array
 sections, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
-`matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, and
-`all`; scalar element read and write on an allocated 1-D integer, real, or
+`matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, `all`,
+and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar
+element read and write on an allocated 1-D integer, real, or
 logical allocatable (`a(i)`); whole-array assignment from an array constructor
 to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`); and
 whole-array `print` of a 1-D allocatable whose extent is a compile-time
