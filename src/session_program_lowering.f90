@@ -189,6 +189,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 module_exports_t, &
                                                 external_procedure_t, &
                                                 generic_interface_t, &
+                                                operator_interface_t, &
                                                 MAX_PROC_ARGS, &
                                                 MAX_GENERIC_SPECIFICS, &
                                                 MODVAR_OK, MODVAR_UNSUPPORTED, &
@@ -816,6 +817,11 @@ contains
         type(lr_operand_desc_t) :: value
         character(len=:), allocatable :: name
         integer :: symbol_index
+        logical :: handled
+
+        call try_lower_overloaded_assignment(arena, node, context, handled, &
+                                             error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
         select type (target => arena%entries(node%target_index)%node)
         type is (call_or_subscript_node)
             if (target%base_expr_index > 0) then
@@ -952,6 +958,40 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    subroutine try_lower_overloaded_assignment(arena, node, context, handled, &
+                                               error_msg)
+        ! An interface assignment(=) maps `lhs = rhs` to a subroutine call
+        ! specific(lhs, rhs) when the operand kinds match a registered overload.
+        ! The LHS is the intent(out)/(inout) first dummy, so it is passed by
+        ! reference exactly like any 2-argument subroutine call argument.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: slot, left_kind, right_kind
+        character(len=:), allocatable :: specific
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%operator_count == 0) return
+        left_kind = operand_overload_kind(arena, node%target_index, context)
+        right_kind = operand_overload_kind(arena, node%value_index, context)
+        slot = find_operator(context, '=', left_kind, right_kind, .true.)
+        if (slot == 0) return
+        specific = operator_specific_name(context, slot)
+        call prepare_reference_args(arena, [node%target_index, node%value_index], &
+                                    context, VALUE_I32, specific, args, &
+                                    copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_void_call(context%session, &
+                call_emit_name(arena, specific), args, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+        handled = len_trim(error_msg) == 0
+    end subroutine try_lower_overloaded_assignment
     include 'session_program_lowering_arguments.inc'
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'

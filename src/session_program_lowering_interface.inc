@@ -3,8 +3,8 @@
         ! block (#192). Generic named interfaces (interface foo ... module
         ! procedure foo_int, foo_real) are registered in the generic table so
         ! calls can be resolved to the matching specific (#249 B7c).
-        ! Operator/assignment interfaces and operator/assignment blocks are
-        ! silently skipped.
+        ! Operator/assignment interfaces record their specifics in the operator
+        ! table so a matching binary op or assignment dispatches to them.
         type(ast_arena_t), intent(in) :: arena
         type(interface_block_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -17,7 +17,8 @@
             lowered_kind = lowercase_text(trim(node%kind))
             if (lowered_kind == 'operator' .or. &
                 lowered_kind == 'assignment') then
-                ! Operator/assignment overloading: not yet supported, skip.
+                call register_operator_interface(arena, node, context, &
+                    lowered_kind == 'assignment', error_msg)
                 return
             end if
             if (lowered_kind /= 'interface' .and. &
@@ -97,6 +98,247 @@
         end do
         context%generic_count = next
     end subroutine register_generic_interface
+
+    subroutine register_operator_interface(arena, node, context, is_assignment, &
+                                           error_msg)
+        ! Record an interface operator(op)/assignment(=) block in the operator
+        ! table. The token in node%operator (e.g. "+", ".dot.", "=") keys the
+        ! overload; the listed module procedures become the specifics. Operand
+        ! and return kinds are scanned from each specific so distinct overloads
+        ! of one token dispatch by operand type.
+        type(ast_arena_t), intent(in) :: arena
+        type(interface_block_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_assignment
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j, next, fn_index
+        type(module_procedure_node), pointer :: mp_node
+        character(len=:), allocatable :: node_type, op_token
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%procedure_indices)) return
+        op_token = ''
+        if (allocated(node%operator)) op_token = lowercase_text(trim(node%operator))
+        if (is_assignment) op_token = '='
+        if (len_trim(op_token) == 0) return
+
+        next = find_operator_slot(context, op_token, is_assignment)
+        do i = 1, size(node%procedure_indices)
+            if (.not. node_exists(arena, node%procedure_indices(i))) cycle
+            node_type = get_node_type_at(arena, node%procedure_indices(i))
+            if (node_type /= 'module_procedure_node' .and. &
+                node_type /= 'module_procedure') cycle
+            select type (n => arena%entries(node%procedure_indices(i))%node)
+            type is (module_procedure_node)
+                mp_node => n
+            class default
+                cycle
+            end select
+            if (.not. allocated(mp_node%procedure_names)) cycle
+            do j = 1, size(mp_node%procedure_names)
+                if (context%operators(next)%specific_count >= &
+                    MAX_GENERIC_SPECIFICS) then
+                    error_msg = 'operator '//trim(op_token)// &
+                                ' has too many overloads'
+                    return
+                end if
+                associate (op => context%operators(next))
+                    op%specific_count = op%specific_count + 1
+                    op%specific_names(op%specific_count) = &
+                        trim(mp_node%procedure_names(j)%s)
+                    fn_index = find_function_index(context, &
+                        trim(mp_node%procedure_names(j)%s))
+                    if (fn_index > 0) then
+                        op%return_kinds(op%specific_count) = &
+                            context%function_value_kinds(fn_index)
+                        op%first_arg_kinds(op%specific_count) = &
+                            specific_arg_kind(context, fn_index, 1)
+                        op%second_arg_kinds(op%specific_count) = &
+                            specific_arg_kind(context, fn_index, 2)
+                    end if
+                end associate
+            end do
+        end do
+    end subroutine register_operator_interface
+
+    integer function find_operator_slot(context, op_token, is_assignment) &
+        result(idx)
+        ! Index of the operator-table entry for op_token, creating one if absent
+        ! so specifics from interfaces in different scopes accumulate.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: op_token
+        logical, intent(in) :: is_assignment
+        integer :: i
+
+        do i = 1, context%operator_count
+            if (context%operators(i)%is_assignment .eqv. is_assignment) then
+                if (same_name(context%operators(i)%operator_name, op_token)) then
+                    idx = i
+                    return
+                end if
+            end if
+        end do
+        call grow_operators(context)
+        idx = context%operator_count + 1
+        context%operators(idx)%operator_name = trim(op_token)
+        context%operators(idx)%is_assignment = is_assignment
+        context%operators(idx)%specific_count = 0
+        context%operator_count = idx
+    end function find_operator_slot
+
+    subroutine grow_operators(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(operator_interface_t), allocatable :: old(:)
+
+        if (.not. allocated(context%operators)) then
+            allocate (context%operators(4))
+            return
+        end if
+        if (context%operator_count < size(context%operators)) return
+        call move_alloc(context%operators, old)
+        allocate (context%operators(2 * size(old)))
+        context%operators(1:size(old)) = old
+    end subroutine grow_operators
+
+    integer function find_function_index(context, name) result(idx)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        idx = 0
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), name)) then
+                idx = i
+                return
+            end if
+        end do
+    end function find_function_index
+
+    integer function specific_arg_kind(context, fn_index, arg_pos) result(kind)
+        ! Value kind of the arg_pos-th dummy of a registered specific. Derived
+        ! dummies report VALUE_DERIVED so overload dispatch can tell a derived
+        ! operand from an intrinsic one.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: fn_index, arg_pos
+        integer :: node_idx, i
+        character(len=:), allocatable :: param_name, err, node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: body_indices(:), param_indices(:)
+
+        kind = VALUE_I32
+        node_idx = context%function_node_indices(fn_index)
+        if (node_idx <= 0) return
+        if (.not. node_exists(context%arena, node_idx)) return
+        node_type = get_node_type_at(context%arena, node_idx)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(context%arena, node_idx)
+            if (.not. associated(fn_node)) return
+            if (.not. allocated(fn_node%param_indices)) return
+            param_indices = fn_node%param_indices
+            body_indices = fn_node%body_indices
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(context%arena, node_idx)
+            if (.not. associated(sb_node)) return
+            if (.not. allocated(sb_node%param_indices)) return
+            param_indices = sb_node%param_indices
+            body_indices = sb_node%body_indices
+        else
+            return
+        end if
+        if (arg_pos > size(param_indices)) return
+        call parameter_name(context%arena, param_indices(arg_pos), param_name, err)
+        if (len_trim(err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(context%arena, body_indices(i))) cycle
+            select type (decl => context%arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. allocated(decl%var_name)) cycle
+                if (.not. same_name(decl%var_name, param_name)) cycle
+                if (declaration_derived_type_index(context, decl) > 0) then
+                    kind = VALUE_DERIVED
+                    return
+                end if
+                call type_name_value_kind(decl%type_name, decl%line, &
+                                          decl%column, kind, err)
+                if (len_trim(err) > 0) kind = VALUE_DERIVED
+                return
+            end select
+        end do
+    end function specific_arg_kind
+
+    integer function find_operator(context, op_token, left_kind, right_kind, &
+                                   is_assignment) result(specific_slot)
+        ! Find the operator-overload specific (encoded as op_index*256+spec_index)
+        ! matching op_token and the operand kinds, or 0 when none applies. Exact
+        ! operand-kind matches always win. A sole-specific fallback applies only
+        ! to named (.op.) operators and assignment, never to the arithmetic
+        ! symbols +,-,*,/: those keep their builtin meaning unless the operand
+        ! kinds match a declared overload, so normal integer/real arithmetic in
+        ! a unit that also overloads a symbol is not hijacked.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: op_token
+        integer, intent(in) :: left_kind, right_kind
+        logical, intent(in) :: is_assignment
+        integer :: i, j
+        character(len=:), allocatable :: token
+        integer :: fallback
+        logical :: allow_fallback
+
+        specific_slot = 0
+        fallback = 0
+        token = lowercase_text(trim(op_token))
+        allow_fallback = is_assignment .or. is_named_operator_token(token)
+        do i = 1, context%operator_count
+            if (context%operators(i)%is_assignment .neqv. is_assignment) cycle
+            if (.not. same_name(context%operators(i)%operator_name, token)) cycle
+            do j = 1, context%operators(i)%specific_count
+                if (context%operators(i)%first_arg_kinds(j) == left_kind .and. &
+                    context%operators(i)%second_arg_kinds(j) == right_kind) then
+                    specific_slot = i * 256 + j
+                    return
+                end if
+                if (fallback == 0) fallback = i * 256 + j
+            end do
+        end do
+        if (allow_fallback) specific_slot = fallback
+    end function find_operator
+
+    logical function is_named_operator_token(token)
+        ! A named operator like .dot. lexes as .word. and cannot collide with a
+        ! builtin arithmetic symbol, so a sole overload may dispatch even when
+        ! operand-kind inference is incomplete.
+        character(len=*), intent(in) :: token
+
+        is_named_operator_token = .false.
+        if (len_trim(token) < 3) return
+        is_named_operator_token = token(1:1) == '.' .and. &
+            token(len_trim(token):len_trim(token)) == '.'
+    end function is_named_operator_token
+
+    function operator_specific_name(context, slot) result(name)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: slot
+        character(len=:), allocatable :: name
+        integer :: op_i, sp_j
+
+        op_i = slot / 256
+        sp_j = mod(slot, 256)
+        name = trim(context%operators(op_i)%specific_names(sp_j))
+    end function operator_specific_name
+
+    integer function operator_return_kind(context, slot) result(kind)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: slot
+        integer :: op_i, sp_j
+
+        op_i = slot / 256
+        sp_j = mod(slot, 256)
+        kind = context%operators(op_i)%return_kinds(sp_j)
+    end function operator_return_kind
 
     subroutine query_specific_kinds(context, specific_name, &
                                     return_kind, first_arg_kind)

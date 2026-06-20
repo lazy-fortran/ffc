@@ -230,6 +230,15 @@
         end if
 
         if (is_binary_op(arena, node_index)) then
+            block
+                integer :: op_slot
+                if (overloaded_operator_slot(arena, node_index, context, op_slot)) &
+                    then
+                    call lower_overloaded_operator(arena, node_index, op_slot, &
+                                                   context, value, error_msg)
+                    return
+                end if
+            end block
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -472,6 +481,15 @@
         end if
 
         if (is_binary_op(arena, node_index)) then
+            block
+                integer :: op_slot
+                if (overloaded_operator_slot(arena, node_index, context, op_slot)) &
+                    then
+                    call lower_overloaded_operator(arena, node_index, op_slot, &
+                                                   context, value, error_msg)
+                    return
+                end if
+            end block
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -641,6 +659,87 @@
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_contained_f64_call_named
+
+    logical function overloaded_operator_slot(arena, node_index, context, slot)
+        ! When node_index is a binary op whose operator token is registered as a
+        ! user-defined operator overload for the operand kinds, return .true. and
+        ! the matching specific slot. Array operands fall through to the array
+        ! path (the overload would need an elemental specific, out of scope).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: slot
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: bin_left, bin_right, bin_line, bin_col
+        integer :: left_kind, right_kind
+
+        slot = 0
+        overloaded_operator_slot = .false.
+        if (context%operator_count == 0) return
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                bin_right, bin_line, bin_col, bin_err)
+        if (len_trim(bin_err) > 0) return
+        if (.not. allocated(bin_op)) return
+        left_kind = operand_overload_kind(arena, bin_left, context)
+        right_kind = operand_overload_kind(arena, bin_right, context)
+        slot = find_operator(context, bin_op, left_kind, right_kind, .false.)
+        overloaded_operator_slot = slot > 0
+    end function overloaded_operator_slot
+
+    integer function operand_overload_kind(arena, node_index, context) &
+        result(kind)
+        ! Value kind of an operator operand for overload dispatch; a derived
+        ! operand reports VALUE_DERIVED so it pairs with a derived dummy.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        kind = VALUE_I32
+        if (actual_is_derived(arena, node_index, context)) then
+            kind = VALUE_DERIVED
+            return
+        end if
+        kind = expression_value_kind(arena, node_index, context, VALUE_I32)
+    end function operand_overload_kind
+
+    subroutine lower_overloaded_operator(arena, node_index, slot, context, &
+                                         value, error_msg)
+        ! Lower a user-defined binary operator as a call to its specific:
+        ! a .op. b -> specific(a, b). Operand ABI reuses prepare_reference_args
+        ! (so derived operands pass by reference like any 2-arg call), and the
+        ! result is emitted with the specific's return kind.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, slot
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bin_op, specific
+        integer :: bin_left, bin_right, bin_line, bin_col, ret_kind
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                bin_right, bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        specific = operator_specific_name(context, slot)
+        ret_kind = operator_return_kind(context, slot)
+        call prepare_reference_args(arena, [bin_left, bin_right], context, &
+                                    VALUE_I32, specific, args, copyback_indices, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (ret_kind == VALUE_F64) then
+            if (.not. emit_liric_f64_call(context%session, &
+                    call_emit_name(arena, specific), args, value, error_msg)) return
+        else if (ret_kind == VALUE_F32) then
+            if (.not. emit_liric_f32_call(context%session, &
+                    call_emit_name(arena, specific), args, value, error_msg)) return
+        else
+            if (.not. emit_i32_call(context%session, &
+                    call_emit_name(arena, specific), args, value, error_msg)) return
+        end if
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_overloaded_operator
 
     recursive logical function is_f64_expression(arena, node_index, context) &
         result(is_f64)
