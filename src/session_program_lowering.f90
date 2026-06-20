@@ -173,6 +173,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 emit_liric_f64_call, &
                                                 emit_liric_f64_load, &
                                                 emit_liric_f64_store
+    use liric_session_timing_bindings, only: emit_cpu_time_value, &
+                                             emit_system_clock_value
     use session_lowering_ops, only: integer_compare_predicate, &
                                     integer_opcode, parse_i32_literal
   use ffc_strings, only: set_empty
@@ -957,6 +959,12 @@ contains
                     return
                 end select
             end if
+            if (is_scalar_broadcast_to_allocatable(arena, node%value_index, &
+                                                   context)) then
+                call lower_allocatable_scalar_broadcast(arena, node%value_index, &
+                    symbol_index, context, error_msg)
+                return
+            end if
             call unsupported_feature_error('allocatable array assignment', &
                 node%line, node%column, 'allocatable whole-array assignment '// &
                 'supports only array constructors; other forms land in later issues', &
@@ -1254,6 +1262,14 @@ contains
             call lower_move_alloc(arena, arg_indices, context, error_msg)
             return
         end if
+        if (same_name(call_name, 'cpu_time')) then
+            call lower_cpu_time(arena, arg_indices, context, error_msg)
+            return
+        end if
+        if (same_name(call_name, 'system_clock')) then
+            call lower_system_clock(arena, arg_indices, context, error_msg)
+            return
+        end if
         if (is_method_subroutine_call(call_name)) then
             call lower_method_subroutine_call(arena, call_name, arg_indices, &
                                               context, error_msg)
@@ -1272,6 +1288,93 @@ contains
             return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
+
+    subroutine lower_cpu_time(arena, arg_indices, context, error_msg)
+        ! cpu_time(t): t = processor time in seconds (real). The intent(out)
+        ! argument must be a declared real scalar.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: symbol_index
+
+        call intrinsic_out_scalar(arena, arg_indices, context, 'cpu_time', &
+                                  VALUE_F32, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_cpu_time_value(context%session, value, error_msg)) return
+        call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
+    end subroutine lower_cpu_time
+
+    subroutine lower_system_clock(arena, arg_indices, context, error_msg)
+        ! system_clock(count): count = an integer tick counter. Only the count
+        ! argument is supported; count_rate and count_max are not.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: symbol_index
+
+        call intrinsic_out_scalar(arena, arg_indices, context, 'system_clock', &
+                                  VALUE_I32, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_system_clock_value(context%session, value, error_msg)) return
+        call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
+    end subroutine lower_system_clock
+
+    subroutine intrinsic_out_scalar(arena, arg_indices, context, name, kind, &
+                                    symbol_index, error_msg)
+        ! Resolve the single intent(out) scalar argument of a timing intrinsic
+        ! and verify its declared kind.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: kind
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name
+
+        symbol_index = 0
+        if (size(arg_indices) /= 1) then
+            error_msg = trim(name)//' requires exactly one scalar argument'
+            return
+        end if
+        if (.not. is_identifier(arena, arg_indices(1))) then
+            error_msg = trim(name)//' argument must be a scalar variable'
+            return
+        end if
+        call get_identifier_name(arena, arg_indices(1), var_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, var_name)
+        if (symbol_index <= 0) then
+            error_msg = trim(name)//' argument is not declared: '//trim(var_name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= kind) then
+            error_msg = trim(name)//' argument has the wrong type: '//trim(var_name)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine intrinsic_out_scalar
+
+    subroutine store_intrinsic_scalar_result(context, symbol_index, value, &
+                                             error_msg)
+        ! Write a freshly computed scalar into its symbol, persisting through the
+        ! backing address when the variable lives in memory.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        context%symbols(symbol_index)%value = value
+        if (context%symbols(symbol_index)%has_address) then
+            call store_reference_value(context, symbol_index, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        call set_empty(error_msg)
+    end subroutine store_intrinsic_scalar_result
 
     logical function emit_call_with_optional_padding(context, name, args, &
                                                      error_msg) result(ok)

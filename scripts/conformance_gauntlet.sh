@@ -462,6 +462,28 @@ while IFS= read -r full_path <&3; do
         continue
     fi
 
+    # Step 8b: nondeterministic reference (CPU_TIME, SYSTEM_CLOCK, RANDOM_*).
+    # When the reference itself differs between runs, an exact byte comparison
+    # can never pass. Compare numeric structure instead: same tokens and text,
+    # numeric magnitudes and field widths ignored.
+    if [ "$SUITE" != "fortfront-lf" ] && \
+        reference_is_nondeterministic "$ref_exe" "$TIMEOUT" && \
+        compare_structural "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+            status="XPASS"
+            note="listed in xfail manifest but structure matches nondeterministic gfortran"
+            XPASS_COUNT=$((XPASS_COUNT + 1))
+            echo "  XPASS: $rel_path (nondeterministic structure now matches)"
+        else
+            status="PASS"
+            note="numeric structure matches nondeterministic gfortran"
+            PASS_COUNT=$((PASS_COUNT + 1))
+        fi
+        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
+            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        continue
+    fi
+
     # Step 9: mismatch, check xfail.
     if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
         status="XFAIL"

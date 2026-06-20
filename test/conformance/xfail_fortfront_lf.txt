@@ -45,7 +45,6 @@ issue_1414_implied_do.lf
 issue_1534_multi_dimension_allocatable.lf
 issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf
-issue_1781_allocate_deallocate.lf
 issue_1781_deallocate_if_block.lf
 issue_1784_subroutine_wrapping.lf
 issue_1814_nested_lazy_function.lf
@@ -97,7 +96,6 @@ issue_2694_strict_zero_iter_implied_do.lf
 issue_2694_strict_zero_sized_array_constructor.lf
 issue_509_mixed_constructs_input.lf
 issue_652_multi_var_allocatable.lf
-issue_935_allocate_param.lf
 issue_935_multidim_arrays.lf
 issue_missing_intent_in_function.lf
 issue_nested_internal_procedures.lf

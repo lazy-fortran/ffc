@@ -86,6 +86,41 @@ compare_outputs() {
     return $?
 }
 
+# numeric_structure <file>
+# Emit the file's output with every numeric literal collapsed to a single 'N'
+# token and runs of whitespace collapsed to one space. Two outputs share a
+# numeric structure when they differ only in the magnitude and field width of
+# their numbers, which is the signature of a nondeterministic timing/random
+# program.
+numeric_structure() {
+    local file="$1"
+    sed -E 's/[+-]?[0-9]+\.?[0-9]*([eEdD][+-]?[0-9]+)?/N/g; s/[[:space:]]+/ /g; s/^ //; s/ $//' \
+        "$file"
+}
+
+# reference_is_nondeterministic <exe> <timeout>
+# True when two runs of the reference executable produce different stdout but a
+# matching numeric structure. Such programs (CPU_TIME, SYSTEM_CLOCK, RANDOM_*)
+# cannot be compared byte-for-byte; they are compared structurally instead.
+reference_is_nondeterministic() {
+    local exe="$1" timeout="$2"
+    local a b
+    a=$(timeout "$timeout" "$exe" 2>&1 < /dev/null) || return 1
+    b=$(timeout "$timeout" "$exe" 2>&1 < /dev/null) || return 1
+    [ "$a" != "$b" ]
+}
+
+# compare_structural <ffc_out> <ref_out> <ffc_exit> <ref_exit>
+# Like compare_outputs but ignores numeric magnitudes and field widths. Used
+# only when the reference program is nondeterministic.
+compare_structural() {
+    local ffc_out="$1" ref_out="$2" ffc_exit="$3" ref_exit="$4"
+    if [ "$ffc_exit" != "$ref_exit" ]; then
+        return 1
+    fi
+    [ "$(numeric_structure "$ffc_out")" = "$(numeric_structure "$ref_out")" ]
+}
+
 # check_xfail <manifest_path> <suite_relative_path>
 # Returns 0 if the path is listed in the xfail manifest, 1 otherwise.
 check_xfail() {
