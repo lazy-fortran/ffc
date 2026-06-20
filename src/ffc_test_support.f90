@@ -20,8 +20,58 @@ module ffc_test_support
     public :: expect_no_error
     public :: expect_exe_has_symbol
     public :: expect_output_with_stdin
+    public :: expect_stderr_and_exit
 
 contains
+
+    logical function expect_stderr_and_exit(source, expected, expected_exit, &
+                                            exe_path) result(ok)
+        ! Compiles source, runs it capturing combined stdout+stderr, and checks
+        ! both that combined output and the exit status. Used for STOP banners,
+        ! which gfortran writes to stderr.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: expected
+        integer, intent(in) :: expected_exit
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg, actual, out_path
+        integer :: cmd_stat, exit_stat
+
+        ok = .false.
+        call compile_to_exe(source, exe_path, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: ', trim(error_msg)
+            call execute_command_line('rm -f '//exe_path)
+            return
+        end if
+
+        out_path = exe_path//'.out'
+        call execute_command_line(exe_path//' > '//out_path//' 2>&1', &
+                                  exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: emitted executable did not run: ', exe_path
+            call execute_command_line('rm -f '//exe_path//' '//out_path)
+            return
+        end if
+        if (exit_stat /= expected_exit) then
+            print *, 'FAIL: exit status ', exit_stat, ' expected ', expected_exit
+            call execute_command_line('rm -f '//exe_path//' '//out_path)
+            return
+        end if
+
+        call read_file(out_path, actual)
+        call execute_command_line('rm -f '//exe_path//' '//out_path)
+        if (.not. allocated(actual)) then
+            print *, 'FAIL: could not read output of ', exe_path
+            return
+        end if
+        if (actual /= expected) then
+            print *, 'FAIL: output mismatch'
+            print *, '  expected: ', expected
+            print *, '  actual:   ', actual
+            return
+        end if
+        ok = .true.
+    end function expect_stderr_and_exit
 
     logical function expect_exe_has_symbol(source, object_path, symbol) result(ok)
         ! Compiles source to an object file and checks it defines the named

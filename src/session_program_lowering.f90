@@ -113,7 +113,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf, emit_scanf, &
-                                                 emit_fprintf
+                                                 emit_fprintf, emit_dprintf
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
                                                     synthesize_complex8_printer, &
                                                     emit_complex4_print_call, &
@@ -1015,6 +1015,55 @@ contains
                                       value, error_msg)
         end if
     end subroutine lower_stop
+
+    subroutine emit_stop_banner(node, code_value, context, error_msg)
+        ! gfortran writes a STOP banner to stderr (fd 2): "STOP <message>" for a
+        ! character message, "STOP <n>" for any integer stop code. Bare stop
+        ! prints nothing. Match that via dprintf(2, ...).
+        type(stop_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(in) :: code_value
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fa(3), fmtop, msgop
+        character(len=:), allocatable :: msg_text
+        integer(c_int32_t) :: fmt_gid, msg_gid
+        character(len=64) :: gname
+
+        call set_empty(error_msg)
+        if (allocated(node%stop_message)) then
+            call strip_literal_quotes(node%stop_message, msg_text)
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.stop.msg.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             msg_text, msg_gid, error_msg)
+            if (len_trim(error_msg) > 0) return
+            msgop = printf_format_ptr(context%session, msg_gid)
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             'STOP %s'//achar(10), fmt_gid, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            fmtop = printf_format_ptr(context%session, fmt_gid)
+            fa(1) = i32_immediate(context%session, 2_c_int64_t)
+            fa(2) = fmtop
+            fa(3) = msgop
+            if (.not. emit_dprintf(context%session, fa, error_msg)) return
+        else if (node%stop_code_index > 0) then
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             'STOP %d'//achar(10), fmt_gid, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            fmtop = printf_format_ptr(context%session, fmt_gid)
+            fa(1) = i32_immediate(context%session, 2_c_int64_t)
+            fa(2) = fmtop
+            fa(3) = code_value
+            if (.not. emit_dprintf(context%session, fa, error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_stop_banner
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_print_ops.inc'

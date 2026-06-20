@@ -373,7 +373,13 @@ while IFS= read -r full_path <&3; do
     run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT"
     ffc_exit=$?
 
-    if [ "$ffc_exit" -ne 0 ]; then
+    # An ordinary nonzero exit (e.g. STOP 99) is a legitimate program result,
+    # not a failure: defer judgement to the gfortran comparison in step 8.
+    # Only a crash short-circuits here: timeout (124), loader/exec error
+    # (126, 127), or a signal (>=128). Lazy suites have no reference, so any
+    # nonzero exit stays a failure.
+    if [ "$ffc_exit" -ne 0 ] && { [ "$ffc_exit" -ge 126 ] || \
+        [ "$ffc_exit" -eq 124 ] || is_lazy_suite; }; then
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XFAIL"
             note="listed in xfail manifest (runtime failure)"
