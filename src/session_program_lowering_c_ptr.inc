@@ -228,11 +228,14 @@
             error_msg = 'c_f_pointer target was not declared: '//trim(name)
             return
         end if
+        ! Bind the Fortran pointer to the C address: the pointer adopts cp's
+        ! address as its storage, so a later read of p dereferences that address
+        ! (emit_*_load) and yields the value the C pointer refers to.
         context%symbols(symbol_index)%value = ptr_value
-        if (context%symbols(symbol_index)%has_address .and. &
-            context%symbols(symbol_index)%is_reference) then
-            if (.not. emit_ptr_store(context%session, ptr_value, &
-                context%symbols(symbol_index)%address, error_msg)) return
-        end if
+        context%symbols(symbol_index)%address = ptr_value
+        context%symbols(symbol_index)%has_address = .true.
+        context%symbols(symbol_index)%is_reference = .true.
+        context%symbols(symbol_index)%is_pointer = .true.
+        context%symbols(symbol_index)%is_associated = .true.
         call set_empty(error_msg)
     end subroutine lower_c_f_pointer
