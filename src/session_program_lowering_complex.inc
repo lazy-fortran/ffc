@@ -52,8 +52,8 @@
 
     ! Evaluate a complex(4) rhs into its real/imag SSA components. Handles the
     ! (re, im) literal, a complex(4) identifier load, cmplx(re, im), and binary
-    ! +/- of two complex operands. f32 components come from lower_f32_expression
-    ! so real scalar literals widen correctly.
+    ! +/-/*// of two complex operands. f32 components come from
+    ! lower_f32_expression so real scalar literals widen correctly.
     recursive subroutine eval_c4_rhs(arena, rhs_index, context, re_val, im_val, &
                                      error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -80,10 +80,8 @@
             if (len_trim(error_msg) > 0) return
             call eval_c4_rhs(arena, ri, context, rre, rim, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_f32_binary(context%session, opc, lre, rre, &
-                                            re_val, error_msg)) return
-            if (.not. emit_liric_f32_binary(context%session, opc, lim, rim, &
-                                            im_val, error_msg)) return
+            call complex_combine_c4(context, op, opc, lre, lim, rre, rim, &
+                                    re_val, im_val, error_msg)
             return
         end if
         select type (rhs => arena%entries(rhs_index)%node)
@@ -125,10 +123,8 @@
             if (len_trim(error_msg) > 0) return
             call eval_c8_rhs(arena, ri, context, rre, rim, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_f64_binary(context%session, opc, lre, rre, &
-                                            re_val, error_msg)) return
-            if (.not. emit_liric_f64_binary(context%session, opc, lim, rim, &
-                                            im_val, error_msg)) return
+            call complex_combine_c8(context, op, opc, lre, lim, rre, rim, &
+                                    re_val, im_val, error_msg)
             return
         end if
         select type (rhs => arena%entries(rhs_index)%node)
@@ -144,10 +140,10 @@
         end select
     end subroutine eval_c8_rhs
 
-    ! Validate a complex binary node as +/- and return the operands and the
-    ! componentwise float opcode. * and / need the full complex formula and are
-    ! rejected here so unsupported forms stay xfail. kind_tag names the kind in
-    ! the error message.
+    ! Validate a complex binary node as +/-/*// and return the operands plus the
+    ! float opcode. +/- combine componentwise; * and / use the full complex
+    ! formula (see complex_combine_c4/c8). ** and other operators stay rejected
+    ! so unsupported forms remain xfail. kind_tag names the kind in the error.
     subroutine complex_binary_op(arena, node_index, op, left, right, opc, &
                                  line, col, kind_tag, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -156,16 +152,147 @@
         integer, intent(out) :: left, right, opc, line, col
         character(len=*), intent(in) :: kind_tag
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: clean
 
         call get_binary_op_info(arena, node_index, op, left, right, line, col, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
-        if (trim(adjustl(op)) /= '+' .and. trim(adjustl(op)) /= '-') then
+        clean = trim(adjustl(op))
+        if (clean /= '+' .and. clean /= '-' .and. clean /= '*' .and. &
+            clean /= '/') then
             error_msg = kind_tag//' assignment: unsupported operator '//trim(op)
             return
         end if
         call real_opcode(op, line, col, opc, error_msg)
     end subroutine complex_binary_op
+
+    ! Combine two complex(4) operands by op into result components.
+    ! +/- are componentwise; * and / use the Cartesian formulas:
+    !   (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
+    !   (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c*c+d*d)
+    subroutine complex_combine_c4(context, op, opc, ar, ai, br, bi, &
+                                  re_val, im_val, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: op
+        integer, intent(in) :: opc
+        type(lr_operand_desc_t), intent(in) :: ar, ai, br, bi
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: p1, p2, p3, p4, denom, num_re, num_im
+        character(len=:), allocatable :: clean
+
+        clean = trim(adjustl(op))
+        if (clean == '+' .or. clean == '-') then
+            if (.not. emit_liric_f32_binary(context%session, opc, ar, br, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f32_binary(context%session, opc, ai, bi, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        ! products shared by mul and div: ac, bd, ad, bc
+        if (.not. emit_liric_f32_binary(context%session, 20, ar, br, p1, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 20, ai, bi, p2, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 20, ar, bi, p3, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 20, ai, br, p4, &
+                                        error_msg)) return
+        if (clean == '*') then
+            if (.not. emit_liric_f32_binary(context%session, 19, p1, p2, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f32_binary(context%session, 18, p3, p4, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        ! division: num_re = ac+bd, num_im = bc-ad, denom = c*c+d*d
+        if (.not. emit_liric_f32_binary(context%session, 18, p1, p2, num_re, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 19, p4, p3, num_im, &
+                                        error_msg)) return
+        call complex_denom_c4(context, br, bi, denom, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_f32_binary(context%session, 21, num_re, denom, &
+                                        re_val, error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 21, num_im, denom, &
+                                        im_val, error_msg)) return
+    end subroutine complex_combine_c4
+
+    subroutine complex_denom_c4(context, cr, ci, denom, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: cr, ci
+        type(lr_operand_desc_t), intent(out) :: denom
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cc, dd
+
+        if (.not. emit_liric_f32_binary(context%session, 20, cr, cr, cc, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 20, ci, ci, dd, &
+                                        error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, 18, cc, dd, denom, &
+                                        error_msg)) return
+    end subroutine complex_denom_c4
+
+    subroutine complex_combine_c8(context, op, opc, ar, ai, br, bi, &
+                                  re_val, im_val, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: op
+        integer, intent(in) :: opc
+        type(lr_operand_desc_t), intent(in) :: ar, ai, br, bi
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: p1, p2, p3, p4, denom, num_re, num_im
+        character(len=:), allocatable :: clean
+
+        clean = trim(adjustl(op))
+        if (clean == '+' .or. clean == '-') then
+            if (.not. emit_liric_f64_binary(context%session, opc, ar, br, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f64_binary(context%session, opc, ai, bi, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        if (.not. emit_liric_f64_binary(context%session, 20, ar, br, p1, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 20, ai, bi, p2, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 20, ar, bi, p3, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 20, ai, br, p4, &
+                                        error_msg)) return
+        if (clean == '*') then
+            if (.not. emit_liric_f64_binary(context%session, 19, p1, p2, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f64_binary(context%session, 18, p3, p4, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        if (.not. emit_liric_f64_binary(context%session, 18, p1, p2, num_re, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 19, p4, p3, num_im, &
+                                        error_msg)) return
+        call complex_denom_c8(context, br, bi, denom, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_f64_binary(context%session, 21, num_re, denom, &
+                                        re_val, error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 21, num_im, denom, &
+                                        im_val, error_msg)) return
+    end subroutine complex_combine_c8
+
+    subroutine complex_denom_c8(context, cr, ci, denom, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: cr, ci
+        type(lr_operand_desc_t), intent(out) :: denom
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cc, dd
+
+        if (.not. emit_liric_f64_binary(context%session, 20, cr, cr, cc, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 20, ci, ci, dd, &
+                                        error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, 18, cc, dd, denom, &
+                                        error_msg)) return
+    end subroutine complex_denom_c8
 
     ! Load the re/im components of a complex identifier rhs of want_kind.
     ! is_f32 selects f32 vs f64 component loads.
