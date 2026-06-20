@@ -5,10 +5,13 @@ module session_program_lowering
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
                                 range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
-                              pointer_assignment_node, literal_node
+                              pointer_assignment_node, literal_node, &
+                              identifier_node
     use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
                               block_data_node
+    use ast_nodes_legacy, only: common_block_node, enum_node
+    use string_types, only: string_t
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
                             rewind_statement_node, io_implied_do_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &

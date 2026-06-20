@@ -34,6 +34,7 @@
             call register_module_procedures(arena, root_index, context, error_msg)
             return
         end if
+        if (node_type == 'block_data_node' .or. node_type == 'block_data') return
         call get_program_body_info(arena, root_index, &
                                    prog_name, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
@@ -547,6 +548,7 @@
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'block_data_node' .or. node_type == 'block_data') return
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
@@ -621,6 +623,7 @@
                                                   error_msg)
             return
         end if
+        if (node_type == 'block_data_node' .or. node_type == 'block_data') return
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
