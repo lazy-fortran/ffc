@@ -117,6 +117,8 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_logical_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports logical '// &
                         'literals, identifiers, and contained calls'
@@ -269,6 +271,8 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_f32_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real(4) expressions'
         end select
@@ -499,6 +503,8 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_f64_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real expressions'
         end select

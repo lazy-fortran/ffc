@@ -219,13 +219,13 @@
         character(len=:), allocatable :: clean
         integer :: io_stat, uscore
 
-        ! Strip trailing kind suffix (_8, _dp, _real64, etc.) which Fortran
-        ! internal reads do not accept.
+        ! Strip the kind suffix (_8, _dp, _real64, _c_double, etc.) which Fortran
+        ! internal reads do not accept. The suffix begins at the first underscore
+        ! that follows a digit, dot, or exponent letter; a kind name such as
+        ! c_double contains further underscores that must not be the split point.
         clean = trim(text)
-        uscore = scan(clean, '_', back=.true.)
+        uscore = scan(clean, '_')
         if (uscore > 1) then
-            ! Only strip if the underscore follows a digit, dot, or exponent
-            ! letter, not if it is part of the numeric value itself.
             if (scan(clean(uscore - 1:uscore - 1), '0123456789.dDeE') > 0) then
                 clean = clean(1:uscore - 1)
             end if

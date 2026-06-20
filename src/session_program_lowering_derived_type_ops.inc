@@ -1,6 +1,33 @@
+    integer function component_slot_width(context, type_index, comp_index)
+        ! i32 slots one element of a component occupies: f64 spans two 4-byte
+        ! slots, every other supported scalar kind fits in one.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_slot_width = 1
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_value_kind)) return
+        if (context%derived_types(type_index)%component_value_kind(comp_index) == &
+            VALUE_F64) component_slot_width = 2
+    end function component_slot_width
+
+    integer function component_kind(context, type_index, comp_index)
+        ! Scalar value kind of a component; VALUE_I32 when not yet recorded.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_kind = VALUE_I32
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_value_kind)) return
+        component_kind = &
+            context%derived_types(type_index)%component_value_kind(comp_index)
+    end function component_kind
+
     integer function total_component_slots(context, type_index)
-        ! Total i32 slots for a derived instance: scalar components take one
-        ! slot, array components take their element count.
+        ! Total i32 slots for a derived instance: each component contributes
+        ! element_count * slot_width(kind).
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer :: c
@@ -8,7 +35,8 @@
         total_component_slots = 0
         do c = 1, context%derived_types(type_index)%component_count
             total_component_slots = total_component_slots + &
-                context%derived_types(type_index)%component_array_size(c)
+                context%derived_types(type_index)%component_array_size(c) * &
+                component_slot_width(context, type_index, c)
         end do
     end function total_component_slots
 
@@ -22,7 +50,8 @@
         component_start_slot = 0
         do c = 1, comp_index - 1
             component_start_slot = component_start_slot + &
-                context%derived_types(type_index)%component_array_size(c)
+                context%derived_types(type_index)%component_array_size(c) * &
+                component_slot_width(context, type_index, c)
         end do
     end function component_start_slot
 
@@ -592,9 +621,11 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
+        integer :: comp_kind
 
-        call lower_i32_expression(arena, node%value_index, context, value, &
-                                  error_msg)
+        comp_kind = derived_component_access_kind(arena, target, context)
+        call lower_component_rhs_value(arena, node%value_index, comp_kind, &
+                                       context, value, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call lower_derived_component_address(arena, target, context, &
@@ -602,13 +633,33 @@
                                              'derived type component assignment target')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_i32_store(context%session, value, component_address, &
-                                                 error_msg)) then
-            error_msg = 'component_store: '//error_msg
-            return
-        end if
-        call set_empty(error_msg)
+        call emit_typed_component_store(context, comp_kind, value, &
+                                        component_address, error_msg)
     end subroutine lower_derived_component_assignment
+
+    subroutine lower_component_rhs_value(arena, value_index, comp_kind, context, &
+                                         value, error_msg)
+        ! Evaluate a scalar RHS in the component's kind so the store width and
+        ! the value type agree.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: comp_kind
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (comp_kind)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, value_index, context, value, error_msg)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, value_index, context, value, error_msg)
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(arena, value_index, context, value, &
+                                          error_msg)
+        case default
+            call lower_i32_expression(arena, value_index, context, value, error_msg)
+        end select
+    end subroutine lower_component_rhs_value
 
     subroutine lower_derived_component_load(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -617,18 +668,16 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
+        integer :: comp_kind
 
+        comp_kind = derived_component_access_kind(arena, node, context)
         call lower_derived_component_address(arena, node, context, &
                                              component_address, error_msg, &
                                              'derived type component expression')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_i32_load(context%session, component_address, value, &
-                                                error_msg)) then
-            error_msg = 'component_load: '//error_msg
-            return
-        end if
-        call set_empty(error_msg)
+        call emit_typed_component_load(context, comp_kind, component_address, &
+                                       value, error_msg)
     end subroutine lower_derived_component_load
 
     logical function is_derived_result_call(arena, value_index, context)
@@ -816,3 +865,93 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_derived_component_address
+
+    integer function derived_component_access_kind(arena, node, context) &
+            result(kind)
+        ! Scalar value kind of the component named by a component_access node.
+        ! Falls back to VALUE_I32 when the base or component cannot be resolved
+        ! (the i32 path then reports the real error). Does not emit IR, so it is
+        ! safe to call before the address is materialised.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: type_index, component_index
+
+        kind = VALUE_I32
+        type_index = component_base_type_index(arena, node%base_expr_index, context)
+        if (type_index <= 0) return
+        component_index = find_derived_component(context, type_index, &
+                                                 node%component_name)
+        if (component_index <= 0) return
+        kind = component_kind(context, type_index, component_index)
+    end function derived_component_access_kind
+
+    integer function component_base_type_index(arena, base_index, context) &
+            result(type_index)
+        ! Derived type index of a component-access base (a plain derived
+        ! identifier or a derived-array element arr(i)) without emitting IR.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: base_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+        character(len=:), allocatable :: id_name, err
+
+        type_index = 0
+        if (.not. node_exists(arena, base_index)) return
+        symbol_index = 0
+        if (is_identifier(arena, base_index)) then
+            call get_identifier_name(arena, base_index, id_name, err)
+            if (len_trim(err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+        else
+            select type (base => arena%entries(base_index)%node)
+            type is (call_or_subscript_node)
+                if (allocated(base%name)) symbol_index = find_symbol(context, base%name)
+            end select
+        end if
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_derived) return
+        type_index = context%symbols(symbol_index)%derived_type_index
+    end function component_base_type_index
+
+    subroutine emit_typed_component_store(context, comp_kind, value, addr, &
+                                          error_msg)
+        ! Store a component value through its address using the load/store width
+        ! that matches the component kind.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: comp_kind
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(in) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        select case (comp_kind)
+        case (VALUE_F64)
+            ok = emit_liric_f64_store(context%session, value, addr, error_msg)
+        case (VALUE_F32)
+            ok = emit_liric_f32_store(context%session, value, addr, error_msg)
+        case default
+            ok = emit_i32_store(context%session, value, addr, error_msg)
+        end select
+        if (.not. ok) error_msg = 'component_store: '//error_msg
+    end subroutine emit_typed_component_store
+
+    subroutine emit_typed_component_load(context, comp_kind, addr, value, &
+                                         error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: comp_kind
+        type(lr_operand_desc_t), intent(in) :: addr
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        select case (comp_kind)
+        case (VALUE_F64)
+            ok = emit_liric_f64_load(context%session, addr, value, error_msg)
+        case (VALUE_F32)
+            ok = emit_liric_f32_load(context%session, addr, value, error_msg)
+        case default
+            ok = emit_i32_load(context%session, addr, value, error_msg)
+        end select
+        if (.not. ok) error_msg = 'component_load: '//error_msg
+    end subroutine emit_typed_component_load

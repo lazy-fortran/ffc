@@ -114,7 +114,6 @@ issue_2163_character_substring_lengths.lf
 issue_2165_undeclared_argument.lf
 issue_216_comparison_chain.lf
 issue_2426_function_with_execution.lf
-issue_2563_dot_notation_member_access.lf
 issue_2594_allocatable_lhs_realloc.lf
 issue_2659_implicit_contains_pure_subroutine.lf
 issue_2691_implied_do_static_size_known.lf

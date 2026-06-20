@@ -443,6 +443,11 @@
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return
             end if
+        type is (component_access_node)
+            call lower_print_component_access_value(arena, node, node_index, &
+                                                    context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            return
         end select
         end if
 
@@ -452,6 +457,44 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    subroutine lower_print_component_access_value(arena, node, node_index, &
+                                                  context, error_msg)
+        ! List-directed print of a scalar derived-type component, formatted by
+        ! the component's value kind (the statement loop emits the lead blank).
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: comp_kind
+
+        comp_kind = derived_component_access_kind(arena, node, context)
+        select case (comp_kind)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_f64_value(context%session, value, &
+                                                 error_msg)) return
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_f32_value(context%session, value, &
+                                                 error_msg)) return
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(arena, node_index, context, value, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_print_logical_value(context, value, error_msg)
+        case default
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end select
+    end subroutine lower_print_component_access_value
 
     subroutine lower_print_char_expr(arena, node_index, context, error_msg)
         ! Print a character expression (e.g. trim(s)). The list-directed

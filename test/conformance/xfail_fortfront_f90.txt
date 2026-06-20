@@ -53,12 +53,8 @@ issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1352_optional_module_if_control.f90
 issue_1353_class_pointer_declaration.f90
-issue_1353_derived_type.f90
-issue_1353_extends_attribute.f90
 issue_1353_module_type_definition.f90
-issue_1353_type_public_attribute.f90
 issue_1541_save_attribute.f90
-issue_1542_nested_types.f90
 issue_1546_goto_label.f90
 issue_1565_use_associated_rename.f90
 issue_1570_pure_elemental_preservation.f90
