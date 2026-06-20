@@ -1381,6 +1381,26 @@
                                                     error_msg)) return
                     value = next_value
                 end do
+            case ('norm2')
+                ! L2 norm: sqrt of the sum of squares of the elements.
+                value = liric_f32_immediate(context%session, 0.0_c_float)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                                                    candidate, candidate, &
+                                                    next_value, error_msg)) return
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                                                    value, next_value, candidate, &
+                                                    error_msg)) return
+                    value = candidate
+                end do
+                if (.not. emit_liric_f32_call(context%session, 'sqrtf', &
+                                              [value], next_value, error_msg)) &
+                    return
+                value = next_value
             case ('maxval')
                 call load_array_linear_element(context, source_index, 0_c_int64_t, &
                                                value, error_msg)
@@ -1446,6 +1466,26 @@
                                                     error_msg)) return
                     value = next_value
                 end do
+            case ('norm2')
+                ! L2 norm: sqrt of the sum of squares of the elements.
+                value = liric_f64_immediate(context%session, 0.0_c_double)
+                do i = 0, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                                                    candidate, candidate, &
+                                                    next_value, error_msg)) return
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                                                    value, next_value, candidate, &
+                                                    error_msg)) return
+                    value = candidate
+                end do
+                if (.not. emit_liric_f64_call(context%session, 'sqrt', &
+                                              [value], next_value, error_msg)) &
+                    return
+                value = next_value
             case ('maxval')
                 call load_array_linear_element(context, source_index, 0_c_int64_t, &
                                                value, error_msg)
