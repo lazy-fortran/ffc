@@ -18,7 +18,7 @@ program test_fortfront_corpus_conformance
     print *, '=== fortfront corpus conformance test ==='
 
     failed = 0
-    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 400, failed)
+    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 409, failed)
     call run_suite('fortfront-lf', LF_REPORT, LF_LOG, 257, failed)
 
     if (failed > 0) stop 1
