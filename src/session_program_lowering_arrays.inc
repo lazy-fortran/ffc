@@ -1427,6 +1427,18 @@
             error_msg = 'size argument was not declared: '//trim(array_name)
             return
         end if
+        if (context%symbols(source_index)%is_allocatable) then
+            if (context%symbols(source_index)%allocatable_static_size <= 0) then
+                error_msg = 'size requires a constant allocatable extent: '// &
+                            trim(array_name)
+                return
+            end if
+            value = i32_immediate(context%session, &
+                int(context%symbols(source_index)%allocatable_static_size, &
+                    c_int64_t))
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. context%symbols(source_index)%is_array) then
             error_msg = 'size requires an array argument: '//trim(array_name)
             return

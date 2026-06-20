@@ -68,6 +68,11 @@
             return
         end if
 
+        if (node%mold_expr_index > 0 .or. node%source_expr_index > 0) then
+            call lower_allocate_mold_source(arena, node, context, error_msg)
+            return
+        end if
+
         call allocate_target(arena, node, name, size_index1, size_index2, error_msg)
         if (len_trim(error_msg) > 0) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -100,6 +105,85 @@
                                                     symbol_index, context)
         end if
     end subroutine lower_allocate_statement
+
+    subroutine lower_allocate_mold_source(arena, node, context, error_msg)
+        ! allocate(b, mold=a) / allocate(c, source=a): give the target the same
+        ! rank-1 extent as the mold/source allocatable. SOURCE also copies the
+        ! element bytes; MOLD leaves contents undefined. The source extent must
+        ! be a compile-time constant (allocatable_static_size), which covers the
+        ! straight-line allocate(a(N)); a=... case in the corpus.
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: target_name, source_name
+        integer :: target_sym, source_sym, source_expr, n
+        logical :: copy_values
+        type(lr_operand_desc_t) :: n_i32, dst_desc, src_desc, dst_data, src_data
+
+        copy_values = node%source_expr_index > 0
+        if (copy_values) then
+            source_expr = node%source_expr_index
+        else
+            source_expr = node%mold_expr_index
+        end if
+
+        if (.not. is_identifier(arena, node%var_indices(1))) then
+            error_msg = 'mold/source allocate target must be a scalar array name'
+            return
+        end if
+        call get_identifier_name(arena, node%var_indices(1), target_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. is_identifier(arena, source_expr)) then
+            error_msg = 'mold/source must name an allocatable array'
+            return
+        end if
+        call get_identifier_name(arena, source_expr, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        target_sym = find_symbol(context, target_name)
+        source_sym = find_symbol(context, source_name)
+        if (target_sym <= 0 .or. source_sym <= 0) then
+            error_msg = 'mold/source allocate references an undeclared variable'
+            return
+        end if
+        if (.not. context%symbols(target_sym)%is_allocatable .or. &
+            .not. context%symbols(source_sym)%is_allocatable) then
+            error_msg = 'mold/source allocate requires allocatable operands'
+            return
+        end if
+        if (context%symbols(source_sym)%array_rank == 2) then
+            error_msg = 'mold/source allocate supports only rank-1 arrays'
+            return
+        end if
+        n = context%symbols(source_sym)%allocatable_static_size
+        if (n <= 0) then
+            error_msg = 'mold/source allocate requires a constant source extent'
+            return
+        end if
+
+        n_i32 = i32_immediate(context%session, int(n, c_int64_t))
+        call lower_allocate_i32_1d_operand(n_i32, target_sym, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(target_sym)%allocatable_static_size = n
+
+        if (.not. copy_values) then
+            call set_empty(error_msg)
+            return
+        end if
+
+        dst_desc = context%symbols(target_sym)%allocatable_descriptor_address
+        src_desc = context%symbols(source_sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, dst_desc, dst_data, error_msg)) &
+            return
+        if (.not. emit_ptr_load(context%session, src_desc, src_data, error_msg)) &
+            return
+        if (.not. emit_memcpy(context%session, dst_data, src_data, &
+                i64_immediate(context%session, int(n, c_int64_t) * &
+                    allocatable_elem_size(context%symbols(source_sym)%value_kind)), &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_allocate_mold_source
 
     subroutine record_allocatable_static_size(arena, size_index, symbol_index, &
                                               context)
@@ -327,6 +411,76 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
+
+    subroutine lower_allocatable_scalar_broadcast(arena, value_index, &
+                                                  symbol_index, context, error_msg)
+        ! a = scalar where a is a rank-1 allocatable: store the scalar into every
+        ! element. Requires the current extent to be a compile-time constant
+        ! (allocatable_static_size), set by the preceding allocate.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, descriptor, data_ptr, addr
+        integer :: vk, n, i
+        integer(c_int64_t) :: stride
+
+        if (context%symbols(symbol_index)%array_rank == 2) then
+            error_msg = 'allocatable scalar broadcast supports only rank-1 arrays'
+            return
+        end if
+        n = context%symbols(symbol_index)%allocatable_static_size
+        if (n <= 0) then
+            error_msg = 'allocatable scalar broadcast requires a constant extent'
+            return
+        end if
+
+        vk = context%symbols(symbol_index)%value_kind
+        call lower_allocatable_element_value(arena, value_index, vk, context, &
+                                             value, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        stride = allocatable_elem_size(vk)
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        do i = 0, n - 1
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(i, c_int64_t) * stride, addr, error_msg)) return
+            if (.not. emit_allocatable_element_store(context, vk, value, addr, &
+                                                     error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_scalar_broadcast
+
+    logical function is_scalar_broadcast_to_allocatable(arena, node_index, &
+                                                        context) result(scalar)
+        ! True when the RHS broadcasts into an allocatable: a literal, or an
+        ! identifier naming a genuine scalar. An allocatable, array, or pointer
+        ! identifier is not a scalar, so a = b (both allocatable) is rejected.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, err
+        integer :: sym
+
+        scalar = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (literal_node)
+            scalar = .true.
+            return
+        end select
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol(context, name)
+        if (sym <= 0) return
+        scalar = .not. context%symbols(sym)%is_array .and. &
+                 .not. context%symbols(sym)%is_allocatable .and. &
+                 .not. context%symbols(sym)%is_pointer
+    end function is_scalar_broadcast_to_allocatable
 
     subroutine lower_allocatable_element_value(arena, expr_index, vk, context, &
                                                value, error_msg)
