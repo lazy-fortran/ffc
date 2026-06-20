@@ -253,8 +253,8 @@ module session_program_lowering_types
         ! Non-parameter variable declarations exported from the module (#249 B7a).
         integer, allocatable :: variable_indices(:)
         integer :: variable_count = 0
-        ! enum/enumerator opener error_nodes exported from the module so a
-        ! module procedure can host-associate the enumerators (#1826).
+        ! enum_node definitions exported from the module so a module procedure
+        ! can host-associate the enumerators (#1826).
         integer, allocatable :: enum_indices(:)
         integer :: enum_count = 0
     end type module_exports_t

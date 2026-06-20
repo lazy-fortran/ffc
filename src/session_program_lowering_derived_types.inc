@@ -211,20 +211,17 @@
         allocate(context%module_exports(export_idx)%enum_indices(8))
 
         do j = 1, size(mod_node%declaration_indices)
-            ! enum openers reach FortFront as error_nodes; record them so module
-            ! procedures can host-associate the enumerators (#1826).
-            if (get_node_type_at(arena, mod_node%declaration_indices(j)) == &
-                'error_node') then
+            select type (decl => &
+                arena%entries(mod_node%declaration_indices(j))%node)
+            type is (enum_node)
+                ! Record module ENUM definitions so module procedures can
+                ! host-associate the enumerators (#1826).
                 call grow_module_export_enum_indices(context, export_idx)
                 context%module_exports(export_idx)%enum_indices( &
                     context%module_exports(export_idx)%enum_count + 1) = &
                     mod_node%declaration_indices(j)
                 context%module_exports(export_idx)%enum_count = &
                     context%module_exports(export_idx)%enum_count + 1
-                cycle
-            end if
-            select type (decl => &
-                arena%entries(mod_node%declaration_indices(j))%node)
             type is (derived_type_node)
                 if (.not. allocated(decl%name)) cycle
                 ! A private symbol is not exported through use (#149).

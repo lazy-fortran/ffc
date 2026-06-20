@@ -213,6 +213,11 @@
             ! lower_program_return walks the body and emits targeted diagnostics
             ! for module-defined procedures, types, and constants.
             continue
+        else if (get_node_type_at(arena, root_index) == 'block_data_node' .or. &
+                 get_node_type_at(arena, root_index) == 'block_data') then
+            ! A standalone BLOCK DATA unit only initialises COMMON storage; with
+            ! no program to consume it, it lowers to an empty main (#2809).
+            continue
         else
             call unsupported_feature_error('program unit', &
                                            get_node_line(arena, root_index), &
@@ -323,6 +328,12 @@
             end if
             call lower_module_unit(arena, mod_name, mod_declaration_indices, &
                                    mod_procedure_indices, error_msg)
+        else if (get_node_type_at(arena, root_index) == 'block_data_node' .or. &
+                 get_node_type_at(arena, root_index) == 'block_data') then
+            ! A standalone BLOCK DATA unit emits no executable code; its COMMON
+            ! initialisers were folded into the slot globals by the pre-pass and
+            ! the empty main just returns 0 (#2809).
+            call set_empty(error_msg)
         else
             error_msg = 'ffc direct-session lowering only supports a program node'
         end if
@@ -404,11 +415,6 @@
             call lower_program_body(arena, get_node_as_program(arena, node_index), &
                                     context, value, error_msg)
             return
-        end if
-        if (node_type == 'error_node') then
-            call lower_enum_block(arena, node_index, context, error_msg, &
-                                  enum_handled)
-            if (enum_handled) return
         end if
         select type (node => arena%entries(node_index)%node)
         type is (parameter_declaration_node)
@@ -581,19 +587,25 @@
             call set_empty(error_msg)
         type is (goto_node)
             call lower_goto(arena, node_index, context, error_msg)
+        type is (common_block_node)
+            ! Reaching the COMMON statement during the body walk rebinds its
+            ! variables to their shared slot globals (#1578, #2809).
+            call bind_common_block_symbols(arena, context, error_msg)
         type is (comment_node)
-            ! A COMMON statement survives as a comment. Reaching it during the
-            ! body walk rebinds its variables to their shared slot globals; any
-            ! other comment carries no executable semantics (#1578).
-            if (is_common_text(node%text)) then
-                call bind_common_block_symbols(arena, context, error_msg)
-            else if (is_equivalence_text(node%text)) then
-                ! An EQUIVALENCE statement also survives as a comment; reaching it
-                ! rebinds its members onto the shared group global (#280).
+            ! An EQUIVALENCE statement still survives as a comment; reaching it
+            ! rebinds its members onto the shared group global (#280). Any other
+            ! comment carries no executable semantics.
+            if (is_equivalence_text(node%text)) then
                 call bind_equivalence_symbols(arena, context, error_msg)
             else
                 call set_empty(error_msg)
             end if
+        type is (enum_node)
+            ! An ENUM definition binds named integer constants; it emits no code
+            ! at its position. The enumerators are bound here so later
+            ! expressions resolve them (#1826).
+            call lower_enum_block(arena, node_index, context, error_msg, &
+                                  enum_handled)
         type is (block_data_node)
             ! A BLOCK DATA unit only initialises COMMON storage; its values were
             ! folded into the slot globals by the pre-pass, so it emits no code.

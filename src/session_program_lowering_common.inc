@@ -1,9 +1,9 @@
-    ! COMMON blocks and BLOCK DATA (#1578, #1900). FortFront does not lower
-    ! these into structured nodes: a program COMMON statement survives as a
-    ! comment_node ("common/blk/v1,v2"), and a BLOCK DATA unit survives as a
-    ! block_data_node whose statement_indices point at raw text literals for its
-    ! body lines (the COMMON layout and the DATA initialisers). This pass
-    ! recovers both from that text.
+    ! COMMON blocks and BLOCK DATA (#1578, #1900, #2809). FortFront parses a
+    ! program COMMON statement into a common_block_node (block_names,
+    ! member_names, member_block) and a BLOCK DATA unit into a block_data_node
+    ! whose statement_indices point at its body nodes (a common_block_node for
+    ! the layout, data_statement_nodes for the initialisers). This pass reads
+    ! both from those structured nodes.
     !
     ! Each variable in a named or blank COMMON block gets one LIRIC global,
     ! keyed by block name and position so the program and the BLOCK DATA unit
@@ -45,8 +45,11 @@
     end subroutine emit_common_block_globals
 
     subroutine collect_common_slots(arena, slots, slot_count, error_msg)
-        ! Walk the arena for program COMMON comments and resolve each named
-        ! variable's kind from a matching program declaration.
+        ! Walk the arena for program-level common_block_nodes and resolve each
+        ! member's kind from a matching program declaration. BLOCK DATA units
+        ! carry their own common_block_node inside statement_indices; those
+        ! repeat the same layout, so they are skipped here to keep one slot per
+        ! variable.
         type(ast_arena_t), intent(in) :: arena
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(inout) :: slot_count
@@ -56,63 +59,87 @@
         call set_empty(error_msg)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
+            if (is_block_data_member(arena, n)) cycle
             select type (node => arena%entries(n)%node)
-            type is (comment_node)
-                if (.not. is_common_text(node%text)) cycle
-                call add_common_comment_slots(arena, node%text, slots, &
-                                              slot_count, error_msg)
+            type is (common_block_node)
+                call add_common_node_slots(arena, node, slots, slot_count, &
+                                           error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
         end do
     end subroutine collect_common_slots
 
-    logical function is_common_text(text)
-        ! A COMMON statement begins with the keyword "common" after blanks.
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable :: low
-        is_common_text = .false.
-        low = lowercase_text(adjustl(text))
-        if (len(low) >= 6) is_common_text = low(1:6) == 'common'
-    end function is_common_text
-
-    logical function is_data_text(text)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable :: low
-        is_data_text = .false.
-        low = lowercase_text(adjustl(text))
-        if (len(low) >= 4) is_data_text = low(1:4) == 'data'
-    end function is_data_text
-
-    subroutine add_common_comment_slots(arena, text, slots, slot_count, error_msg)
-        ! Parse "common /block/ v1, v2" and append one slot per variable. The
-        ! variable kind comes from the program declaration of the same name.
+    logical function is_block_data_member(arena, idx)
+        ! A common_block_node that belongs to a BLOCK DATA unit (it appears in
+        ! some block_data_node's statement_indices) is its own copy of the
+        ! program layout; skip it so the program node defines the slots once.
         type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: text
+        integer, intent(in) :: idx
+        integer :: n, s
+
+        is_block_data_member = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (bd => arena%entries(n)%node)
+            type is (block_data_node)
+                if (.not. allocated(bd%statement_indices)) cycle
+                do s = 1, size(bd%statement_indices)
+                    if (bd%statement_indices(s) == idx) then
+                        is_block_data_member = .true.
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function is_block_data_member
+
+    subroutine add_common_node_slots(arena, node, slots, slot_count, error_msg)
+        ! Append one slot per member of a common_block_node. The owning block
+        ! name comes from block_names(member_block(i)); a blank name uses the
+        ! sentinel "__blnk__". The member kind comes from the program
+        ! declaration of the same name.
+        type(ast_arena_t), intent(in) :: arena
+        type(common_block_node), intent(in) :: node
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(inout) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: block_name, var_list
-        character(len=:), allocatable :: names(:)
-        integer :: i, vk, name_count
+        character(len=:), allocatable :: block_name, var_name
+        integer :: i, vk
 
         call set_empty(error_msg)
-        call parse_common_layout(text, block_name, var_list, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call split_csv(var_list, names, name_count)
-        do i = 1, name_count
+        if (.not. allocated(node%member_names)) return
+        do i = 1, size(node%member_names)
             if (slot_count >= size(slots)) then
                 error_msg = 'too many COMMON variables for direct lowering'
                 return
             end if
-            call program_declaration_kind(arena, names(i), vk, error_msg)
+            var_name = trim(node%member_names(i)%s)
+            block_name = common_member_block_name(node, i)
+            call program_declaration_kind(arena, var_name, vk, error_msg)
             if (len_trim(error_msg) > 0) return
             slot_count = slot_count + 1
             slots(slot_count)%block_name = block_name
-            slots(slot_count)%var_name = names(i)
+            slots(slot_count)%var_name = var_name
             slots(slot_count)%value_kind = vk
             slots(slot_count)%has_init = .false.
         end do
-    end subroutine add_common_comment_slots
+    end subroutine add_common_node_slots
+
+    function common_member_block_name(node, member) result(block_name)
+        ! Resolve member i's owning block name; blank common uses "__blnk__".
+        type(common_block_node), intent(in) :: node
+        integer, intent(in) :: member
+        character(len=:), allocatable :: block_name
+        integer :: b
+
+        block_name = '__blnk__'
+        if (.not. allocated(node%member_block)) return
+        if (.not. allocated(node%block_names)) return
+        b = node%member_block(member)
+        if (b < 1 .or. b > size(node%block_names)) return
+        if (len_trim(node%block_names(b)%s) > 0) &
+            block_name = trim(node%block_names(b)%s)
+    end function common_member_block_name
 
     subroutine program_declaration_kind(arena, var_name, value_kind, error_msg)
         ! Resolve a COMMON variable's kind from a scalar program declaration.
@@ -183,63 +210,90 @@
             type is (block_data_node)
                 if (.not. allocated(bd%statement_indices)) cycle
                 do s = 1, size(bd%statement_indices)
-                    call apply_block_data_line(arena, bd%statement_indices(s), &
-                                               slots, slot_count, error_msg)
+                    call apply_block_data_statement(arena, &
+                                                    bd%statement_indices(s), &
+                                                    slots, slot_count, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             end select
         end do
     end subroutine apply_block_data_initializers
 
-    subroutine apply_block_data_line(arena, idx, slots, slot_count, error_msg)
-        ! A BLOCK DATA body line is a text literal. Only DATA lines carry
-        ! initialisers; map "data v1, v2 / x, y /" onto the slots by name.
+    subroutine apply_block_data_statement(arena, idx, slots, slot_count, error_msg)
+        ! A BLOCK DATA body statement is a structured node. Only data_statement
+        ! nodes carry initialisers; map each (object, value) pair onto the slot
+        ! for the matching variable by name.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: idx
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(in) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: text
+        character(len=:), allocatable :: name, value_text
+        integer :: i, s
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, idx)) return
-        select type (lit => arena%entries(idx)%node)
-        type is (literal_node)
-            text = lit%value
-        class default
-            return
+        select type (data => arena%entries(idx)%node)
+        type is (data_statement_node)
+            if (.not. allocated(data%object_indices) .or. &
+                .not. allocated(data%value_indices)) return
+            if (size(data%object_indices) /= size(data%value_indices)) then
+                error_msg = 'BLOCK DATA value count does not match variable count'
+                return
+            end if
+            do i = 1, size(data%object_indices)
+                call data_object_name(arena, data%object_indices(i), name)
+                if (len(name) == 0) cycle
+                call data_value_literal_text(arena, data%value_indices(i), &
+                                             value_text, error_msg)
+                if (len_trim(error_msg) > 0) return
+                s = find_common_slot(slots, slot_count, name)
+                if (s <= 0) cycle
+                slots(s)%has_init = .true.
+                slots(s)%init_text = value_text
+            end do
         end select
-        if (.not. is_data_text(text)) return
-        call apply_data_text(text, slots, slot_count, error_msg)
-    end subroutine apply_block_data_line
+    end subroutine apply_block_data_statement
 
-    subroutine apply_data_text(text, slots, slot_count, error_msg)
-        ! Parse "data v1, v2 / val1, val2 /" and store each value text in the
-        ! slot for the matching variable.
-        character(len=*), intent(in) :: text
-        type(common_slot_t), intent(inout) :: slots(:)
-        integer, intent(in) :: slot_count
+    subroutine data_object_name(arena, idx, name)
+        ! Name of a scalar DATA object (an identifier). Non-scalar objects
+        ! (array elements, implied-do) yield an empty name and are skipped;
+        ! BLOCK DATA over COMMON only initialises the scalar slots ffc lowers.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: name
+
+        name = ''
+        if (.not. node_exists(arena, idx)) return
+        select type (obj => arena%entries(idx)%node)
+        type is (identifier_node)
+            name = trim(obj%name)
+        end select
+    end subroutine data_object_name
+
+    subroutine data_value_literal_text(arena, idx, value_text, error_msg)
+        ! Source text of a scalar DATA value literal, used as the slot's static
+        ! initialiser. fold_common_initializer parses the text (it accepts a
+        ! leading sign embedded in the literal). Non-literal value expressions
+        ! are outside the scalar-COMMON scope and are reported unsupported.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: value_text
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: names_part, values_part
-        character(len=:), allocatable :: names(:), values(:)
-        integer :: name_count, value_count, i, s
 
         call set_empty(error_msg)
-        call parse_data_layout(text, names_part, values_part, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call split_csv(names_part, names, name_count)
-        call split_csv(values_part, values, value_count)
-        if (name_count /= value_count) then
-            error_msg = 'BLOCK DATA value count does not match variable count'
+        value_text = ''
+        if (.not. node_exists(arena, idx)) then
+            error_msg = 'BLOCK DATA value is not a literal'
             return
         end if
-        do i = 1, name_count
-            s = find_common_slot(slots, slot_count, names(i))
-            if (s <= 0) cycle
-            slots(s)%has_init = .true.
-            slots(s)%init_text = values(i)
-        end do
-    end subroutine apply_data_text
+        select type (val => arena%entries(idx)%node)
+        type is (literal_node)
+            value_text = trim(val%value)
+        class default
+            error_msg = 'unsupported BLOCK DATA value expression'
+        end select
+    end subroutine data_value_literal_text
 
     integer function find_common_slot(slots, slot_count, var_name) result(s)
         type(common_slot_t), intent(in) :: slots(:)
@@ -400,57 +454,7 @@
         gname = '.ffc.common.'//block_name//'.'//trim(idx_text)
     end function common_global_name
 
-    ! --- text parsing helpers ---
-
-    subroutine parse_common_layout(text, block_name, var_list, error_msg)
-        ! "common /blk/ v1, v2" -> block_name="blk", var_list="v1, v2".
-        ! Blank COMMON ("common // v" or "common v") uses block name "__blnk__".
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: block_name, var_list
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: rest
-        integer :: first_slash, second_slash
-
-        call set_empty(error_msg)
-        rest = adjustl(text)
-        rest = adjustl(rest(7:))    ! drop the leading "common"
-        first_slash = index(rest, '/')
-        if (first_slash == 0) then
-            block_name = '__blnk__'
-            var_list = rest
-            return
-        end if
-        second_slash = index(rest(first_slash + 1:), '/')
-        if (second_slash == 0) then
-            error_msg = 'malformed COMMON statement: '//text
-            return
-        end if
-        second_slash = first_slash + second_slash
-        block_name = trim(adjustl(rest(first_slash + 1:second_slash - 1)))
-        if (len(block_name) == 0) block_name = '__blnk__'
-        var_list = rest(second_slash + 1:)
-    end subroutine parse_common_layout
-
-    subroutine parse_data_layout(text, names_part, values_part, error_msg)
-        ! "data v1, v2 / x, y /" -> names_part="v1, v2", values_part="x, y".
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: names_part, values_part
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: rest
-        integer :: first_slash, last_slash
-
-        call set_empty(error_msg)
-        rest = adjustl(text)
-        rest = adjustl(rest(5:))    ! drop the leading "data"
-        first_slash = index(rest, '/')
-        last_slash = index(rest, '/', back=.true.)
-        if (first_slash == 0 .or. last_slash == first_slash) then
-            error_msg = 'malformed DATA statement: '//text
-            return
-        end if
-        names_part = rest(1:first_slash - 1)
-        values_part = rest(first_slash + 1:last_slash - 1)
-    end subroutine parse_data_layout
+    ! --- text parsing helpers (shared with the EQUIVALENCE scraper) ---
 
     subroutine split_csv(text, items, count)
         ! Split a comma-separated list, trimming blanks around each item.
