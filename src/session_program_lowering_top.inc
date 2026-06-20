@@ -102,6 +102,11 @@
             call destroy(context%session)
             return
         end if
+        call collect_statement_functions(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         ! Saved-local globals must exist before any function body is compiled:
         ! a global created mid-compile is direct-address patched and skips its
         ! data-section initializer, so emit them all up front (#1541).
@@ -587,6 +592,13 @@
             ! A NAMELIST declaration emits no code; it records the group's
             ! member list so a later WRITE(unit, nml=group) can format them.
             call record_namelist_group(node, context, error_msg)
+        type is (statement_function_node)
+            ! A statement-function definition emits no code on its own; it was
+            ! recorded at setup and is inlined at each call site.
+            call set_empty(error_msg)
+        type is (end_statement_node)
+            ! The implicit-program terminator carries no executable semantics.
+            call set_empty(error_msg)
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'

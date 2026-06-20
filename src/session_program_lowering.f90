@@ -15,7 +15,8 @@ module session_program_lowering
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
                               complex_literal_node, comment_node, &
-                              namelist_statement_node
+                              namelist_statement_node, statement_function_node, &
+                              end_statement_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
                                      select_rank_node, rank_block_node
     use ast_nodes_associate, only: associate_node, association_t
@@ -200,6 +201,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 MODVAR_OK, MODVAR_UNSUPPORTED, &
                                                 common_slot_t, COMMON_MAX_SLOTS, &
                                                 namelist_group_t, &
+                                                statement_function_t, &
+                                                MAX_STMT_FN_ARGS, &
                                                 MAX_NAMELIST_MEMBERS, &
                                                 VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
                                                 VALUE_C4, VALUE_C8, &
@@ -842,6 +845,13 @@ contains
         call try_lower_overloaded_assignment(arena, node, context, handled, &
                                              error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
+        ! A spec-section assignment that defines a statement function (the
+        ! explicit-program path leaves it as an assignment) emits no code; the
+        ! body is inlined at each call site instead.
+        if (is_statement_function_definition(arena, node, context)) then
+            call set_empty(error_msg)
+            return
+        end if
         select type (target => arena%entries(node%target_index)%node)
         type is (call_or_subscript_node)
             if (target%base_expr_index > 0) then
@@ -1144,6 +1154,7 @@ contains
     include 'session_program_lowering_c_ptr.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_fmod.inc'
+    include 'session_program_lowering_statement_function.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

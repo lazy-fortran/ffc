@@ -21,6 +21,12 @@
           return
       end if
 
+      if (is_statement_function_call(arena, node_index, context)) then
+          call lower_statement_function_call(arena, node_index, VALUE_I32, &
+                                             context, value, error_msg)
+          return
+      end if
+
       if (is_literal(arena, node_index)) then
           call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
           if (len_trim(error_msg) > 0) return

@@ -310,6 +310,12 @@
             return
         end if
 
+        if (is_statement_function_call(arena, node_index, context)) then
+            call lower_statement_function_call(arena, node_index, VALUE_F32, &
+                                               context, value, error_msg)
+            return
+        end if
+
         if (is_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
@@ -558,6 +564,12 @@
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'real expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_statement_function_call(arena, node_index, context)) then
+            call lower_statement_function_call(arena, node_index, VALUE_F64, &
+                                               context, value, error_msg)
             return
         end if
 
@@ -962,6 +974,12 @@
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'expression index does not reference an AST node'
+            return
+        end if
+
+        if (is_statement_function_call(arena, node_index, context)) then
+            call lower_statement_function_call(arena, node_index, VALUE_I64, &
+                                               context, value, error_msg)
             return
         end if
 
