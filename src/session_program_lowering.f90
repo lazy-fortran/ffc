@@ -257,6 +257,19 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
         integer :: step = 1
         integer :: inner = 0     ! single inner value expression index
     end type data_value_cursor_t
+
+    ! Body emitter for the reusable counted-loop scaffold. lower_counted_loop
+    ! owns the header/body/latch/exit blocks and the induction phi; the emitter
+    ! fills the body block. FORALL passes a recursive emitter (inner loops plus
+    ! the optionally masked assignment); a plain DO lowers its own statements.
+    abstract interface
+        subroutine counted_loop_body_i(context, terminated, error_msg)
+            import :: lowering_context_t
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: terminated
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine counted_loop_body_i
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node, node_index, context, error_msg)

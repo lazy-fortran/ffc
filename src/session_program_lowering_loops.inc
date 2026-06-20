@@ -4,6 +4,50 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+
+        value = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. allocated(node%var_name)) then
+            error_msg = 'direct LIRIC session DO requires a loop variable'
+            return
+        end if
+        call lower_counted_loop(arena, node%var_name, node%start_expr_index, &
+                                node%end_expr_index, node%step_expr_index, &
+                                node%line, node%column, emit_do_body, context, &
+                                value, error_msg)
+    contains
+        subroutine emit_do_body(ctx, terminated, err)
+            type(lowering_context_t), intent(inout) :: ctx
+            logical, intent(out) :: terminated
+            character(len=:), allocatable, intent(out) :: err
+            type(lr_operand_desc_t) :: body_value
+
+            terminated = .false.
+            call set_empty(err)
+            if (allocated(node%body_indices)) then
+                call lower_statement_list(arena, node%body_indices, ctx, &
+                                          body_value, terminated, err)
+            end if
+        end subroutine emit_do_body
+    end subroutine lower_do_loop
+
+    subroutine lower_counted_loop(arena, var_name, start_expr_index, &
+                                  end_expr_index, step_expr_index, line, column, &
+                                  body_emit, context, value, error_msg)
+        ! Emit the LIRIC scaffold for a counted loop over var_name: induction
+        ! phi, exit test, body, latch increment. body_emit fills the body block
+        ! and reports whether it terminated (e.g. stop/return); DO and FORALL
+        ! reuse the same scaffold with different bodies.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: var_name
+        integer, intent(in) :: start_expr_index
+        integer, intent(in) :: end_expr_index
+        integer, intent(in) :: step_expr_index
+        integer, intent(in) :: line
+        integer, intent(in) :: column
+        procedure(counted_loop_body_i) :: body_emit
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: start_value
         type(lr_operand_desc_t) :: end_value
         type(lr_operand_desc_t) :: condition
@@ -33,14 +77,9 @@
         logical :: step_is_runtime
 
         value = i32_immediate(context%session, 0_c_int64_t)
-        if (.not. allocated(node%var_name)) then
-            error_msg = 'direct LIRIC session DO requires a loop variable'
-            return
-        end if
-
-        loop_symbol_index = find_symbol(context, node%var_name)
+        loop_symbol_index = find_symbol(context, var_name)
         if (loop_symbol_index <= 0) then
-            error_msg = 'DO loop variable was not declared: '//trim(node%var_name)
+            error_msg = 'DO loop variable was not declared: '//trim(var_name)
             return
         end if
         if (context%symbols(loop_symbol_index)%value_kind /= VALUE_I32) then
@@ -48,13 +87,13 @@
             return
         end if
 
-        call lower_i32_expression(arena, node%start_expr_index, context, &
+        call lower_i32_expression(arena, start_expr_index, context, &
                                   start_value, error_msg)
         if (len_trim(error_msg) > 0) return
-        call lower_i32_expression(arena, node%end_expr_index, context, &
+        call lower_i32_expression(arena, end_expr_index, context, &
                                   end_value, error_msg)
         if (len_trim(error_msg) > 0) return
-        call resolve_do_step(arena, node%step_expr_index, context, step_value, &
+        call resolve_do_step(arena, step_expr_index, context, step_value, &
                              step_operand, step_is_runtime, error_msg)
         if (len_trim(error_msg) > 0) return
 
@@ -121,11 +160,8 @@
         context%current_loop_latch_block = latch_block
         context%in_counted_do = .true.
         context%current_block_exited_loop = .false.
-        if (allocated(node%body_indices)) then
-            call lower_statement_list(arena, node%body_indices, context, value, &
-                                      body_terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end if
+        call body_emit(context, body_terminated, error_msg)
+        if (len_trim(error_msg) > 0) return
         body_exited = context%current_block_exited_loop
         context%current_loop_exit_block = saved_loop_exit_block
         context%current_loop_latch_block = saved_loop_latch_block
@@ -137,7 +173,7 @@
         end if
         if (body_terminated .and. .not. body_exited) then
             call unsupported_feature_error('terminating do loop body', &
-                                           node%line, node%column, &
+                                           line, column, &
                                            'direct LIRIC session does not '// &
                                            'support stop or return inside '// &
                                            'counted do loops', error_msg)
@@ -192,7 +228,7 @@
             deallocate(carried_indices)
         end if
         call set_empty(error_msg)
-    end subroutine lower_do_loop
+    end subroutine lower_counted_loop
 
     subroutine collect_i32_like_carried_symbols(context, indices, count)
         type(lowering_context_t), intent(in) :: context

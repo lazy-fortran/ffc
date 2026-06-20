@@ -44,7 +44,9 @@ with parent-first component layout. A module procedure may `contains` internal p
 flat functions. Module-level integer variables persist as globals and are
 visible across `use`. The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real
-arrays, including a final `elsewhere`. The
+arrays, including a final `elsewhere`. The `forall` construct, single-statement
+and block form, lowers to a sequential loop nest over its index set, with an
+optional scalar-comparison mask guarding the body. The
 scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
 `floor`, `ceiling`, `real`, `dble` are supported, as are the bit intrinsics
 `iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and

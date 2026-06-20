@@ -596,6 +596,7 @@
     include 'session_program_lowering_save.inc'
     include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
+    include 'session_program_lowering_forall.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
