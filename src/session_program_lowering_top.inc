@@ -229,6 +229,15 @@
                     exit
                 end if
             end do
+            ! A body carrying statement labels needs GOTO-aware lowering: labels
+            ! become LIRIC blocks and scalar locals move to memory so values
+            ! survive arbitrary branch edges without manual phi placement (#270).
+            if (body_has_statement_labels(arena, body_indices)) then
+                call lower_labeled_program_body(arena, body_indices, &
+                                                has_nested_program, context, &
+                                                value, error_msg)
+                return
+            end if
             ! Process body elements
             do i = 1, size(body_indices)
                 if (is_internal_procedure_entry(arena, body_indices(i))) cycle
@@ -503,6 +512,17 @@
             call import_module_derived_types(arena, node, context, error_msg)
         type is (interface_block_node)
             call lower_interface_block(arena, node, context, error_msg)
+        type is (pause_node)
+            ! PAUSE halts an interactive run waiting for input; under batch
+            ! conformance it carries no observable semantics, so execution
+            ! continues (#270).
+            call set_empty(error_msg)
+        type is (continue_node)
+            ! CONTINUE is a no-op; it commonly only anchors a statement label
+            ! that a GOTO targets (the labeled-body driver owns the branch).
+            call set_empty(error_msg)
+        type is (goto_node)
+            call lower_goto(arena, node_index, context, error_msg)
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'
@@ -544,6 +564,7 @@
         end select
     end subroutine unsupported_statement_node
     include 'session_program_lowering_control.inc'
+    include 'session_program_lowering_goto.inc'
     include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_do_while.inc'

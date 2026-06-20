@@ -3,9 +3,6 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Promote entries by removing them from this file when ffc starts passing.
-arithmetic_if_expression_complex.f90
-arithmetic_if_inline_comment.f90
-arithmetic_if_negative_labels.f90
 arithmetic_if_whitespace_labels.f90
 ast_coverage_control_flow.f90
 ast_coverage_io_statements.f90
@@ -55,12 +52,10 @@ issue_1352_optional_module_if_control.f90
 issue_1353_class_pointer_declaration.f90
 issue_1353_module_type_definition.f90
 issue_1541_save_attribute.f90
-issue_1546_goto_label.f90
 issue_1565_use_associated_rename.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90
 issue_1578_block_data.f90
-issue_1582_simple_goto.f90
 issue_1583_computed_goto.f90
 issue_1583_computed_goto_basic.f90
 issue_1583_computed_goto_minimal.f90
@@ -114,7 +109,6 @@ issue_2022_fixed_array_to_unallocated.f90
 issue_2024_char_function_duplicate_and_missing.f90
 issue_2065_extra_spaces_in_string_literals.f90
 issue_2070_entry_loses_argument_declarations.f90
-issue_2074_arithmetic_if_not_supported.f90
 issue_2076_pause_statement_silently_dropped.f90
 issue_2078_include_statement_silently_dropped.f90
 issue_2113_real64_roundtrip.f90

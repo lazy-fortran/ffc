@@ -280,6 +280,13 @@ module session_program_lowering_types
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
         logical :: in_counted_do = .false.
         logical :: current_block_exited_loop = .false.
+        ! GOTO label table for a labeled program body (#270). Each labeled
+        ! statement owns a LIRIC block; a `goto N` branches to label_blocks(k)
+        ! where label_names(k) == 'N'. Active only while in_labeled_body.
+        logical :: in_labeled_body = .false.
+        character(len=16), allocatable :: label_names(:)
+        integer(c_int32_t), allocatable :: label_blocks(:)
+        integer :: label_count = 0
         ! Search paths (-I) for .fmod module artefacts resolved on USE.
         character(len=:), allocatable :: include_paths(:)
         integer :: include_path_count = 0

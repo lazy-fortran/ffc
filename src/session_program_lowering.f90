@@ -16,7 +16,8 @@ module session_program_lowering
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
-                                 elsewhere_clause_t
+                                 elsewhere_clause_t, goto_node, pause_node, &
+                                 continue_node
     use fortfront, only: assignment_node, ast_arena_t, &
                          call_or_subscript_node, case_block_node, &
                          case_range_node, &
@@ -173,7 +174,9 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                      get_derived_type_name, get_derived_type_components, &
                                      get_declaration_var_name, get_declaration_type_name, &
                                      get_declaration_has_initializer, &
-                                     get_declaration_initializer_index
+                                     get_declaration_initializer_index, &
+                                     get_node_stmt_label, get_goto_label, &
+                                     goto_is_computed
     use fortfront_utils, only: get_node_as_function_def, &
                                get_node_as_program, &
                                get_node_as_subroutine_def

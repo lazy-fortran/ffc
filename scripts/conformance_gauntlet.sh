@@ -226,8 +226,10 @@ fi
 
 echo "Running $SUITE: $FILE_COUNT files, timeout=${TIMEOUT}s, ffc=$FFC_BIN"
 
-# Process each file.
-while IFS= read -r full_path; do
+# Process each file. The file list is read on FD 3, not stdin, so a compiled
+# test program that reads stdin cannot consume the list and desynchronise the
+# loop.
+while IFS= read -r full_path <&3; do
     [ -z "$full_path" ] && continue
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
 
@@ -472,7 +474,7 @@ while IFS= read -r full_path; do
         "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
     echo "  FAIL: $rel_path (output mismatch)"
 
-done < "$FILE_LIST"
+done 3< "$FILE_LIST"
 
 # Summary
 printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \

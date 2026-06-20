@@ -66,9 +66,12 @@ compile_with_gfortran() {
 # run_capture <exe> <out_file> <timeout_seconds>
 # Runs the executable, captures stdout+stderr to out_file, respects timeout.
 # Returns the exit status of the executable (or 124 if timed out).
+# stdin is redirected from /dev/null: the caller drives the file list on the
+# loop's stdin, and a test program that reads stdin (PAUSE, READ) must not steal
+# those lines and corrupt later iterations.
 run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
-    timeout "$timeout" "$exe" > "$out_file" 2>&1
+    timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
     return $?
 }
 
