@@ -32,6 +32,7 @@
         call copy_module_exports(parent_context, context)
         context%in_internal_function = .true.
         context%in_internal_subroutine = .true.
+        context%current_proc_name = trim(node%name)
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)

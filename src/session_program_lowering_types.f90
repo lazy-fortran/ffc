@@ -329,6 +329,9 @@ module session_program_lowering_types
         integer :: operator_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
+        ! Name of the contained procedure currently being lowered. Lets an
+        ! assumed-shape dummy a(:) recover its extent from the caller's actual.
+        character(len=:), allocatable :: current_proc_name
         integer :: current_function_result_index = 0
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t

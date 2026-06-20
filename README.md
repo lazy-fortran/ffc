@@ -36,7 +36,10 @@ sections, whole-array copy, elemental arithmetic, and the array intrinsics
 logical allocatable (`a(i)`); whole-array assignment from an array constructor
 to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`); and
 whole-array `print` of a 1-D allocatable whose extent is a compile-time
-constant. Scalar
+constant; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
+base address, with their extent taken from a whole-array actual of
+compile-time size, so `size`, element access, `sum`, and whole-array `print`
+work in the callee. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Derived types take scalar

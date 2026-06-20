@@ -1,3 +1,346 @@
+    logical function dim_is_assumed_shape(arena, dim_index) result(is_assumed)
+        ! a(:) is parsed as a range_expression with no start/end/stride, or as
+        ! an array_bounds_node flagged is_assumed_shape. Either marks one
+        ! assumed-shape dimension whose extent comes from the caller's actual.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: dim_index
+
+        is_assumed = .false.
+        if (.not. node_exists(arena, dim_index)) return
+        select type (dim_node => arena%entries(dim_index)%node)
+        type is (range_expression_node)
+            is_assumed = dim_node%start_index <= 0 .and. &
+                         dim_node%end_index <= 0 .and. dim_node%stride_index <= 0
+        type is (array_bounds_node)
+            is_assumed = dim_node%is_assumed_shape
+        end select
+    end function dim_is_assumed_shape
+
+    logical function declaration_is_assumed_shape(node, context) result(is_assumed)
+        ! A declaration is assumed-shape when every dimension is a colon a(:).
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+
+        is_assumed = .false.
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) < 1) return
+        do i = 1, size(node%dimension_indices)
+            if (.not. dim_is_assumed_shape(context%arena, &
+                                           node%dimension_indices(i))) return
+        end do
+        is_assumed = .true.
+    end function declaration_is_assumed_shape
+
+    subroutine lower_assumed_shape_declaration(node, context, value_kind, &
+                                               error_msg)
+        ! Bind an assumed-shape dummy a(:) (or a(:,:)) to its parameter base and
+        ! to the caller-derived extent, then reuse the fixed-array machinery for
+        ! element access, size(), and whole-array operations.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_count, i
+
+        dim_count = 0
+        if (allocated(node%dimension_indices)) &
+            dim_count = size(node%dimension_indices)
+        if (dim_count < 1 .or. dim_count > 2) then
+            call unsupported_feature_error('assumed-shape array', node%line, &
+                node%column, 'direct LIRIC session supports rank-1 and rank-2 '// &
+                'assumed-shape dummies', error_msg)
+            return
+        end if
+
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call bind_one_assumed_shape(node, context, node%var_names(i), &
+                                            dim_count, value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call bind_one_assumed_shape(node, context, node%var_name, dim_count, &
+                                        value_kind, error_msg)
+        else
+            error_msg = 'assumed-shape declaration did not expose a variable name'
+        end if
+    end subroutine lower_assumed_shape_declaration
+
+    subroutine bind_one_assumed_shape(node, context, name, dim_count, &
+                                      value_kind, error_msg)
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: dim_count
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: extents(2), total, i
+        logical :: ok
+
+        if (.not. allocated(context%current_proc_name)) then
+            call unsupported_feature_error('assumed-shape array', node%line, &
+                node%column, 'assumed-shape dummies are supported only inside '// &
+                'a contained procedure', error_msg)
+            return
+        end if
+        extents = 0
+        call resolve_assumed_shape_extents(context, context%current_proc_name, &
+                                           name, dim_count, extents, ok)
+        if (.not. ok) then
+            call unsupported_feature_error('assumed-shape array', node%line, &
+                node%column, 'assumed-shape dummy extent must come from a '// &
+                'whole-array actual of compile-time size', error_msg)
+            return
+        end if
+        total = 1
+        do i = 1, dim_count
+            total = total * extents(i)
+        end do
+        call define_declared_array_symbol(context, node, name, 1, total, &
+                                          value_kind, error_msg, &
+                                          assumed_extents=extents(1:dim_count))
+    end subroutine bind_one_assumed_shape
+
+    subroutine resolve_assumed_shape_extents(context, proc_name, param_name, &
+                                             dim_count, extents, ok)
+        ! Recover an assumed-shape dummy's per-dimension extents from the
+        ! caller's actual. Find a call to proc_name whose actual at the dummy's
+        ! position is a whole-array identifier, then read that array's declared
+        ! compile-time shape. ok stays false when no constant extent is found.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: proc_name
+        character(len=*), intent(in) :: param_name
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: extents(:)
+        logical, intent(out) :: ok
+        integer :: param_pos
+        character(len=:), allocatable :: actual_name
+
+        ok = .false.
+        extents = 0
+        param_pos = proc_param_position(context%arena, proc_name, param_name)
+        if (param_pos <= 0) return
+        call find_call_actual_identifier(context%arena, proc_name, param_pos, &
+                                         actual_name)
+        if (.not. allocated(actual_name)) return
+        if (len_trim(actual_name) == 0) return
+        call array_decl_extents(context, actual_name, dim_count, extents, ok)
+    end subroutine resolve_assumed_shape_extents
+
+    integer function proc_param_position(arena, proc_name, param_name) &
+            result(pos)
+        ! 1-based position of param_name among proc_name's dummy arguments.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: proc_name
+        character(len=*), intent(in) :: param_name
+        integer :: n, i
+        character(len=:), allocatable :: node_type, name, name_err
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: params(:)
+
+        pos = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, proc_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                params = sb_node%param_indices
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, proc_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                params = fn_node%param_indices
+            else
+                cycle
+            end if
+            do i = 1, size(params)
+                call parameter_name(arena, params(i), name, name_err)
+                if (len_trim(name_err) > 0) cycle
+                if (trim(name) == trim(param_name)) then
+                    pos = i
+                    return
+                end if
+            end do
+            return
+        end do
+    end function proc_param_position
+
+    subroutine find_call_actual_identifier(arena, proc_name, param_pos, &
+                                           actual_name)
+        ! Scan the arena for a call to proc_name and return the identifier name
+        ! of its param_pos-th actual argument, if that actual is a bare name.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: proc_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable, intent(out) :: actual_name
+        integer :: n
+        character(len=:), allocatable :: call_name, name_err
+        integer, allocatable :: arg_indices(:)
+
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            if (.not. call_targets_proc(arena, n, proc_name, call_name, &
+                                        arg_indices)) cycle
+            if (.not. allocated(arg_indices)) cycle
+            if (param_pos < 1 .or. param_pos > size(arg_indices)) cycle
+            if (.not. is_identifier(arena, arg_indices(param_pos))) cycle
+            call get_identifier_name(arena, arg_indices(param_pos), actual_name, &
+                                     name_err)
+            if (len_trim(name_err) > 0) cycle
+            return
+        end do
+    end subroutine find_call_actual_identifier
+
+    logical function call_targets_proc(arena, node_index, proc_name, call_name, &
+                                       arg_indices) result(matches)
+        ! True when node_index is a subroutine-call statement or a
+        ! call_or_subscript expression naming proc_name; returns its arguments.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: proc_name
+        character(len=:), allocatable, intent(out) :: call_name
+        integer, allocatable, intent(out) :: arg_indices(:)
+        character(len=:), allocatable :: err
+
+        matches = .false.
+        if (is_subroutine_call_statement(arena, node_index)) then
+            call get_subroutine_call_name(arena, node_index, call_name, err)
+            if (len_trim(err) > 0) return
+            if (.not. same_name(call_name, proc_name)) return
+            call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
+                                                 err)
+            if (len_trim(err) > 0) return
+            matches = .true.
+            return
+        end if
+        select type (cnode => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(cnode%name)) return
+            if (.not. same_name(cnode%name, proc_name)) return
+            if (allocated(cnode%arg_indices)) arg_indices = cnode%arg_indices
+            matches = .true.
+        end select
+    end function call_targets_proc
+
+    subroutine array_decl_extents(context, var_name, dim_count, extents, ok)
+        ! Find var_name's array declaration anywhere in the arena and compute its
+        ! per-dimension compile-time extents. ok stays false on any non-constant
+        ! bound or a rank mismatch with the assumed-shape dummy.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: var_name
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: extents(:)
+        logical, intent(out) :: ok
+        integer :: n, lower_bound, total
+        character(len=:), allocatable :: err
+        type(declaration_node), pointer :: decl
+
+        ok = .false.
+        extents = 0
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            decl => declaration_named(context%arena, n, var_name)
+            if (.not. associated(decl)) cycle
+            if (.not. decl%is_array) cycle
+            if (decl%is_allocatable) return
+            if (.not. allocated(decl%dimension_indices)) return
+            if (size(decl%dimension_indices) /= dim_count) return
+            call array_decl_dim_extents(context, decl, dim_count, extents, &
+                                        lower_bound, total, err)
+            if (len_trim(err) > 0) return
+            ok = .true.
+            return
+        end do
+    end subroutine array_decl_extents
+
+    function declaration_named(arena, node_index, var_name) result(decl)
+        ! Pointer to the declaration node at node_index when it declares
+        ! var_name (single or multi-declaration); null otherwise.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: var_name
+        type(declaration_node), pointer :: decl
+        integer :: k
+
+        decl => null()
+        select type (node => arena%entries(node_index)%node)
+        type is (declaration_node)
+            if (allocated(node%var_name)) then
+                if (trim(node%var_name) == trim(var_name)) then
+                    decl => node
+                    return
+                end if
+            end if
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do k = 1, size(node%var_names)
+                    if (trim(node%var_names(k)) == trim(var_name)) then
+                        decl => node
+                        return
+                    end if
+                end do
+            end if
+        end select
+    end function declaration_named
+
+    subroutine array_decl_dim_extents(context, decl, dim_count, extents, &
+                                      lower_bound, total, error_msg)
+        ! Per-dimension extents of an explicit-shape array declaration, folding
+        ! literal and named-constant bounds via eval_i32_constant.
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: decl
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: extents(:)
+        integer, intent(out) :: lower_bound
+        integer, intent(out) :: total
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, dim_index
+        integer(c_int64_t) :: lower_value, upper_value, extent
+
+        lower_bound = 1
+        total = 1
+        call set_empty(error_msg)
+        do i = 1, dim_count
+            dim_index = decl%dimension_indices(i)
+            if (.not. node_exists(context%arena, dim_index)) then
+                error_msg = 'actual array dimension index is invalid'
+                return
+            end if
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                call eval_i32_constant(context%arena, dim_node%start_index, &
+                                       context, lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(context%arena, dim_node%end_index, &
+                                       context, upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value - lower_value + 1_c_int64_t
+            class default
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                lower_value = 1_c_int64_t
+                extent = upper_value
+            end select
+            if (extent <= 0_c_int64_t) then
+                error_msg = 'actual array has a non-positive extent'
+                return
+            end if
+            if (i == 1) lower_bound = int(lower_value)
+            extents(i) = int(extent)
+            total = total * int(extent)
+        end do
+    end subroutine array_decl_dim_extents
+
     subroutine get_array_bounds(node, context, array_lower_bound, array_size, &
                                 error_msg)
         type(declaration_node), intent(in) :: node
@@ -220,7 +563,8 @@
     end subroutine eval_kind_inquiry_constant
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
-                                            array_size, value_kind, error_msg)
+                                            array_size, value_kind, error_msg, &
+                                            assumed_extents)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
@@ -228,6 +572,9 @@
         integer, intent(in) :: array_size
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        ! For an assumed-shape dummy a(:), the caller-derived extent per
+        ! dimension (lower bound 1). Present and positive only for assumed-shape.
+        integer, intent(in), optional :: assumed_extents(:)
         integer :: index
         integer :: dim_count
         integer :: i
@@ -236,7 +583,10 @@
         integer(c_int64_t) :: upper_value
         integer(c_int64_t) :: extent
         logical :: is_dummy
+        logical :: is_assumed
         type(lr_operand_desc_t) :: param_base
+
+        is_assumed = present(assumed_extents)
 
         ! An array body declaration whose name matches a dummy argument binds
         ! the explicit-shape array view onto the parameter pointer instead of
@@ -269,6 +619,20 @@
         context%symbols(index)%array_rank = dim_count
         context%symbols(index)%array_size = array_size
         context%symbols(index)%array_lower_bound = array_lower_bound
+
+        if (is_assumed) then
+            ! Assumed-shape dummy a(:): the (:) dimensions carry no compile-time
+            ! bound, so take the extents derived from the caller's actual instead
+            ! of folding the colon dimension nodes. Lower bound is 1 (the dummy's
+            ! local indexing), matching gfortran for an assumed-shape view.
+            do i = 1, dim_count
+                context%symbols(index)%array_dim_lowers(i) = 1
+                context%symbols(index)%array_dim_sizes(i) = assumed_extents(i)
+            end do
+            context%symbols(index)%element_address = param_base
+            call set_empty(error_msg)
+            return
+        end if
 
         if (dim_count >= 1 .and. allocated(node%dimension_indices)) then
             do i = 1, dim_count
