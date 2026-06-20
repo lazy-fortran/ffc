@@ -116,7 +116,15 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            call lower_logical_call(arena, node, context, value, error_msg)
+            if (node%is_array_access .and. &
+                array_access_value_kind(node, context) == VALUE_LOGICAL) then
+                ! Logical array element occupies an i32 slot; the load yields the
+                ! 0/1 value the logical-context callers expect.
+                call lower_i32_array_element(arena, node, context, value, &
+                                             error_msg)
+            else
+                call lower_logical_call(arena, node, context, value, error_msg)
+            end if
         type is (component_access_node)
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default

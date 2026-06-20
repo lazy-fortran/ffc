@@ -442,6 +442,15 @@
                                                      value, error_msg)) return
                 return
             end if
+            if (node%is_array_access .and. &
+                array_access_value_kind(node, context) == VALUE_LOGICAL) then
+                ! Logical array element: load as i32 then format as T/F.
+                call lower_i32_array_element(arena, node, context, value, &
+                                             error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_print_logical_value(context, value, error_msg)
+                return
+            end if
             if (.not. node%is_array_access .and. allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then
                     call lower_print_deferred_char_call(arena, node, context, &
@@ -467,6 +476,21 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    integer function array_access_value_kind(node, context) result(value_kind)
+        ! Element value kind of an array subscript reference, or VALUE_I32 when
+        ! the name is not a declared array (callers fall back to integer print).
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+
+        value_kind = VALUE_I32
+        if (.not. allocated(node%name)) return
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_array) return
+        value_kind = context%symbols(symbol_index)%value_kind
+    end function array_access_value_kind
 
     subroutine lower_print_component_access_value(arena, node, node_index, &
                                                   context, error_msg)

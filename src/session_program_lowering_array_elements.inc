@@ -919,6 +919,11 @@
         else if (vk == VALUE_F64) then
             call lower_f64_expression(arena, node%value_index, context, value, &
                                       error_msg)
+        else if (vk == VALUE_LOGICAL) then
+            ! Logical occupies an i32 slot; lower the RHS as a logical so
+            ! .true./.false. literals and relational results become 1/0.
+            call lower_logical_expression(arena, node%value_index, context, value, &
+                                          error_msg)
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
