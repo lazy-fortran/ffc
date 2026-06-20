@@ -1023,17 +1023,43 @@
     subroutine expand_implied_do_constructor(arena, ctor, symbol_index, context, &
                                              error_msg)
         !! Expand a compile-time implied-do array constructor, arr = [(expr, i =
-        !! lo, hi)], by folding the body for each i and storing the result. The
-        !! constructor wraps a do_loop_node (var, start/end/step, body). The loop
-        !! variable is bound as a compile-time constant per iteration so
-        !! eval_i32_constant can fold the body.
+        !! lo, hi)], by folding the body for each i and storing the result. A
+        !! nested implied-do body, e.g. [((expr, j=1,m), i=1,n)], recurses with a
+        !! shared running slot, so the inner loop fills consecutive elements.
         type(ast_arena_t), intent(in) :: arena
         type(array_literal_node), intent(in) :: ctor
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: slot
+
+        slot = 0
+        call expand_implied_do_into_slot(arena, ctor, symbol_index, slot, &
+                                         context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (slot /= context%symbols(symbol_index)%array_size) then
+            error_msg = 'implied-do constructor element count does not match '// &
+                        'the array size'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine expand_implied_do_constructor
+
+    recursive subroutine expand_implied_do_into_slot(arena, ctor, symbol_index, &
+                                                     slot, context, error_msg)
+        !! Fold one implied-do constructor into the array starting at slot,
+        !! advancing slot past the elements it produces. The loop variable is
+        !! bound as a compile-time constant per iteration so eval_i32_constant
+        !! can fold the body. A body element that is itself an implied-do
+        !! constructor recurses; any other body element is one scalar element.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index
+        integer, intent(inout) :: slot
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: lo, hi, step, ival
-        integer :: vsym, b, slot
+        integer :: vsym, b
         type(symbol_t) :: saved_sym
 
         if (.not. allocated(ctor%element_indices)) then
@@ -1041,7 +1067,7 @@
             return
         end if
         if (size(ctor%element_indices) /= 1) then
-            error_msg = 'nested implied-do constructors are not supported'
+            error_msg = 'implied-do constructor is missing its loop node'
             return
         end if
 
@@ -1076,7 +1102,6 @@
             saved_sym = context%symbols(vsym)
             context%symbols(vsym)%has_i32_constant = .true.
             context%symbols(vsym)%value_kind = VALUE_I32
-            slot = 0
             ival = lo
             do while ((step > 0 .and. ival <= hi) .or. (step < 0 .and. ival >= hi))
                 ! Bind the loop var as an i32 immediate both for compile-time
@@ -1087,34 +1112,81 @@
                 context%symbols(vsym)%has_address = .false.
                 context%symbols(vsym)%is_reference = .false.
                 do b = 1, size(dnode%body_indices)
-                    if (slot >= context%symbols(symbol_index)%array_size) then
-                        error_msg = 'implied-do constructor produces more '// &
-                                    'elements than the array holds'
-                        context%symbols(vsym) = saved_sym
-                        return
-                    end if
-                    call lower_implied_do_element(arena, dnode%body_indices(b), &
-                        symbol_index, int(slot, c_int64_t), context, error_msg)
+                    call expand_implied_do_body_element(arena, &
+                        dnode%body_indices(b), symbol_index, slot, context, &
+                        error_msg)
                     if (len_trim(error_msg) > 0) then
                         context%symbols(vsym) = saved_sym
                         return
                     end if
-                    slot = slot + 1
                 end do
                 ival = ival + step
             end do
             context%symbols(vsym) = saved_sym
-            if (slot /= context%symbols(symbol_index)%array_size) then
-                error_msg = 'implied-do constructor element count does not match '// &
-                            'the array size'
-                return
-            end if
         class default
             error_msg = 'implied-do constructor is missing its loop node'
             return
         end select
         call set_empty(error_msg)
-    end subroutine expand_implied_do_constructor
+    end subroutine expand_implied_do_into_slot
+
+    recursive subroutine expand_implied_do_body_element(arena, body_index, &
+                                                        symbol_index, slot, &
+                                                        context, error_msg)
+        !! Store one implied-do body item at the running slot. A nested implied-do
+        !! constructor recurses; any other item is a single scalar element.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_index
+        integer, intent(in) :: symbol_index
+        integer, intent(inout) :: slot
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (node_exists(arena, body_index)) then
+            select type (inner => arena%entries(body_index)%node)
+            type is (array_literal_node)
+                if (is_implied_do_constructor(arena, inner)) then
+                    call expand_implied_do_into_slot(arena, inner, symbol_index, &
+                                                     slot, context, error_msg)
+                    return
+                end if
+            type is (do_loop_node)
+                call expand_implied_do_inner_loop(arena, body_index, &
+                                                  symbol_index, slot, context, &
+                                                  error_msg)
+                return
+            end select
+        end if
+
+        if (slot >= context%symbols(symbol_index)%array_size) then
+            error_msg = 'implied-do constructor produces more elements than the '// &
+                        'array holds'
+            return
+        end if
+        call lower_implied_do_element(arena, body_index, symbol_index, &
+                                      int(slot, c_int64_t), context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        slot = slot + 1
+    end subroutine expand_implied_do_body_element
+
+    recursive subroutine expand_implied_do_inner_loop(arena, loop_index, &
+                                                      symbol_index, slot, context, &
+                                                      error_msg)
+        !! A nested implied-do whose constructor wrapper is absent appears as a
+        !! bare do_loop_node body element. Fold it into the running slot by
+        !! reusing the same loop expansion path through a synthetic wrapper.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: loop_index
+        integer, intent(in) :: symbol_index
+        integer, intent(inout) :: slot
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_literal_node) :: wrapper
+
+        wrapper%element_indices = [loop_index]
+        call expand_implied_do_into_slot(arena, wrapper, symbol_index, slot, &
+                                         context, error_msg)
+    end subroutine expand_implied_do_inner_loop
 
     subroutine lower_implied_do_element(arena, body_index, symbol_index, slot, &
                                         context, error_msg)
@@ -1491,16 +1563,32 @@
                         trim(array_name)
             return
         end if
-        if (.not. context%symbols(source_index)%is_array) then
-            error_msg = trim(reduction_name)//' requires an array argument: '// &
-                        trim(array_name)
-            return
-        end if
-
-        array_size = context%symbols(source_index)%array_size
-        if (array_size <= 0) then
-            error_msg = trim(reduction_name)//' requires a non-empty array'
-            return
+        ! A 1-D allocatable reduces over its compile-time extent recorded by the
+        ! preceding allocate(a(N)); the element loop loads from the descriptor.
+        if (context%symbols(source_index)%is_allocatable) then
+            if (context%symbols(source_index)%array_rank == 2) then
+                error_msg = trim(reduction_name)// &
+                            ' over a rank-2 allocatable is not supported'
+                return
+            end if
+            array_size = context%symbols(source_index)%allocatable_static_size
+            if (array_size <= 0) then
+                error_msg = trim(reduction_name)// &
+                            ' requires a constant allocatable extent: '// &
+                            trim(array_name)
+                return
+            end if
+        else
+            if (.not. context%symbols(source_index)%is_array) then
+                error_msg = trim(reduction_name)// &
+                            ' requires an array argument: '//trim(array_name)
+                return
+            end if
+            array_size = context%symbols(source_index)%array_size
+            if (array_size <= 0) then
+                error_msg = trim(reduction_name)//' requires a non-empty array'
+                return
+            end if
         end if
 
         select case (context%symbols(source_index)%value_kind)
