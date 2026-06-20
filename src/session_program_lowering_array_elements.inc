@@ -534,11 +534,11 @@
                 return
             end if
             if (.not. context%symbols(symbol_index)%is_array) then
-                call unsupported_feature_error('whole-array expression', &
-                                               get_node_line(arena, node_index), &
-                                               get_node_column(arena, node_index), &
-                                               'whole-array arithmetic requires array '// &
-                                               'operands', error_msg)
+                ! A scalar operand inside whole-array arithmetic broadcasts: its
+                ! single value participates in every element computation.
+                call lower_elementwise_scalar_operand(arena, node_index, &
+                                                      target_symbol_index, context, &
+                                                      value, error_msg)
                 return
             end if
             call ensure_array_shapes_match(context, target_symbol_index, &
@@ -547,6 +547,22 @@
             call load_array_linear_element(context, symbol_index, &
                                            int(linear_index, c_int64_t), value, &
                                            error_msg)
+            return
+        end if
+
+        if (is_literal(arena, node_index)) then
+            ! A scalar literal inside whole-array arithmetic broadcasts.
+            call lower_elementwise_scalar_operand(arena, node_index, &
+                                                  target_symbol_index, context, &
+                                                  value, error_msg)
+            return
+        end if
+
+        if (is_elemental_real_call(arena, node_index)) then
+            call lower_elementwise_elemental_call(arena, node_index, &
+                                                  target_symbol_index, &
+                                                  linear_index, context, value, &
+                                                  error_msg)
             return
         end if
 

@@ -72,38 +72,39 @@ contains
     end function test_do_concurrent_array_fill
 
     logical function test_where_stmt_true()
-        ! B8e: WHERE single-statement, mask true.
+        ! B8e: WHERE single-statement, every element selected. WHERE requires a
+        ! logical array mask, so the operands are rank-1 arrays.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: x, flag'//new_line('a')// &
+            '  integer :: x(3), flag(3)'//new_line('a')// &
             '  x = 5'//new_line('a')// &
             '  flag = 1'//new_line('a')// &
             '  where (flag > 0) x = 99'//new_line('a')// &
-            '  stop x'//new_line('a')// &
+            '  stop x(1)'//new_line('a')// &
             'end program main'
         test_where_stmt_true = expect_exit_status( &
             source, 99, '/tmp/ffc_where_stmt_true_test')
     end function test_where_stmt_true
 
     logical function test_where_stmt_false()
-        ! WHERE single-statement, mask false: assignment skipped.
+        ! WHERE single-statement, mask false everywhere: no element changes.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: x, flag'//new_line('a')// &
+            '  integer :: x(3), flag(3)'//new_line('a')// &
             '  x = 5'//new_line('a')// &
             '  flag = 0'//new_line('a')// &
             '  where (flag > 0) x = 99'//new_line('a')// &
-            '  stop x'//new_line('a')// &
+            '  stop x(1)'//new_line('a')// &
             'end program main'
         test_where_stmt_false = expect_exit_status( &
             source, 5, '/tmp/ffc_where_stmt_false_test')
     end function test_where_stmt_false
 
     logical function test_where_construct_true_branch()
-        ! WHERE construct: true branch executes when mask holds.
+        ! WHERE construct: the body runs where the mask holds.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: x, y, flag'//new_line('a')// &
+            '  integer :: x(3), y(3), flag(3)'//new_line('a')// &
             '  x = 5'//new_line('a')// &
             '  y = 0'//new_line('a')// &
             '  flag = 1'//new_line('a')// &
@@ -114,17 +115,17 @@ contains
             '    x = 99'//new_line('a')// &
             '    y = 99'//new_line('a')// &
             '  end where'//new_line('a')// &
-            '  stop x + y'//new_line('a')// &
+            '  stop x(1) + y(1)'//new_line('a')// &
             'end program main'
         test_where_construct_true_branch = expect_exit_status( &
             source, 30, '/tmp/ffc_where_true_test')
     end function test_where_construct_true_branch
 
     logical function test_where_construct_elsewhere_branch()
-        ! WHERE construct: ELSEWHERE executes when mask is false.
+        ! WHERE construct: ELSEWHERE runs where the mask is false.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: x, flag'//new_line('a')// &
+            '  integer :: x(3), flag(3)'//new_line('a')// &
             '  x = 5'//new_line('a')// &
             '  flag = 0'//new_line('a')// &
             '  where (flag > 0)'//new_line('a')// &
@@ -132,7 +133,7 @@ contains
             '  elsewhere'//new_line('a')// &
             '    x = 42'//new_line('a')// &
             '  end where'//new_line('a')// &
-            '  stop x'//new_line('a')// &
+            '  stop x(1)'//new_line('a')// &
             'end program main'
         test_where_construct_elsewhere_branch = expect_exit_status( &
             source, 42, '/tmp/ffc_where_else_test')
