@@ -12,6 +12,8 @@ program test_session_use_only_compiler
     if (.not. test_use_only_rejects_unknown_name()) all_passed = .false.
     if (.not. test_use_only_rename()) all_passed = .false.
     if (.not. test_use_only_rename_hides_original()) all_passed = .false.
+    if (.not. test_use_only_admits_module_function()) all_passed = .false.
+    if (.not. test_use_only_admits_module_subroutine()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: use ... only: filters imported symbols'
@@ -92,5 +94,44 @@ contains
         test_use_only_rename_hides_original = expect_error_contains( &
             source, 'WIDTH', '/tmp/ffc_session_use_rename_hide_test')
     end function test_use_only_rename_hides_original
+
+    logical function test_use_only_admits_module_function()
+        ! A module procedure named in only: is a valid export (#263).
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function square(x) result(res)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    res = x * x'//new_line('a')// &
+            '  end function square'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: square'//new_line('a')// &
+            '  stop square(5)'//new_line('a')// &
+            'end program main'
+
+        test_use_only_admits_module_function = expect_exit_status( &
+            source, 25, '/tmp/ffc_session_use_only_function_test')
+    end function test_use_only_admits_module_function
+
+    logical function test_use_only_admits_module_subroutine()
+        ! A module subroutine named in only: is a valid export (#263).
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine no_op()'//new_line('a')// &
+            '  end subroutine no_op'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: no_op'//new_line('a')// &
+            '  call no_op()'//new_line('a')// &
+            '  stop 7'//new_line('a')// &
+            'end program main'
+
+        test_use_only_admits_module_subroutine = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_use_only_subroutine_test')
+    end function test_use_only_admits_module_subroutine
 
 end program test_session_use_only_compiler

@@ -8,8 +8,6 @@ ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
 ast_forall_pointer.f90
 call_graph_internal_procedures.f90
-call_graph_mutual_recursion.f90
-call_graph_unused_procedure.f90
 control_flow_associate_construct.f90
 control_flow_nested_select_case.f90
 data_statement_scalar_upgrade.f90
@@ -76,7 +74,6 @@ issue_2237_multiline_stmt_if.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
-issue_2265_module_program.f90
 issue_2281_header_only_declarations.f90
 issue_2285_openmp_directives.f90
 issue_2286_openacc_internal.f90

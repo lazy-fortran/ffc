@@ -612,7 +612,68 @@
                 return
             end if
         end do
+        ! Module procedures are not recorded in module_exports_t (only data
+        ! symbols are), so resolve a procedure name against the module body
+        ! itself (#263). A USE-only of a contained function or subroutine is a
+        ! valid export.
+        if (module_exports_procedure(arena, &
+                context%module_exports(export_idx)%module_name, name)) then
+            module_exports_name = .true.
+            return
+        end if
     end function module_exports_name
+
+    logical function module_exports_procedure(arena, module_name, name)
+        ! Whether the named module contains a public function or subroutine
+        ! called `name`. Used to validate USE-only of a module procedure (#263).
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_name
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: module_lowered
+        integer :: n
+
+        module_exports_procedure = .false.
+        module_lowered = lowercase_text(module_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (module_node)
+                if (.not. allocated(node%name)) cycle
+                if (lowercase_text(node%name) /= module_lowered) cycle
+                if (.not. allocated(node%procedure_indices)) return
+                if (module_procedure_named(arena, node, name)) &
+                    module_exports_procedure = .true.
+                return
+            end select
+        end do
+    end function module_exports_procedure
+
+    logical function module_procedure_named(arena, mod_node, name)
+        ! Whether `mod_node` holds a non-private function/subroutine `name`.
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: proc_name
+        integer :: p, idx
+
+        module_procedure_named = .false.
+        do p = 1, size(mod_node%procedure_indices)
+            idx = mod_node%procedure_indices(p)
+            if (.not. node_exists(arena, idx)) cycle
+            proc_name = ''
+            select type (proc => arena%entries(idx)%node)
+            type is (function_def_node)
+                if (allocated(proc%name)) proc_name = proc%name
+            type is (subroutine_def_node)
+                if (allocated(proc%name)) proc_name = proc%name
+            end select
+            if (len_trim(proc_name) == 0) cycle
+            if (.not. same_name(proc_name, name)) cycle
+            if (module_symbol_is_private(arena, mod_node, proc_name)) cycle
+            module_procedure_named = .true.
+            return
+        end do
+    end function module_procedure_named
 
     subroutine import_module_constants(arena, export_idx, use_node, context, &
                                        error_msg)
