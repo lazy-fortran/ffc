@@ -17,6 +17,10 @@ program test_session_array_intrinsics_compiler
     if (.not. test_any_all_false_returns_zero()) all_passed = .false.
     if (.not. test_all_all_true()) all_passed = .false.
     if (.not. test_all_mixed_returns_zero()) all_passed = .false.
+    if (.not. test_maxloc_integer_dim()) all_passed = .false.
+    if (.not. test_minloc_integer_dim()) all_passed = .false.
+    if (.not. test_maxloc_real_first_tie()) all_passed = .false.
+    if (.not. test_minloc_with_mask()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: array intrinsics lower through direct LIRIC'
@@ -164,5 +168,58 @@ contains
         test_all_mixed_returns_zero = expect_exit_status( &
             source, 0, '/tmp/ffc_session_all_mixed_test')
     end function test_all_mixed_returns_zero
+
+    logical function test_maxloc_integer_dim()
+        ! maxloc(a, dim=1) on a rank-1 integer array returns the 1-based index
+        ! of the largest element (a(4)=9 here).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(5)'//new_line('a')// &
+            '  a = [3, 7, 2, 9, 4]'//new_line('a')// &
+            '  stop maxloc(a, dim=1)'//new_line('a')// &
+            'end program main'
+        test_maxloc_integer_dim = expect_exit_status( &
+            source, 4, '/tmp/ffc_session_maxloc_int_test')
+    end function test_maxloc_integer_dim
+
+    logical function test_minloc_integer_dim()
+        ! minloc(a, 1) returns the index of the smallest element (a(3)=2).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(5)'//new_line('a')// &
+            '  a = [3, 7, 2, 9, 4]'//new_line('a')// &
+            '  stop minloc(a, 1)'//new_line('a')// &
+            'end program main'
+        test_minloc_integer_dim = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_minloc_int_test')
+    end function test_minloc_integer_dim
+
+    logical function test_maxloc_real_first_tie()
+        ! On a tie, maxloc returns the first occurrence (both a(2),a(4)=9.0).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  real :: a(5)'//new_line('a')// &
+            '  a = [3.0, 9.0, 2.0, 9.0, 4.0]'//new_line('a')// &
+            '  stop maxloc(a, dim=1)'//new_line('a')// &
+            'end program main'
+        test_maxloc_real_first_tie = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_maxloc_tie_test')
+    end function test_maxloc_real_first_tie
+
+    logical function test_minloc_with_mask()
+        ! minloc with a logical mask considers only masked elements; the
+        ! smallest masked value is a(5)=4 among indices 1,3,5 (3,2,4).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  real :: a(5)'//new_line('a')// &
+            '  logical :: m(5)'//new_line('a')// &
+            '  a = [3.0, 7.0, 2.0, 9.0, 4.0]'//new_line('a')// &
+            '  m = [.true., .false., .false., .false., .true.]'//new_line('a')// &
+            '  stop minloc(a, dim=1, mask=m)'//new_line('a')// &
+            'end program main'
+        ! Among masked indices 1 (3.0) and 5 (4.0), the minimum is index 1.
+        test_minloc_with_mask = expect_exit_status( &
+            source, 1, '/tmp/ffc_session_minloc_mask_test')
+    end function test_minloc_with_mask
 
 end program test_session_array_intrinsics_compiler

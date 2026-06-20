@@ -211,6 +211,223 @@
         call set_empty(error_msg)
     end subroutine lower_logical_array_all_intrinsic
 
+    ! maxloc(a [,dim] [,mask]) / minloc(a [,dim] [,mask]) for a rank-1
+    ! integer or real array, returning the scalar 1-based index of the first
+    ! extreme element. With a logical-array mask, only masked elements are
+    ! considered; if none qualify the result is 0 (F2018 semantics). A scalar
+    ! dim argument, when present, must select the single rank-1 dimension.
+    subroutine lower_array_locate_intrinsic(arena, node, context, value, &
+                                            error_msg, want_max)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in) :: want_max
+        character(len=:), allocatable :: which
+        integer :: sym, mask_sym
+
+        if (want_max) then
+            which = 'maxloc'
+        else
+            which = 'minloc'
+        end if
+
+        call resolve_locate_arguments(arena, node, context, which, sym, mask_sym, &
+                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (context%symbols(sym)%array_size <= 0) then
+            error_msg = trim(which)//' requires a non-empty array'
+            return
+        end if
+        call emit_locate_scan(context, want_max, sym, mask_sym, value, error_msg)
+    end subroutine lower_array_locate_intrinsic
+
+    ! Resolve the array argument and an optional logical-array mask. A scalar
+    ! extra argument is the dim selector, which for a rank-1 array must be 1.
+    ! Keyword arguments (dim=, mask=) arrive as keyword assignment nodes that
+    ! are unwrapped to their value node before classifying.
+    subroutine resolve_locate_arguments(arena, node, context, which, sym, &
+                                        mask_sym, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: which
+        integer, intent(out) :: sym, mask_sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: array_name, name
+        integer :: i, ai, value_node
+        integer(c_int64_t) :: dim_val
+
+        sym = 0
+        mask_sym = 0
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
+            error_msg = trim(which)//' requires an array argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, array_name)
+        if (sym <= 0) then
+            error_msg = trim(which)//': array not declared: '//trim(array_name)
+            return
+        end if
+        if (.not. context%symbols(sym)%is_array) then
+            error_msg = trim(which)//' requires an array argument: '//trim(array_name)
+            return
+        end if
+        if (context%symbols(sym)%array_rank /= 1) then
+            error_msg = trim(which)//' supports only rank-1 arrays: '//trim(array_name)
+            return
+        end if
+
+        do ai = 2, size(node%arg_indices)
+            value_node = locate_arg_value_node(arena, node%arg_indices(ai))
+            if (is_identifier(arena, value_node)) then
+                call get_identifier_name(arena, value_node, name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                i = find_symbol(context, name)
+                if (i > 0) then
+                    if (context%symbols(i)%is_array) then
+                        mask_sym = i
+                        cycle
+                    end if
+                end if
+            end if
+            call eval_i32_constant(arena, value_node, context, dim_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (dim_val /= 1_c_int64_t) then
+                error_msg = trim(which)//' dim must be 1 for a rank-1 array'
+                return
+            end if
+        end do
+
+        if (mask_sym > 0) then
+            if (context%symbols(mask_sym)%array_size /= &
+                context%symbols(sym)%array_size) then
+                error_msg = trim(which)//' mask must match the array extent'
+                return
+            end if
+        end if
+        call set_empty(error_msg)
+    end subroutine resolve_locate_arguments
+
+    ! Linear scan over the rank-1 array tracking the best value and its 1-based
+    ! index. best_idx starts at 0 (no element chosen): the first qualifying
+    ! element seeds best_val and later strictly-better elements replace it,
+    ! preserving the first-occurrence rule (no replace on ties). A mask gates
+    ! whether each element is eligible to be chosen.
+    subroutine emit_locate_scan(context, want_max, sym, mask_sym, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_max
+        integer, intent(in) :: sym, mask_sym
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: array_size, i
+        type(lr_operand_desc_t) :: best_val, best_idx, cand, cand_idx
+        type(lr_operand_desc_t) :: better, take, mask_elem, masked
+        type(lr_operand_desc_t) :: sel_val, sel_idx
+
+        array_size = context%symbols(sym)%array_size
+        best_idx = i32_immediate(context%session, 0_c_int64_t)
+        best_val = i32_immediate(context%session, 0_c_int64_t)
+        do i = 0, array_size - 1
+            call load_array_linear_element(context, sym, int(i, c_int64_t), &
+                                           cand, error_msg)
+            if (len_trim(error_msg) > 0) return
+            cand_idx = i32_immediate(context%session, int(i + 1, c_int64_t))
+
+            call locate_is_better(context, want_max, &
+                                  context%symbols(sym)%value_kind, cand, best_val, &
+                                  best_idx, better, error_msg)
+            if (len_trim(error_msg) > 0) return
+            take = better
+            if (mask_sym > 0) then
+                call load_array_linear_element(context, mask_sym, &
+                                               int(i, c_int64_t), mask_elem, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        mask_elem, i32_immediate(context%session, 0_c_int64_t), &
+                        masked, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, take, &
+                                          masked, sel_idx, error_msg)) return
+                take = sel_idx
+            end if
+
+            call select_value(context, take, cand, best_val, sel_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            best_val = sel_val
+            call select_value(context, take, cand_idx, best_idx, sel_idx, error_msg)
+            if (len_trim(error_msg) > 0) return
+            best_idx = sel_idx
+        end do
+
+        value = best_idx
+        call set_empty(error_msg)
+    end subroutine emit_locate_scan
+
+    ! better = (best_idx == 0) .or. (want_max ? cand > best_val : cand < best_val)
+    subroutine locate_is_better(context, want_max, vk, cand, best_val, best_idx, &
+                                better, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_max
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: cand, best_val, best_idx
+        type(lr_operand_desc_t), intent(out) :: better
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cmp, unset
+        integer(c_int) :: predicate
+
+        if (vk == VALUE_F32) then
+            if (want_max) then
+                predicate = LR_FCMP_OGT
+            else
+                predicate = LR_FCMP_OLT
+            end if
+            if (.not. emit_liric_f32_fcmp(context%session, predicate, cand, &
+                                          best_val, cmp, error_msg)) return
+        else if (vk == VALUE_F64) then
+            if (want_max) then
+                predicate = LR_FCMP_OGT
+            else
+                predicate = LR_FCMP_OLT
+            end if
+            if (.not. emit_liric_f64_fcmp(context%session, predicate, cand, &
+                                          best_val, cmp, error_msg)) return
+        else
+            if (want_max) then
+                predicate = LR_CMP_SGT
+            else
+                predicate = LR_CMP_SLT
+            end if
+            if (.not. emit_liric_i32_icmp(context%session, predicate, cand, &
+                                          best_val, cmp, error_msg)) return
+        end if
+
+        ! No element chosen yet (best_idx == 0) forces the candidate in.
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, best_idx, &
+                i32_immediate(context%session, 0_c_int64_t), unset, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, cmp, unset, better, &
+                                  error_msg)) return
+        call set_empty(error_msg)
+    end subroutine locate_is_better
+
+    ! A keyword actual argument (dim=1, mask=m) is stored as a keyword
+    ! assignment node; return its value node. A positional argument is
+    ! returned unchanged.
+    function locate_arg_value_node(arena, arg_index) result(value_node)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        integer :: value_node
+
+        value_node = arg_index
+        if (.not. node_exists(arena, arg_index)) return
+        select type (n => arena%entries(arg_index)%node)
+        type is (assignment_node)
+            if (n%value_index > 0) value_node = n%value_index
+        end select
+    end function locate_arg_value_node
+
     ! scan(s, set [, back]): 1-based position of first char of s found in set; 0 if none.
     subroutine lower_scan_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
