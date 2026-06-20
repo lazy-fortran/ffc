@@ -183,18 +183,21 @@ contains
     end function test_do_terminating_body_diagnostic
 
     logical function test_derived_type_diagnostic()
-        ! Character components stay unsupported (the layout stores only whole
-        ! 4-byte i32 slots); scalar integer, real, and logical are accepted.
+        ! A fixed-length character component takes a place in the slot layout, so
+        ! the type lowers; reading or writing it through obj%comp is not yet
+        ! supported and must report a clear diagnostic.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
                                        '    character(len=4) :: name'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
+                                       '  type(point) :: p'//new_line('a')// &
+                                       '  p%name = "abcd"'//new_line('a')// &
                                        'end program main'
 
         test_derived_type_diagnostic = expect_error_contains( &
                                        source, &
-                                       'unsupported derived type component', &
+                                       'character component access', &
                                        '/tmp/ffc_session_derived_type_test')
     end function test_derived_type_diagnostic
 
@@ -445,18 +448,20 @@ contains
     end function test_cli_do_terminating_body_diagnostic
 
     logical function test_cli_derived_type_diagnostic()
-        ! Character components stay unsupported; scalar integer, real, and
-        ! logical components are accepted.
+        ! A fixed-length character component lowers into the slot layout;
+        ! accessing it through obj%comp is rejected with a clear diagnostic.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: point'//new_line('a')// &
                                        '    character(len=4) :: name'//new_line('a')// &
                                        '  end type point'//new_line('a')// &
+                                       '  type(point) :: p'//new_line('a')// &
+                                       '  p%name = "abcd"'//new_line('a')// &
                                        'end program main'
 
         test_cli_derived_type_diagnostic = expect_cli_error_contains( &
                                            source, &
-                                           'unsupported derived type component', &
+                                           'character component access', &
                                            '/tmp/ffc_cli_derived_type_test')
     end function test_cli_derived_type_diagnostic
 

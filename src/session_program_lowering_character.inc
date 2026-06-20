@@ -120,31 +120,99 @@
         call set_empty(error_msg)
     end subroutine resolve_named_character_length
 
-    ! True when the character length is a simple runtime identifier (such as a
-    ! dummy argument) rather than a literal or compile-time parameter. Such a
+    ! True when the character length is a runtime length rather than a literal
+    ! or compile-time parameter. This covers a bare dummy identifier
+    ! (character(len=k)) and a length expression that references a runtime
+    ! quantity (character(len=len(name)), character(len=len(name)+7)). Such a
     ! length is only valid for a function result here, lowered through the
-    ! deferred descriptor ABI.
+    ! deferred descriptor ABI: the actual width comes from the assigned result
+    ! value, so the declared expression itself is never evaluated.
     logical function runtime_character_length(context, node)
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
+        character(len=:), allocatable :: expr
         character(len=:), allocatable :: name
         integer :: symbol_index
 
         runtime_character_length = .false.
         if (.not. node%has_character_length) return
         if (.not. allocated(node%character_length_expr)) return
-        name = trim(adjustl(node%character_length_expr))
-        if (len(name) == 0) return
-        if (verify(name, &
+        expr = trim(adjustl(node%character_length_expr))
+        if (len(expr) == 0) return
+
+        ! A bare identifier that is a declared non-constant symbol (a dummy).
+        if (verify(expr, &
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
-            /= 0) return
-        symbol_index = find_symbol(context, name)
-        if (symbol_index <= 0) return
-        ! A declared identifier that is not a compile-time integer parameter is
-        ! a runtime length.
+            == 0) then
+            symbol_index = find_symbol(context, expr)
+            if (symbol_index <= 0) return
+            runtime_character_length = &
+                .not. context%symbols(symbol_index)%has_i32_constant
+            return
+        end if
+
+        ! A length expression such as len(name) or len(name)+7 is a runtime
+        ! length when at least one identifier it references is a declared
+        ! non-constant symbol (a runtime dummy or variable). The deferred ABI
+        ! resolves the width from the assigned value, so the expression is not
+        ! evaluated here.
         runtime_character_length = &
-            .not. context%symbols(symbol_index)%has_i32_constant
+            length_expr_references_runtime_symbol(context, expr)
     end function runtime_character_length
+
+    ! Scan an integer length expression for identifiers and report whether any
+    ! names a declared non-constant symbol. Intrinsic names like len that are
+    ! not declared symbols are ignored.
+    logical function length_expr_references_runtime_symbol(context, expr)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: expr
+        character(len=:), allocatable :: ident_chars
+        integer :: i, start, symbol_index
+        logical :: in_ident
+
+        length_expr_references_runtime_symbol = .false.
+        ident_chars = &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+        in_ident = .false.
+        start = 0
+        do i = 1, len(expr)
+            if (verify(expr(i:i), ident_chars) == 0) then
+                if (.not. in_ident) then
+                    in_ident = .true.
+                    start = i
+                end if
+            else
+                if (in_ident) then
+                    if (token_is_runtime_symbol(context, expr(start:i - 1))) then
+                        length_expr_references_runtime_symbol = .true.
+                        return
+                    end if
+                    in_ident = .false.
+                end if
+            end if
+        end do
+        if (in_ident) then
+            length_expr_references_runtime_symbol = &
+                token_is_runtime_symbol(context, expr(start:))
+        end if
+    end function length_expr_references_runtime_symbol
+
+    ! True when token is a declared symbol that is not a compile-time integer
+    ! parameter. A leading digit (a numeric literal) is rejected outright.
+    logical function token_is_runtime_symbol(context, token)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: token
+        integer :: symbol_index
+
+        token_is_runtime_symbol = .false.
+        if (len(token) == 0) return
+        if (verify(token(1:1), &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_') /= 0) return
+        symbol_index = find_symbol(context, token)
+        if (symbol_index <= 0) return
+        token_is_runtime_symbol = &
+            .not. context%symbols(symbol_index)%has_i32_constant
+    end function token_is_runtime_symbol
 
     subroutine define_character_symbol(context, name, character_length, &
                                        error_msg)

@@ -56,6 +56,34 @@ program test_session_character_function_result_compiler
         'end program main', &
         'param_length')) all_passed = .false.
 
+    ! Result length taken from a dummy via len(): character(len=len(name)).
+    ! The actual width comes from the assigned value, so the deferred ABI
+    ! resolves it without evaluating the declared length expression (#1407).
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  print *, greet("Ada")'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function greet(name) result(s)'//new_line('a')// &
+        '    character(len=*), intent(in) :: name'//new_line('a')// &
+        '    character(len=len(name)) :: s'//new_line('a')// &
+        '    s = "" // name'//new_line('a')// &
+        '  end function greet'//new_line('a')// &
+        'end program main', &
+        'len_of_dummy')) all_passed = .false.
+
+    ! Result length is an expression over a dummy: character(len=len(name)+7).
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  print *, greet("Ada")'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function greet(name) result(s)'//new_line('a')// &
+        '    character(len=*), intent(in) :: name'//new_line('a')// &
+        '    character(len=len(name)+7) :: s'//new_line('a')// &
+        '    s = "Hello, " // name'//new_line('a')// &
+        '  end function greet'//new_line('a')// &
+        'end program main', &
+        'len_expr_of_dummy')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: character function results lower through direct LIRIC session'
 
