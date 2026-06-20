@@ -14,7 +14,8 @@ module session_program_lowering
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
-                              complex_literal_node, comment_node
+                              complex_literal_node, comment_node, &
+                              namelist_statement_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
                                      select_rank_node, rank_block_node
     use ast_nodes_associate, only: associate_node, association_t
@@ -198,6 +199,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 MAX_GENERIC_SPECIFICS, &
                                                 MODVAR_OK, MODVAR_UNSUPPORTED, &
                                                 common_slot_t, COMMON_MAX_SLOTS, &
+                                                namelist_group_t, &
+                                                MAX_NAMELIST_MEMBERS, &
                                                 VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
                                                 VALUE_C4, VALUE_C8, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &

@@ -295,6 +295,17 @@ module session_program_lowering_types
         integer :: arg_count = 0
     end type external_procedure_t
 
+    integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
+
+    ! A NAMELIST group: maps a group name to its ordered member names so a
+    ! WRITE(unit, nml=group) can emit the group banner plus each member's
+    ! current value (#247 namelist I/O).
+    type, public :: namelist_group_t
+        character(len=64) :: group_name = ''
+        integer :: member_count = 0
+        character(len=64) :: member_names(MAX_NAMELIST_MEMBERS) = ''
+    end type namelist_group_t
+
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
@@ -353,6 +364,9 @@ module session_program_lowering_types
         integer(c_int32_t) :: unit_table_id = -1_c_int32_t
         ! Next unit number assigned by newunit=. Start at 10 to avoid 0/1/6.
         integer(c_int32_t) :: next_file_unit = 10_c_int32_t
+        ! NAMELIST group table (#247 namelist I/O).
+        type(namelist_group_t), allocatable :: namelist_groups(:)
+        integer :: namelist_group_count = 0
     end type lowering_context_t
 
     type, public :: branch_result_t
