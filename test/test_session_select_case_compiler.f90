@@ -24,6 +24,8 @@ program test_session_select_case_compiler
     if (.not. test_select_case_mixed_labels_and_ranges()) all_passed = .false.
     if (.not. test_select_case_non_terminating_arms()) all_passed = .false.
     if (.not. test_select_case_partially_terminating()) all_passed = .false.
+    if (.not. test_select_case_no_default_match()) all_passed = .false.
+    if (.not. test_select_case_no_default_fallthrough()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: SELECT CASE lowers through direct LIRIC'
@@ -346,5 +348,40 @@ contains
         test_select_case_mixed_labels_and_ranges = expect_exit_status( &
             source, 11, '/tmp/ffc_session_select_mixed_range_test')
     end function test_select_case_mixed_labels_and_ranges
+
+    logical function test_select_case_no_default_match()
+        ! No case default arm; the matching case still runs.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 2'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    stop 22'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            '  stop 7'//new_line('a')// &
+            'end program main'
+
+        test_select_case_no_default_match = expect_exit_status( &
+            source, 22, '/tmp/ffc_session_select_no_default_match_test')
+    end function test_select_case_no_default_match
+
+    logical function test_select_case_no_default_fallthrough()
+        ! No case default arm and no matching case; control falls through to the
+        ! statement after the construct.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: x'//new_line('a')// &
+            '  x = 5'//new_line('a')// &
+            '  select case (x)'//new_line('a')// &
+            '  case (2)'//new_line('a')// &
+            '    stop 22'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            '  stop 7'//new_line('a')// &
+            'end program main'
+
+        test_select_case_no_default_fallthrough = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_select_no_default_fall_test')
+    end function test_select_case_no_default_fallthrough
 
 end program test_session_select_case_compiler

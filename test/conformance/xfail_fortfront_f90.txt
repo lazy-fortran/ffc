@@ -11,7 +11,6 @@ call_graph_internal_procedures.f90
 call_graph_mutual_recursion.f90
 call_graph_unused_procedure.f90
 control_flow_associate_construct.f90
-control_flow_nested_select_case.f90
 data_statement_scalar_upgrade.f90
 docs_character_arrays_out.f90
 docs_unsigned_integers_out.f90

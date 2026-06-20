@@ -14,7 +14,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_complex_scalar_lowers()) all_passed = .false.
-    if (.not. test_select_case_diagnostic()) all_passed = .false.
+    if (.not. test_select_case_no_default_lowers()) all_passed = .false.
     if (.not. test_do_zero_step_diagnostic()) all_passed = .false.
     if (.not. test_do_terminating_body_diagnostic()) all_passed = .false.
     if (.not. test_derived_type_diagnostic()) all_passed = .false.
@@ -37,7 +37,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
     if (.not. test_cli_complex_scalar_lowers()) &
         all_passed = .false.
-    if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
+    if (.not. test_cli_select_case_no_default_lowers()) all_passed = .false.
     if (.not. test_cli_do_zero_step_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_terminating_body_diagnostic()) all_passed = .false.
     if (.not. test_cli_derived_type_diagnostic()) all_passed = .false.
@@ -139,7 +139,9 @@ contains
             '/tmp/ffc_session_scalar_type_test')
     end function test_complex_scalar_lowers
 
-    logical function test_select_case_diagnostic()
+    logical function test_select_case_no_default_lowers()
+        ! SELECT CASE without a CASE DEFAULT arm now lowers; the matching arm
+        ! runs and a non-matching selector simply falls through.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: x'//new_line('a')// &
@@ -150,10 +152,10 @@ contains
                                        '  end select'//new_line('a')// &
                                        'end program main'
 
-        test_select_case_diagnostic = expect_error_contains( &
-                                      source, 'unsupported select case statement', &
+        test_select_case_no_default_lowers = expect_output( &
+                                      source, '           1'//new_line('a'), &
                                       '/tmp/ffc_session_select_case_test')
-    end function test_select_case_diagnostic
+    end function test_select_case_no_default_lowers
 
     logical function test_do_zero_step_diagnostic()
         character(len=*), parameter :: source = &
@@ -400,7 +402,8 @@ contains
     end function test_cli_complex_scalar_lowers
 
 
-    logical function test_cli_select_case_diagnostic()
+    logical function test_cli_select_case_no_default_lowers()
+        ! Same construct through the CLI: it compiles cleanly with no diagnostic.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  integer :: x'//new_line('a')// &
@@ -411,10 +414,9 @@ contains
                                        '  end select'//new_line('a')// &
                                        'end program main'
 
-        test_cli_select_case_diagnostic = expect_cli_error_contains( &
-                                          source, 'unsupported select case statement', &
-                                          '/tmp/ffc_cli_select_case_test')
-    end function test_cli_select_case_diagnostic
+        test_cli_select_case_no_default_lowers = expect_cli_no_error( &
+                                          source, '/tmp/ffc_cli_select_case_test')
+    end function test_cli_select_case_no_default_lowers
 
     logical function test_cli_do_zero_step_diagnostic()
         character(len=*), parameter :: source = &

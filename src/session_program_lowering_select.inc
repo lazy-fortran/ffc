@@ -21,14 +21,6 @@
                                            'case arm', error_msg)
             return
         end if
-        if (node%default_index <= 0) then
-            call unsupported_feature_error('select case statement', node%line, &
-                                           node%column, &
-                                           'select case requires a case default arm', &
-                                           error_msg)
-            return
-        end if
-
         if (is_character_selector(arena, node%selector_index, context)) then
             call lower_select_case_character(arena, node, context, error_msg)
             return
@@ -451,7 +443,7 @@
         integer, allocatable :: body(:)
 
         captured = .false.
-        call get_case_default_body(arena, default_idx, body)
+        if (default_idx > 0) call get_case_default_body(arena, default_idx, body)
         if (.not. set_liric_block(context%session, default_block, &
                                   error_msg)) return
         context%current_block_id = default_block
