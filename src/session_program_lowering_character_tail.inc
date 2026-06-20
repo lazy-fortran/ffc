@@ -395,6 +395,84 @@
         call set_empty(error_msg)
     end subroutine lower_trim_deferred
 
+    recursive subroutine concat_char_operands(arena, node_index, context, &
+                                              out_data, out_length, error_msg)
+        ! Resolve a character // concatenation to a fresh null-terminated buffer
+        ! and its i32 length. Each operand is resolved through char_expr_operands
+        ! so either side may itself be a variable, literal, intrinsic, or another
+        ! // chain. The buffer holds left||right with a trailing NUL so it prints
+        ! and concatenates further like any character operand.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: out_data
+        type(lr_operand_desc_t), intent(out) :: out_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bin_op
+        integer :: left_idx, right_idx, bin_line, bin_col
+        type(lr_operand_desc_t) :: left_data, left_len, right_data, right_len
+        type(lr_operand_desc_t) :: total_len, total64, left64, size64
+        type(lr_operand_desc_t) :: buf, right_pos, null_pos, null_ptr
+        character(len=64) :: null_name
+
+        call get_binary_op_info(arena, node_index, bin_op, left_idx, right_idx, &
+                                bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (trim(bin_op) /= '//') then
+            error_msg = 'expected // operator for character concatenation'
+            return
+        end if
+
+        call char_expr_operands(arena, left_idx, context, left_data, left_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_expr_operands(arena, right_idx, context, right_data, &
+                                right_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! total = left_len + right_len; allocate total + 1 bytes for the NUL.
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, left_len, &
+                right_len, total_len, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, total_len, total64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, total64, &
+                i64_immediate(context%session, 1_c_int64_t), size64, &
+                error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) &
+            return
+
+        ! Copy left at offset 0, then right at offset left_len.
+        if (.not. emit_liric_i32_to_i64(context%session, left_len, left64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, buf, left_data, left64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, left64, &
+                right_pos, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, right_len, total64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, right_pos, right_data, total64, &
+                error_msg)) return
+
+        ! Null-terminate so the buffer reads as a C string for print. total64
+        ! still holds right_len here, so widen total_len again for the offset.
+        if (.not. emit_liric_i32_to_i64(context%session, total_len, total64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, total64, &
+                null_pos, error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        write (null_name, '(A,I0)') '.ffc.concat.term.', &
+            context%string_literal_count
+        call materialize_liric_string(context%session, trim(null_name), '', &
+                                      null_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_memcpy(context%session, null_pos, null_ptr, &
+                i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+
+        out_data = buf
+        out_length = total_len
+        call set_empty(error_msg)
+    end subroutine concat_char_operands
+
     subroutine lower_i32_len_trim_intrinsic(arena, node, context, value, &
                                             error_msg)
         type(ast_arena_t), intent(in) :: arena

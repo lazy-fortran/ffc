@@ -101,6 +101,8 @@ module session_program_lowering
                                               LR_FCMP_OGE, &
                                               LR_FCMP_OLT, &
                                               LR_FCMP_OLE, &
+                                              LR_FCMP_OEQ, &
+                                              LR_FCMP_ONE, &
                                               LR_CMP_SGE, &
                                               LR_CMP_SGT, &
                                               LR_CMP_SLE, &
@@ -247,6 +249,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 F64_INTRINSIC_ERFC, F64_INTRINSIC_GAMMA, &
                                                 F64_INTRINSIC_LOG_GAMMA, &
                                                 F64_INTRINSIC_HYPOT, &
+                                                F64_INTRINSIC_AINT, &
+                                                F64_INTRINSIC_ANINT, &
                                                 F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
                                                 F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
                                                 F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
@@ -410,8 +414,16 @@ contains
                                         value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             if (node%has_initializer .and. node%initializer_index > 0) then
-                call lower_scalar_initializer(context, node%var_name, value_kind, &
-                                              node%initializer_index, error_msg)
+                if (value_kind == VALUE_CHARACTER) then
+                    call lower_character_initializer(context, node%var_name, &
+                                                     node%initializer_index, &
+                                                     error_msg)
+                else
+                    call lower_scalar_initializer(context, node%var_name, &
+                                                  value_kind, &
+                                                  node%initializer_index, &
+                                                  error_msg)
+                end if
             end if
         else
             error_msg = 'scalar declaration did not expose a variable name'
@@ -476,6 +488,44 @@ contains
             call store_reference_value(context, symbol_index, value, error_msg)
         end if
     end subroutine lower_scalar_initializer
+
+    subroutine lower_character_initializer(context, name, init_index, error_msg)
+        !! Apply a fixed-length character declaration initializer
+        !! (character(len=N) :: s = "...") by folding the literal, padding to
+        !! the declared width, and materialising it into the symbol's storage.
+        !! Without this the symbol keeps a null value pointer and any read
+        !! (trim, len_trim, print, concat) dereferences garbage.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: init_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: literal_text
+        character(len=64) :: string_name
+        logical :: fold_ok
+        integer :: symbol_index
+
+        call set_empty(error_msg)
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        call concat_character_literals(context%arena, init_index, literal_text, &
+                                       fold_ok)
+        if (.not. fold_ok) then
+            call unsupported_feature_error('character initializer', 0, 0, &
+                'only character-literal initializers are supported by direct '// &
+                'LIRIC session', error_msg)
+            return
+        end if
+        call normalize_character_literal( &
+            literal_text, context%symbols(symbol_index)%character_length)
+        context%string_literal_count = context%string_literal_count + 1
+        write (string_name, '(A,I0)') '.ffc.char.', context%string_literal_count
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      literal_text, &
+                                      context%symbols(symbol_index)%value, &
+                                      error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%has_character_value = .true.
+    end subroutine lower_character_initializer
 
     include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'

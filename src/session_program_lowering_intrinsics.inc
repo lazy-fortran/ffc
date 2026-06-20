@@ -404,6 +404,13 @@
         case (F64_INTRINSIC_HYPOT)
             call lower_f32_libm_call(arena, node, 'hypotf', 2, context, value, &
                                      error_msg)
+        case (F64_INTRINSIC_AINT)
+            call lower_f32_libm_call(arena, node, 'truncf', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ANINT)
+            ! ANINT rounds half away from zero, matching C round().
+            call lower_f32_libm_call(arena, node, 'roundf', 1, context, value, &
+                                     error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -669,6 +676,13 @@
                                      error_msg)
         case (F64_INTRINSIC_HYPOT)
             call lower_f64_libm_call(arena, node, 'hypot', 2, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_AINT)
+            call lower_f64_libm_call(arena, node, 'trunc', 1, context, value, &
+                                     error_msg)
+        case (F64_INTRINSIC_ANINT)
+            ! ANINT rounds half away from zero, matching C round().
+            call lower_f64_libm_call(arena, node, 'round', 1, context, value, &
                                      error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)

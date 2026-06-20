@@ -610,11 +610,12 @@
         end select
     end function is_trim_call
 
-    subroutine char_expr_operands(arena, node_index, context, data_ptr, length, &
-                                  error_msg)
-        ! Resolve a scalar character expression (a variable or a trim() call) to
-        ! its data pointer and i32 length. trim() materialises a fresh
-        ! null-terminated buffer holding the trimmed text.
+    recursive subroutine char_expr_operands(arena, node_index, context, &
+                                            data_ptr, length, error_msg)
+        ! Resolve a scalar character expression (a variable, a // concatenation,
+        ! or a character intrinsic such as trim()) to its data pointer and i32
+        ! length. Concatenations and trim() materialise a fresh null-terminated
+        ! buffer holding the result text.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -627,6 +628,11 @@
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'character expression does not reference an AST node'
+            return
+        end if
+        if (is_binary_op(arena, node_index)) then
+            call concat_char_operands(arena, node_index, context, data_ptr, &
+                                      length, error_msg)
             return
         end if
         if (is_trim_call(arena, node_index)) then
@@ -717,6 +723,61 @@
                             is_named_char_call(arena, node_index, 'adjustr') .or. &
                             is_named_char_call(arena, node_index, 'repeat')
     end function is_char_expr_call
+
+    recursive logical function is_character_concat(arena, node_index, context) &
+            result(is_concat)
+        ! True when node is a // binary op whose operands resolve to character
+        ! data (a literal, a character variable, a character intrinsic, or a
+        ! nested // chain). Used to route print/assign through the runtime
+        ! concatenation path instead of the integer fallback.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: left_idx, right_idx, bin_line, bin_col
+
+        is_concat = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, left_idx, right_idx, &
+                                bin_line, bin_col, bin_err)
+        if (len_trim(bin_err) > 0) return
+        if (trim(bin_op) /= '//') return
+        is_concat = is_character_operand(arena, left_idx, context) .or. &
+                    is_character_operand(arena, right_idx, context)
+    end function is_character_concat
+
+    recursive logical function is_character_operand(arena, node_index, context) &
+            result(is_char)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        is_char = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_literal(arena, node_index)) then
+            is_char = is_character_literal(arena, node_index)
+            return
+        end if
+        if (is_char_expr_call(arena, node_index)) then
+            is_char = .true.
+            return
+        end if
+        if (is_character_concat(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            if (len_trim(id_err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index > 0) &
+                is_char = context%symbols(symbol_index)%value_kind == &
+                          VALUE_CHARACTER
+        end if
+    end function is_character_operand
 
     logical function is_named_char_call(arena, node_index, name)
         type(ast_arena_t), intent(in) :: arena

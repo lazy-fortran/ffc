@@ -31,7 +31,7 @@
     end function is_f64_intrinsic_expression
 
     logical function is_real_array_reduction(arena, node, context, vk) result(ok)
-        !! True when node is a sum/product/maxval/minval call whose first
+        !! True when node is a sum/product/maxval/minval/norm2 call whose first
         !! argument is a fixed-size array of value kind vk.
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -43,7 +43,7 @@
         ok = .false.
         if (.not. allocated(node%name)) return
         select case (trim(node%name))
-        case ('sum', 'product', 'maxval', 'minval')
+        case ('sum', 'product', 'maxval', 'minval', 'norm2')
         case default
             return
         end select

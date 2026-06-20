@@ -83,6 +83,177 @@
         call set_empty(error_msg)
     end subroutine lower_ubound_intrinsic
 
+    ! Resolve a mask argument that is an elementwise comparison (a > 2, a == 0,
+    ! a >= 0): determine the array operand symbol, its size, the scalar operand
+    ! AST index, the comparison predicate, and whether the array is on the left.
+    ! Leaves mask_sym = 0 when node is not a supported comparison mask.
+    subroutine resolve_comparison_mask(arena, node_index, context, mask_sym, &
+                                       scalar_index, array_on_left, source_op, &
+                                       error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: mask_sym
+        integer, intent(out) :: scalar_index
+        logical, intent(out) :: array_on_left
+        character(len=:), allocatable, intent(out) :: source_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: left_idx, right_idx, line, col
+        character(len=:), allocatable :: name, name_err
+        integer :: sym
+
+        call set_empty(error_msg)
+        mask_sym = 0
+        scalar_index = 0
+        array_on_left = .true.
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, source_op, left_idx, &
+                                right_idx, line, col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (trim(source_op))
+        case ('==', '=', '/=', '!=', '>', '>=', '<', '<=')
+        case default
+            call set_empty(source_op)
+            return
+        end select
+
+        if (is_identifier(arena, left_idx)) then
+            call get_identifier_name(arena, left_idx, name, name_err)
+            if (len_trim(name_err) == 0) then
+                sym = find_symbol(context, name)
+                if (sym > 0) then
+                    if (context%symbols(sym)%is_array) then
+                        mask_sym = sym
+                        scalar_index = right_idx
+                        array_on_left = .true.
+                        return
+                    end if
+                end if
+            end if
+        end if
+        if (is_identifier(arena, right_idx)) then
+            call get_identifier_name(arena, right_idx, name, name_err)
+            if (len_trim(name_err) == 0) then
+                sym = find_symbol(context, name)
+                if (sym > 0) then
+                    if (context%symbols(sym)%is_array) then
+                        mask_sym = sym
+                        scalar_index = left_idx
+                        array_on_left = .false.
+                        return
+                    end if
+                end if
+            end if
+        end if
+    end subroutine resolve_comparison_mask
+
+    ! Emit the i-th element of a comparison mask as an i32 0/1 operand.
+    subroutine lower_comparison_mask_element(context, mask_sym, scalar_index, &
+                                             array_on_left, source_op, arena, &
+                                             linear_index, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: mask_sym
+        integer, intent(in) :: scalar_index
+        logical, intent(in) :: array_on_left
+        character(len=*), intent(in) :: source_op
+        type(ast_arena_t), intent(in) :: arena
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: elem, scalar, lhs, rhs
+        integer(c_int) :: predicate
+        integer :: vk
+
+        call load_array_linear_element(context, mask_sym, linear_index, elem, &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
+        vk = context%symbols(mask_sym)%value_kind
+        select case (vk)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, scalar_index, context, scalar, &
+                                      error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, scalar_index, context, scalar, &
+                                      error_msg)
+        case default
+            call lower_i32_expression(arena, scalar_index, context, scalar, &
+                                      error_msg)
+        end select
+        if (len_trim(error_msg) > 0) return
+
+        if (array_on_left) then
+            lhs = elem
+            rhs = scalar
+        else
+            lhs = scalar
+            rhs = elem
+        end if
+
+        select case (vk)
+        case (VALUE_F32)
+            call real_compare_predicate(source_op, predicate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_fcmp(context%session, predicate, lhs, rhs, &
+                                          value, error_msg)) return
+        case (VALUE_F64)
+            call real_compare_predicate(source_op, predicate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_fcmp(context%session, predicate, lhs, rhs, &
+                                          value, error_msg)) return
+        case default
+            call integer_compare_predicate(source_op, predicate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, predicate, lhs, rhs, &
+                                          value, error_msg)) return
+        end select
+    end subroutine lower_comparison_mask_element
+
+    ! Float comparison predicate mirroring integer_compare_predicate. Uses the
+    ! ordered float predicates so NaN compares false, matching Fortran.
+    subroutine real_compare_predicate(source_op, predicate, error_msg)
+        character(len=*), intent(in) :: source_op
+        integer(c_int), intent(out) :: predicate
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (trim(source_op))
+        case ('==', '=')
+            predicate = LR_FCMP_OEQ
+        case ('/=', '!=')
+            predicate = LR_FCMP_ONE
+        case ('>')
+            predicate = LR_FCMP_OGT
+        case ('>=')
+            predicate = LR_FCMP_OGE
+        case ('<')
+            predicate = LR_FCMP_OLT
+        case ('<=')
+            predicate = LR_FCMP_OLE
+        case default
+            error_msg = 'unsupported real comparison: '//trim(source_op)
+            predicate = LR_FCMP_OEQ
+        end select
+    end subroutine real_compare_predicate
+
+    ! True when node is an any()/all() call, which yield a LOGICAL scalar and so
+    ! must print as T/F rather than the i32 1/0 of their integer lowering.
+    logical function is_logical_reduction_call(arena, node_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_logical_reduction_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%name)) return
+            if (node%is_array_access) return
+            if (is_contained_i32_function(context, node%name)) return
+            is_logical_reduction_call = same_name(node%name, 'any') .or. &
+                                        same_name(node%name, 'all')
+        end select
+    end function is_logical_reduction_call
+
     ! count(mask): number of .true. (nonzero) elements in a logical array.
     subroutine lower_logical_array_count_intrinsic(arena, node, context, value, &
                                                    error_msg)
@@ -91,14 +262,39 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: mask_name
-        integer :: sym, array_size, i
+        character(len=:), allocatable :: mask_name, source_op
+        integer :: sym, array_size, i, scalar_index
+        logical :: array_on_left
         type(lr_operand_desc_t) :: elem, total, next_total
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'count requires one logical array argument'
             return
         end if
+
+        ! A comparison-expression mask (count(a > 2)) reduces over the compared
+        ! array's elements; an identifier mask names a declared logical array.
+        call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
+                                     scalar_index, array_on_left, source_op, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (sym > 0) then
+            array_size = context%symbols(sym)%array_size
+            total = i32_immediate(context%session, 0_c_int64_t)
+            do i = 0, array_size - 1
+                call lower_comparison_mask_element(context, sym, scalar_index, &
+                    array_on_left, source_op, arena, int(i, c_int64_t), elem, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, total, &
+                                          elem, next_total, error_msg)) return
+                total = next_total
+            end do
+            value = total
+            call set_empty(error_msg)
+            return
+        end if
+
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, mask_name)
@@ -132,14 +328,38 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: mask_name
-        integer :: sym, array_size, i
+        character(len=:), allocatable :: mask_name, source_op
+        integer :: sym, array_size, i, scalar_index
+        logical :: array_on_left
         type(lr_operand_desc_t) :: elem, acc, next_acc
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'any requires one logical array argument'
             return
         end if
+
+        call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
+                                     scalar_index, array_on_left, source_op, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! OR all 0/1 mask elements: nonzero iff any is .true.
+        if (sym > 0) then
+            array_size = context%symbols(sym)%array_size
+            acc = i32_immediate(context%session, 0_c_int64_t)
+            do i = 0, array_size - 1
+                call lower_comparison_mask_element(context, sym, scalar_index, &
+                    array_on_left, source_op, arena, int(i, c_int64_t), elem, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, elem, &
+                                          next_acc, error_msg)) return
+                acc = next_acc
+            end do
+            value = acc
+            call set_empty(error_msg)
+            return
+        end if
+
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, mask_name)
@@ -151,7 +371,6 @@
             error_msg = 'any requires an array argument: '//trim(mask_name)
             return
         end if
-        ! OR all i32 elements: nonzero iff any is .true.
         array_size = context%symbols(sym)%array_size
         acc = i32_immediate(context%session, 0_c_int64_t)
         do i = 0, array_size - 1
@@ -174,14 +393,41 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: mask_name
-        integer :: sym, array_size, i
+        character(len=:), allocatable :: mask_name, source_op
+        integer :: sym, array_size, i, scalar_index
+        logical :: array_on_left
         type(lr_operand_desc_t) :: elem, acc, next_acc, cond
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'all requires one logical array argument'
             return
         end if
+
+        call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
+                                     scalar_index, array_on_left, source_op, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! Normalise each mask element to 0/1, AND them: 1 iff all are .true.
+        if (sym > 0) then
+            array_size = context%symbols(sym)%array_size
+            acc = i32_immediate(context%session, 1_c_int64_t)
+            do i = 0, array_size - 1
+                call lower_comparison_mask_element(context, sym, scalar_index, &
+                    array_on_left, source_op, arena, int(i, c_int64_t), elem, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, elem, &
+                        i32_immediate(context%session, 0_c_int64_t), cond, &
+                        error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, cond, &
+                                          next_acc, error_msg)) return
+                acc = next_acc
+            end do
+            value = acc
+            call set_empty(error_msg)
+            return
+        end if
+
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, mask_name)
