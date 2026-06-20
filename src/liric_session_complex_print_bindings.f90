@@ -444,7 +444,9 @@ contains
         synthesize_fmt_r4_helper = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        if (.not. cx_create_cstring(session, '.ffc.c4.fe', '%.8e', g_fe, &
+        ! gfortran complex(4) exponential form carries 9 fraction digits
+        ! (d.dddddddddE+nn, 9 significant). %.9e matches; %.8e drops one.
+        if (.not. cx_create_cstring(session, '.ffc.c4.fe', '%.9e', g_fe, &
                                     error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c4.ff', '%#.*f', g_ff, &
                                     error_msg)) return
