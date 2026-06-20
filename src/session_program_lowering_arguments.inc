@@ -70,6 +70,13 @@
                 call box_class_star_actual(arena, arg_indices(i), context, &
                                            args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
+                     callee_dummy_is_array(arena, callee_name, i)) then
+                ! Explicit-shape array actual to an array dummy: pass the
+                ! contiguous base address; the callee binds it as its dummy view.
+                call whole_array_actual_address(arena, arg_indices(i), context, &
+                                                 args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            default_kind, args(i), &
@@ -169,6 +176,48 @@
         if (symbol_index > 0) actual_is_derived = &
             context%symbols(symbol_index)%is_derived
     end function actual_is_derived
+
+    logical function actual_is_whole_array(arena, node_index, context)
+        ! Whether an actual argument is a plain whole-array identifier (not an
+        ! element access) backed by explicit-shape, non-allocatable storage.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_whole_array = .false.
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) return
+        actual_is_whole_array = context%symbols(symbol_index)%is_array .and. &
+                                .not. context%symbols(symbol_index)%is_allocatable
+    end function actual_is_whole_array
+
+    subroutine whole_array_actual_address(arena, node_index, context, address, &
+                                          error_msg)
+        ! Pass an explicit-shape array actual by reference: its contiguous base
+        ! address (element_address), matching the dummy parameter-pointer view.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'array argument was not declared: '//trim(id_name)
+            return
+        end if
+        address = context%symbols(symbol_index)%element_address
+        call set_empty(error_msg)
+    end subroutine whole_array_actual_address
 
     subroutine derived_actual_address(arena, node_index, context, address, &
                                       error_msg)
@@ -322,6 +371,9 @@
         end if
         handled = .true.
         if (context%symbols(symbol_index)%is_array) then
+            ! Array-to-array passing is handled earlier in prepare_reference_args
+            ! after checking the dummy's rank. Reaching here means the dummy is
+            ! scalar: a rank mismatch this scalar path cannot honor.
             call unsupported_feature_error('array argument', &
                                            get_node_line(arena, node_index), &
                                            get_node_column(arena, node_index), &

@@ -139,10 +139,8 @@ issue_2450_procedure_interfaces.f90
 issue_2452_roundtrip_timeout.f90
 issue_2453_character_array_constructor.f90
 issue_2455_array_constructor_arg.f90
-issue_2455_multi_variable_decl.f90
 issue_2455_nested_array_constructor.f90
 issue_2455_nested_function_args.f90
-issue_2455_subroutine_only.f90
 issue_2456_assumed_char_length.f90
 issue_2457_logical_type_mismatch.f90
 issue_2458_multi_array_declaration.f90

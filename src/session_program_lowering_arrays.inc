@@ -235,10 +235,23 @@
         integer(c_int64_t) :: lower_value
         integer(c_int64_t) :: upper_value
         integer(c_int64_t) :: extent
+        logical :: is_dummy
+        type(lr_operand_desc_t) :: param_base
 
-        if (find_symbol(context, name) > 0) then
-            error_msg = 'duplicate array declaration: '//trim(name)
-            return
+        ! An array body declaration whose name matches a dummy argument binds
+        ! the explicit-shape array view onto the parameter pointer instead of
+        ! allocating fresh storage; the caller passes the actual's base address.
+        index = find_symbol(context, name)
+        is_dummy = .false.
+        if (index > 0) then
+            if (context%symbols(index)%is_parameter .and. &
+                .not. context%symbols(index)%is_array) then
+                is_dummy = .true.
+                param_base = context%symbols(index)%address
+            else
+                error_msg = 'duplicate array declaration: '//trim(name)
+                return
+            end if
         end if
 
         dim_count = 0
@@ -246,9 +259,10 @@
             dim_count = size(node%dimension_indices)
         end if
 
-        call grow_symbols(context)
-
-        index = context%symbol_count + 1
+        if (.not. is_dummy) then
+            call grow_symbols(context)
+            index = context%symbol_count + 1
+        end if
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = value_kind
         context%symbols(index)%is_array = .true.
@@ -279,6 +293,14 @@
                     context%symbols(index)%array_dim_sizes(i) = int(upper_value)
                 end select
             end do
+        end if
+
+        if (is_dummy) then
+            ! Element addressing GEPs the [N x T] type onto this base, so the
+            ! dummy reads and writes the caller's contiguous storage in place.
+            context%symbols(index)%element_address = param_base
+            call set_empty(error_msg)
+            return
         end if
 
         select case (value_kind)
