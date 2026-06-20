@@ -303,21 +303,22 @@ contains
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
             call unsupported_feature_error('pointer/target array declaration', &
                 node%line, node%column, &
-                'direct LIRIC session supports scalar integer pointer/target '// &
-                'only (#245 slice B3a)', error_msg)
+                'direct LIRIC session supports scalar integer, real, and '// &
+                'logical pointer/target only (#245 slice B3a)', error_msg)
             return
         end if
         if (node%is_pointer .or. node%is_target) then
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (value_kind /= VALUE_I32) then
+            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+                value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
                 call unsupported_feature_error('pointer/target declaration', &
                     node%line, node%column, &
-                    'direct LIRIC session supports scalar integer pointer/target '// &
-                    'only (#245 slice B3a)', error_msg)
+                    'direct LIRIC session supports scalar integer, real, and '// &
+                    'logical pointer/target only (#245 slice B3a)', error_msg)
                 return
             end if
-            call lower_scalar_pointer_target(node, context, error_msg)
+            call lower_scalar_pointer_target(node, context, value_kind, error_msg)
             return
         end if
         if (node%is_array) then
