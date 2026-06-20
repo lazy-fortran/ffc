@@ -27,7 +27,13 @@
         call set_empty(error_msg)
 
         node_type = get_node_type_at(arena, root_index)
-        if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            ! A bare module root: register its procedures so a self- or
+            ! sibling-call inside a module procedure resolves (e.g. a recursive
+            ! module function referencing itself).
+            call register_module_procedures(arena, root_index, context, error_msg)
+            return
+        end if
         call get_program_body_info(arena, root_index, &
                                    prog_name, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
