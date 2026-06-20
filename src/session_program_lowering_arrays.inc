@@ -1069,6 +1069,21 @@
                                                       context, error_msg)
                         return
                     end if
+                    if (same_name(rhs%name, 'cshift')) then
+                        call lower_shift_assignment(arena, node, symbol_index, &
+                                                    context, .true., error_msg)
+                        return
+                    end if
+                    if (same_name(rhs%name, 'eoshift')) then
+                        call lower_shift_assignment(arena, node, symbol_index, &
+                                                    context, .false., error_msg)
+                        return
+                    end if
+                    if (same_name(rhs%name, 'merge')) then
+                        call lower_merge_assignment(arena, node, symbol_index, &
+                                                    context, error_msg)
+                        return
+                    end if
                 end if
             end select
         end if
@@ -1925,6 +1940,216 @@
             return
         end select
     end subroutine lower_transpose_assignment
+
+    ! cshift(a, s) / eoshift(a, s) for a rank-1 array. circular selects the
+    ! circular variant (cshift); otherwise eoshift fills shifted-out positions
+    ! with the type zero. The shift count s must be a compile-time integer; only
+    ! default eoshift boundary (zero / .false.) is supported.
+    subroutine lower_shift_assignment(arena, node, symbol_index, context, &
+                                      circular, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: circular
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: source_index
+        integer :: i, n
+        integer(c_int64_t) :: shift
+        integer(c_int64_t) :: src
+        character(len=:), allocatable :: intrinsic_name
+
+        if (circular) then
+            intrinsic_name = 'cshift'
+        else
+            intrinsic_name = 'eoshift'
+        end if
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 2) then
+                error_msg = trim(intrinsic_name)//' requires an array and a shift'
+                return
+            end if
+            if (size(rhs%arg_indices) > 2) then
+                error_msg = trim(intrinsic_name)// &
+                            ' supports only positional array and shift arguments'
+                return
+            end if
+            call resolve_i32_array_argument(arena, rhs, 1, context, &
+                                            intrinsic_name, 'source array', &
+                                            source_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%symbols(source_index)%array_rank /= 1) then
+                error_msg = trim(intrinsic_name)//' supports only rank-1 arrays'
+                return
+            end if
+            if (context%symbols(symbol_index)%array_rank /= 1) then
+                error_msg = trim(intrinsic_name)// &
+                            ' result must be assigned to a rank-1 array'
+                return
+            end if
+            n = context%symbols(source_index)%array_size
+            if (context%symbols(symbol_index)%array_size /= n) then
+                error_msg = trim(intrinsic_name)// &
+                            ' result shape does not match the target array'
+                return
+            end if
+            call eval_i32_constant(arena, rhs%arg_indices(2), context, shift, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            do i = 0, n - 1
+                src = int(i, c_int64_t) + shift
+                if (circular) then
+                    src = modulo(src, int(n, c_int64_t))
+                    call load_array_linear_element(context, source_index, src, &
+                                                   value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else if (src >= 0_c_int64_t .and. src < int(n, c_int64_t)) then
+                    call load_array_linear_element(context, source_index, src, &
+                                                   value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else
+                    call zero_operand(context, &
+                                      context%symbols(symbol_index)%value_kind, &
+                                      value)
+                end if
+                call store_array_linear_element(context, symbol_index, &
+                                                int(i, c_int64_t), value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            call set_empty(error_msg)
+        class default
+            error_msg = trim(intrinsic_name)//' requires an intrinsic call'
+            return
+        end select
+    end subroutine lower_shift_assignment
+
+    ! merge(tsource, fsource, mask) for rank-1 arrays: per element pick from
+    ! tsource where mask is .true., else from fsource. All three arrays must
+    ! share the result shape; mask is a logical array stored as i32 (nonzero
+    ! means .true.).
+    subroutine lower_merge_assignment(arena, node, symbol_index, context, &
+                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: t_val, f_val, mask_val, cond, selected
+        type(lr_operand_desc_t) :: zero
+        integer :: t_index, f_index, m_index
+        integer :: i, n
+
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 3) then
+                error_msg = 'merge requires tsource, fsource, and mask arrays'
+                return
+            end if
+            call resolve_i32_array_argument(arena, rhs, 1, context, 'merge', &
+                                            'tsource', t_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call resolve_i32_array_argument(arena, rhs, 2, context, 'merge', &
+                                            'fsource', f_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call resolve_logical_mask_argument(arena, rhs, 3, context, 'merge', &
+                                               m_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%symbols(symbol_index)%array_rank /= 1 .or. &
+                context%symbols(t_index)%array_rank /= 1 .or. &
+                context%symbols(f_index)%array_rank /= 1 .or. &
+                context%symbols(m_index)%array_rank /= 1) then
+                error_msg = 'merge supports only rank-1 arrays'
+                return
+            end if
+            n = context%symbols(symbol_index)%array_size
+            if (context%symbols(t_index)%array_size /= n .or. &
+                context%symbols(f_index)%array_size /= n .or. &
+                context%symbols(m_index)%array_size /= n) then
+                error_msg = 'merge operands must share the result shape'
+                return
+            end if
+            zero = i32_immediate(context%session, 0_c_int64_t)
+            do i = 0, n - 1
+                call load_array_linear_element(context, m_index, &
+                                               int(i, c_int64_t), mask_val, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        mask_val, zero, cond, error_msg)) return
+                call load_array_linear_element(context, t_index, &
+                                               int(i, c_int64_t), t_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call load_array_linear_element(context, f_index, &
+                                               int(i, c_int64_t), f_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call select_value(context, cond, t_val, f_val, selected, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_array_linear_element(context, symbol_index, &
+                                                int(i, c_int64_t), selected, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            call set_empty(error_msg)
+        class default
+            error_msg = 'merge requires an intrinsic call'
+            return
+        end select
+    end subroutine lower_merge_assignment
+
+    ! Resolve a logical mask array argument (merge): an identifier naming a
+    ! declared logical array. Stored as i32, so callers compare against zero.
+    subroutine resolve_logical_mask_argument(arena, node, arg_pos, context, &
+                                             intrinsic_name, symbol_index, &
+                                             error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: arg_pos
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: intrinsic_name
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+
+        symbol_index = 0
+        if (.not. is_identifier(arena, node%arg_indices(arg_pos))) then
+            error_msg = trim(intrinsic_name)//' requires an identifier mask argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(arg_pos), arg_name, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, arg_name)
+        if (symbol_index <= 0) then
+            error_msg = trim(intrinsic_name)//' mask was not declared: '// &
+                        trim(arg_name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array .or. &
+            context%symbols(symbol_index)%value_kind /= VALUE_LOGICAL) then
+            error_msg = trim(intrinsic_name)//' requires a logical array mask: '// &
+                        trim(arg_name)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine resolve_logical_mask_argument
+
+    ! Type-appropriate zero immediate for shift fill values.
+    subroutine zero_operand(context, value_kind, value)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(out) :: value
+
+        select case (value_kind)
+        case (VALUE_F32)
+            value = liric_f32_immediate(context%session, 0.0_c_float)
+        case (VALUE_F64)
+            value = liric_f64_immediate(context%session, 0.0_c_double)
+        case default
+            value = i32_immediate(context%session, 0_c_int64_t)
+        end select
+    end subroutine zero_operand
 
     subroutine lower_reshape_assignment(arena, node, symbol_index, context, &
                                         error_msg)
