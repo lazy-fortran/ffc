@@ -4,15 +4,7 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: condition
-        type(symbol_t), allocatable :: saved_symbols(:)
-        integer :: saved_symbol_count
-        integer(c_int32_t) :: then_block
-        integer(c_int32_t) :: else_block
-        integer(c_int32_t) :: merge_block
-        type(branch_result_t) :: then_result
-        type(branch_result_t) :: else_result
-        integer :: i
+        integer :: empty_else(0)
 
         if (node%condition_index <= 0) then
             error_msg = 'direct LIRIC session IF requires a condition index'
@@ -23,8 +15,50 @@
             return
         end if
 
-        call lower_i1_condition(arena, node%condition_index, context, &
-                                condition, error_msg)
+        ! An ELSE IF chain is lowered as a cascade: arm 0 is the main IF, and
+        ! each elseif becomes the IF nested in the previous arm's else branch.
+        ! This reuses the two-way symbol merge at every level. Arithmetic IF
+        ! desugars its expr==0 arm into exactly such an elseif (#280).
+        if (allocated(node%else_body_indices)) then
+            call lower_if_arm(arena, node, 0, node%else_body_indices, context, &
+                              value, error_msg)
+        else
+            call lower_if_arm(arena, node, 0, empty_else, context, value, &
+                              error_msg)
+        end if
+    end subroutine lower_if
+
+    recursive subroutine lower_if_arm(arena, node, elseif_index, else_indices, &
+                                      context, value, error_msg)
+        ! Lower one arm of an IF / ELSE IF cascade. elseif_index 0 is the main
+        ! IF condition and THEN body; index k>0 selects node%elseif_blocks(k).
+        ! else_indices is the final ELSE body, reached only after the last arm.
+        type(ast_arena_t), intent(in) :: arena
+        type(if_node), intent(in) :: node
+        integer, intent(in) :: elseif_index
+        integer, intent(in) :: else_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: condition
+        type(symbol_t), allocatable :: saved_symbols(:)
+        integer :: saved_symbol_count
+        integer(c_int32_t) :: then_block, else_block, merge_block
+        type(branch_result_t) :: then_result, else_result
+        integer :: condition_index, n_elseif, i
+        logical :: has_more_arms
+
+        n_elseif = 0
+        if (allocated(node%elseif_blocks)) n_elseif = size(node%elseif_blocks)
+        if (elseif_index == 0) then
+            condition_index = node%condition_index
+        else
+            condition_index = node%elseif_blocks(elseif_index)%condition_index
+        end if
+        has_more_arms = elseif_index < n_elseif
+
+        call lower_i1_condition(arena, condition_index, context, condition, &
+                                error_msg)
         if (len_trim(error_msg) > 0) return
 
         then_block = create_liric_block(context%session)
@@ -39,27 +73,40 @@
         end do
         saved_symbol_count = context%symbol_count
 
-        call lower_if_branch(arena, node%then_body_indices, then_block, &
-                             merge_block, context, value, then_result, error_msg)
+        if (elseif_index == 0) then
+            call lower_if_branch(arena, node%then_body_indices, then_block, &
+                                 merge_block, context, value, then_result, &
+                                 error_msg)
+        else
+            call lower_if_branch(arena, &
+                                 node%elseif_blocks(elseif_index)%body_indices, &
+                                 then_block, merge_block, context, value, &
+                                 then_result, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         do i = 1, saved_symbol_count
             context%symbols(i) = saved_symbols(i)
         end do
         context%symbol_count = saved_symbol_count
-        if (allocated(node%else_body_indices)) then
-            call lower_if_branch(arena, node%else_body_indices, else_block, &
-                                 merge_block, context, value, else_result, &
-                                 error_msg)
+
+        ! The else branch is either the next elseif arm or the final else body.
+        if (.not. set_liric_block(context%session, else_block, error_msg)) return
+        context%current_block_id = else_block
+        if (has_more_arms) then
+            call lower_if_arm(arena, node, elseif_index + 1, else_indices, &
+                              context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call snapshot_branch_result(context, else_result)
+            if (.not. else_result%terminated) then
+                if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                    return
+            end if
         else
-            block
-                integer :: empty_else(0)
-                call lower_if_branch(arena, empty_else, else_block, &
-                                     merge_block, context, value, else_result, &
-                                     error_msg)
-            end block
+            call lower_if_branch(arena, else_indices, else_block, merge_block, &
+                                 context, value, else_result, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
-        if (len_trim(error_msg) > 0) return
 
         do i = 1, saved_symbol_count
             context%symbols(i) = saved_symbols(i)
@@ -92,7 +139,25 @@
             context%symbol_count = else_result%symbol_count
             call set_empty(error_msg)
         end if
-    end subroutine lower_if
+    end subroutine lower_if_arm
+
+    subroutine snapshot_branch_result(context, result)
+        ! Capture the current block's terminated state, symbol table, and
+        ! predecessor block id into a branch_result_t. Used for an else arm that
+        ! was lowered by a nested IF cascade rather than lower_if_branch.
+        type(lowering_context_t), intent(in) :: context
+        type(branch_result_t), intent(out) :: result
+        integer :: i
+
+        result%terminated = context%current_block_terminated
+        if (allocated(result%symbols)) deallocate(result%symbols)
+        allocate(result%symbols(context%symbol_count))
+        do i = 1, context%symbol_count
+            result%symbols(i) = context%symbols(i)
+        end do
+        result%symbol_count = context%symbol_count
+        result%predecessor_block_id = context%current_block_id
+    end subroutine snapshot_branch_result
 
     subroutine lower_if_branch(arena, node_indices, block_id, merge_block, &
                                context, value, result, error_msg)

@@ -3,7 +3,6 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Promote entries by removing them from this file when ffc starts passing.
-arithmetic_if_whitespace_labels.f90
 ast_coverage_control_flow.f90
 ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
