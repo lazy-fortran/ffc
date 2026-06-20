@@ -41,9 +41,11 @@ contains
 
         write (timeout_text, '(I0)') RUN_TIMEOUT_SECONDS
         call execute_command_line('rm -f '//report//' '//log_path)
+        ! Generous per-file timeout so a single slow compile under full-suite
+        ! load is not a false failure (idle compiles are well under a second).
         cmd = 'timeout '//trim(timeout_text)//' bash '//SCRIPT// &
               ' --suite '//suite//' --report '//report// &
-              ' > '//log_path//' 2>&1'
+              ' --timeout 30 > '//log_path//' 2>&1'
         call execute_command_line(cmd, exitstat=exit_stat)
 
         if (exit_stat /= 0) then
