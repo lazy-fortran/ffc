@@ -43,6 +43,8 @@ components, and support single inheritance (`type, extends(parent) :: child`)
 with parent-first component layout. A module procedure may `contains` internal procedures, lowered as
 flat functions. Module-level integer variables persist as globals and are
 visible across `use`. The `associate` construct binds scalar selectors. The
+`where` construct masks elementwise assignment over rank-1 integer and real
+arrays, including a final `elsewhere`. The
 scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
 `floor`, `ceiling`, `real`, `dble` are supported, as are the bit intrinsics
 `iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and

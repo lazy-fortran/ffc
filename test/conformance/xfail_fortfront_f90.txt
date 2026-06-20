@@ -20,7 +20,6 @@ close_select_case.f90
 control_flow_associate_construct.f90
 control_flow_forall_construct.f90
 control_flow_nested_select_case.f90
-control_flow_where_construct.f90
 data_statement_scalar_upgrade.f90
 docs_character_arrays_out.f90
 docs_mixed_type_operations_out.f90
@@ -40,7 +39,6 @@ issue2456.f90
 issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
 issue_1337_forall.f90
-issue_1338_where.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1353_class_pointer_declaration.f90

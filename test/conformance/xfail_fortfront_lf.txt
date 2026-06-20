@@ -122,7 +122,6 @@ issue_playtest5_function_no_return_type.lf
 issue_playtest5_nested_function_chaos.lf
 issue_playtest5_reshape_allocatable_never_allocated.lf
 issue_playtest5_subroutine_name_collision.lf
-issue_playtest5_where_scalar_not_array.lf
 logical_ops.lf
 matrix_literal_addition.lf
 module_contains_suite.lf
