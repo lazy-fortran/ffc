@@ -56,8 +56,8 @@ contains
     end function test_tanh_zero
 
     logical function test_asin_one()
-        ! asinf(1.0f) at runtime; gfortran constant-folds differently
-        test_asin_one = check('asin(1.0)', '   1.57079625    ', &
+        ! asin of a default real lowers to asinf and matches gfortran at runtime
+        test_asin_one = check('asin(1.0)', '   1.57079637    ', &
                               '/tmp/ffc_session_asin_test')
     end function test_asin_one
 

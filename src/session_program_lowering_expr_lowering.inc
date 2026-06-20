@@ -394,6 +394,15 @@
                     if (symbol_index > 0) then
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
                     end if
+                else if (f64_intrinsic_id(node%name) /= F64_INTRINSIC_NONE) then
+                    ! Elemental real intrinsics (sqrt, sin, abs, ...) return the
+                    ! kind of their argument, so a nested sqrt(sqrt(x)) is f32
+                    ! exactly when its argument is. Recurse on the first argument.
+                    if (allocated(node%arg_indices)) then
+                        if (size(node%arg_indices) >= 1) &
+                            is_f32 = is_f32_expression(arena, node%arg_indices(1), &
+                                                       context)
+                    end if
                 else
                     is_f32 = is_contained_f32_function(context, node%name) .or. &
                         generic_call_return_kind(context, node%name, &

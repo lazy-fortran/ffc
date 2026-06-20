@@ -1,6 +1,7 @@
 program test_session_unsupported_diagnostics
     use ffc_test_support, only: expect_error_contains, &
-                                expect_cli_error_contains
+                                expect_cli_error_contains, &
+                                expect_output, expect_cli_no_error
     implicit none
 
     logical :: all_passed
@@ -12,7 +13,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_unassigned_character_print_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_unsupported_scalar_type_diagnostic()) all_passed = .false.
+    if (.not. test_complex_scalar_lowers()) all_passed = .false.
     if (.not. test_select_case_diagnostic()) all_passed = .false.
     if (.not. test_do_zero_step_diagnostic()) all_passed = .false.
     if (.not. test_do_terminating_body_diagnostic()) all_passed = .false.
@@ -34,7 +35,7 @@ program test_session_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
-    if (.not. test_cli_unsupported_scalar_type_diagnostic()) &
+    if (.not. test_cli_complex_scalar_lowers()) &
         all_passed = .false.
     if (.not. test_cli_select_case_diagnostic()) all_passed = .false.
     if (.not. test_cli_do_zero_step_diagnostic()) all_passed = .false.
@@ -122,16 +123,19 @@ contains
                                               '/tmp/ffc_session_char_param_test')
     end function test_character_parameter_diagnostic
 
-    logical function test_unsupported_scalar_type_diagnostic()
+    ! complex scalars are supported now; verify they lower and match gfortran.
+    logical function test_complex_scalar_lowers()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  complex :: z'//new_line('a')// &
+                                       '  z = (1.0, 2.0)'//new_line('a')// &
+                                       '  print *, z'//new_line('a')// &
                                        'end program main'
 
-        test_unsupported_scalar_type_diagnostic = expect_error_contains( &
-                                                  source, 'unsupported scalar type', &
-                                                  '/tmp/ffc_session_scalar_type_test')
-    end function test_unsupported_scalar_type_diagnostic
+        test_complex_scalar_lowers = expect_output( &
+            source, '             (1.00000000,2.00000000)'//new_line('a'), &
+            '/tmp/ffc_session_scalar_type_test')
+    end function test_complex_scalar_lowers
 
     logical function test_select_case_diagnostic()
         character(len=*), parameter :: source = &
@@ -377,16 +381,17 @@ contains
                                                   '/tmp/ffc_cli_char_param_test')
     end function test_cli_character_parameter_diagnostic
 
-    logical function test_cli_unsupported_scalar_type_diagnostic()
+    logical function test_cli_complex_scalar_lowers()
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  complex :: z'//new_line('a')// &
+                                       '  z = (1.0, 2.0)'//new_line('a')// &
+                                       '  print *, z'//new_line('a')// &
                                        'end program main'
 
-        test_cli_unsupported_scalar_type_diagnostic = expect_cli_error_contains( &
-                                                    source, 'unsupported scalar type', &
-                                                      '/tmp/ffc_cli_scalar_type_test')
-    end function test_cli_unsupported_scalar_type_diagnostic
+        test_cli_complex_scalar_lowers = expect_cli_no_error( &
+            source, '/tmp/ffc_cli_scalar_type_test')
+    end function test_cli_complex_scalar_lowers
 
 
     logical function test_cli_select_case_diagnostic()

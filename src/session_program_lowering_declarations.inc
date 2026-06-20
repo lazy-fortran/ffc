@@ -178,7 +178,9 @@
         character(len=*), intent(in) :: kind_spec
 
         select case (trim(kind_spec))
-        case ('8', 'real64', 'c_double', 'c_long_double')
+        case ('8', 'real64', 'c_double', 'c_long_double', 'dp')
+            ! dp is the conventional double-precision kind parameter
+            ! (dp => real64); sp/default stay f32.
             real_kind_is_f64 = .true.
         case default
             real_kind_is_f64 = .false.

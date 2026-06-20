@@ -7,13 +7,11 @@ arithmetic_if_expression_complex.f90
 arithmetic_if_inline_comment.f90
 arithmetic_if_negative_labels.f90
 arithmetic_if_whitespace_labels.f90
-array_slicing_type_inference.f90
 ast_coverage_control_flow.f90
 ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
 ast_forall_pointer.f90
 ast_module_interface_type.f90
-ast_select_case_ranges.f90
 call_graph_internal_procedures.f90
 call_graph_mutual_recursion.f90
 call_graph_unused_procedure.f90
@@ -51,7 +49,6 @@ issue_1324_if_inside_do_loop.f90
 issue_1337_forall.f90
 issue_1338_where.f90
 issue_1344_character_length.f90
-issue_1347_interface.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1352_optional_module_if_control.f90
@@ -88,7 +85,6 @@ issue_1621_intent_out_array_shape.f90
 issue_1664_function_result.f90
 issue_1696_stop_statements.f90
 issue_1705_real_literal_generic.f90
-issue_1711_implicit_range.f90
 issue_1735_result_type.f90
 issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
@@ -107,7 +103,6 @@ issue_1826_enum_module.f90
 issue_1826_enum_program.f90
 issue_1827_submodule_simple.f90
 issue_1827_submodule_with_contents.f90
-issue_1895_use_interface_external.f90
 issue_1897_typed_array_constructor.f90
 issue_1900_block_data_after_program.f90
 issue_1900_block_data_labels.f90
@@ -150,7 +145,6 @@ issue_2349_data_boz_literals.f90
 issue_2349_data_boz_postfix.f90
 issue_2349_data_boz_x_prefix.f90
 issue_2349_data_implied_do.f90
-issue_2387_procedure_only.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2389_interface_unit_split.f90
@@ -182,7 +176,6 @@ issue_2456_assumed_char_length.f90
 issue_2457_logical_type_mismatch.f90
 issue_2458_multi_array_declaration.f90
 issue_2459_forall_missing_type.f90
-issue_2459_missing_implicit_type.f90
 issue_2486_class_type_multidecl.f90
 issue_2487_parameter_statement.f90
 issue_2489_interface_in_procedure.f90
@@ -239,3 +232,6 @@ undefined_var_segfault.f90
 use_intrinsic_only.f90
 variable_tracking_function_calls.f90
 variable_usage_shadowed_block.f90
+issue_2348_interface_block_procedures.f90
+issue_1347_interface.f90
+issue_1895_use_interface_external.f90
