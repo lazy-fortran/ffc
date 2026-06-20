@@ -398,6 +398,17 @@ contains
         case (VALUE_I64)
             call lower_i64_expression(context%arena, init_index, context, value, &
                                       error_msg)
+        case (VALUE_C4)
+            ! Complex initializers write re/im into the symbol's two slots
+            ! directly, so reuse the assignment helper and skip the scalar
+            ! value-store path below.
+            call lower_c4_assignment(context%arena, init_index, symbol_index, &
+                                     context, error_msg)
+            return
+        case (VALUE_C8)
+            call lower_c8_assignment(context%arena, init_index, symbol_index, &
+                                     context, error_msg)
+            return
         case default
             return
         end select

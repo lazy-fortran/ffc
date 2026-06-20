@@ -3,15 +3,11 @@
     ! symbol%value holds the last-loaded re SSA value (used as fallback).
 
     subroutine lower_c4_assignment(arena, rhs_index, sym_idx, context, error_msg)
-        use, intrinsic :: iso_c_binding, only: c_float, c_double
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index, sym_idx
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: re_val, im_val
-        character(len=:), allocatable :: src_name
-        integer :: src_idx
-        real(c_double) :: re_f64, im_f64
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, rhs_index)) then
@@ -19,39 +15,8 @@
             return
         end if
 
-        select type (rhs => arena%entries(rhs_index)%node)
-        type is (complex_literal_node)
-            ! (re_expr, im_expr) literal
-            call lower_f32_expression(arena, rhs%real_index, context, re_val, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_f32_expression(arena, rhs%imag_index, context, im_val, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-        class default
-            ! Identifier: copy from another complex(4) variable.
-            if (is_identifier(arena, rhs_index)) then
-                call get_identifier_name(arena, rhs_index, src_name, error_msg)
-                if (len_trim(error_msg) > 0) return
-                src_idx = find_symbol(context, src_name)
-                if (src_idx <= 0) then
-                    error_msg = 'complex(4) rhs not declared: '//trim(src_name)
-                    return
-                end if
-                if (context%symbols(src_idx)%value_kind /= VALUE_C4) then
-                    error_msg = 'complex(4) rhs is not complex(4): '//trim(src_name)
-                    return
-                end if
-                if (.not. emit_liric_f32_load(context%session, &
-                        context%symbols(src_idx)%address, re_val, error_msg)) return
-                if (.not. emit_liric_f32_load(context%session, &
-                        context%symbols(src_idx)%element_address, im_val, &
-                        error_msg)) return
-            else
-                error_msg = 'complex(4) assignment: unsupported rhs form'
-                return
-            end if
-        end select
+        call eval_c4_rhs(arena, rhs_index, context, re_val, im_val, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         if (.not. emit_liric_f32_store(context%session, re_val, &
                 context%symbols(sym_idx)%address, error_msg)) return
@@ -62,14 +27,11 @@
     end subroutine lower_c4_assignment
 
     subroutine lower_c8_assignment(arena, rhs_index, sym_idx, context, error_msg)
-        use, intrinsic :: iso_c_binding, only: c_float, c_double
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index, sym_idx
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: re_val, im_val
-        character(len=:), allocatable :: src_name
-        integer :: src_idx
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, rhs_index)) then
@@ -77,37 +39,8 @@
             return
         end if
 
-        select type (rhs => arena%entries(rhs_index)%node)
-        type is (complex_literal_node)
-            call lower_f64_expression(arena, rhs%real_index, context, re_val, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, rhs%imag_index, context, im_val, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-        class default
-            if (is_identifier(arena, rhs_index)) then
-                call get_identifier_name(arena, rhs_index, src_name, error_msg)
-                if (len_trim(error_msg) > 0) return
-                src_idx = find_symbol(context, src_name)
-                if (src_idx <= 0) then
-                    error_msg = 'complex(8) rhs not declared: '//trim(src_name)
-                    return
-                end if
-                if (context%symbols(src_idx)%value_kind /= VALUE_C8) then
-                    error_msg = 'complex(8) rhs is not complex(8): '//trim(src_name)
-                    return
-                end if
-                if (.not. emit_liric_f64_load(context%session, &
-                        context%symbols(src_idx)%address, re_val, error_msg)) return
-                if (.not. emit_liric_f64_load(context%session, &
-                        context%symbols(src_idx)%element_address, im_val, &
-                        error_msg)) return
-            else
-                error_msg = 'complex(8) assignment: unsupported rhs form'
-                return
-            end if
-        end select
+        call eval_c8_rhs(arena, rhs_index, context, re_val, im_val, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         if (.not. emit_liric_f64_store(context%session, re_val, &
                 context%symbols(sym_idx)%address, error_msg)) return
@@ -116,6 +49,254 @@
         context%symbols(sym_idx)%value = re_val
         call set_empty(error_msg)
     end subroutine lower_c8_assignment
+
+    ! Evaluate a complex(4) rhs into its real/imag SSA components. Handles the
+    ! (re, im) literal, a complex(4) identifier load, cmplx(re, im), and binary
+    ! +/- of two complex operands. f32 components come from lower_f32_expression
+    ! so real scalar literals widen correctly.
+    recursive subroutine eval_c4_rhs(arena, rhs_index, context, re_val, im_val, &
+                                     error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: rhs_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lre, lim, rre, rim
+        character(len=:), allocatable :: op
+        integer :: li, ri, opc, ln, cl
+
+        call set_empty(error_msg)
+        if (complex_call_args(arena, rhs_index, 'cmplx', li, ri)) then
+            call lower_f32_expression(arena, li, context, re_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f32_expression(arena, ri, context, im_val, error_msg)
+            return
+        end if
+        if (is_binary_op(arena, rhs_index)) then
+            call complex_binary_op(arena, rhs_index, op, li, ri, opc, ln, cl, &
+                                   'complex(4)', error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_c4_rhs(arena, li, context, lre, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_c4_rhs(arena, ri, context, rre, rim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_binary(context%session, opc, lre, rre, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f32_binary(context%session, opc, lim, rim, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        select type (rhs => arena%entries(rhs_index)%node)
+        type is (complex_literal_node)
+            call lower_f32_expression(arena, rhs%real_index, context, re_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f32_expression(arena, rhs%imag_index, context, im_val, &
+                                      error_msg)
+        class default
+            call load_complex_identifier(arena, rhs_index, context, VALUE_C4, &
+                                         .true., re_val, im_val, error_msg)
+        end select
+    end subroutine eval_c4_rhs
+
+    recursive subroutine eval_c8_rhs(arena, rhs_index, context, re_val, im_val, &
+                                     error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: rhs_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lre, lim, rre, rim
+        character(len=:), allocatable :: op
+        integer :: li, ri, opc, ln, cl
+
+        call set_empty(error_msg)
+        if (complex_call_args(arena, rhs_index, 'cmplx', li, ri)) then
+            call lower_f64_expression(arena, li, context, re_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f64_expression(arena, ri, context, im_val, error_msg)
+            return
+        end if
+        if (is_binary_op(arena, rhs_index)) then
+            call complex_binary_op(arena, rhs_index, op, li, ri, opc, ln, cl, &
+                                   'complex(8)', error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_c8_rhs(arena, li, context, lre, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_c8_rhs(arena, ri, context, rre, rim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_binary(context%session, opc, lre, rre, &
+                                            re_val, error_msg)) return
+            if (.not. emit_liric_f64_binary(context%session, opc, lim, rim, &
+                                            im_val, error_msg)) return
+            return
+        end if
+        select type (rhs => arena%entries(rhs_index)%node)
+        type is (complex_literal_node)
+            call lower_f64_expression(arena, rhs%real_index, context, re_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_f64_expression(arena, rhs%imag_index, context, im_val, &
+                                      error_msg)
+        class default
+            call load_complex_identifier(arena, rhs_index, context, VALUE_C8, &
+                                         .false., re_val, im_val, error_msg)
+        end select
+    end subroutine eval_c8_rhs
+
+    ! Validate a complex binary node as +/- and return the operands and the
+    ! componentwise float opcode. * and / need the full complex formula and are
+    ! rejected here so unsupported forms stay xfail. kind_tag names the kind in
+    ! the error message.
+    subroutine complex_binary_op(arena, node_index, op, left, right, opc, &
+                                 line, col, kind_tag, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: op
+        integer, intent(out) :: left, right, opc, line, col
+        character(len=*), intent(in) :: kind_tag
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call get_binary_op_info(arena, node_index, op, left, right, line, col, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (trim(adjustl(op)) /= '+' .and. trim(adjustl(op)) /= '-') then
+            error_msg = kind_tag//' assignment: unsupported operator '//trim(op)
+            return
+        end if
+        call real_opcode(op, line, col, opc, error_msg)
+    end subroutine complex_binary_op
+
+    ! Load the re/im components of a complex identifier rhs of want_kind.
+    ! is_f32 selects f32 vs f64 component loads.
+    subroutine load_complex_identifier(arena, rhs_index, context, want_kind, &
+                                       is_f32, re_val, im_val, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: rhs_index, want_kind
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_f32
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: src_name, tag
+        integer :: src_idx
+
+        call set_empty(error_msg)
+        tag = 'complex(4)'
+        if (.not. is_f32) tag = 'complex(8)'
+        if (.not. is_identifier(arena, rhs_index)) then
+            error_msg = tag//' assignment: unsupported rhs form'
+            return
+        end if
+        call get_identifier_name(arena, rhs_index, src_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        src_idx = find_symbol(context, src_name)
+        if (src_idx <= 0) then
+            error_msg = tag//' rhs not declared: '//trim(src_name)
+            return
+        end if
+        if (context%symbols(src_idx)%value_kind /= want_kind) then
+            error_msg = tag//' rhs is not '//tag//': '//trim(src_name)
+            return
+        end if
+        if (is_f32) then
+            if (.not. emit_liric_f32_load(context%session, &
+                    context%symbols(src_idx)%address, re_val, error_msg)) return
+            if (.not. emit_liric_f32_load(context%session, &
+                    context%symbols(src_idx)%element_address, im_val, error_msg)) &
+                return
+        else
+            if (.not. emit_liric_f64_load(context%session, &
+                    context%symbols(src_idx)%address, re_val, error_msg)) return
+            if (.not. emit_liric_f64_load(context%session, &
+                    context%symbols(src_idx)%element_address, im_val, error_msg)) &
+                return
+        end if
+    end subroutine load_complex_identifier
+
+    ! True when node_index is a two-argument call to the named intrinsic
+    ! (cmplx(re, im)); returns the two argument node indices.
+    logical function complex_call_args(arena, node_index, name, arg1, arg2) &
+        result(is_call)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
+        integer, intent(out) :: arg1, arg2
+
+        is_call = .false.
+        arg1 = 0
+        arg2 = 0
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (lowercase_text(trim(node%name)) /= name) return
+            if (.not. allocated(node%arg_indices)) return
+            if (size(node%arg_indices) /= 2) return
+            arg1 = node%arg_indices(1)
+            arg2 = node%arg_indices(2)
+            is_call = .true.
+        end select
+    end function complex_call_args
+
+    ! True when node is real(z)/aimag(z) on a complex symbol of want_kind
+    ! (VALUE_C4 or VALUE_C8). Used to route the extraction through the matching
+    ! f32/f64 expression path so the result prints in the component's precision.
+    logical function is_complex_component_extract(arena, node, context, &
+                                                  want_kind) result(matches)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: want_kind
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, arg_name, err
+        integer :: sym
+
+        matches = .false.
+        if (.not. allocated(node%name)) return
+        if (node%is_array_access) return
+        name = lowercase_text(trim(node%name))
+        if (name /= 'real' .and. name /= 'aimag') return
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 1) return
+        if (.not. is_identifier(arena, node%arg_indices(1))) return
+        call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol(context, arg_name)
+        if (sym <= 0) return
+        matches = context%symbols(sym)%value_kind == want_kind
+    end function is_complex_component_extract
+
+    ! Lower real(z)/aimag(z) by loading the matching component slot of the
+    ! complex symbol. is_f32 selects f32 vs f64 component loads.
+    subroutine lower_complex_component_extract(arena, node, context, &
+                                               is_f32, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_f32
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+        type(lr_operand_desc_t) :: slot
+        integer :: sym
+        logical :: want_imag
+
+        call set_empty(error_msg)
+        want_imag = lowercase_text(trim(node%name)) == 'aimag'
+        call get_identifier_name(arena, node%arg_indices(1), arg_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, arg_name)
+        if (want_imag) then
+            slot = context%symbols(sym)%element_address
+        else
+            slot = context%symbols(sym)%address
+        end if
+        if (is_f32) then
+            if (.not. emit_liric_f32_load(context%session, slot, value, &
+                                          error_msg)) return
+        else
+            if (.not. emit_liric_f64_load(context%session, slot, value, &
+                                          error_msg)) return
+        end if
+    end subroutine lower_complex_component_extract
 
     subroutine lower_print_complex4(sym_idx, context, error_msg)
         integer, intent(in) :: sym_idx
