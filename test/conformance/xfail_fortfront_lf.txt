@@ -62,7 +62,6 @@ issue_1961_array_reduction_intrinsics.lf
 issue_1963_debug_output.lf
 issue_1964_nested_function_calls.lf
 issue_1968_lazy_function_result.lf
-issue_1969_case_insensitive_variables.lf
 issue_1973_empty_typed_array_constructor.lf
 issue_2012_subroutine_local_not_inferred.lf
 issue_2016_nested_call_type_mismatch.lf
@@ -119,7 +118,6 @@ namelist_weather.lf
 nested_function_calls_forward_ref.lf
 nested_loops.lf
 read_statement.lf
-string_transform_complex_expression.lf
 test_209_all.lf
 test_209_complex.lf
 test_209_mixed.lf

@@ -533,8 +533,9 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
 
-        ! real(x) converts integer x to f32.
-        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        ! real(x) and real(x, 4)/real(x, kind=sp) convert x to f32. The optional
+        ! second argument is the result kind; ignore it here.
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
 
         call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, value, &
                                      error_msg)
@@ -982,7 +983,10 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
 
-        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        ! real(x) and real(x, kind=dp)/real(x, 8): the optional second argument
+        ! is the result kind, already resolved to f64 by the dispatch. Lower the
+        ! value argument and ignore the kind selector.
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
 
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, value, &
                                      error_msg)
