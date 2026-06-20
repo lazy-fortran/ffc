@@ -306,6 +306,16 @@ module session_program_lowering_types
         character(len=64) :: member_names(MAX_NAMELIST_MEMBERS) = ''
     end type namelist_group_t
 
+    ! A statement function definition: name, ordered scalar dummy names, and the
+    ! arena index of the defining expression. Calls inline the body.
+    integer, parameter, public :: MAX_STMT_FN_ARGS = 8
+    type, public :: statement_function_t
+        character(len=64) :: name = ''
+        integer :: arg_count = 0
+        character(len=64) :: arg_names(MAX_STMT_FN_ARGS) = ''
+        integer :: body_expr_index = 0
+    end type statement_function_t
+
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
@@ -367,6 +377,11 @@ module session_program_lowering_types
         ! NAMELIST group table (#247 namelist I/O).
         type(namelist_group_t), allocatable :: namelist_groups(:)
         integer :: namelist_group_count = 0
+        ! Statement functions (f(x) = x*x + 1). Each entry records the name, its
+        ! scalar dummy names, and the arena index of the defining expression.
+        ! A call to such a name inlines the body with actuals bound to dummies.
+        type(statement_function_t), allocatable :: statement_functions(:)
+        integer :: statement_function_count = 0
     end type lowering_context_t
 
     type, public :: branch_result_t
