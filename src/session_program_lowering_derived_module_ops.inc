@@ -680,53 +680,35 @@
     subroutine import_module_variables(arena, export_idx, use_node, context, &
                                        error_msg)
         ! Import module-level variables from an in-unit module into the calling
-        ! program's symbol table (#249 B7a). Each variable is resolved as an
-        ! addressed global via lr_session_intern.
-        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        ! program's symbol table (#263). Each supported scalar variable binds to
+        ! the shared global as an addressed reference, honouring use, only:.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: export_idx
         type(use_statement_node), intent(in) :: use_node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, var_idx, sym_idx, value_kind
-        character(len=:), allocatable :: var_name, type_name, mangled
-        character(kind=c_char), allocatable :: c_name(:)
-        integer(c_int32_t) :: global_id
+        integer :: i, var_idx, value_kind, status
+        character(len=:), allocatable :: var_name, name_err
 
         call set_empty(error_msg)
         do i = 1, context%module_exports(export_idx)%variable_count
             var_idx = context%module_exports(export_idx)%variable_indices(i)
             if (.not. node_exists(arena, var_idx)) cycle
-            if (.not. is_declaration_node(arena, var_idx)) cycle
-            call get_declaration_var_name(arena, var_idx, var_name, error_msg)
-            if (len_trim(error_msg) > 0) return
+            call get_declaration_var_name(arena, var_idx, var_name, name_err)
+            if (len_trim(name_err) > 0) cycle
             if (.not. use_only_wants(use_node, trim(var_name))) cycle
-            if (find_symbol(context, var_name) > 0) cycle
-            call get_declaration_type_name(arena, var_idx, type_name, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call type_name_value_kind(type_name, 0, 0, value_kind, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (value_kind /= VALUE_I32) cycle
-            mangled = module_procedure_mangled( &
-                trim(context%module_exports(export_idx)%module_name), &
-                trim(var_name))
-            call to_c_chars(mangled, c_name)
-            global_id = lr_session_intern(context%session%handle, c_name)
-            if (global_id < 0_c_int32_t) then
-                error_msg = 'module variable global not found: '//trim(mangled)
-                return
+            call module_variable_kind(arena, var_idx, value_kind, status, &
+                                      error_msg)
+            ! An unsupported module variable already failed in
+            ! lower_module_variables; the using unit just skips it here.
+            if (status /= MODVAR_OK) then
+                call set_empty(error_msg)
+                cycle
             end if
-            call grow_symbols(context)
-            sym_idx = context%symbol_count + 1
-            context%symbols(sym_idx)%name = trim(var_name)
-            context%symbols(sym_idx)%value_kind = VALUE_I32
-            context%symbols(sym_idx)%has_address = .true.
-            context%symbols(sym_idx)%is_reference = .true.
-            context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
-            context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
-            context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
-            context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
-            context%symbol_count = sym_idx
+            call bind_one_module_variable(arena, var_idx, value_kind, &
+                trim(context%module_exports(export_idx)%module_name), context, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_module_variables
 

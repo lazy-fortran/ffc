@@ -452,6 +452,20 @@
         destination%derived_type_count = source%derived_type_count
     end subroutine copy_derived_type_table
 
+    subroutine copy_module_exports(source, destination)
+        ! Carry the module export table into a procedure's fresh context so its
+        ! body can host-associate scalar module variables (#263).
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+        integer :: i
+
+        do i = 1, source%module_export_count
+            call grow_module_exports(destination)
+            destination%module_exports(i) = source%module_exports(i)
+            destination%module_export_count = i
+        end do
+    end subroutine copy_module_exports
+
     logical function is_contained_i32_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
@@ -901,6 +915,7 @@
         context%function_value_kinds = VALUE_I32
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
+        call copy_module_exports(parent_context, context)
         context%in_internal_function = .true.
 
         param_count = 0
@@ -999,6 +1014,10 @@
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg)
         end if
+        if (len_trim(error_msg) > 0) return
+
+        ! Host-associate scalar module variables as addressed globals (#263).
+        call bind_module_variables_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then

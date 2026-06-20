@@ -121,7 +121,6 @@ issue_2252_data_value_implied_do.f90
 issue_2265_module_program.f90
 issue_2280_statement_function.f90
 issue_2281_header_only_declarations.f90
-issue_2283_nested_modules.f90
 issue_2285_openmp_directives.f90
 issue_2286_openacc_internal.f90
 issue_2287_where_elsewhere.f90

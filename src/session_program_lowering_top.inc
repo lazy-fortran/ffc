@@ -107,12 +107,14 @@
             call destroy(context%session)
             return
         end if
-        call lower_module_procedures(arena, root_index, context, error_msg)
+        ! Globals must exist before module procedures so their bodies can bind
+        ! module variables to the interned global address (#263).
+        call lower_module_variables(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-        call lower_module_variables(arena, root_index, context, error_msg)
+        call lower_module_procedures(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
@@ -284,16 +286,16 @@
         integer, intent(in) :: procedure_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
-        integer :: i
+        integer :: i, value_kind, status
 
         ! A module of compile-time exports (named constants and derived-type
         ! definitions) lowers to no runtime code: the constants are folded at
         ! use sites and the types are layout-only. Module procedures are emitted
-        ! upstream by lower_module_procedures (#119, #263); an unsupported
-        ! signature aborts there before this point, so by the time control
-        ! reaches here the procedures are already lowered. Module variables that
-        ! need storage land in a follow-up (#150, #164). An empty module is a
-        ! no-op. procedure_indices is consumed upstream, not here.
+        ! upstream by lower_module_procedures (#119, #263), and supported scalar
+        ! module variables are given globals by lower_module_variables (#263).
+        ! Here the walk diagnoses any module declaration that is neither a named
+        ! constant nor a supported scalar variable (e.g. a module array), which
+        ! still has no storage. An empty module is a no-op.
         do i = 1, size(declaration_indices)
             if (.not. node_exists(arena, declaration_indices(i))) cycle
             node_type = get_node_type_at(arena, declaration_indices(i))
@@ -302,14 +304,11 @@
                 node_type == 'derived_type_node' .or. &
                 node_type == 'derived_type') cycle
             if (node_type == 'declaration') then
-                if (module_declaration_is_parameter(arena, declaration_indices(i))) cycle
-                call unsupported_feature_error('module-defined declaration', &
-                    get_node_line(arena, declaration_indices(i)), &
-                    get_node_column(arena, declaration_indices(i)), &
-                    'direct LIRIC session lowers only module named constants '// &
-                    'and derived-type definitions; module variables are not '// &
-                    'yet supported', error_msg)
-                return
+                if (module_declaration_is_parameter(arena, &
+                                                    declaration_indices(i))) cycle
+                call module_variable_kind(arena, declaration_indices(i), &
+                                          value_kind, status, error_msg)
+                if (status /= MODVAR_OK) return
             end if
         end do
         call set_empty(error_msg)
@@ -560,6 +559,7 @@
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
+    include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_block_concurrent.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)

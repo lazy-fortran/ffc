@@ -190,6 +190,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                 generic_interface_t, &
                                                 MAX_PROC_ARGS, &
                                                 MAX_GENERIC_SPECIFICS, &
+                                                MODVAR_OK, MODVAR_UNSUPPORTED, &
                                                 VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
                                                 VALUE_C4, VALUE_C8, &
                                                  VALUE_LOGICAL, VALUE_CHARACTER, &
