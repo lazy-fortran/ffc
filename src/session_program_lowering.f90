@@ -246,8 +246,10 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     public :: lower_program_to_liric_object
 contains
     include 'session_program_lowering_top.inc'
-    subroutine lower_declaration(node, context, error_msg)
+    subroutine lower_declaration(node, node_index, context, error_msg)
         type(declaration_node), intent(in) :: node
+        ! Arena index of this declaration, the unique key for SAVE-local globals.
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: array_lower_bound
@@ -291,6 +293,15 @@ contains
             return
         end if
         if (node%is_array) then
+            ! Saved arrays need per-element static storage the array path does
+            ! not provide; keep them xfail with a clean diagnostic (#1541).
+            if (node%is_save) then
+                call unsupported_feature_error('saved array declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports the save attribute on '// &
+                    'scalar integer, real, and logical locals only', error_msg)
+                return
+            end if
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
@@ -340,6 +351,13 @@ contains
         if (len_trim(error_msg) > 0) return
         if (node%is_parameter) then
             call lower_constant_declaration(node, context, value_kind, error_msg)
+            return
+        end if
+        ! SAVE gives a scalar local static storage that persists across calls,
+        ! so it is backed by a global with a once-applied initializer (#1541).
+        if (node%is_save) then
+            call lower_saved_scalar_declaration(node, node_index, context, &
+                                                value_kind, error_msg)
             return
         end if
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
