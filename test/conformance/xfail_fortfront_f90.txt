@@ -170,7 +170,6 @@ pause_in_if_block.f90
 pause_with_string_in_loop.f90
 pause_without_message.f90
 result_out_keyword.f90
-select_rank_simple.f90
 tmp_goto_ast.f90
 tooling_lightweight_ast.f90
 undefined_var_recursive_type.f90

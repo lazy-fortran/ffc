@@ -14,7 +14,8 @@ module session_program_lowering
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
                               complex_literal_node
-    use ast_nodes_conditional, only: select_type_node, type_guard_block_node
+    use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
+                                     select_rank_node, rank_block_node
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
                                  elsewhere_clause_t, goto_node, pause_node, &

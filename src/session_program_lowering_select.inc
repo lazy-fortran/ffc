@@ -876,3 +876,117 @@
         call lower_statement_list(arena, body, context, value, terminated, &
                                   error_msg)
     end subroutine lower_select_type_default
+
+    subroutine lower_select_rank(arena, node, context, error_msg)
+        ! A concrete-rank selector has a statically known rank, so exactly one
+        ! arm is ever live. Resolve that rank from the selector's declaration,
+        ! then lower only the matching `rank (n)` arm (or `rank default`)
+        ! inline. Genuine assumed-rank `(..)` dummies would need a runtime rank
+        ! descriptor and are rejected with a clean diagnostic.
+        type(ast_arena_t), intent(in) :: arena
+        type(select_rank_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: sel_name
+        integer :: sel_index, selector_rank, chosen_body_index
+        integer, allocatable :: body(:)
+        type(lr_operand_desc_t) :: value
+        logical :: terminated
+
+        call set_empty(error_msg)
+        if (node%selector_index <= 0 .or. &
+            .not. is_identifier(arena, node%selector_index)) then
+            call unsupported_feature_error('select rank statement', node%line, &
+                node%column, 'select rank selector must be a named variable', &
+                error_msg)
+            return
+        end if
+        call get_identifier_name(arena, node%selector_index, sel_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sel_index = find_symbol(context, sel_name)
+        if (sel_index <= 0) then
+            call unsupported_feature_error('select rank statement', node%line, &
+                node%column, 'select rank selector was not declared: '// &
+                trim(sel_name), error_msg)
+            return
+        end if
+        ! A scalar selector has rank 0; a declared array carries array_rank.
+        ! Assumed-rank `(..)` dummies are not tracked with a static rank and
+        ! land in the default branch below with a clean diagnostic.
+        if (context%symbols(sel_index)%is_array) then
+            selector_rank = context%symbols(sel_index)%array_rank
+        else
+            selector_rank = 0
+        end if
+
+        call select_rank_choose_body(arena, node, selector_rank, &
+                                     chosen_body_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (chosen_body_index <= 0) then
+            ! No matching arm and no default: the construct runs no body.
+            return
+        end if
+        call select_rank_block_body(arena, chosen_body_index, body)
+        if (.not. allocated(body)) return
+        call lower_statement_list(arena, body, context, value, terminated, &
+                                  error_msg)
+    end subroutine lower_select_rank
+
+    subroutine select_rank_choose_body(arena, node, selector_rank, &
+                                       chosen_body_index, error_msg)
+        ! Return the arena index of the rank_block whose rank matches the
+        ! selector, else the `rank default` block index, else 0.
+        type(ast_arena_t), intent(in) :: arena
+        type(select_rank_node), intent(in) :: node
+        integer, intent(in) :: selector_rank
+        integer, intent(out) :: chosen_body_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, rank_value
+
+        call set_empty(error_msg)
+        chosen_body_index = 0
+        if (allocated(node%rank_indices)) then
+            do i = 1, size(node%rank_indices)
+                call select_rank_block_value(arena, node%rank_indices(i), &
+                                             rank_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (rank_value == selector_rank) then
+                    chosen_body_index = node%rank_indices(i)
+                    return
+                end if
+            end do
+        end if
+        if (node%default_index > 0) chosen_body_index = node%default_index
+    end subroutine select_rank_choose_body
+
+    subroutine select_rank_block_value(arena, block_index, rank_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: block_index
+        integer, intent(out) :: rank_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        rank_value = -1
+        if (.not. node_exists(arena, block_index)) then
+            error_msg = 'select rank arm does not reference an AST node'
+            return
+        end if
+        select type (blk => arena%entries(block_index)%node)
+        type is (rank_block_node)
+            rank_value = blk%rank_value
+        class default
+            error_msg = 'select rank arm node has unexpected kind'
+        end select
+    end subroutine select_rank_block_value
+
+    subroutine select_rank_block_body(arena, block_index, body)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: block_index
+        integer, allocatable, intent(out) :: body(:)
+
+        if (.not. node_exists(arena, block_index)) return
+        select type (blk => arena%entries(block_index)%node)
+        type is (rank_block_node)
+            if (allocated(blk%body_indices)) body = blk%body_indices
+        end select
+    end subroutine select_rank_block_body
