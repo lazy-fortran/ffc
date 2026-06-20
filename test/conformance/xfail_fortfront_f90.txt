@@ -8,7 +8,6 @@ ast_coverage_control_flow.f90
 ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
 ast_forall_pointer.f90
-ast_module_interface_type.f90
 call_graph_internal_procedures.f90
 call_graph_mutual_recursion.f90
 call_graph_unused_procedure.f90
@@ -28,7 +27,6 @@ dtio_interface_read_write.f90
 dtio_interface_unformatted.f90
 external_tool_example.f90
 f2003_abstract_interface.f90
-f2003_associate_construct.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
@@ -40,7 +38,6 @@ issue_1324_if_inside_do_loop.f90
 issue_1350_recursive_if_else.f90
 issue_1351_elemental_pure.f90
 issue_1353_class_pointer_declaration.f90
-issue_1353_module_type_definition.f90
 issue_1565_use_associated_rename.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90

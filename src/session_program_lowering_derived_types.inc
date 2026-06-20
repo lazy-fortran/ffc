@@ -65,10 +65,56 @@
                                                  context%derived_type_count, &
                                                  error_msg)
                     if (len_trim(error_msg) > 0) return
+                type is (module_node)
+                    call collect_module_derived_types(arena, node, context, &
+                                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end select
             end do
+        type is (module_node)
+            ! Bare module compilation unit: register its types so module
+            ! procedures can name them as dummy/local/component types.
+            call collect_module_derived_types(arena, program, context, error_msg)
+            if (len_trim(error_msg) > 0) return
         end select
     end subroutine collect_derived_type_definitions
+
+    subroutine collect_module_derived_types(arena, mod_node, context, error_msg)
+        ! Register module-defined derived types into the derived-type table so a
+        ! module procedure body can resolve type(t) dummies, locals, and
+        ! components, just as program-scope types resolve. Mirrors the per-type
+        ! work of collect_derived_type_definitions (definition + type_info).
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: j
+
+        call set_empty(error_msg)
+        if (.not. allocated(mod_node%declaration_indices)) return
+        do j = 1, size(mod_node%declaration_indices)
+            if (.not. node_exists(arena, mod_node%declaration_indices(j))) cycle
+            select type (decl => &
+                arena%entries(mod_node%declaration_indices(j))%node)
+            type is (derived_type_node)
+                if (.not. allocated(decl%name)) cycle
+                if (find_derived_type(context, trim(decl%name)) > 0) cycle
+                ! A type ffc cannot lower (e.g. allocatable/pointer derived
+                ! components) is skipped, not fatal: a module that only defines
+                ! it stays compilable, and a procedure that actually uses it
+                ! fails later at its own declaration with a clean diagnostic.
+                call lower_derived_type_definition(decl, context, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call set_empty(error_msg)
+                    cycle
+                end if
+                call emit_type_info_constant(context, &
+                                             context%derived_type_count, &
+                                             error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine collect_module_derived_types
 
     subroutine emit_type_info_constant(context, type_index, error_msg)
         ! Emit the per-derived-type compile-time type_info_t constant (#140).
