@@ -743,8 +743,9 @@
                                       error_msg)
     end subroutine lower_derived_result_call
 
-    subroutine resolve_component_base(arena, base_index, context, symbol_index, &
-                                      type_index, element_base, error_msg)
+    recursive subroutine resolve_component_base(arena, base_index, context, &
+                                      symbol_index, type_index, element_base, &
+                                      error_msg)
         ! Resolve the base of a component access to (symbol, type, element slot
         ! base). For a plain derived scalar `x` the element base is 0; for an
         ! element of a derived array `arr(i)` it is (i - 1) * slots-per-element.
@@ -806,6 +807,12 @@
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
                     i32_immediate(context%session, int(slots, c_int64_t)), &
                     element_base, error_msg)) return
+        type is (component_access_node)
+            ! Nested derived base x%c: resolve x%c to (symbol, inner type, slot
+            ! base) so the leaf access x%c%field adds its own start slot on top.
+            call resolve_nested_component_base(arena, base, context, &
+                symbol_index, type_index, element_base, error_msg)
+            return
         class default
             error_msg = 'nested component access is not supported'
             return
@@ -818,6 +825,47 @@
         type_index = context%symbols(symbol_index)%derived_type_index
         call set_empty(error_msg)
     end subroutine resolve_component_base
+
+    recursive subroutine resolve_nested_component_base(arena, node, context, &
+            symbol_index, type_index, element_base, error_msg)
+        ! Resolve a derived component access x%c (the base of a deeper access) to
+        ! the owning symbol, the inner component's derived type index, and the
+        ! slot offset of the inner aggregate within the flat instance layout.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        integer, intent(out) :: type_index
+        type(lr_operand_desc_t), intent(out) :: element_base
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: outer_type, component_index
+        type(lr_operand_desc_t) :: base_off
+
+        call resolve_component_base(arena, node%base_expr_index, context, &
+                                    symbol_index, outer_type, base_off, error_msg)
+        if (len_trim(error_msg) > 0) return
+        component_index = find_derived_component(context, outer_type, &
+                                                 node%component_name)
+        if (component_index <= 0) then
+            error_msg = 'component is not declared for type '// &
+                trim(context%derived_types(outer_type)%name)//': '// &
+                trim(node%component_name)
+            return
+        end if
+        type_index = context%derived_types(outer_type)% &
+                     component_type_index(component_index)
+        if (type_index <= 0) then
+            error_msg = 'component is not a derived type: '// &
+                trim(node%component_name)
+            return
+        end if
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, base_off, &
+                i32_immediate(context%session, &
+                    int(component_start_slot(context, outer_type, &
+                        component_index), c_int64_t)), element_base, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine resolve_nested_component_base
 
     subroutine lower_derived_component_address(arena, node, context, &
                                                component_address, error_msg, &
@@ -887,14 +935,16 @@
         kind = component_kind(context, type_index, component_index)
     end function derived_component_access_kind
 
-    integer function component_base_type_index(arena, base_index, context) &
+    recursive function component_base_type_index(arena, base_index, context) &
             result(type_index)
         ! Derived type index of a component-access base (a plain derived
-        ! identifier or a derived-array element arr(i)) without emitting IR.
+        ! identifier, a derived-array element arr(i), or a nested derived
+        ! component x%c) without emitting IR.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: base_index
         type(lowering_context_t), intent(in) :: context
-        integer :: symbol_index
+        integer :: type_index
+        integer :: symbol_index, outer_type, component_index
         character(len=:), allocatable :: id_name, err
 
         type_index = 0
@@ -908,6 +958,16 @@
             select type (base => arena%entries(base_index)%node)
             type is (call_or_subscript_node)
                 if (allocated(base%name)) symbol_index = find_symbol(context, base%name)
+            type is (component_access_node)
+                outer_type = component_base_type_index(arena, &
+                                                       base%base_expr_index, context)
+                if (outer_type <= 0) return
+                component_index = find_derived_component(context, outer_type, &
+                                                         base%component_name)
+                if (component_index <= 0) return
+                type_index = context%derived_types(outer_type)% &
+                             component_type_index(component_index)
+                return
             end select
         end if
         if (symbol_index <= 0) return

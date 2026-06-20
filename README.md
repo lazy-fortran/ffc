@@ -40,9 +40,10 @@ constant. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Derived types take scalar
-integer, real, logical, and `c_ptr` components and fixed-size integer array
-components, and support single inheritance (`type, extends(parent) :: child`)
-with parent-first component layout. A module procedure may `contains` internal procedures, lowered as
+integer, real, logical, and `c_ptr` components, fixed-size integer array
+components, and scalar nested derived components (`type(inner) :: c`, accessed
+as `x%c%field` to any depth), and support single inheritance
+(`type, extends(parent) :: child`) with parent-first component layout. A module procedure may `contains` internal procedures, lowered as
 flat functions. Module-level integer variables persist as globals and are
 visible across `use`. The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real

@@ -49,6 +49,9 @@
             if (allocated(context%derived_types(i)%component_value_kind)) then
                 deallocate(context%derived_types(i)%component_value_kind)
             end if
+            if (allocated(context%derived_types(i)%component_type_index)) then
+                deallocate(context%derived_types(i)%component_type_index)
+            end if
         end do
         context%derived_type_count = 0
         call set_empty(error_msg)
@@ -552,7 +555,8 @@
                     parent%component_has_default(c), &
                     parent%component_default_value(c), &
                     parent%component_array_size(c), &
-                    parent%component_value_kind(c), error_msg)
+                    parent%component_value_kind(c), error_msg, &
+                    parent%component_type_index(c))
                 if (len_trim(error_msg) > 0) return
             end do
         end associate
@@ -600,6 +604,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer(c_int64_t) :: default_value
         integer :: array_size
         integer :: value_kind
+        integer :: nested_type_index
 
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
@@ -612,6 +617,12 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                 parent_column, context, &
                                                 error_msg)
             if (len_trim(error_msg) > 0) return
+            nested_type_index = declaration_derived_type_index(context, component)
+            if (nested_type_index > 0) then
+                call collect_nested_derived_component(component, context, &
+                    type_index, nested_type_index, error_msg)
+                return
+            end if
             call declaration_value_kind(component, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             ! A component default initialiser must be a compile-time integer.
@@ -673,6 +684,45 @@ subroutine collect_component_declaration(component_index, parent_line, &
         call set_empty(error_msg)
     end subroutine collect_component_declaration
 
+    subroutine collect_nested_derived_component(component, context, type_index, &
+                                                nested_type_index, error_msg)
+        ! Record one or more scalar nested derived components. A nested component
+        ! occupies the inner type's full slot count inline; component_array_size
+        ! carries that count and component_value_kind is VALUE_DERIVED so the
+        ! slot model reserves the right span. value access goes through the leaf
+        ! scalar component, never the nested aggregate directly.
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: nested_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, inner_slots
+
+        if (component%has_initializer) then
+            call unsupported_feature_error('nested derived type component', &
+                component%line, component%column, 'derived components cannot '// &
+                'carry a default initialiser', error_msg)
+            return
+        end if
+        inner_slots = total_component_slots(context, nested_type_index)
+        if (component%is_multi_declaration .and. allocated(component%var_names)) then
+            do i = 1, size(component%var_names)
+                call add_derived_component(context, type_index, &
+                    component%var_names(i), component%line, component%column, &
+                    .false., 0_c_int64_t, inner_slots, VALUE_DERIVED, error_msg, &
+                    nested_type_index)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(component%var_name)) then
+            call add_derived_component(context, type_index, component%var_name, &
+                component%line, component%column, .false., 0_c_int64_t, &
+                inner_slots, VALUE_DERIVED, error_msg, nested_type_index)
+        else
+            error_msg = 'derived type component declaration did not expose a name'
+            return
+        end if
+    end subroutine collect_nested_derived_component
+
     subroutine validate_component_declaration(component, parent_line, &
                                               parent_column, context, &
                                               error_msg)
@@ -691,10 +741,22 @@ subroutine collect_component_declaration(component_index, parent_line, &
 
         nested_index = declaration_derived_type_index(context, component)
         if (nested_index > 0) then
-            call unsupported_feature_error('nested derived type component', &
-                                           component%line, component%column, &
-                                           'direct LIRIC session only supports '// &
-                                           'scalar integer components', error_msg)
+            ! A scalar nested derived component lives inline in the parent's flat
+            ! slot layout. Arrays of derived components and allocatable/pointer
+            ! derived components stay unsupported in this layout.
+            if (component%is_array) then
+                call unsupported_feature_error('derived type array component', &
+                    component%line, component%column, 'arrays of derived '// &
+                    'components are not supported; only scalar nested', error_msg)
+                return
+            end if
+            if (component%is_allocatable .or. component%is_pointer) then
+                call unsupported_feature_error('nested derived type component', &
+                    component%line, component%column, 'allocatable and pointer '// &
+                    'derived components are not supported', error_msg)
+                return
+            end if
+            call set_empty(error_msg)
             return
         end if
         ! Accept scalar integer (incl. interop kinds and c_ptr), real (f32/f64),
@@ -748,7 +810,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
 
     subroutine add_derived_component(context, type_index, name, line, column, &
                                      has_default, default_value, array_size, &
-                                     value_kind, error_msg)
+                                     value_kind, error_msg, comp_type_index)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -758,6 +820,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer, intent(in) :: array_size
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        ! Derived type index of a nested derived component; 0 (or absent) for
+        ! scalar and intrinsic-array components.
+        integer, intent(in), optional :: comp_type_index
         integer :: component_index
 
         if (find_derived_component(context, type_index, name) > 0) then
@@ -778,6 +843,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
             array_size
         context%derived_types(type_index)%component_value_kind(component_index) = &
             value_kind
+        context%derived_types(type_index)%component_type_index(component_index) = 0
+        if (present(comp_type_index)) &
+            context%derived_types(type_index)%component_type_index(component_index) = &
+                comp_type_index
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
@@ -797,10 +866,12 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_default_value(8))
             allocate(context%derived_types(type_index)%component_array_size(8))
             allocate(context%derived_types(type_index)%component_value_kind(8))
+            allocate(context%derived_types(type_index)%component_type_index(8))
             context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_array_size = 1
             context%derived_types(type_index)%component_value_kind = VALUE_I32
+            context%derived_types(type_index)%component_type_index = 0
             context%derived_types(type_index)%component_count = 0
             return
         end if
@@ -816,27 +887,33 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer(c_int64_t), allocatable :: old_dv(:)
             integer, allocatable :: old_as(:)
             integer, allocatable :: old_vk(:)
+            integer, allocatable :: old_ti(:)
             associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
                 old_dv = dt%component_default_value
                 old_as = dt%component_array_size
                 old_vk = dt%component_value_kind
+                old_ti = dt%component_type_index
                 deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
                 deallocate(dt%component_array_size)
                 deallocate(dt%component_value_kind)
+                deallocate(dt%component_type_index)
                 allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
                 allocate(dt%component_array_size(new_size))
                 allocate(dt%component_value_kind(new_size))
+                allocate(dt%component_type_index(new_size))
                 dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
                 dt%component_array_size = 1
                 dt%component_value_kind = VALUE_I32
+                dt%component_type_index = 0
                 dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
                 dt%component_array_size(1:old_size) = old_as
                 dt%component_value_kind(1:old_size) = old_vk
+                dt%component_type_index(1:old_size) = old_ti
             end associate
         end block
     end subroutine grow_derived_type_components

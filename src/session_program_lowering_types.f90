@@ -219,8 +219,13 @@ module session_program_lowering_types
         integer(c_int64_t), allocatable :: component_default_value(:)
         integer, allocatable :: component_array_size(:)
         ! Scalar value kind of each component (VALUE_I32, VALUE_F64, VALUE_F32,
-        ! VALUE_LOGICAL, VALUE_C_PTR). Drives slot width and typed load/store.
+        ! VALUE_LOGICAL, VALUE_C_PTR, or VALUE_DERIVED for a nested derived
+        ! component). Drives slot width and typed load/store.
         integer, allocatable :: component_value_kind(:)
+        ! Derived type index of a nested derived component (0 for scalars and
+        ! intrinsic arrays). A nested component occupies the inner type's slots
+        ! inline; component_array_size holds that slot count.
+        integer, allocatable :: component_type_index(:)
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)
