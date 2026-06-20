@@ -20,6 +20,8 @@ program test_session_formatted_output_compiler
     if (.not. test_logical_descriptor()) all_passed = .false.
     if (.not. test_x_descriptor()) all_passed = .false.
     if (.not. test_repeat_count()) all_passed = .false.
+    if (.not. test_nested_group()) all_passed = .false.
+    if (.not. test_f64_literal_precision()) all_passed = .false.
     if (.not. test_string_literal_and_slash()) all_passed = .false.
     if (.not. test_format_reversion()) all_passed = .false.
     if (.not. test_write_unit_star()) all_passed = .false.
@@ -100,6 +102,30 @@ contains
             'end program main'
         test_repeat_count = matches_gfortran(source, 'out_repeat')
     end function test_repeat_count
+
+    logical function test_nested_group()
+        ! A parenthesized group 2(f5.2,',') repeats its inner descriptor list,
+        ! including the embedded doubled-quote literal, once per repeat.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  real :: x, y'//new_line('a')// &
+            '  x = 1.0'//new_line('a')// &
+            '  y = 2.0'//new_line('a')// &
+            "  write(*, '(2(f5.2,'',''))') x, y"//new_line('a')// &
+            'end program main'
+        test_nested_group = matches_gfortran(source, 'out_group')
+    end function test_nested_group
+
+    logical function test_f64_literal_precision()
+        ! A real(8) literal (d0 exponent) printed through F/ES descriptors must
+        ! keep double precision; the f32 path would round it to ~3.14159274.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            "  print '(F20.14)', 3.14159265358979d0"//new_line('a')// &
+            "  print '(ES22.14)', 3.14159265358979d0"//new_line('a')// &
+            'end program main'
+        test_f64_literal_precision = matches_gfortran(source, 'out_f64lit')
+    end function test_f64_literal_precision
 
     logical function test_string_literal_and_slash()
         ! Embedded string literal (with a doubled quote) and a '/' record break.

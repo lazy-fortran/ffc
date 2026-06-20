@@ -488,7 +488,17 @@
         if (.not. node_exists(arena, node_index)) return
 
         if (is_literal(arena, node_index)) then
-            is_f32 = is_real_literal(arena, node_index)
+            ! A bare real literal ("2.5", "3.0e0") is default real (f32), but an
+            ! explicitly-typed f64 literal (d exponent or _8/_real64/… suffix) is
+            ! f64 and must not be lowered through the f32 path, which would round
+            ! it to single precision.
+            if (is_real_literal(arena, node_index)) then
+                block
+                    character(len=:), allocatable :: lv, lt, le
+                    call get_literal_info(arena, node_index, lv, lt, le)
+                    is_f32 = .not. literal_is_f64(lv)
+                end block
+            end if
             return
         end if
 
