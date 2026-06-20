@@ -202,8 +202,9 @@
         call set_empty(error_msg)
     end subroutine lower_compound_formatted_print
 
-    subroutine lower_next_compound_descriptor(arena, node, context, format_body, &
-                                              pos, item_index, exhausted, error_msg)
+    recursive subroutine lower_next_compound_descriptor(arena, node, context, &
+                                              format_body, pos, item_index, &
+                                              exhausted, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -248,6 +249,14 @@
         if (len(prefix) > 0) then
             call read_decimal_value(prefix, repeat_count, error_msg)
             if (len_trim(error_msg) > 0) return
+        end if
+        ! A parenthesized group r(...) repeats its inner descriptor list r times
+        ! (F2018 13.3.3): recurse over the group body once per repeat.
+        if (format_body(pos:pos) == '(') then
+            call lower_compound_group(arena, node, context, format_body, pos, &
+                                      repeat_count, item_index, exhausted, &
+                                      error_msg)
+            return
         end if
         kind_char = format_body(pos:pos)
         if (kind_char >= 'a' .and. kind_char <= 'z') &
@@ -385,6 +394,92 @@
                         kind_char
         end select
     end subroutine lower_next_compound_descriptor
+
+    recursive subroutine lower_compound_group(arena, node, context, format_body, &
+                                              pos, repeat_count, item_index, &
+                                              exhausted, error_msg)
+        ! Lower a parenthesized group r(...). pos points at the opening '('.
+        ! On entry the group body is walked repeat_count times; each walk runs
+        ! the same descriptor list, stopping when the data items are exhausted.
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: format_body
+        integer, intent(inout) :: pos
+        integer, intent(in) :: repeat_count
+        integer, intent(inout) :: item_index
+        logical, intent(out) :: exhausted
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: group_body
+        integer :: close_pos, inner_pos, rep
+
+        call set_empty(error_msg)
+        exhausted = .false.
+        call find_group_close(format_body, pos, close_pos, error_msg)
+        if (len_trim(error_msg) > 0) return
+        group_body = format_body(pos + 1:close_pos - 1)
+        pos = close_pos + 1
+        do rep = 1, repeat_count
+            inner_pos = 1
+            do
+                call skip_format_separators(group_body, inner_pos)
+                if (inner_pos > len_trim(group_body)) exit
+                call lower_next_compound_descriptor(arena, node, context, &
+                                                    group_body, inner_pos, &
+                                                    item_index, exhausted, &
+                                                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (exhausted) return
+            end do
+        end do
+    end subroutine lower_compound_group
+
+    subroutine find_group_close(text, open_pos, close_pos, error_msg)
+        ! Find the ')' matching the '(' at open_pos, tracking nesting depth and
+        ! skipping parentheses that appear inside quoted string descriptors.
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: open_pos
+        integer, intent(out) :: close_pos
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, depth, n
+        character :: ch, quote
+
+        call set_empty(error_msg)
+        close_pos = 0
+        n = len_trim(text)
+        depth = 0
+        i = open_pos
+        do while (i <= n)
+            ch = text(i:i)
+            if (ch == "'" .or. ch == '"') then
+                quote = ch
+                i = i + 1
+                do while (i <= n)
+                    if (text(i:i) == quote) then
+                        ! A doubled quote is an embedded delimiter, not the end.
+                        if (i < n) then
+                            if (text(i + 1:i + 1) == quote) then
+                                i = i + 2
+                                cycle
+                            end if
+                        end if
+                        exit
+                    end if
+                    i = i + 1
+                end do
+            else if (ch == '(') then
+                depth = depth + 1
+            else if (ch == ')') then
+                depth = depth - 1
+                if (depth == 0) then
+                    close_pos = i
+                    return
+                end if
+            end if
+            i = i + 1
+        end do
+        error_msg = 'unterminated group in compound format'
+    end subroutine find_group_close
 
     subroutine skip_dot_modifier(format_body, pos)
         ! Skip a trailing ".m" modifier (e.g. I5.3) without consuming the next
