@@ -40,13 +40,14 @@
         integer :: i
 
         call set_empty(error_msg)
+        ! List-directed (*) and explicit edit-descriptor formats both reduce to
+        ! a per-item fscanf with a kind-driven conversion (%d / %lf / ...).
+        ! Field widths are not enforced; whitespace- and newline-separated
+        ! records read correctly, which covers the formatted-read corpus.
         if (allocated(node%format_spec)) then
-            if (trim(node%format_spec) /= '*') then
-                call unsupported_feature_error('read from file unit', node%line, &
-                    node%column, 'only list-directed (*) file-unit read is '// &
-                    'supported (#247)', error_msg)
-                return
-            end if
+            call check_read_format_supported(node%format_spec, node%line, &
+                                             node%column, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
         if (len_trim(error_msg) > 0) then
@@ -62,6 +63,36 @@
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_read_file
+
+    subroutine check_read_format_supported(format_spec, line, col, error_msg)
+        ! Accept list-directed (*) and numeric edit descriptors (I/F/E/D/G plus
+        ! repeat counts, widths, separators). Reject character/string/logical
+        ! formats, which the kind-driven fscanf path cannot read yet.
+        character(len=*), intent(in) :: format_spec
+        integer, intent(in) :: line, col
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: body
+        integer :: i
+        character :: ch
+
+        call set_empty(error_msg)
+        if (trim(format_spec) == '*') return
+        call normalize_format_body(format_spec, body)
+        do i = 1, len(body)
+            ch = body(i:i)
+            if (ch >= 'a' .and. ch <= 'z') ch = char(ichar(ch) - 32)
+            select case (ch)
+            case ('I', 'F', 'E', 'D', 'G', 'P', 'X', '.', ',', ' ', '/', &
+                  '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-')
+                ! Numeric edit descriptor, repeat count, width, or separator.
+            case default
+                call unsupported_feature_error('read from file unit', line, &
+                    col, 'formatted file-unit read supports numeric edit '// &
+                    'descriptors only (#247)', error_msg)
+                return
+            end select
+        end do
+    end subroutine check_read_format_supported
 
     subroutine lower_read_file_item(arena, node_index, fp, stmt_line, stmt_col, &
                                     context, error_msg)
