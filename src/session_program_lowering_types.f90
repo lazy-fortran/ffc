@@ -240,6 +240,22 @@ module session_program_lowering_types
         integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
     end type generic_interface_t
 
+    ! A user-defined operator or assignment overload. interface operator(+)
+    ! / operator(.dot.) / assignment(=) maps an operator token to specific
+    ! procedures; a binary-op or assignment whose operand kinds match dispatches
+    ! to the matching specific instead of the builtin path. Dispatch keys on the
+    ! pair of operand value kinds so distinct overloads of the same token (e.g.
+    ! integer .myop. integer vs real .myop. real) stay separate.
+    type, public :: operator_interface_t
+        character(len=64) :: operator_name = ''
+        logical :: is_assignment = .false.
+        integer :: specific_count = 0
+        character(len=64) :: specific_names(MAX_GENERIC_SPECIFICS) = ''
+        integer :: first_arg_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+        integer :: second_arg_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+        integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+    end type operator_interface_t
+
     type, public :: external_procedure_t
         character(len=64) :: fortran_name = ''
         character(len=64) :: c_name = ''
@@ -277,6 +293,9 @@ module session_program_lowering_types
         ! Generic interface table (#249 B7c).
         type(generic_interface_t), allocatable :: generics(:)
         integer :: generic_count = 0
+        ! Operator/assignment overload table.
+        type(operator_interface_t), allocatable :: operators(:)
+        integer :: operator_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
         integer :: current_function_result_index = 0

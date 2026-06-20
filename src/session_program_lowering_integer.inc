@@ -31,6 +31,15 @@
       end if
 
       if (is_binary_op(arena, node_index)) then
+          block
+              integer :: op_slot
+              if (overloaded_operator_slot(arena, node_index, context, op_slot)) &
+                  then
+                  call lower_overloaded_operator(arena, node_index, op_slot, &
+                                                 context, value, error_msg)
+                  return
+              end if
+          end block
           call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                   bin_right, bin_line, bin_col, error_msg)
           if (len_trim(error_msg) > 0) return

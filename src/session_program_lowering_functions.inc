@@ -807,6 +807,18 @@
                 node_type /= 'interface_block') cycle
             select type (iblock => arena%entries(declaration_indices(p))%node)
             type is (interface_block_node)
+                if (allocated(iblock%kind)) then
+                    block
+                        character(len=:), allocatable :: ik
+                        ik = lowercase_text(trim(iblock%kind))
+                        if (ik == 'operator' .or. ik == 'assignment') then
+                            call register_operator_interface(arena, iblock, &
+                                context, ik == 'assignment', error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            cycle
+                        end if
+                    end block
+                end if
                 if (.not. allocated(iblock%name)) cycle
                 if (len_trim(iblock%name) == 0) cycle
                 call register_generic_interface(arena, iblock, context, error_msg)
