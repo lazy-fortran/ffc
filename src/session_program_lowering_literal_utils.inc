@@ -49,6 +49,20 @@
         end select
         if (.not. allocated(node%arg_indices)) return
         if (size(node%arg_indices) /= 1) return
+        if (node_exists(arena, node%arg_indices(1))) then
+            ! sum(a(lo:hi)) and friends: the section reduces over its base
+            ! array's element kind, so gate on that base's value kind.
+            select type (arg => arena%entries(node%arg_indices(1))%node)
+            type is (array_slice_node)
+                call get_identifier_name(arena, arg%array_index, arg_name, err)
+                if (len_trim(err) > 0) return
+                sym = find_symbol(context, arg_name)
+                if (sym <= 0) return
+                ok = context%symbols(sym)%is_array .and. &
+                     context%symbols(sym)%value_kind == vk
+                return
+            end select
+        end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
         if (len_trim(err) > 0) return
         sym = find_symbol(context, arg_name)
