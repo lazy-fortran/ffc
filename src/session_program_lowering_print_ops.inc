@@ -43,6 +43,18 @@
         end if
         prev_is_char = .false.
         do i = 1, expr_count
+            ! A bare whole array among other items prints each element inline
+            ! (its own leading spaces, no record break) so 'tag', arr works.
+            block
+                logical :: array_handled
+                call emit_whole_array_print_items(arena, &
+                    node%expression_indices(i), context, array_handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (array_handled) then
+                    prev_is_char = .false.
+                    cycle
+                end if
+            end block
             cur_is_char = char_print_item(arena, node%expression_indices(i), &
                                           context)
             if (.not. (i > 1 .and. cur_is_char .and. prev_is_char)) then

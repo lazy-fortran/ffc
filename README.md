@@ -22,8 +22,13 @@ The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
 supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
-`F`, and `A` descriptors on stdout; fixed-size rank-1 and rank-2 arrays with
-`integer`, `real`, `real(8)`, and `logical` elements; scalar element access, array
+`F`, and `A` descriptors on stdout, including a bare array among other print
+items; fixed-size rank-1 and rank-2 arrays with
+`integer`, `real`, `real(8)`, and `logical` elements; array constructors as
+whole-array assignment right-hand sides, plain (`[a, b, c]`), typed
+(`[integer :: 1, 2]`, real-to-integer truncation and integer-to-real
+promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element
+access, array
 sections, whole-array copy, elemental arithmetic, and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, and
