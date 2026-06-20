@@ -182,6 +182,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                get_node_as_program, &
                                get_node_as_subroutine_def
     use fortfront, only: get_node_line, get_node_column
+    use ast_arena_source_text, only: get_source_line
     use session_program_lowering_types, only: lowering_context_t, &
                                                 branch_result_t, symbol_t, &
                                                 array_section_info_t, &
