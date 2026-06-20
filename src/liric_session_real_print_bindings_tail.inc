@@ -314,6 +314,42 @@
                                  c_true, vreg, error_msg)
     end function emit_dprintf
 
+    logical function emit_getchar(session, result, error_msg)
+        ! getchar() -> int: read one byte from stdin, or EOF (-1). Used by PAUSE
+        ! to detect whether a resume line is available (#280).
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(0)
+        integer(c_int32_t) :: vreg
+
+        emit_getchar = .false.
+        if (.not. emit_call(session, 'getchar', args, &
+                            lr_type_i32_s(session%handle), 0_c_int32_t, &
+                            c_false, vreg, error_msg)) return
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_i32_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        emit_getchar = .true.
+    end function emit_getchar
+
+    logical function emit_exit(session, code, error_msg)
+        ! exit(int) terminates the process, flushing stdio buffers. PAUSE calls
+        ! it with 0 when stdin signals end-of-input, matching gfortran (#280).
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: code
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(1)
+        integer(c_int32_t) :: vreg
+
+        args(1) = code
+        emit_exit = emit_call(session, 'exit', args, &
+                              lr_type_void_s(session%handle), 1_c_int32_t, &
+                              c_false, vreg, error_msg)
+    end function emit_exit
+
     logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
                                vararg, vreg, error_msg)
         type(liric_session_t), intent(inout) :: session

@@ -572,10 +572,9 @@
         type is (interface_block_node)
             call lower_interface_block(arena, node, context, error_msg)
         type is (pause_node)
-            ! PAUSE halts an interactive run waiting for input; under batch
-            ! conformance it carries no observable semantics, so execution
-            ! continues (#270).
-            call set_empty(error_msg)
+            ! PAUSE writes a banner to stderr and waits on stdin; end-of-input
+            ! terminates the job, matching gfortran (#280).
+            call lower_pause(node, context, error_msg)
         type is (continue_node)
             ! CONTINUE is a no-op; it commonly only anchors a statement label
             ! that a GOTO targets (the labeled-body driver owns the branch).

@@ -119,7 +119,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf, emit_scanf, &
                                                  emit_fscanf, &
-                                                 emit_fprintf, emit_dprintf
+                                                 emit_fprintf, emit_dprintf, &
+                                                 emit_getchar, emit_exit
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
                                                     synthesize_complex8_printer, &
                                                     emit_complex4_print_call, &

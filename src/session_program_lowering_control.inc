@@ -305,3 +305,75 @@
         same_operand = lhs%kind == rhs%kind .and. lhs%payload == rhs%payload &
                        .and. lhs%global_offset == rhs%global_offset
     end function same_operand
+
+    subroutine lower_pause(node, context, error_msg)
+        ! gfortran writes a PAUSE banner to stderr (fd 2):
+        !   PAUSE <message>
+        !   To resume execution, type go.  Other input will terminate the job.
+        ! then waits on stdin. End-of-input terminates the job with exit 0,
+        ! suppressing any later output. Emit the banner via dprintf and read one
+        ! byte: on EOF (getchar() == -1) call exit(0); otherwise resume (#280).
+        type(pause_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: msg_text, banner
+        type(lr_operand_desc_t) :: fa(3), fmtop, msgop, ch, is_eof
+        type(lr_operand_desc_t) :: eof_imm
+        integer(c_int32_t) :: fmt_gid, msg_gid
+        integer(c_int32_t) :: exit_block, resume_block
+        character(len=64) :: gname
+
+        call set_empty(error_msg)
+        banner = 'To resume execution, type go.  '// &
+                 'Other input will terminate the job.'//achar(10)
+        if (allocated(node%pause_message)) then
+            call strip_literal_quotes(node%pause_message, msg_text)
+        else
+            msg_text = ''
+        end if
+
+        ! Banner string and format. The format prints "PAUSE <msg>" plus the
+        ! resume line; the message rides as a %s argument (empty when absent, so
+        ! the no-message form is "PAUSE " with its trailing space, as gfortran).
+        context%string_literal_count = context%string_literal_count + 1
+        write (gname, '(A,I0)') '.ffc.pause.msg.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(gname), &
+                                         msg_text, msg_gid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        msgop = printf_format_ptr(context%session, msg_gid)
+        context%string_literal_count = context%string_literal_count + 1
+        write (gname, '(A,I0)') '.ffc.pause.fmt.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(gname), &
+                                         'PAUSE %s'//achar(10)//banner, fmt_gid, &
+                                         error_msg)
+        if (len_trim(error_msg) > 0) return
+        fmtop = printf_format_ptr(context%session, fmt_gid)
+        fa(1) = i32_immediate(context%session, 2_c_int64_t)
+        fa(2) = fmtop
+        fa(3) = msgop
+        if (.not. emit_dprintf(context%session, fa, error_msg)) return
+
+        ! getchar(); branch on EOF.
+        if (.not. emit_getchar(context%session, ch, error_msg)) return
+        eof_imm = i32_immediate(context%session, -1_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, ch, eof_imm, &
+                                      is_eof, error_msg)) return
+        exit_block = create_liric_block(context%session)
+        resume_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, is_eof, exit_block, &
+                                    resume_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        if (.not. emit_exit(context%session, &
+                            i32_immediate(context%session, 0_c_int64_t), &
+                            error_msg)) return
+        ! exit() does not return; close the block with an unreachable branch back
+        ! to the resume path so the function stays well formed.
+        if (.not. emit_liric_br(context%session, resume_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, resume_block, error_msg)) return
+        context%current_block_id = resume_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_pause
