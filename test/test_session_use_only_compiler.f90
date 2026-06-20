@@ -14,6 +14,9 @@ program test_session_use_only_compiler
     if (.not. test_use_only_rename_hides_original()) all_passed = .false.
     if (.not. test_use_only_admits_module_function()) all_passed = .false.
     if (.not. test_use_only_admits_module_subroutine()) all_passed = .false.
+    if (.not. test_use_rename_module_variable()) all_passed = .false.
+    if (.not. test_use_rename_module_function()) all_passed = .false.
+    if (.not. test_use_rename_module_subroutine()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: use ... only: filters imported symbols'
@@ -133,5 +136,64 @@ contains
         test_use_only_admits_module_subroutine = expect_exit_status( &
             source, 7, '/tmp/ffc_session_use_only_subroutine_test')
     end function test_use_only_admits_module_subroutine
+
+    logical function test_use_rename_module_variable()
+        ! Renaming a module variable binds the local name to the shared
+        ! global (#274).
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: counter = 42'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: local_counter => counter'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  stop local_counter'//new_line('a')// &
+            'end program main'
+
+        test_use_rename_module_variable = expect_exit_status( &
+            source, 42, '/tmp/ffc_session_use_rename_var_test')
+    end function test_use_rename_module_variable
+
+    logical function test_use_rename_module_function()
+        ! Renaming a module function aliases the call site (#274).
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function square(x) result(res)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    res = x * x'//new_line('a')// &
+            '  end function square'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: sq => square'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  stop sq(6)'//new_line('a')// &
+            'end program main'
+
+        test_use_rename_module_function = expect_exit_status( &
+            source, 36, '/tmp/ffc_session_use_rename_fn_test')
+    end function test_use_rename_module_function
+
+    logical function test_use_rename_module_subroutine()
+        ! Renaming a module subroutine aliases the call site (#274).
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine no_op()'//new_line('a')// &
+            '  end subroutine no_op'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: run => no_op'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  call run()'//new_line('a')// &
+            '  stop 9'//new_line('a')// &
+            'end program main'
+
+        test_use_rename_module_subroutine = expect_exit_status( &
+            source, 9, '/tmp/ffc_session_use_rename_sub_test')
+    end function test_use_rename_module_subroutine
 
 end program test_session_use_only_compiler

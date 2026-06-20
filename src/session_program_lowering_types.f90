@@ -348,6 +348,12 @@ module session_program_lowering_types
         integer, allocatable :: function_param_counts(:)
         integer, allocatable :: function_node_indices(:)
         integer :: function_count = 0
+        ! USE-rename procedure aliases (#274): a call to local name
+        ! proc_alias_locals(k) resolves to the real procedure
+        ! proc_alias_targets(k) before mangling.
+        character(len=64), allocatable :: proc_alias_locals(:)
+        character(len=64), allocatable :: proc_alias_targets(:)
+        integer :: proc_alias_count = 0
         type(external_procedure_t), allocatable :: external_procedures(:)
         integer :: external_procedure_count = 0
         ! Generic interface table (#249 B7c).

@@ -758,21 +758,41 @@
     end subroutine grow_external_procedures
 
     function degeneric_call_name(context, name, first_arg_kind) result(resolved)
-        ! If name is a registered generic, return the matching specific name;
-        ! otherwise return name unchanged (#249 B7c).
+        ! If name is a USE-rename alias, resolve to the real procedure first
+        ! (#274); if it is a registered generic, return the matching specific
+        ! name; otherwise return name unchanged (#249 B7c).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: first_arg_kind
-        character(len=:), allocatable :: resolved
+        character(len=:), allocatable :: resolved, dealiased
         integer :: g
 
-        g = find_generic(context, name)
+        dealiased = resolve_proc_alias(context, name)
+        g = find_generic(context, dealiased)
         if (g > 0) then
             resolved = resolve_generic(context, g, first_arg_kind)
         else
-            resolved = trim(name)
+            resolved = dealiased
         end if
     end function degeneric_call_name
+
+    function resolve_proc_alias(context, name) result(target)
+        ! Map a USE-rename procedure alias to its real procedure name (#274);
+        ! returns name unchanged when it is not an alias.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: target
+        integer :: i
+
+        target = trim(name)
+        if (.not. allocated(context%proc_alias_locals)) return
+        do i = 1, context%proc_alias_count
+            if (same_name(context%proc_alias_locals(i), name)) then
+                target = trim(context%proc_alias_targets(i))
+                return
+            end if
+        end do
+    end function resolve_proc_alias
 
     integer function generic_call_return_kind(context, name, first_arg_kind) &
         result(ret_kind)

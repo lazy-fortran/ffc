@@ -27,7 +27,6 @@ issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
 issue_1351_elemental_pure.f90
 issue_1353_class_pointer_declaration.f90
-issue_1565_use_associated_rename.f90
 issue_1570_pure_elemental_preservation.f90
 issue_1571_use_associated_external.f90
 issue_1583_computed_goto.f90
@@ -51,8 +50,6 @@ issue_1744_operator_interface.f90
 issue_1771_module_parameter_types.f90
 issue_1774_user_defined_operator.f90
 issue_1782_procedure_pointer.f90
-issue_1783_use_rename_no_only.f90
-issue_1783_use_rename_only.f90
 issue_1810_parameter_array_allocatable.f90
 issue_1818_assumed_size_array.f90
 issue_1821_protected_attribute.f90

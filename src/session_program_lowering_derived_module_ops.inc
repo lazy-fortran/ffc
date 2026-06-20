@@ -414,6 +414,7 @@
 
         do i = 1, size(use_node%rename_list) - 1, 2
             found = .false.
+            ! Exported named constant: fold into an integer value symbol.
             do j = 1, context%module_exports(export_idx)%parameter_count
                 param_idx = context%module_exports(export_idx)%parameter_indices(j)
                 if (.not. node_exists(arena, param_idx)) cycle
@@ -469,16 +470,117 @@
                 context%symbols(symbol_idx)%i32_constant = constant_value
                 context%symbol_count = symbol_idx
                 found = .true.
-                if (found) exit
+                exit
             end do
-            if (.not. found) then
-                error_msg = 'use rename target is not an exported parameter of '// &
-                    trim(use_node%module_name)//': '// &
-                    trim(use_node%rename_list(i + 1)%s)
-                return
-            end if
+            if (found) cycle
+            ! Exported module variable: bind the shared global under the local
+            ! name (#274).
+            call import_renamed_variable(arena, export_idx, &
+                trim(use_node%rename_list(i + 1)%s), &
+                trim(use_node%rename_list(i)%s), context, found, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (found) cycle
+            ! Exported module procedure: alias the call name (#274).
+            call import_renamed_procedure(arena, &
+                trim(context%module_exports(export_idx)%module_name), &
+                trim(use_node%rename_list(i + 1)%s), &
+                trim(use_node%rename_list(i)%s), context, found, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (found) cycle
+            error_msg = 'use rename target is not an exported parameter of '// &
+                trim(use_node%module_name)//': '// &
+                trim(use_node%rename_list(i + 1)%s)
+            return
         end do
     end subroutine import_use_renames
+
+    subroutine import_renamed_variable(arena, export_idx, remote_name, &
+                                       local_name, context, found, error_msg)
+        ! Bind an exported module variable to a local name (#274). Mirrors
+        ! bind_one_module_variable but interns the global under remote_name and
+        ! registers the symbol under local_name.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        character(len=*), intent(in) :: remote_name
+        character(len=*), intent(in) :: local_name
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, var_idx, value_kind, status, sym_idx
+        integer(c_int32_t) :: global_id
+        character(len=:), allocatable :: var_name, mangled, name_err
+        character(kind=c_char), allocatable :: c_name(:)
+
+        found = .false.
+        call set_empty(error_msg)
+        do i = 1, context%module_exports(export_idx)%variable_count
+            var_idx = context%module_exports(export_idx)%variable_indices(i)
+            if (.not. node_exists(arena, var_idx)) cycle
+            call get_declaration_var_name(arena, var_idx, var_name, name_err)
+            if (len_trim(name_err) > 0) cycle
+            if (.not. same_name(var_name, remote_name)) cycle
+            call module_variable_kind(arena, var_idx, value_kind, status, &
+                                      error_msg)
+            if (status /= MODVAR_OK) then
+                call set_empty(error_msg)
+                return
+            end if
+            if (find_symbol(context, local_name) > 0) then
+                error_msg = 'duplicate use rename local name: '//local_name
+                return
+            end if
+            mangled = module_procedure_mangled( &
+                trim(context%module_exports(export_idx)%module_name), &
+                trim(var_name))
+            call to_c_chars(mangled, c_name)
+            global_id = lr_session_intern(context%session%handle, c_name)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'module variable global not found: '//trim(mangled)
+                return
+            end if
+            call grow_symbols(context)
+            sym_idx = context%symbol_count + 1
+            context%symbols(sym_idx)%name = local_name
+            context%symbols(sym_idx)%value_kind = value_kind
+            context%symbols(sym_idx)%has_address = .true.
+            context%symbols(sym_idx)%is_reference = .true.
+            context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
+            context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+            context%symbols(sym_idx)%address%typ = &
+                lr_type_ptr_s(context%session%handle)
+            context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+            context%symbol_count = sym_idx
+            found = .true.
+            return
+        end do
+    end subroutine import_renamed_variable
+
+    subroutine import_renamed_procedure(arena, module_name, remote_name, &
+                                        local_name, context, found, error_msg)
+        ! Alias an exported module procedure under a local name (#274). The
+        ! procedure node is already in the function table from
+        ! register_module_procedures; this adds a second entry sharing the same
+        ! node index, value kind, and parameter count.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_name
+        character(len=*), intent(in) :: remote_name
+        character(len=*), intent(in) :: local_name
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        found = .false.
+        call set_empty(error_msg)
+        if (.not. module_exports_procedure(arena, module_name, remote_name)) return
+        if (contained_function_kind(context, local_name) /= 0) then
+            error_msg = 'duplicate use rename local name: '//local_name
+            return
+        end if
+        call register_procedure_alias(context, remote_name, local_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        found = .true.
+    end subroutine import_renamed_procedure
 
     subroutine import_renamed_parameter(decl, local_name, value_kind, context, &
                                         error_msg)
