@@ -1089,6 +1089,16 @@
                                                      context, error_msg)
                         return
                     end if
+                    if (same_name(rhs%name, 'pack')) then
+                        call lower_pack_assignment(arena, node, symbol_index, &
+                                                   context, error_msg)
+                        return
+                    end if
+                    if (same_name(rhs%name, 'unpack')) then
+                        call lower_unpack_assignment(arena, node, symbol_index, &
+                                                     context, error_msg)
+                        return
+                    end if
                 end if
             end select
         end if
@@ -2226,6 +2236,370 @@
             return
         end select
     end subroutine lower_spread_assignment
+
+    ! Number of elements a pack/unpack mask iterates over: the logical array's
+    ! size, or the compared array's size for a comparison mask. Zero when the
+    ! mask argument is neither.
+    integer function mask_extent(arena, mask_index, context) result(extent)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: mask_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: sym, scalar_index
+        logical :: array_on_left
+        character(len=:), allocatable :: source_op, name, err, cmp_err
+
+        extent = 0
+        call resolve_comparison_mask(arena, mask_index, context, sym, &
+                                     scalar_index, array_on_left, source_op, &
+                                     cmp_err)
+        if (len_trim(cmp_err) == 0 .and. sym > 0) then
+            extent = context%symbols(sym)%array_size
+            return
+        end if
+        if (is_identifier(arena, mask_index)) then
+            call get_identifier_name(arena, mask_index, name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, name)
+            if (sym <= 0) return
+            if (context%symbols(sym)%is_array) extent = &
+                context%symbols(sym)%array_size
+        end if
+    end function mask_extent
+
+    ! The i-th element of a pack/unpack mask as a 0/1 i32 operand. Handles a
+    ! logical array variable and an elementwise comparison expression.
+    subroutine mask_element_value(arena, mask_index, context, linear_index, &
+                                  value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: mask_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym, scalar_index
+        logical :: array_on_left
+        character(len=:), allocatable :: source_op, name
+
+        call resolve_comparison_mask(arena, mask_index, context, sym, &
+                                     scalar_index, array_on_left, source_op, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (sym > 0) then
+            call lower_comparison_mask_element(context, sym, scalar_index, &
+                array_on_left, source_op, arena, linear_index, value, error_msg)
+            return
+        end if
+        call get_identifier_name(arena, mask_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, name)
+        if (sym <= 0) then
+            error_msg = 'pack/unpack mask was not declared: '//trim(name)
+            return
+        end if
+        call load_array_linear_element(context, sym, linear_index, value, &
+                                       error_msg)
+    end subroutine mask_element_value
+
+    ! pack(array, mask): store the source elements whose mask is .true. into the
+    ! fixed-size target in order, tracking the destination position in a cursor.
+    subroutine lower_pack_assignment(arena, node, target_index, context, &
+                                     error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: source_index, extent, i
+        type(lr_operand_desc_t) :: cursor_addr, mask_val, cond
+        type(lr_operand_desc_t) :: elem, cursor, next_cursor
+        integer(c_int32_t) :: store_block, skip_block
+
+        call resolve_pack_arguments(arena, node%value_index, context, &
+                                    source_index, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_alloca(context%session, cursor_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), cursor_addr, &
+                error_msg)) return
+
+        do i = 0, extent - 1
+            call mask_element_value(arena, pack_mask_index(arena, node%value_index), &
+                                    context, int(i, c_int64_t), mask_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, mask_val, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+            store_block = create_liric_block(context%session)
+            skip_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, cond, store_block, &
+                                        skip_block, error_msg)) return
+
+            ! store block: target[cursor] = source[i]; cursor = cursor + 1
+            if (.not. set_liric_block(context%session, store_block, error_msg)) &
+                return
+            context%current_block_id = store_block
+            call load_array_linear_element(context, source_index, &
+                                           int(i, c_int64_t), elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_load(context%session, cursor_addr, cursor, &
+                                    error_msg)) return
+            call store_array_element_at_operand(context, target_index, cursor, &
+                                                elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, cursor, &
+                    i32_immediate(context%session, 1_c_int64_t), next_cursor, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, next_cursor, cursor_addr, &
+                                     error_msg)) return
+            if (.not. emit_liric_br(context%session, skip_block, error_msg)) return
+
+            ! skip block continues the loop.
+            if (.not. set_liric_block(context%session, skip_block, error_msg)) &
+                return
+            context%current_block_id = skip_block
+            context%current_block_terminated = .false.
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_pack_assignment
+
+    ! Resolve pack(array, mask): the source array symbol and the mask extent
+    ! (which must match the source size). The mask shares the source's extent.
+    subroutine resolve_pack_arguments(arena, call_index, context, source_index, &
+                                      extent, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: call_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: source_index
+        integer, intent(out) :: extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+
+        source_index = 0
+        extent = 0
+        select type (rhs => arena%entries(call_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices)) then
+                error_msg = 'pack requires an array and a mask argument'
+                return
+            end if
+            if (size(rhs%arg_indices) < 2) then
+                error_msg = 'pack requires an array and a mask argument'
+                return
+            end if
+            call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_index = find_symbol(context, name)
+            if (source_index <= 0) then
+                error_msg = 'pack array was not declared: '//trim(name)
+                return
+            end if
+            if (.not. context%symbols(source_index)%is_array) then
+                error_msg = 'pack requires an array argument: '//trim(name)
+                return
+            end if
+            extent = mask_extent(arena, rhs%arg_indices(2), context)
+            if (extent <= 0) then
+                error_msg = 'pack mask must be a logical array or comparison'
+                return
+            end if
+        class default
+            error_msg = 'pack requires an intrinsic call'
+        end select
+    end subroutine resolve_pack_arguments
+
+    ! AST index of the mask argument of a pack/unpack call.
+    integer function pack_mask_index(arena, call_index) result(mask_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: call_index
+
+        mask_index = 0
+        select type (rhs => arena%entries(call_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(rhs%arg_indices)) then
+                if (size(rhs%arg_indices) >= 2) mask_index = rhs%arg_indices(2)
+            end if
+        end select
+    end function pack_mask_index
+
+    ! unpack(vector, mask, field): where mask is .true. take the next vector
+    ! element in order, else take field. field may be an array or a scalar.
+    subroutine lower_unpack_assignment(arena, node, target_index, context, &
+                                       error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: vector_index, mask_idx, extent, i
+        integer :: field_sym, field_scalar_index
+        logical :: field_is_scalar
+        type(lr_operand_desc_t) :: cursor_addr, mask_val, cond
+        type(lr_operand_desc_t) :: vec_elem, field_val, cursor, next_cursor
+        integer(c_int32_t) :: take_block, else_block, merge_block
+
+        call resolve_unpack_arguments(arena, node%value_index, context, &
+                                      vector_index, mask_idx, field_sym, &
+                                      field_is_scalar, field_scalar_index, &
+                                      extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_alloca(context%session, cursor_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), cursor_addr, &
+                error_msg)) return
+
+        do i = 0, extent - 1
+            call mask_element_value(arena, mask_idx, context, int(i, c_int64_t), &
+                                    mask_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, mask_val, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+            take_block = create_liric_block(context%session)
+            else_block = create_liric_block(context%session)
+            merge_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, cond, take_block, &
+                                        else_block, error_msg)) return
+
+            ! take block: target[i] = vector[cursor]; cursor = cursor + 1
+            if (.not. set_liric_block(context%session, take_block, error_msg)) &
+                return
+            context%current_block_id = take_block
+            if (.not. emit_i32_load(context%session, cursor_addr, cursor, &
+                                    error_msg)) return
+            call load_array_element_at_operand(context, vector_index, cursor, &
+                                               vec_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, target_index, &
+                                            int(i, c_int64_t), vec_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, cursor, &
+                    i32_immediate(context%session, 1_c_int64_t), next_cursor, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, next_cursor, cursor_addr, &
+                                     error_msg)) return
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+            ! else block: target[i] = field[i] (or scalar field)
+            if (.not. set_liric_block(context%session, else_block, error_msg)) &
+                return
+            context%current_block_id = else_block
+            if (field_is_scalar) then
+                call lower_unpack_scalar_field(arena, field_scalar_index, &
+                    field_sym, target_index, context, field_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                call load_array_linear_element(context, field_sym, &
+                                               int(i, c_int64_t), field_val, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            call store_array_linear_element(context, target_index, &
+                                            int(i, c_int64_t), field_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+            if (.not. set_liric_block(context%session, merge_block, error_msg)) &
+                return
+            context%current_block_id = merge_block
+            context%current_block_terminated = .false.
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_unpack_assignment
+
+    ! Lower the scalar field value of unpack, formatted to the target element
+    ! kind. A literal field has no symbol; lower its expression directly.
+    subroutine lower_unpack_scalar_field(arena, field_scalar_index, field_sym, &
+                                         target_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: field_scalar_index, field_sym, target_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (field_sym > 0) then
+            value = context%symbols(field_sym)%value
+            return
+        end if
+        select case (context%symbols(target_index)%value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, field_scalar_index, context, value, &
+                                      error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, field_scalar_index, context, value, &
+                                      error_msg)
+        case default
+            call lower_i32_expression(arena, field_scalar_index, context, value, &
+                                      error_msg)
+        end select
+    end subroutine lower_unpack_scalar_field
+
+    ! Resolve unpack(vector, mask, field): the vector symbol, the mask AST
+    ! index, the field symbol (array or scalar; 0 for a literal scalar field
+    ! whose AST index is returned in field_scalar_index), and the result extent
+    ! (the mask extent, which equals the result and field array shape).
+    subroutine resolve_unpack_arguments(arena, call_index, context, &
+                                        vector_index, mask_idx, field_sym, &
+                                        field_is_scalar, field_scalar_index, &
+                                        extent, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: call_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: vector_index, mask_idx, field_sym, extent
+        integer, intent(out) :: field_scalar_index
+        logical, intent(out) :: field_is_scalar
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, name_err
+
+        vector_index = 0
+        mask_idx = 0
+        field_sym = 0
+        field_scalar_index = 0
+        field_is_scalar = .false.
+        extent = 0
+        select type (rhs => arena%entries(call_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices)) then
+                error_msg = 'unpack requires vector, mask, and field arguments'
+                return
+            end if
+            if (size(rhs%arg_indices) < 3) then
+                error_msg = 'unpack requires vector, mask, and field arguments'
+                return
+            end if
+            call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            vector_index = find_symbol(context, name)
+            if (vector_index <= 0 .or. .not. &
+                context%symbols(max(vector_index, 1))%is_array) then
+                error_msg = 'unpack vector must be a declared array: '//trim(name)
+                return
+            end if
+            mask_idx = rhs%arg_indices(2)
+            extent = mask_extent(arena, mask_idx, context)
+            if (extent <= 0) then
+                error_msg = 'unpack mask must be a logical array or comparison'
+                return
+            end if
+            ! The field is an array variable, a scalar variable, or a scalar
+            ! literal/expression. A non-identifier field is a literal scalar.
+            if (is_identifier(arena, rhs%arg_indices(3))) then
+                call get_identifier_name(arena, rhs%arg_indices(3), name, &
+                                         name_err)
+                if (len_trim(name_err) == 0) field_sym = find_symbol(context, name)
+            end if
+            if (field_sym > 0) then
+                field_is_scalar = .not. context%symbols(field_sym)%is_array
+            else
+                field_is_scalar = .true.
+                field_scalar_index = rhs%arg_indices(3)
+            end if
+        class default
+            error_msg = 'unpack requires an intrinsic call'
+        end select
+    end subroutine resolve_unpack_arguments
 
     ! Resolve a logical mask array argument (merge): an identifier naming a
     ! declared logical array. Stored as i32, so callers compare against zero.

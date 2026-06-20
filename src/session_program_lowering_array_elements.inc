@@ -956,6 +956,81 @@
         call set_empty(error_msg)
     end subroutine store_array_linear_element
 
+    subroutine store_array_element_at_operand(context, symbol_index, &
+                                              index_value, value, error_msg)
+        ! Store an element at a runtime i32 index into a fixed-size array. Used
+        ! by pack/unpack where the destination position is a loop cursor.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: index_value
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        integer :: vk
+
+        vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_F32) then
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, value, addr, &
+                                           error_msg)) return
+        else if (vk == VALUE_F64) then
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, value, addr, &
+                                           error_msg)) return
+        else
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
+                return
+        end if
+        call set_empty(error_msg)
+    end subroutine store_array_element_at_operand
+
+    subroutine load_array_element_at_operand(context, symbol_index, &
+                                             index_value, value, error_msg)
+        ! Load an element at a runtime i32 index from a fixed-size array.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: index_value
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        integer :: vk
+
+        vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_F32) then
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_liric_f32_load(context%session, addr, value, &
+                                          error_msg)) return
+        else if (vk == VALUE_F64) then
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_liric_f64_load(context%session, addr, value, &
+                                          error_msg)) return
+        else
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    index_value, addr, error_msg)) return
+            if (.not. emit_i32_load(context%session, addr, value, error_msg)) &
+                return
+        end if
+        call set_empty(error_msg)
+    end subroutine load_array_element_at_operand
+
     subroutine load_i32_array_element(context, symbol_index, index1, value, error_msg, &
                                       index2)
         type(lowering_context_t), intent(inout) :: context
