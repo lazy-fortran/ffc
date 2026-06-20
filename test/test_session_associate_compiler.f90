@@ -12,6 +12,7 @@ program test_session_associate
     if (.not. test_associate_two_names()) all_passed = .false.
     if (.not. test_associate_scope_drops_binding()) all_passed = .false.
     if (.not. test_associate_print_value()) all_passed = .false.
+    if (.not. test_associate_real_expr_alias()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate constructs lower through direct LIRIC'
@@ -99,5 +100,26 @@ contains
                                   source, '          42'//new_line('a'), &
                                   '/tmp/ffc_session_associate_print')
     end function test_associate_print_value
+
+    logical function test_associate_real_expr_alias()
+        ! A real-valued expression selector must lower at its own (real) kind,
+        ! be usable in a further real expression, and print correctly. This
+        ! guards the f32 selector path (val * 2.0).
+        character(len=*), parameter :: source = &
+                                       'program main'//new_line('a')// &
+                                       'real :: val'//new_line('a')// &
+                                       'real :: out'//new_line('a')// &
+                                       'val = 3.0'//new_line('a')// &
+                                       'associate (scaled => val * 2.0)'// &
+                                       new_line('a')// &
+                                       '    out = scaled + 1.0'//new_line('a')// &
+                                       '    print *, out'//new_line('a')// &
+                                       'end associate'//new_line('a')// &
+                                       'end program main'
+
+        test_associate_real_expr_alias = expect_output( &
+                                  source, '   7.00000000    '//new_line('a'), &
+                                  '/tmp/ffc_session_associate_real_expr')
+    end function test_associate_real_expr_alias
 
 end program test_session_associate
