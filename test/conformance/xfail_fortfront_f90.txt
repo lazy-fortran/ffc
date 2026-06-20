@@ -17,8 +17,6 @@ close_if_block.f90
 close_multiple.f90
 close_nested_if.f90
 close_select_case.f90
-complex_assignment_literals.f90
-complex_literal_kind.f90
 control_flow_associate_construct.f90
 control_flow_forall_construct.f90
 control_flow_nested_select_case.f90
@@ -86,7 +84,6 @@ issue_1782_procedure_pointer.f90
 issue_1783_use_rename_no_only.f90
 issue_1783_use_rename_only.f90
 issue_1810_parameter_array_allocatable.f90
-issue_1811_cmplx_intrinsic.f90
 issue_1818_assumed_size_array.f90
 issue_1821_protected_attribute.f90
 issue_1826_enum_module.f90
@@ -212,7 +209,6 @@ roundtrip_declaration_attributes.f90
 roundtrip_interface_blocks.f90
 roundtrip_module_features.f90
 roundtrip_procedure_attributes.f90
-roundtrip_type_preservation.f90
 select_rank_simple.f90
 tmp_goto_ast.f90
 tooling_lightweight_ast.f90

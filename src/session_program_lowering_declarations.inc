@@ -174,6 +174,11 @@
             base = lowercase_text(trim(adjustl(type_name(1:paren - 1))))
             kind_spec = lowercase_text(trim(adjustl( &
                 type_name(paren + 1:index(type_name, ')', back=.true.) - 1))))
+            ! Normalize the explicit "kind=" keyword form so kind-name matching
+            ! below sees the bare selector (kind=8 -> 8, real(kind=8) -> 8).
+            if (index(kind_spec, 'kind=') == 1) then
+                kind_spec = trim(adjustl(kind_spec(6:)))
+            end if
         else
             base = lowercase_text(trim(adjustl(type_name)))
             call set_empty(kind_spec)

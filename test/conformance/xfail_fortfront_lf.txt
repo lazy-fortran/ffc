@@ -89,7 +89,6 @@ issue_2069_allocate_inference_working.lf
 issue_2069_allocate_not_inferred_allocatable.lf
 issue_2071_function_param_string_inferred_as_real.lf
 issue_2072_pointer_not_declared.lf
-issue_2073_basic_cmplx.lf
 issue_2073_cmplx_abs.lf
 issue_2073_cmplx_aimag.lf
 issue_2073_cmplx_real.lf

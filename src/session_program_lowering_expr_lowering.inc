@@ -313,6 +313,11 @@
             error_msg = 'direct LIRIC session real(4) function call requires a name'
             return
         end if
+        if (is_complex_component_extract(arena, node, context, VALUE_C4)) then
+            call lower_complex_component_extract(arena, node, context, &
+                                                 .true., value, error_msg)
+            return
+        end if
 
         ! Resolve generic -> specific (#249 B7c).
         call_name = degeneric_call_name(context, node%name, &
@@ -400,6 +405,11 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (is_complex_component_extract(arena, node, context, VALUE_C4)) then
+                ! real(z)/aimag(z) on a complex(4) yields a real(4) component.
+                is_f32 = .true.
+                return
+            end if
             if (allocated(node%name)) then
                 if (node%is_array_access) then
                     symbol_index = find_symbol(context, node%name)
@@ -543,6 +553,11 @@
             error_msg = 'direct LIRIC session real function call requires a name'
             return
         end if
+        if (is_complex_component_extract(arena, node, context, VALUE_C8)) then
+            call lower_complex_component_extract(arena, node, context, &
+                                                 .false., value, error_msg)
+            return
+        end if
 
         ! Resolve generic -> specific (#249 B7c).
         call_name = degeneric_call_name(context, node%name, &
@@ -672,6 +687,11 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (is_complex_component_extract(arena, node, context, VALUE_C8)) then
+                ! real(z)/aimag(z) on a complex(8) yields a real(8) component.
+                is_f64 = .true.
+                return
+            end if
             if (allocated(node%name)) then
                 if (node%is_array_access) then
                     symbol_index = find_symbol(context, node%name)
