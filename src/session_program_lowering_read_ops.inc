@@ -56,13 +56,183 @@
                 node%column, 'unit not opened in same scope (#247)', error_msg)
             return
         end if
-        if (.not. allocated(node%var_indices)) return
+        if (.not. allocated(node%var_indices)) then
+            call store_read_iostat_success(node, context, error_msg)
+            return
+        end if
         do i = 1, size(node%var_indices)
             call lower_read_file_item(arena, node%var_indices(i), fp, node%line, &
                                       node%column, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
+        call store_read_iostat_from_eof(node, fp, context, error_msg)
     end subroutine lower_read_file
+
+    subroutine store_read_iostat_success(node, context, error_msg)
+        ! No item list: a READ with no targets always succeeds; iostat = 0.
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+
+        call set_empty(error_msg)
+        call read_iostat_symbol(node, context, sym, error_msg)
+        if (len_trim(error_msg) > 0 .or. sym <= 0) return
+        call assign_i32_to_symbol(context, sym, &
+                                  i32_immediate(context%session, 0_c_int64_t), &
+                                  error_msg)
+    end subroutine store_read_iostat_success
+
+    subroutine store_read_iostat_from_eof(node, fp, context, error_msg)
+        ! Map end-of-file to a Fortran iostat: feof(fp) == 0 -> 0 (success),
+        ! otherwise -1 (end-of-file), matching gfortran's iostat_end.
+        use liric_session_complex_print_bindings, only: emit_extern_i32_call
+        type(read_statement_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(in) :: fp
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: ok, eof_flag, fp_arg(1)
+        integer(c_int32_t) :: ok_blk, eof_blk, done_blk
+        integer :: sym
+
+        call set_empty(error_msg)
+        call read_iostat_symbol(node, context, sym, error_msg)
+        if (len_trim(error_msg) > 0 .or. sym <= 0) return
+
+        ! feof(fp) is set only once a read hits end-of-file. The vararg fscanf
+        ! return is not reliably captured by the backend, so use feof to detect
+        ! EOF: iostat = -1 (gfortran's iostat_end) at EOF, 0 otherwise.
+        fp_arg(1) = fp
+        if (.not. emit_extern_i32_call(context%session, 'feof', fp_arg, eof_flag, &
+                                       error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, eof_flag, &
+                i32_immediate(context%session, 0_c_int64_t), ok, error_msg)) return
+        ok_blk = create_liric_block(context%session)
+        eof_blk = create_liric_block(context%session)
+        done_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, ok, ok_blk, eof_blk, &
+                                     error_msg)) return
+
+        if (.not. set_liric_block(context%session, ok_blk, error_msg)) return
+        call assign_i32_to_symbol(context, sym, &
+                                  i32_immediate(context%session, 0_c_int64_t), &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
+
+        if (.not. set_liric_block(context%session, eof_blk, error_msg)) return
+        call assign_i32_to_symbol(context, sym, &
+                                  i32_immediate(context%session, -1_c_int64_t), &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done_blk, error_msg)) return
+        ! Both branches stored to the same slot; reload so later uses of the
+        ! iostat variable see the merged value rather than a per-branch register.
+        call reload_i32_symbol(context, sym, error_msg)
+    end subroutine store_read_iostat_from_eof
+
+    subroutine reload_i32_symbol(context, sym, error_msg)
+        use liric_session_memory_bindings, only: emit_i32_load
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. context%symbols(sym)%has_address) return
+        if (.not. emit_i32_load(context%session, context%symbols(sym)%address, &
+                                context%symbols(sym)%value, error_msg)) return
+    end subroutine reload_i32_symbol
+
+    subroutine read_iostat_symbol(node, context, sym, error_msg)
+        ! Resolve the read statement's iostat= target to a declared i32 symbol.
+        ! The variable name lives in the io_control_list text (iostat=<name>);
+        ! sym is 0 when the statement has no iostat= specifier.
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name
+
+        call set_empty(error_msg)
+        sym = 0
+        if (.not. allocated(node%io_control_list)) return
+        call io_control_value(node%io_control_list, 'iostat', var_name)
+        if (len_trim(var_name) == 0) return
+        sym = find_symbol(context, var_name)
+        if (sym <= 0) then
+            error_msg = 'iostat target was not declared: '//trim(var_name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_I32) then
+            error_msg = 'iostat target must be a default integer: '//trim(var_name)
+            sym = 0
+            return
+        end if
+    end subroutine read_iostat_symbol
+
+    subroutine io_control_value(control_list, keyword, value)
+        ! Extract the value of "<keyword>=<value>" from an io_control_list text
+        ! such as "iostat=ios, iomsg=msg". value is empty when absent.
+        character(len=*), intent(in) :: control_list
+        character(len=*), intent(in) :: keyword
+        character(len=:), allocatable, intent(out) :: value
+        character(len=:), allocatable :: lowered
+        integer :: kw_pos, eq_pos, start, stop_pos, i
+
+        value = ''
+        lowered = lower_ascii(control_list)
+        kw_pos = index(lowered, trim(keyword)//'=')
+        if (kw_pos <= 0) return
+        eq_pos = kw_pos + len_trim(keyword)
+        start = eq_pos + 1
+        do while (start <= len(control_list))
+            if (control_list(start:start) /= ' ') exit
+            start = start + 1
+        end do
+        stop_pos = start - 1
+        do i = start, len(control_list)
+            if (control_list(i:i) == ',' .or. control_list(i:i) == ' ') exit
+            stop_pos = i
+        end do
+        if (stop_pos >= start) value = control_list(start:stop_pos)
+    end subroutine io_control_value
+
+    function lower_ascii(s) result(t)
+        character(len=*), intent(in) :: s
+        character(len=len(s)) :: t
+        integer :: i, c
+        do i = 1, len(s)
+            c = ichar(s(i:i))
+            if (c >= ichar('A') .and. c <= ichar('Z')) then
+                t(i:i) = char(c + 32)
+            else
+                t(i:i) = s(i:i)
+            end if
+        end do
+    end function lower_ascii
+
+    subroutine assign_i32_to_symbol(context, sym, value, error_msg)
+        ! Set an i32 symbol's current value and write it back to memory when the
+        ! symbol is materialised, so later reads see the stored iostat.
+        use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        context%symbols(sym)%value = value
+        if (.not. context%symbols(sym)%has_address) then
+            if (.not. emit_i32_alloca(context%session, &
+                                      context%symbols(sym)%address, error_msg)) return
+            context%symbols(sym)%has_address = .true.
+            context%symbols(sym)%is_reference = .true.
+        end if
+        if (.not. emit_i32_store(context%session, value, &
+                                 context%symbols(sym)%address, error_msg)) return
+    end subroutine assign_i32_to_symbol
 
     subroutine check_read_format_supported(format_spec, line, col, error_msg)
         ! Accept list-directed (*) and numeric edit descriptors (I/F/E/D/G plus

@@ -54,6 +54,7 @@ module liric_session_complex_print_bindings
     public :: synthesize_complex8_printer
     public :: emit_complex4_print_call
     public :: emit_complex8_print_call
+    public :: emit_extern_i32_call
 
     interface
         function lr_session_func_begin(handle, name, ret, params, n, &
@@ -95,6 +96,25 @@ contains
 
     ! -------------------------------------------------------------------------
     ! Shared low-level helpers
+
+    logical function emit_extern_i32_call(session, name, args, result, error_msg)
+        ! Call an external C function returning int via the external ABI and
+        ! capture its result. emit_i32_call uses the internal ABI, whose return
+        ! register is not valid for libc calls (e.g. feof); this one is.
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_extern_i32_call = cx_emit_call(session, name, args, &
+                                            lr_type_i32_s(session%handle), &
+                                            0_c_int32_t, c_false, &
+                                            vreg, error_msg)
+        if (.not. emit_extern_i32_call) return
+        result = i32_vreg(session, vreg)
+    end function emit_extern_i32_call
 
     logical function cx_emit_call(session, name, args, ret_typ, fixed_args, &
                                   vararg, vreg, error_msg)

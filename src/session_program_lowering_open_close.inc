@@ -459,6 +459,10 @@
             return
         end if
 
+        ! A write to a connected unit always succeeds here; iostat = 0.
+        call store_write_iostat_success(node, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+
         list_dir = .not. allocated(node%format_spec)
         if (allocated(node%format_spec)) then
             if (trim(node%format_spec) == '*') list_dir = .true.
@@ -476,6 +480,33 @@
             call lower_file_write_formatted(arena, node, fp, context, error_msg)
         end if
     end subroutine lower_write_file
+
+    subroutine store_write_iostat_success(node, context, error_msg)
+        ! Populate a WRITE's iostat= target with 0 (success). The variable name
+        ! lives in the io_control_list text (iostat=<name>).
+        type(write_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name
+        integer :: sym
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%io_control_list)) return
+        call io_control_value(node%io_control_list, 'iostat', var_name)
+        if (len_trim(var_name) == 0) return
+        sym = find_symbol(context, var_name)
+        if (sym <= 0) then
+            error_msg = 'iostat target was not declared: '//trim(var_name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_I32) then
+            error_msg = 'iostat target must be a default integer: '//trim(var_name)
+            return
+        end if
+        call assign_i32_to_symbol(context, sym, &
+                                  i32_immediate(context%session, 0_c_int64_t), &
+                                  error_msg)
+    end subroutine store_write_iostat_success
 
     integer function file_write_value_kind(arena, node_index, context)
         type(ast_arena_t), intent(in) :: arena
