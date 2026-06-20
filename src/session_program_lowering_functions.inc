@@ -1031,6 +1031,9 @@
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! Host-associate module-scope named constants and enumerators (#1826).
+        call bind_module_constants_in_context(context, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
