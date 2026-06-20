@@ -10,7 +10,7 @@ module session_program_lowering
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
                               block_data_node
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
-                            io_implied_do_node
+                            rewind_statement_node, io_implied_do_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
@@ -116,6 +116,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf, emit_scanf, &
+                                                 emit_fscanf, &
                                                  emit_fprintf, emit_dprintf
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
                                                     synthesize_complex8_printer, &
@@ -964,8 +965,35 @@ contains
             call store_reference_value(context, symbol_index, value, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
+        call track_assigned_i32_constant(arena, node%value_index, context, &
+                                         symbol_index)
         call set_empty(error_msg)
     end subroutine lower_assignment
+
+    subroutine track_assigned_i32_constant(arena, value_index, context, symbol_index)
+        ! Straight-line constant tracking for plain I32 scalars, scoped to unit
+        ! linking: a unit number assigned to a variable (unit = 10) lets
+        ! WRITE/READ/REWIND that refer to it by number vs. by name resolve to the
+        ! same connection. A non-constant RHS clears the tracked value.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer(c_int64_t) :: constant_value
+        character(len=:), allocatable :: eval_err
+
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) return
+        if (context%symbols(symbol_index)%is_parameter) return
+        call eval_i32_constant(arena, value_index, context, constant_value, eval_err)
+        if (allocated(eval_err)) then
+            if (len_trim(eval_err) > 0) then
+                context%symbols(symbol_index)%has_unit_const = .false.
+                return
+            end if
+        end if
+        context%symbols(symbol_index)%has_unit_const = .true.
+        context%symbols(symbol_index)%unit_const = int(constant_value)
+    end subroutine track_assigned_i32_constant
 
     subroutine try_lower_overloaded_assignment(arena, node, context, handled, &
                                                error_msg)
@@ -1093,6 +1121,7 @@ contains
     end subroutine emit_stop_banner
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
+    include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_print_ops.inc'
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'

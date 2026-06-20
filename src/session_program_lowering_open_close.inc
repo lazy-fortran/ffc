@@ -126,13 +126,13 @@
             return
         end if
 
+        ! Fortran units are read/write; use update modes so a unit can be
+        ! written, rewound, and read back within the same scope.
         select case (trim(sstr))
-        case ('replace', 'new')
-            mode_str = 'w'
         case ('old')
             mode_str = 'r+'
         case default
-            mode_str = 'w'
+            mode_str = 'w+'
         end select
 
         context%string_literal_count = context%string_literal_count + 1
@@ -201,6 +201,14 @@
                 if (.not. emit_ptr_store(context%session, file_handle, &
                                           context%symbols(sym)%file_ptr_address, &
                                           error_msg)) return
+                ! Alias the numeric unit so references by literal number resolve
+                ! to the same FILE* slot as references by variable name.
+                if (context%symbols(sym)%has_unit_const) then
+                    call alias_unit_to_slot(context, &
+                        context%symbols(sym)%unit_const, &
+                        context%symbols(sym)%file_ptr_address, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
             end if
         else
             call unsupported_feature_error('open statement', node%line, &
@@ -238,6 +246,27 @@
         call set_empty(error_msg)
     end subroutine track_literal_unit
 
+    subroutine alias_unit_to_slot(context, unit_number, slot, error_msg)
+        ! Make the numeric pseudo-symbol .unit.<N> share an existing FILE* slot.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: unit_number
+        type(lr_operand_desc_t), intent(in) :: slot
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=24) :: pseudo_name
+        integer :: sym
+
+        call set_empty(error_msg)
+        write (pseudo_name, '(A,I0)') '.unit.', unit_number
+        sym = find_symbol(context, trim(pseudo_name))
+        if (sym <= 0) then
+            call define_symbol(context, trim(pseudo_name), VALUE_C_PTR, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol(context, trim(pseudo_name))
+        end if
+        context%symbols(sym)%file_ptr_address = slot
+        context%symbols(sym)%is_file_unit = .true.
+    end subroutine alias_unit_to_slot
+
     ! --- CLOSE ---------------------------------------------------------------
 
     subroutine lower_close(node, context, error_msg)
@@ -273,27 +302,86 @@
         character(len=24) :: pseudo_name
 
         call set_empty(error_msg)
-        plain = adjustl(unit_spec)
+        plain = trim(adjustl(unit_spec))
+        ! REWIND/BACKSPACE keep the surrounding parentheses, e.g. "(u)".
+        if (len(plain) >= 2) then
+            if (plain(1:1) == '(' .and. plain(len(plain):len(plain)) == ')') then
+                plain = trim(adjustl(plain(2:len(plain) - 1)))
+            end if
+        end if
         eq_pos = index(plain, '=')
         if (eq_pos > 0) plain = adjustl(plain(eq_pos + 1:))
         plain = trim(plain)
 
+        unit_number = -1
         read (plain, *, iostat=ios) unit_number
         if (ios == 0) then
             write (pseudo_name, '(A,I0)') '.unit.', unit_number
             sym = find_symbol(context, trim(pseudo_name))
         else
+            unit_number = -1
             sym = find_symbol(context, trim(plain))
+            if (sym > 0) then
+                if (context%symbols(sym)%has_unit_const) &
+                    unit_number = context%symbols(sym)%unit_const
+            end if
         end if
         if (sym <= 0 .or. .not. context%symbols(sym)%is_file_unit) then
-            error_msg = 'no open unit for: '//trim(unit_spec)//' (#247 B5c)'
-            return
+            ! Implicit preconnection: a numeric unit used without OPEN connects
+            ! to fort.<N>, matching gfortran's default unit handling.
+            if (unit_number >= 0) then
+                call connect_implicit_unit(context, unit_number, sym, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                error_msg = 'no open unit for: '//trim(unit_spec)//' (#247 B5c)'
+                return
+            end if
         end if
         if (.not. emit_ptr_load(context%session, &
                                  context%symbols(sym)%file_ptr_address, &
                                  fp, error_msg)) return
         call set_empty(error_msg)
     end subroutine load_unit_file_ptr
+
+    subroutine connect_implicit_unit(context, unit_number, sym, error_msg)
+        ! fopen("fort.<N>", "w+") for a numeric unit used without OPEN.
+        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: unit_number
+        integer, intent(out) :: sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, file_handle
+        type(lr_operand_desc_t) :: ptr_slot, fa(2)
+        character(len=64) :: fgn, mgn, fname
+        integer(c_int32_t) :: fgid, mgid
+
+        call set_empty(error_msg)
+        write (fname, '(A,I0)') 'fort.', unit_number
+        context%string_literal_count = context%string_literal_count + 1
+        write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(fgn), &
+                                         trim(fname), fgid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        file_ptr_op = printf_format_ptr(context%session, fgid)
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(mgn), 'w+', &
+                                         mgid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        mode_ptr_op = printf_format_ptr(context%session, mgid)
+
+        fa(1) = file_ptr_op
+        fa(2) = mode_ptr_op
+        if (.not. emit_ptr_call(context%session, 'fopen', fa, file_handle, &
+                                error_msg)) return
+        if (.not. emit_ptr_alloca(context%session, ptr_slot, error_msg)) return
+        if (.not. emit_ptr_store(context%session, file_handle, ptr_slot, &
+                                 error_msg)) return
+        call alias_unit_to_slot(context, unit_number, ptr_slot, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, file_unit_pseudo_name(unit_number))
+    end subroutine connect_implicit_unit
 
     ! --- file-unit WRITE -----------------------------------------------------
 
@@ -312,7 +400,9 @@
             return
         end if
         sym = find_symbol(context, trim(node%unit_spec))
-        is_file_unit_write = (sym > 0)
+        if (sym <= 0) return
+        is_file_unit_write = context%symbols(sym)%is_file_unit .or. &
+                             context%symbols(sym)%has_unit_const
     end function is_file_unit_write
 
     subroutine lower_write_file(arena, node, context, error_msg)
@@ -356,15 +446,9 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable :: vname, dummy_err
-        integer :: sym
 
-        file_write_value_kind = VALUE_I32
-        call set_empty(dummy_err)
-        call identifier_name(arena, node_index, vname, dummy_err)
-        if (len_trim(dummy_err) > 0 .or. .not. allocated(vname)) return
-        sym = find_symbol(context, vname)
-        if (sym > 0) file_write_value_kind = context%symbols(sym)%value_kind
+        file_write_value_kind = expression_value_kind(arena, node_index, context, &
+                                                       VALUE_I32)
     end function file_write_value_kind
 
     subroutine lower_file_write_item(arena, node_index, fp, context, error_msg)

@@ -272,6 +272,20 @@
                                c_true, vreg, error_msg)
     end function emit_scanf
 
+    logical function emit_fscanf(session, args, error_msg)
+        ! Variadic fscanf(fp, fmt, ...) call for list-directed file-unit reads.
+        ! args(1) is the FILE* pointer, args(2) the format-string pointer;
+        ! remaining args are destination pointers. Two fixed args, rest vararg.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_fscanf = emit_call(session, 'fscanf', args, &
+                                lr_type_i32_s(session%handle), 2_c_int32_t, &
+                                c_true, vreg, error_msg)
+    end function emit_fscanf
+
     logical function emit_fprintf(session, args, error_msg)
         ! Variadic fprintf(fp, fmt, ...) call (#247 B5c file I/O).
         ! args(1) is the FILE* pointer, args(2) the format-string pointer;

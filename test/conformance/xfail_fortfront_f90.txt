@@ -112,8 +112,6 @@ issue_2416_io_namelist_read.f90
 issue_2417_minloc_with_mask.f90
 issue_2418_intrinsic_keywords_declared.f90
 issue_2419_data_variable_in_allocate.f90
-issue_2443_io_iostat_iomsg.f90
-issue_2447_io_format.f90
 issue_2449_openacc_clauses.f90
 issue_2449_openacc_directives.f90
 issue_2450_procedure_interfaces.f90
