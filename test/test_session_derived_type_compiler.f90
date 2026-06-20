@@ -12,7 +12,7 @@ program test_session_derived_type_compiler
     if (.not. test_two_variables_do_not_alias()) all_passed = .false.
     if (.not. test_component_stop_code()) all_passed = .false.
     if (.not. test_real_component_diagnostic()) all_passed = .false.
-    if (.not. test_nested_component_diagnostic()) all_passed = .false.
+    if (.not. test_nested_component_access()) all_passed = .false.
     if (.not. test_constructor_diagnostic()) all_passed = .false.
     if (.not. test_inheritance_parent_component()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
@@ -181,7 +181,10 @@ contains
                                          '/tmp/ffc_session_derived_real_test')
     end function test_real_component_diagnostic
 
-    logical function test_nested_component_diagnostic()
+    logical function test_nested_component_access()
+        ! A scalar nested derived component lives inline in the parent's flat
+        ! slot layout; x%inner%value reads and writes through the cumulative
+        ! slot offset.
         character(len=*), parameter :: source = &
                                        'program main'//new_line('a')// &
                                        '  type :: inner_t'//new_line('a')// &
@@ -189,13 +192,19 @@ contains
                                        '  end type inner_t'//new_line('a')// &
                                        '  type :: outer_t'//new_line('a')// &
                                        '    type(inner_t) :: inner'//new_line('a')// &
+                                       '    integer :: tag'//new_line('a')// &
                                        '  end type outer_t'//new_line('a')// &
+                                       '  type(outer_t) :: obj'//new_line('a')// &
+                                       '  obj%inner%value = 42'//new_line('a')// &
+                                       '  obj%tag = 7'//new_line('a')// &
+                                       '  print *, obj%inner%value + obj%tag'// &
+                                       new_line('a')// &
                                        'end program main'
 
-        test_nested_component_diagnostic = expect_error_contains( &
-                                           source, 'unsupported nested derived type', &
-                                           '/tmp/ffc_session_derived_nested_test')
-    end function test_nested_component_diagnostic
+        test_nested_component_access = expect_output( &
+                                       source, '          49'//new_line('a'), &
+                                       '/tmp/ffc_session_derived_nested_test')
+    end function test_nested_component_access
 
     logical function test_constructor_diagnostic()
         character(len=*), parameter :: source = &
