@@ -136,6 +136,18 @@ module session_program_lowering_types
                            F64_INTRINSIC_HYPOT, F64_INTRINSIC_MOD, &
                            F64_INTRINSIC_MODULO]
 
+    ! COMMON-block slot (#1578, #1900): one shared global per variable in a
+    ! COMMON block, keyed by block name and position. has_init/init_text carry
+    ! a BLOCK DATA literal initialiser folded later into the global.
+    integer, parameter, public :: COMMON_MAX_SLOTS = 64
+    type, public :: common_slot_t
+        character(len=:), allocatable :: block_name
+        character(len=:), allocatable :: var_name
+        integer :: value_kind = VALUE_I32
+        logical :: has_init = .false.
+        character(len=:), allocatable :: init_text
+    end type common_slot_t
+
     type, public :: symbol_t
         character(len=64) :: name = ''
         integer :: value_kind = VALUE_I32
