@@ -929,7 +929,6 @@ cond_05.f90
 cond_06.f90
 const_array_01.f90
 const_array_02.f90
-const_kind_02.f90
 const_real_dp.f90
 contig.f90
 contig_stmt_01.f90
@@ -2799,7 +2798,6 @@ modules_66.f90
 modules_66_worker.f90
 modules_67_consumer.f90
 modules_67.f90
-modules_67_origin.f90
 modules_68.f90
 modules_69.f90
 modules_70.f90
@@ -2941,14 +2939,10 @@ openmp_32.f90
 openmp_33.f90
 openmp_34.f90
 openmp_35.f90
-openmp_37.f90
-openmp_38.f90
-openmp_39.f90
 openmp_40.f90
 openmp_41.f90
 openmp_43.f90
 openmp_44.f90
-openmp_45.f90
 openmp_46.f90
 openmp_47.f90
 openmp_48.f90
@@ -3944,7 +3938,6 @@ test_ieee_unordered.f90
 test_ieee_value_01.f90
 test_inquire_size.f90
 test_iso_c_binding_constants.f90
-test_iso_fortran_env.f90
 test_ord.f90
 test_rep.f90
 test_str.f90
