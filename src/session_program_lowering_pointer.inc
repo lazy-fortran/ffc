@@ -22,6 +22,157 @@
         end if
     end subroutine lower_scalar_pointer_target
 
+    subroutine lower_pointer_target_array(node, context, error_msg)
+        ! Rank-1 fixed-size integer/real/logical POINTER/TARGET arrays (#245 B3a).
+        ! A target array gets ordinary explicit-shape storage; a deferred-shape
+        ! pointer array (p(:)) starts unassociated and adopts a target array's
+        ! base, shape, and element kind at `p => t`. Anything outside this subset
+        ! (rank-2, allocatable, derived, character, bounds-remapped pointers)
+        ! keeps the prior unsupported diagnostic.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: value_kind, dim_count, array_lower_bound, array_size, i
+
+        if (node%is_allocatable) then
+            call unsupported_pointer_target_array(node, error_msg)
+            return
+        end if
+        dim_count = 0
+        if (allocated(node%dimension_indices)) &
+            dim_count = size(node%dimension_indices)
+        if (dim_count /= 1) then
+            call unsupported_pointer_target_array(node, error_msg)
+            return
+        end if
+        call declaration_value_kind(node, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+            call unsupported_pointer_target_array(node, error_msg)
+            return
+        end if
+
+        ! A pointer array is deferred-shape p(:): no compile-time storage, just a
+        ! stub symbol that `p => t` fills in. A target array is explicit-shape and
+        ! is laid out exactly like an ordinary fixed-size array.
+        if (node%is_pointer .and. declaration_is_assumed_shape(node, context)) then
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    call define_pointer_array_stub(context, node%var_names(i), &
+                                                   value_kind, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(node%var_name)) then
+                call define_pointer_array_stub(context, node%var_name, &
+                                               value_kind, error_msg)
+            else
+                error_msg = 'pointer array declaration did not expose a name'
+            end if
+            return
+        end if
+
+        ! Explicit-shape target array (or an explicit-shape pointer, which we
+        ! treat like a target with storage). A deferred-shape target is invalid
+        ! Fortran, so the only remaining shape here is explicit rank-1.
+        if (declaration_is_assumed_shape(node, context)) then
+            call unsupported_pointer_target_array(node, error_msg)
+            return
+        end if
+        call get_array_bounds(node, context, array_lower_bound, array_size, &
+                              error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call define_target_array_symbol(context, node, node%var_names(i), &
+                                                array_lower_bound, array_size, &
+                                                value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call define_target_array_symbol(context, node, node%var_name, &
+                                            array_lower_bound, array_size, &
+                                            value_kind, error_msg)
+        else
+            error_msg = 'target array declaration did not expose a name'
+        end if
+    end subroutine lower_pointer_target_array
+
+    subroutine unsupported_pointer_target_array(node, error_msg)
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call unsupported_feature_error('pointer/target array declaration', &
+            node%line, node%column, &
+            'direct LIRIC session supports rank-1 fixed-size integer, real, '// &
+            'and logical pointer/target arrays only (#245 slice B3a)', error_msg)
+    end subroutine unsupported_pointer_target_array
+
+    subroutine define_target_array_symbol(context, node, name, array_lower_bound, &
+                                          array_size, value_kind, error_msg)
+        ! Lay out a fixed-size target array exactly like an ordinary array, then
+        ! mark it as an addressable target so a pointer can alias its storage.
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: array_lower_bound
+        integer, intent(in) :: array_size
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        call define_declared_array_symbol(context, node, name, array_lower_bound, &
+                                          array_size, value_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        index = find_symbol(context, name)
+        if (index <= 0) then
+            error_msg = 'target array declaration lost its symbol: '//trim(name)
+            return
+        end if
+        if (node%is_target) context%symbols(index)%is_target = .true.
+        if (node%is_pointer) then
+            context%symbols(index)%is_pointer = .true.
+            context%symbols(index)%is_associated = .true.
+        end if
+        ! element_address is the array base; expose it as the alias address so
+        ! the shared `p => t` path can adopt it.
+        context%symbols(index)%address = context%symbols(index)%element_address
+        context%symbols(index)%has_address = .true.
+    end subroutine define_target_array_symbol
+
+    subroutine define_pointer_array_stub(context, name, value_kind, error_msg)
+        ! A deferred-shape pointer array p(:): no storage and no shape until a
+        ! `p => t` association supplies the target's base and extent.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: index
+
+        index = find_symbol(context, name)
+        if (index > 0) then
+            ! Re-declaration (e.g. dummy refresh): just record the attributes.
+            context%symbols(index)%is_pointer = .true.
+            context%symbols(index)%is_array = .true.
+            context%symbols(index)%is_associated = .false.
+            call set_empty(error_msg)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = value_kind
+        context%symbols(index)%is_array = .true.
+        context%symbols(index)%array_rank = 1
+        context%symbols(index)%array_size = 0
+        context%symbols(index)%is_pointer = .true.
+        context%symbols(index)%is_associated = .false.
+        context%symbols(index)%has_address = .false.
+        context%symbols(index)%is_reference = .false.
+        context%symbol_count = index
+        call set_empty(error_msg)
+    end subroutine define_pointer_array_stub
+
     subroutine define_scalar_pointer_target_symbol(context, node, name, value_kind, &
                                                    error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -130,7 +281,7 @@
         end if
         if (.not. is_identifier(arena, node%target_index)) then
             error_msg = 'direct LIRIC session pointer assignment requires a '// &
-                        'scalar target variable'
+                        'scalar or whole-array target variable'
             return
         end if
         call get_identifier_name(arena, node%target_index, target_name, error_msg)
@@ -152,12 +303,76 @@
                         trim(target_name)
             return
         end if
+        ! Whole-array p => t: the pointer adopts the target array's base,
+        ! shape, and element kind. The bounds-remapped form p(lo:hi) => t is
+        ! out of scope and carries pointer bounds on the LHS, which we reject.
+        if (context%symbols(ptr_index)%is_array .or. &
+            context%symbols(target_index)%is_array) then
+            if (.not. is_identifier(arena, node%pointer_index)) then
+                error_msg = 'direct LIRIC session pointer assignment does not '// &
+                            'support pointer bounds remapping'
+                return
+            end if
+            call alias_pointer_array(context, ptr_index, target_index, error_msg)
+            return
+        end if
         context%symbols(ptr_index)%address = context%symbols(target_index)%address
         context%symbols(ptr_index)%has_address = .true.
         context%symbols(ptr_index)%is_reference = .true.
         context%symbols(ptr_index)%is_associated = .true.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    subroutine alias_pointer_array(context, ptr_index, target_index, error_msg)
+        ! Whole-array p => t: the pointer array adopts the target array's base,
+        ! extent, element kind, and bounds, so element access through the pointer
+        ! GEPs the same storage. Both sides must be rank-1 fixed-size arrays of
+        ! the same element kind (the supported subset of #245 B3a).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: ptr_index, target_index
+        character(len=:), allocatable :: error_msg
+        integer :: i
+
+        if (.not. context%symbols(ptr_index)%is_array) then
+            error_msg = 'left of => is a scalar pointer but the target is an array'
+            return
+        end if
+        if (.not. context%symbols(target_index)%is_array) then
+            error_msg = 'left of => is an array pointer but the target is a scalar'
+            return
+        end if
+        if (context%symbols(ptr_index)%array_rank /= &
+            context%symbols(target_index)%array_rank) then
+            error_msg = 'pointer and target array ranks do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%value_kind /= &
+            context%symbols(target_index)%value_kind) then
+            error_msg = 'pointer and target array element kinds do not match'
+            return
+        end if
+        ! Adopt the target's element storage and shape. element_address is the
+        ! array base used by the GEP element-addressing path; array_size and the
+        ! per-dimension shape drive size(), bounds, and whole-array print.
+        context%symbols(ptr_index)%element_address = &
+            context%symbols(target_index)%element_address
+        context%symbols(ptr_index)%array_size = &
+            context%symbols(target_index)%array_size
+        context%symbols(ptr_index)%array_lower_bound = &
+            context%symbols(target_index)%array_lower_bound
+        do i = 1, 2
+            context%symbols(ptr_index)%array_dim_sizes(i) = &
+                context%symbols(target_index)%array_dim_sizes(i)
+            context%symbols(ptr_index)%array_dim_lowers(i) = &
+                context%symbols(target_index)%array_dim_lowers(i)
+        end do
+        context%symbols(ptr_index)%address = &
+            context%symbols(target_index)%address
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        call set_empty(error_msg)
+    end subroutine alias_pointer_array
 
     subroutine lower_nullify(arena, node, context, error_msg)
         ! nullify(p [, q ...]) : disassociate each pointer.

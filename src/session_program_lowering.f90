@@ -326,10 +326,7 @@ contains
             end if
         end if
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
-            call unsupported_feature_error('pointer/target array declaration', &
-                node%line, node%column, &
-                'direct LIRIC session supports scalar integer, real, and '// &
-                'logical pointer/target only (#245 slice B3a)', error_msg)
+            call lower_pointer_target_array(node, context, error_msg)
             return
         end if
         if (node%is_pointer .or. node%is_target) then
