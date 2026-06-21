@@ -1502,6 +1502,34 @@ contains
                                               bin_right, context, value, error_msg)
                 return
             end if
+            ! A comparison whose operands are real (including libm intrinsic
+            ! calls such as sin(x) > cos(y)) lowers through the float compare
+            ! path; f32 takes priority so a single-precision operand widens
+            ! consistently with the rest of the lowerer.
+            if (is_f32_expression(arena, bin_left, context) .or. &
+                is_f32_expression(arena, bin_right, context)) then
+                call lower_f32_expression(arena, bin_left, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_f32_expression(arena, bin_right, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call real_compare_predicate(bin_op, pred, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_fcmp(context%session, pred, lhs, rhs, &
+                                              value, error_msg)) return
+                return
+            end if
+            if (is_f64_expression(arena, bin_left, context) .or. &
+                is_f64_expression(arena, bin_right, context)) then
+                call lower_f64_expression(arena, bin_left, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_f64_expression(arena, bin_right, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call real_compare_predicate(bin_op, pred, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_fcmp(context%session, pred, lhs, rhs, &
+                                              value, error_msg)) return
+                return
+            end if
             call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
             call lower_i32_expression(arena, bin_right, context, rhs, error_msg)

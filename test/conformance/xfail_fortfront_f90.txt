@@ -117,7 +117,6 @@ tmp_goto_ast.f90
 tooling_lightweight_ast.f90
 undefined_var_recursive_type.f90
 undefined_var_segfault.f90
-variable_tracking_function_calls.f90
 issue_2348_interface_block_procedures.f90
 
 # C interoperability: c_funloc/c_funptr/c_f_procpointer and bind(c) procedure
