@@ -654,6 +654,13 @@
             return
         end if
 
+        if (is_elemental_user_call(arena, node_index, context)) then
+            call lower_elementwise_user_call(arena, node_index, &
+                                             target_symbol_index, linear_index, &
+                                             context, value, error_msg)
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)

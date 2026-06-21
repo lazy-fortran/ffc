@@ -23,10 +23,8 @@ if_multiline_guard.f90
 issue2456.f90
 issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
-issue_1351_elemental_pure.f90
 issue_1353_class_pointer_declaration.f90
 issue_1570_pure_elemental_preservation.f90
-issue_1571_use_associated_external.f90
 issue_1604_type_bound_procedures.f90
 issue_1607_final_procedures.f90
 issue_1611_allocate_class_typespec.f90

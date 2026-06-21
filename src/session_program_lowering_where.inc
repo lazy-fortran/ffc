@@ -559,6 +559,70 @@
         end select
     end subroutine lower_elementwise_elemental_call
 
+    ! True when node is a one-argument call to a contained real function, used
+    ! to apply a user-defined ELEMENTAL function element-wise (arr = f(arr)).
+    logical function is_elemental_user_call(arena, node_index, context) &
+        result(is_call)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (n%is_array_access) return
+            if (.not. allocated(n%name)) return
+            if (.not. allocated(n%arg_indices)) return
+            if (size(n%arg_indices) /= 1) return
+            is_call = is_contained_f32_function(context, n%name) .or. &
+                      is_contained_f64_function(context, n%name) .or. &
+                      is_contained_i32_function(context, n%name)
+        end select
+    end function is_elemental_user_call
+
+    ! Apply a user-defined elemental real function to one array element: load the
+    ! argument's element, materialise it as a by-reference scalar (the contained
+    ! ABI), and call the function. The result kind follows the target array.
+    subroutine lower_elementwise_user_call(arena, node_index, &
+                                           target_symbol_index, linear_index, &
+                                           context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: elem, arg(1)
+        integer :: vk
+
+        call set_empty(error_msg)
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            call lower_array_elementwise_value(arena, n%arg_indices(1), &
+                                               target_symbol_index, linear_index, &
+                                               context, elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            vk = context%symbols(target_symbol_index)%value_kind
+            call make_reference_argument(context, vk, elem, arg(1), error_msg)
+            if (len_trim(error_msg) > 0) return
+            select case (vk)
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_call(context%session, &
+                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+            case (VALUE_I32)
+                if (.not. emit_i32_call(context%session, &
+                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+            case default
+                if (.not. emit_liric_f64_call(context%session, &
+                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+            end select
+        class default
+            error_msg = 'elemental user call node lost its type'
+        end select
+    end subroutine lower_elementwise_user_call
+
     subroutine elemental_real_libm_names(name, libm32, libm64)
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: libm32
