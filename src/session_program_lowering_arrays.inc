@@ -1060,6 +1060,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: lo, hi, step, ival
         integer :: vsym, b
+        logical :: created_temp
         type(symbol_t) :: saved_sym
 
         if (.not. allocated(ctor%element_indices)) then
@@ -1093,11 +1094,17 @@
                 error_msg = 'implied-do constructor step is zero'
                 return
             end if
+            ! The implied-do index is locally scoped to its constructor and
+            ! needs no explicit declaration. When it is not an existing symbol,
+            ! bind a temporary i32 slot for the loop and drop it afterwards.
+            created_temp = .false.
             vsym = find_symbol(context, dnode%var_name)
             if (vsym <= 0) then
-                error_msg = 'implied-do variable was not declared: '// &
-                            trim(dnode%var_name)
-                return
+                call grow_symbols(context)
+                vsym = context%symbol_count + 1
+                context%symbols(vsym)%name = trim(dnode%var_name)
+                context%symbol_count = vsym
+                created_temp = .true.
             end if
             saved_sym = context%symbols(vsym)
             context%symbols(vsym)%has_i32_constant = .true.
@@ -1116,13 +1123,21 @@
                         dnode%body_indices(b), symbol_index, slot, context, &
                         error_msg)
                     if (len_trim(error_msg) > 0) then
-                        context%symbols(vsym) = saved_sym
+                        if (created_temp) then
+                            context%symbol_count = context%symbol_count - 1
+                        else
+                            context%symbols(vsym) = saved_sym
+                        end if
                         return
                     end if
                 end do
                 ival = ival + step
             end do
-            context%symbols(vsym) = saved_sym
+            if (created_temp) then
+                context%symbol_count = context%symbol_count - 1
+            else
+                context%symbols(vsym) = saved_sym
+            end if
         class default
             error_msg = 'implied-do constructor is missing its loop node'
             return

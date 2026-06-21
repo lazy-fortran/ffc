@@ -85,9 +85,7 @@ test_209_all.lf
 test_209_complex.lf
 test_209_mixed.lf
 test_209_none.lf
-test_sem_ctor.lf
 test_sem_scope.lf
-test_std_slice.lf
 test_subroutine_monomorphization.lf
 
 # IEEE arithmetic intrinsic module (ieee_is_nan/ieee_is_finite/...) unsupported.
