@@ -73,6 +73,17 @@
             return
         end if
 
+        ! allocate(<type-spec> :: x): no shape, the element type/length lives in
+        ! node%type_spec as a string. Route by the type-spec text.
+        if (allocated(node%type_spec)) then
+            if (len_trim(node%type_spec) > 0 .and. &
+                (.not. allocated(node%shape_indices) .or. &
+                 size(node%shape_indices) == 0)) then
+                call lower_allocate_type_spec(arena, node, context, error_msg)
+                return
+            end if
+        end if
+
         call allocate_target(arena, node, name, size_index1, size_index2, error_msg)
         if (len_trim(error_msg) > 0) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -105,6 +116,251 @@
                                                     symbol_index, context)
         end if
     end subroutine lower_allocate_statement
+
+    subroutine lower_allocate_type_spec(arena, node, context, error_msg)
+        ! allocate(<type-spec> :: x): the element type/length comes from the
+        ! type-spec STRING, not a shape expression. A character type-spec sizes
+        ! a deferred-length character scalar; a derived type-spec allocates one
+        ! instance of a scalar allocatable derived variable.
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, spec_lc
+        integer :: symbol_index
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%var_indices(1)) .or. &
+            .not. is_identifier(arena, node%var_indices(1))) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'type-spec allocate target must be a scalar name', &
+                error_msg)
+            return
+        end if
+        call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'allocate target is not declared: '//trim(name), &
+                error_msg)
+            return
+        end if
+
+        spec_lc = lowercase_text(trim(adjustl(node%type_spec)))
+        if (len(spec_lc) >= 9) then
+            if (spec_lc(1:9) == 'character') then
+                call lower_allocate_char_type_spec(context, node, symbol_index, &
+                                                   name, error_msg)
+                return
+            end if
+        end if
+
+        ! Otherwise treat the type-spec as a derived type name. A scalar
+        ! allocatable derived variable already received its storage at
+        ! declaration (define_derived_symbol), so the allocate just establishes
+        ! the allocated state; the existing storage is reused.
+        if (context%symbols(symbol_index)%is_derived) then
+            call set_empty(error_msg)
+            return
+        end if
+        call unsupported_feature_error('allocate statement', node%line, &
+            node%column, 'unsupported type-spec allocate for: '//trim(name), &
+            error_msg)
+    end subroutine lower_allocate_type_spec
+
+    subroutine lower_allocate_char_type_spec(context, node, symbol_index, name, &
+                                             error_msg)
+        ! allocate(character(len=<expr>) :: str): malloc len+1 bytes (room for a
+        ! trailing NUL so %s prints stay bounded), store the data pointer and the
+        ! length into str's deferred {data,len} descriptor. Mirrors the malloc /
+        ! store path in lower_deferred_concat_assignment.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(allocate_statement_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: len_i32, len_i64, bytes_i64, data_ptr
+        character(len=:), allocatable :: len_expr
+
+        if (.not. context%symbols(symbol_index)%is_deferred_character) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'character type-spec allocate requires a '// &
+                'character(len=:), allocatable target: '//trim(name), error_msg)
+            return
+        end if
+
+        call extract_type_spec_len(node%type_spec, len_expr, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, trim(error_msg), error_msg)
+            return
+        end if
+
+        call lower_type_spec_len_value(context, len_expr, len_i32, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, trim(error_msg), error_msg)
+            return
+        end if
+
+        ! bytes = len + 1 (trailing NUL), computed in i64.
+        if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, len_i64, &
+                i64_immediate(context%session, 1_c_int64_t), bytes_i64, &
+                error_msg)) return
+        if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
+            return
+
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, len_i64, &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        context%symbols(symbol_index)%value = data_ptr
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_allocate_char_type_spec
+
+    subroutine extract_type_spec_len(type_spec, len_expr, error_msg)
+        ! Pull the length expression out of a "character(len=<expr>)" or
+        ! "character(<expr>)" type-spec string, balancing parentheses so a nested
+        ! call like len(input) survives intact.
+        character(len=*), intent(in) :: type_spec
+        character(len=:), allocatable, intent(out) :: len_expr
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: spec_lc
+        integer :: open_paren, start, depth, i, content_end
+
+        call set_empty(error_msg)
+        len_expr = ''
+        spec_lc = lowercase_text(trim(adjustl(type_spec)))
+        open_paren = index(spec_lc, '(')
+        if (open_paren <= 0) then
+            error_msg = 'character type-spec without a length'
+            return
+        end if
+
+        ! Find the inner content up to the matching close paren.
+        start = open_paren + 1
+        depth = 1
+        content_end = 0
+        do i = start, len(spec_lc)
+            if (spec_lc(i:i) == '(') then
+                depth = depth + 1
+            else if (spec_lc(i:i) == ')') then
+                depth = depth - 1
+                if (depth == 0) then
+                    content_end = i - 1
+                    exit
+                end if
+            end if
+        end do
+        if (content_end < start) then
+            error_msg = 'malformed character type-spec length'
+            return
+        end if
+
+        ! Drop a leading "len=" if present; keep the original (cased) text so a
+        ! variable name resolves with its real spelling.
+        block
+            character(len=:), allocatable :: inner, inner_lc
+            integer :: eq_pos
+            inner = trim(adjustl(type_spec(open_paren + 1:open_paren + 1 + &
+                                            (content_end - start))))
+            inner_lc = lowercase_text(inner)
+            if (len(inner_lc) >= 4) then
+                if (inner_lc(1:4) == 'len=') then
+                    inner = trim(adjustl(inner(5:)))
+                end if
+            end if
+            len_expr = inner
+        end block
+        if (len_trim(len_expr) == 0) error_msg = 'empty character type-spec length'
+    end subroutine extract_type_spec_len
+
+    subroutine lower_type_spec_len_value(context, len_expr, value, error_msg)
+        ! Lower a type-spec length expression string to an i32 operand. Supports
+        ! an integer literal, a bare integer variable, and len(<name>) of a
+        ! character symbol. More complex expressions stay unsupported here.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: len_expr
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: expr, expr_lc, inner_name
+        type(lr_operand_desc_t) :: data_ptr
+        integer(c_int64_t) :: literal
+        integer :: symbol_index, ios, open_paren, close_paren
+
+        call set_empty(error_msg)
+        expr = trim(adjustl(len_expr))
+        expr_lc = lowercase_text(expr)
+
+        ! Integer literal.
+        if (verify(trim(expr), '0123456789') == 0 .and. len_trim(expr) > 0) then
+            read (expr, *, iostat=ios) literal
+            if (ios /= 0) then
+                error_msg = 'invalid integer length in character type-spec'
+                return
+            end if
+            value = i32_immediate(context%session, literal)
+            return
+        end if
+
+        ! len(<name>) of a character symbol.
+        if (len(expr_lc) > 4) then
+            if (expr_lc(1:4) == 'len(') then
+                open_paren = index(expr, '(')
+                close_paren = index(expr, ')', back=.true.)
+                if (close_paren <= open_paren + 1) then
+                    error_msg = 'malformed len() in character type-spec'
+                    return
+                end if
+                inner_name = trim(adjustl(expr(open_paren + 1:close_paren - 1)))
+                symbol_index = find_symbol(context, inner_name)
+                if (symbol_index <= 0 .or. &
+                    context%symbols(max(symbol_index, 1))%value_kind /= &
+                    VALUE_CHARACTER) then
+                    error_msg = 'len() argument is not a character variable: '// &
+                                trim(inner_name)
+                    return
+                end if
+                call char_length_operands(context, symbol_index, data_ptr, &
+                                          value, error_msg)
+                return
+            end if
+        end if
+
+        ! Bare integer variable.
+        if (verify(trim(expr), &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            == 0) then
+            symbol_index = find_symbol(context, trim(expr))
+            if (symbol_index <= 0) then
+                error_msg = 'length variable is not declared: '//trim(expr)
+                return
+            end if
+            if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                error_msg = 'length variable is not integer: '//trim(expr)
+                return
+            end if
+            if (context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_i32_load(context%session, &
+                    context%symbols(symbol_index)%address, value, error_msg)) &
+                    return
+            else
+                value = context%symbols(symbol_index)%value
+            end if
+            return
+        end if
+
+        error_msg = 'unsupported character type-spec length expression: '// &
+                    trim(expr)
+    end subroutine lower_type_spec_len_value
 
     subroutine lower_allocate_mold_source(arena, node, context, error_msg)
         ! allocate(b, mold=a) / allocate(c, source=a): give the target the same
@@ -576,6 +832,10 @@
                 error_msg)
             return
         end if
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            call lower_deallocate_deferred_char(symbol_index, context, error_msg)
+            return
+        end if
         if (.not. context%symbols(symbol_index)%is_allocatable) then
             call unsupported_feature_error('deallocate statement', node%line, &
                 node%column, 'deallocate target is not an allocatable array: '// &
@@ -585,6 +845,26 @@
 
         call lower_deallocate_i32(symbol_index, context, error_msg)
     end subroutine lower_deallocate_statement
+
+    subroutine lower_deallocate_deferred_char(symbol_index, context, error_msg)
+        ! deallocate(str) for a character(len=:), allocatable scalar. Mark the
+        ! descriptor unallocated by zeroing its data pointer and length. The data
+        ! slot may currently hold a static string pointer (after str = literal),
+        ! so it is not free()d here; the descriptor reset is what later reads see.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        context%symbols(symbol_index)%has_character_value = .false.
+        call set_empty(error_msg)
+    end subroutine lower_deallocate_deferred_char
 
     subroutine lower_deallocate_i32(symbol_index, context, error_msg)
         ! free(descriptor.data); zero descriptor. Works for rank-1 and rank-2.

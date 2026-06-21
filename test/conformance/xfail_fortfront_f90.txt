@@ -20,7 +20,6 @@ f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
-issue2456.f90
 issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
 issue_1353_class_pointer_declaration.f90
@@ -29,7 +28,6 @@ issue_1604_type_bound_procedures.f90
 issue_1607_final_procedures.f90
 issue_1611_allocate_class_typespec.f90
 issue_1611_allocate_no_typespec.f90
-issue_1611_allocate_type_typespec.f90
 issue_1614_character_mixed_attributes.f90
 issue_1614_character_module_variable.f90
 issue_1615_target_attribute.f90
@@ -48,7 +46,6 @@ issue_1827_submodule_simple.f90
 issue_1827_submodule_with_contents.f90
 issue_1958_intent_preservation.f90
 issue_1960_pointer_assignment_if.f90
-issue_2010_deferred_char_allocatable.f90
 issue_2014_elemental_function_lost.f90
 issue_2017_assumed_shape_duplicate_monomorph.f90
 issue_2024_char_function_duplicate_and_missing.f90
@@ -74,7 +71,6 @@ issue_2453_character_array_constructor.f90
 issue_2455_array_constructor_arg.f90
 issue_2455_nested_array_constructor.f90
 issue_2455_nested_function_args.f90
-issue_2456_assumed_char_length.f90
 issue_2457_logical_type_mismatch.f90
 issue_2458_multi_array_declaration.f90
 issue_2486_class_type_multidecl.f90

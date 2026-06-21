@@ -332,6 +332,12 @@
                         context, symbol_index, error_msg)
                     return
                 end if
+            else if (is_identifier(arena, node%value_index)) then
+                ! Deferred target receives another character variable: copy the
+                ! source {data, len} into the target descriptor (str = other).
+                call lower_deferred_identifier_assignment(arena, &
+                    node%value_index, context, symbol_index, error_msg)
+                return
             end if
         end if
 
@@ -382,6 +388,49 @@
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_character_assignment
+
+    subroutine lower_deferred_identifier_assignment(arena, value_index, context, &
+                                                    symbol_index, error_msg)
+        ! str = other, where str is character(len=:), allocatable and other is a
+        ! character variable (fixed or deferred). Resolve other to its
+        ! {data pointer, i32 length} and store them into str's deferred
+        ! descriptor. The source content outlives the use here (a dummy or a
+        ! local), so aliasing the pointer matches gfortran's observable output.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: src_name
+        integer :: src_index
+        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64
+
+        call get_identifier_name(arena, value_index, src_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        src_index = find_symbol(context, src_name)
+        if (src_index <= 0 .or. &
+            context%symbols(max(src_index, 1))%value_kind /= VALUE_CHARACTER) then
+            call unsupported_feature_error('character assignment', 0, 0, &
+                'character assignment source is not a character variable: '// &
+                trim(src_name), error_msg)
+            return
+        end if
+
+        call char_length_operands(context, src_index, data_ptr, len_i32, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
+                error_msg)) return
+
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, len_i64, &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        context%symbols(symbol_index)%value = data_ptr
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_deferred_identifier_assignment
 
     recursive subroutine concat_character_literals(arena, node_index, &
                                                    accumulated, ok)
