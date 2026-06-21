@@ -450,6 +450,11 @@
                 end if
             else if (is_logical_literal(arena, node_index)) then
                 value_kind = VALUE_LOGICAL
+            else
+                ! An integer (or BOZ) literal is i32 regardless of any dummy-kind
+                ! hint: a mismatched hint (e.g. a type-bound call's passed-object
+                ! offset) must not reroute it through a logical/real path.
+                value_kind = VALUE_I32
             end if
             return
         end if
