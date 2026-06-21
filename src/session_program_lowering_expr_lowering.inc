@@ -124,7 +124,10 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if ((node%is_array_access .and. &
+            if (node%base_expr_index > 0) then
+                call lower_derived_component_element_load(arena, node, context, &
+                                                          value, error_msg)
+            else if ((node%is_array_access .and. &
                  array_access_value_kind(node, context) == VALUE_LOGICAL) .or. &
                 is_allocatable_element_ref(node, context)) then
                 ! Logical array element occupies an i32 slot; the load yields the
@@ -393,7 +396,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            call lower_f32_call(arena, node, context, value, error_msg)
+            if (node%base_expr_index > 0) then
+                call lower_derived_component_element_load(arena, node, context, &
+                                                          value, error_msg)
+            else
+                call lower_f32_call(arena, node, context, value, error_msg)
+            end if
         type is (component_access_node)
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
@@ -529,6 +537,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (node%base_expr_index > 0) then
+                ! obj%comp(i): element of an array component.
+                is_f32 = component_element_access_kind(arena, node, context) == &
+                         VALUE_F32
+                return
+            end if
             if (is_complex_component_extract(arena, node, context, VALUE_C4)) then
                 ! real(z)/aimag(z) on a complex(4) yields a real(4) component.
                 is_f32 = .true.
@@ -659,7 +673,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            call lower_f64_call(arena, node, context, value, error_msg)
+            if (node%base_expr_index > 0) then
+                call lower_derived_component_element_load(arena, node, context, &
+                                                          value, error_msg)
+            else
+                call lower_f64_call(arena, node, context, value, error_msg)
+            end if
         type is (component_access_node)
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
@@ -906,6 +925,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (node%base_expr_index > 0) then
+                ! obj%comp(i): element of an array component.
+                is_f64 = component_element_access_kind(arena, node, context) == &
+                         VALUE_F64
+                return
+            end if
             if (is_complex_component_extract(arena, node, context, VALUE_C8)) then
                 ! real(z)/aimag(z) on a complex(8) yields a real(8) component.
                 is_f64 = .true.

@@ -1637,8 +1637,24 @@ contains
             return
         end if
         select type (node => arena%entries(node_index)%node)
+        type is (component_access_node)
+            ! Scalar logical component used directly as a condition: x%flag.
+            call lower_logical_expression(arena, node_index, context, lhs, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            rhs = i32_immediate(context%session, 0_c_int64_t)
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
+                                          rhs, value, error_msg)) return
         type is (call_or_subscript_node)
-            if (is_present_call(arena, node_index)) then
+            if (node%base_expr_index > 0) then
+                ! Logical array-component element used as a condition: x%flag(i).
+                call lower_logical_expression(arena, node_index, context, lhs, &
+                                              error_msg)
+                if (len_trim(error_msg) > 0) return
+                rhs = i32_immediate(context%session, 0_c_int64_t)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
+                                              rhs, value, error_msg)) return
+            else if (is_present_call(arena, node_index)) then
                 call lower_present_condition(arena, node_index, context, value, &
                                              error_msg)
             else if (allocated(node%name)) then

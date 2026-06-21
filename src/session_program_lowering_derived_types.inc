@@ -783,14 +783,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (len_trim(error_msg) > 0) return
         select case (comp_kind)
         case (VALUE_I32, VALUE_C_PTR)
-            ! Already supported.
+            ! Scalar and fixed-size array components are both supported.
         case (VALUE_F64, VALUE_F32, VALUE_LOGICAL)
-            if (component%is_array) then
-                call unsupported_feature_error('derived type array component', &
-                    component%line, component%column, 'real and logical array '// &
-                    'components are not supported; only scalar', error_msg)
-                return
-            end if
+            ! Scalar and fixed-size array components are both supported; an
+            ! f64 array element spans two i32 slots (handled by slot width).
         case (VALUE_CHARACTER)
             if (component%is_array) then
                 call unsupported_feature_error('derived type array component', &

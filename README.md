@@ -44,8 +44,9 @@ work in the callee. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Derived types take scalar
-integer, real, logical, and `c_ptr` components, fixed-size integer array
-components, and scalar nested derived components (`type(inner) :: c`, accessed
+integer, real, logical, and `c_ptr` components, fixed-size rank-1 integer,
+real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
+and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
 contained function may return a fixed-size rank-1 array: the result lowers

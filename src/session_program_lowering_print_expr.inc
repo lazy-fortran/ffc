@@ -466,6 +466,12 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
+            ! obj%comp(i): array-component element, formatted by element kind.
+            if (node%base_expr_index > 0) then
+                call lower_print_component_element_value(arena, node, node_index, &
+                                                         context, error_msg)
+                return
+            end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -569,6 +575,62 @@
                                                  value, error_msg)) return
         end select
     end subroutine lower_print_component_access_value
+
+    subroutine lower_print_component_element_value(arena, node, node_index, &
+                                                   context, error_msg)
+        ! List-directed print of obj%comp(i), an element of an array component,
+        ! formatted by the component's element value kind.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: comp_kind
+
+        comp_kind = component_element_access_kind(arena, node, context)
+        select case (comp_kind)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_f64_value(context%session, value, &
+                                                 error_msg)) return
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_f32_value(context%session, value, &
+                                                 error_msg)) return
+        case (VALUE_LOGICAL)
+            call lower_logical_expression(arena, node_index, context, value, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_print_logical_value(context, value, error_msg)
+        case default
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end select
+    end subroutine lower_print_component_element_value
+
+    integer function component_element_access_kind(arena, node, context) &
+            result(kind)
+        ! Element value kind of an obj%comp(i) array-component access. The
+        ! node's base_expr_index is the component_access (obj%comp), whose
+        ! component kind is the element kind. Falls back to VALUE_I32.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+
+        kind = VALUE_I32
+        if (node%base_expr_index <= 0) return
+        if (.not. node_exists(arena, node%base_expr_index)) return
+        select type (acc => arena%entries(node%base_expr_index)%node)
+        type is (component_access_node)
+            kind = derived_component_access_kind(arena, acc, context)
+        end select
+    end function component_element_access_kind
 
     subroutine lower_print_char_expr(arena, node_index, context, error_msg)
         ! Print a character expression (e.g. trim(s)). The list-directed

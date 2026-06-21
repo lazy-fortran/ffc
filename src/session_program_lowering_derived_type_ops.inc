@@ -243,20 +243,25 @@
     end subroutine define_derived_symbol
 
     subroutine derived_component_element_address(arena, access_index, &
-            sub_index, context, addr, error_msg)
-        ! Address of obj%comp(i): slot = start_slot(comp) + (i - 1).
-        ! access_index points to the component_access node (obj%comp); the
-        ! enclosing subscript supplies sub_index.
+            sub_index, context, addr, error_msg, comp_kind)
+        ! Address of obj%comp(i): slot = start_slot(comp) + (i - 1) * width,
+        ! where width is the per-element i32-slot span of the component kind
+        ! (2 for f64, 1 otherwise). access_index points to the
+        ! component_access node (obj%comp); the enclosing subscript supplies
+        ! sub_index. comp_kind returns the element value kind so the caller
+        ! can pick a matching load/store width.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: access_index
         integer, intent(in) :: sub_index
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: addr
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(out), optional :: comp_kind
         character(len=:), allocatable :: base_name, comp_name
-        integer :: base_index, symbol_index, type_index, component_index
-        type(lr_operand_desc_t) :: sub_val, zero_based, slot
+        integer :: base_index, symbol_index, type_index, component_index, width
+        type(lr_operand_desc_t) :: sub_val, zero_based, scaled, slot
 
+        if (present(comp_kind)) comp_kind = VALUE_I32
         if (.not. node_exists(arena, access_index)) then
             error_msg = 'component element base is not an AST node'
             return
@@ -293,13 +298,19 @@
             error_msg = 'component is not an array: '//trim(comp_name)
             return
         end if
+        if (present(comp_kind)) &
+            comp_kind = component_kind(context, type_index, component_index)
+        width = component_slot_width(context, type_index, component_index)
 
         call lower_i32_expression(arena, sub_index, context, sub_val, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
                 i32_immediate(context%session, 1_c_int64_t), zero_based, &
                 error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_ADD, zero_based, &
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                i32_immediate(context%session, int(width, c_int64_t)), scaled, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, scaled, &
                 i32_immediate(context%session, &
                     int(component_start_slot(context, type_index, component_index), &
                         c_int64_t)), slot, error_msg)) return
@@ -321,6 +332,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, addr
+        integer :: comp_kind
 
         if (.not. allocated(target%arg_indices) .or. &
             size(target%arg_indices) /= 1) then
@@ -329,14 +341,13 @@
                 'access is supported', error_msg)
             return
         end if
-        call lower_i32_expression(arena, node%value_index, context, value, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
         call derived_component_element_address(arena, target%base_expr_index, &
-            target%arg_indices(1), context, addr, error_msg)
+            target%arg_indices(1), context, addr, error_msg, comp_kind)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_store(context%session, value, addr, error_msg)) return
-        call set_empty(error_msg)
+        call lower_component_rhs_value(arena, node%value_index, comp_kind, &
+                                       context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_typed_component_store(context, comp_kind, value, addr, error_msg)
     end subroutine lower_derived_component_element_assignment
 
     subroutine method_call_info(arena, node, context, base_var_index, &
@@ -597,6 +608,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
+        integer :: comp_kind
 
         if (.not. allocated(node%arg_indices) .or. &
             size(node%arg_indices) /= 1) then
@@ -606,10 +618,9 @@
             return
         end if
         call derived_component_element_address(arena, node%base_expr_index, &
-            node%arg_indices(1), context, addr, error_msg)
+            node%arg_indices(1), context, addr, error_msg, comp_kind)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_load(context%session, addr, value, error_msg)) return
-        call set_empty(error_msg)
+        call emit_typed_component_load(context, comp_kind, addr, value, error_msg)
     end subroutine lower_derived_component_element_load
 
     subroutine lower_derived_component_assignment(arena, node, target, context, &

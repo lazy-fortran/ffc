@@ -110,7 +110,6 @@ issue_2348_interface_block_procedures.f90
 # pointers are not yet lowered by the direct LIRIC session.
 issue_2814_c_funloc.f90
 issue_2814_c_f_procpointer.f90
-issue_2818_bind_c_interop.f90
 issue_2820_c_interop_pointers.f90
 # Inline generic instantiation caret syntax name^(T)(...) is unsupported.
 issue_2817_inline_instantiate_caret.f90
