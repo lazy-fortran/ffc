@@ -725,6 +725,12 @@
                 .not. context%symbols(index)%is_array) then
                 is_dummy = .true.
                 param_base = context%symbols(index)%address
+            else if (context%symbols(index)%is_array_result) then
+                ! The result array was pre-bound to the sret buffer (param 0);
+                ! this body declaration fills in its shape and element kind and
+                ! keeps the buffer as element storage (array function results).
+                is_dummy = .true.
+                param_base = context%symbols(index)%element_address
             else
                 error_msg = 'duplicate array declaration: '//trim(name)
                 return

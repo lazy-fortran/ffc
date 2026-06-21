@@ -311,6 +311,16 @@
         value_kind = VALUE_I32
         derived_type_index = 0
         call set_empty(error_msg)
+
+        ! A rank-1 fixed-size array result returns via the sret ABI regardless of
+        ! whether return_type names the element type or is empty (result(out)
+        ! with the array shape declared in the body). Detect it from the result
+        ! variable's body declaration before the scalar classification.
+        if (result_var_is_fixed_array(node, context)) then
+            value_kind = VALUE_ARRAY_RESULT
+            return
+        end if
+
         if (.not. allocated(node%return_type)) return
 
         ! When the result type is declared in the body (result(r) with
@@ -482,6 +492,57 @@
         call declaration_value_kind(decl, value_kind, error_msg)
     end subroutine resolve_result_decl_kind
 
+    logical function result_var_is_fixed_array(node, context) result(is_fixed)
+        ! True when the function result variable is declared as a rank-1
+        ! fixed-size (compile-time extent) array in the body. Assumed-shape and
+        ! allocatable results stay out of scope and keep their later diagnostic.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: result_name
+        integer :: i, k
+
+        is_fixed = .false.
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        if (declaration_is_fixed_rank1(decl)) is_fixed = .true.
+                        if (is_fixed) return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            if (declaration_is_fixed_rank1(decl)) is_fixed = .true.
+                            if (is_fixed) return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function result_var_is_fixed_array
+
+    logical function declaration_is_fixed_rank1(decl) result(is_fixed)
+        ! A rank-1 explicit-shape array declaration with neither allocatable nor
+        ! assumed-shape (no colon) dimensions.
+        type(declaration_node), intent(in) :: decl
+
+        is_fixed = .false.
+        if (.not. decl%is_array) return
+        if (decl%is_allocatable) return
+        if (.not. allocated(decl%dimension_indices)) return
+        if (size(decl%dimension_indices) /= 1) return
+        is_fixed = .true.
+    end function declaration_is_fixed_rank1
+
     integer function result_var_derived_type(node, context) result(type_index)
         ! Find the derived type of the function result variable from its body
         ! declaration (result(p) with type(t) :: p inside the body).
@@ -614,6 +675,90 @@
         is_contained_derived_function = &
             contained_function_kind(context, name) == VALUE_DERIVED
     end function is_contained_derived_function
+
+    logical function is_contained_array_function(context, name)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+
+        is_contained_array_function = &
+            contained_function_kind(context, name) == VALUE_ARRAY_RESULT
+    end function is_contained_array_function
+
+    subroutine contained_array_result_info(arena, context, name, element_kind, &
+                                           array_size, error_msg)
+        ! Element scalar kind and total element count of a rank-1 array function
+        ! result, read from the result variable's body declaration. Used by the
+        ! print path that materialises the result into a scratch buffer.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(out) :: element_kind
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(function_def_node), pointer :: fn_node
+        character(len=:), allocatable :: result_name
+        integer :: i, k, node_index, lower_bound
+
+        element_kind = VALUE_I32
+        array_size = 0
+        call set_empty(error_msg)
+
+        node_index = 0
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), name)) then
+                node_index = context%function_node_indices(i)
+                exit
+            end if
+        end do
+        if (node_index <= 0 .or. .not. node_exists(arena, node_index)) then
+            error_msg = 'array result function node not found: '//trim(name)
+            return
+        end if
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (.not. associated(fn_node)) then
+            error_msg = 'array result function node not found: '//trim(name)
+            return
+        end if
+
+        result_name = trim(fn_node%name)
+        if (allocated(fn_node%result_variable)) then
+            if (len_trim(fn_node%result_variable) > 0) &
+                result_name = trim(fn_node%result_variable)
+        end if
+        if (.not. allocated(fn_node%body_indices)) then
+            error_msg = 'array result declaration not found: '//trim(name)
+            return
+        end if
+        do i = 1, size(fn_node%body_indices)
+            if (.not. node_exists(arena, fn_node%body_indices(i))) cycle
+            select type (decl => arena%entries(fn_node%body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. declaration_is_fixed_rank1(decl)) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        call declaration_value_kind(decl, element_kind, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call get_array_bounds(decl, context, lower_bound, &
+                                              array_size, error_msg)
+                        return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            call declaration_value_kind(decl, element_kind, &
+                                                        error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            call get_array_bounds(decl, context, lower_bound, &
+                                                  array_size, error_msg)
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+        error_msg = 'array result declaration not found: '//trim(name)
+    end subroutine contained_array_result_info
 
     integer function contained_function_kind(context, name) result(value_kind)
         type(lowering_context_t), intent(in) :: context
@@ -1055,9 +1200,10 @@
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                  value_kind == VALUE_DERIVED .or. &
+                 value_kind == VALUE_ARRAY_RESULT .or. &
                  value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
-            ! Aggregate / complex results return via a leading sret pointer:
-            ! the caller passes the result buffer address as param 0.
+            ! Aggregate / complex / array results return via a leading sret
+            ! pointer: the caller passes the result buffer address as param 0.
             if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
         else
@@ -1121,6 +1267,21 @@
                 end if
             end associate
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_ARRAY_RESULT) then
+            ! Pre-register the result array bound to the sret buffer (param 0).
+            ! The body array declaration rebinds its shape and element kind onto
+            ! this symbol's element_address, so whole-array assignment writes the
+            ! result straight into the caller's destination.
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = VALUE_I32
+                rsym%is_array = .true.
+                rsym%is_array_result = .true.
+                rsym%element_address = ptr_param(context%session, 0)
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1129,6 +1290,7 @@
         end if
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
             value_kind == VALUE_DERIVED .or. &
+            value_kind == VALUE_ARRAY_RESULT .or. &
             value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg, 1)
@@ -1160,6 +1322,7 @@
         if (.not. context%current_block_terminated) then
             if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                 value_kind == VALUE_DERIVED .or. &
+                value_kind == VALUE_ARRAY_RESULT .or. &
                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
             else

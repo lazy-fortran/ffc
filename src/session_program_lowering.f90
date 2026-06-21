@@ -222,6 +222,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  VALUE_DEFERRED_CHARACTER_RESULT, &
                                                  VALUE_SUBROUTINE, VALUE_C_PTR, &
                                                  VALUE_CLASS_STAR, VALUE_PROC_PTR, &
+                                                 VALUE_ARRAY_RESULT, &
                                                  TYPE_ID_INTEGER, TYPE_ID_REAL, &
                                                  TYPE_ID_LOGICAL, &
                                                  I32_INTRINSIC_NONE, &
@@ -1025,6 +1026,11 @@ contains
             return
         end if
         if (context%symbols(symbol_index)%is_array) then
+            if (is_array_result_call(arena, node%value_index, context)) then
+                call lower_array_result_call(arena, node%value_index, &
+                                             symbol_index, context, error_msg)
+                return
+            end if
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
                 type is (array_literal_node)

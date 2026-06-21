@@ -521,6 +521,105 @@
         end select
     end subroutine lower_print_complex_result_call
 
+    subroutine lower_print_array_result_call(arena, node_index, context, error_msg)
+        ! print *, vec_fn(): allocate a scratch array buffer, run the sret call
+        ! into it, then print each element in storage order with list-directed
+        ! spacing (array function results in a print list).
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: buf, value
+        type(lr_operand_desc_t), allocatable :: user_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: func_name
+        integer :: element_kind, array_size, sym, i
+        integer(c_int64_t) :: k
+
+        call set_empty(error_msg)
+        select type (call_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            func_name = trim(call_node%name)
+            call contained_array_result_info(arena, context, func_name, &
+                                             element_kind, array_size, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (array_size <= 0) then
+                error_msg = 'array result print requires a positive size'
+                return
+            end if
+
+            select case (element_kind)
+            case (VALUE_F32)
+                if (.not. emit_f32_array_alloca(context%session, array_size, &
+                                                buf, error_msg)) return
+            case (VALUE_F64)
+                if (.not. emit_f64_array_alloca(context%session, array_size, &
+                                                buf, error_msg)) return
+            case default
+                if (.not. emit_i32_array_alloca(context%session, array_size, &
+                                                buf, error_msg)) return
+            end select
+
+            if (allocated(call_node%arg_indices)) then
+                call prepare_reference_args(arena, call_node%arg_indices, context, &
+                                            VALUE_I32, func_name, user_args, &
+                                            copyback_indices, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                allocate (user_args(0)); allocate (copyback_indices(0))
+            end if
+            allocate (all_args(size(user_args) + 1))
+            all_args(1) = buf
+            do i = 1, size(user_args)
+                all_args(i + 1) = user_args(i)
+            end do
+            if (.not. emit_void_call(context%session, &
+                    call_emit_name(arena, func_name), all_args, error_msg)) return
+            call copy_back_reference_args(context, user_args, copyback_indices, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            ! Bind a scratch symbol onto the buffer so element loads reuse the
+            ! standard typed array-element addressing.
+            call grow_symbols(context)
+            sym = context%symbol_count + 1
+            context%symbols(sym)%name = '__array_result_tmp'
+            context%symbols(sym)%value_kind = element_kind
+            context%symbols(sym)%is_array = .true.
+            context%symbols(sym)%array_rank = 1
+            context%symbols(sym)%array_size = array_size
+            context%symbols(sym)%array_lower_bound = 1
+            context%symbols(sym)%array_dim_sizes(1) = array_size
+            context%symbols(sym)%array_dim_lowers(1) = 1
+            context%symbols(sym)%element_address = buf
+            context%symbol_count = sym
+
+            ! The print-item loop already emitted the leading separator for this
+            ! item; supply only the inter-element separators here.
+            do k = 0_c_int64_t, int(array_size, c_int64_t) - 1_c_int64_t
+                if (k > 0_c_int64_t) then
+                    if (.not. emit_liric_print_space(context%session, error_msg)) &
+                        return
+                end if
+                call load_array_linear_element(context, sym, k, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (element_kind == VALUE_F32) then
+                    if (.not. emit_liric_print_f32_value(context%session, value, &
+                                                         error_msg)) return
+                else if (element_kind == VALUE_F64) then
+                    if (.not. emit_liric_print_f64_value(context%session, value, &
+                                                         error_msg)) return
+                else
+                    if (.not. emit_liric_print_i32_value(context%session, &
+                            context%i32_print_format_id, value, error_msg)) return
+                end if
+            end do
+        class default
+            error_msg = 'expected function call for array result print'
+        end select
+    end subroutine lower_print_array_result_call
+
     subroutine lower_print_complex8(sym_idx, context, error_msg)
         integer, intent(in) :: sym_idx
         type(lowering_context_t), intent(inout) :: context

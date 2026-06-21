@@ -36,6 +36,12 @@ module session_program_lowering_types
     ! VALUE_PROC_PTR is a procedure pointer; stored as a ptr alloca slot holding
     ! the callee function address.  Lowering for #245 slice B3d.
     integer, parameter, public :: VALUE_PROC_PTR = 16
+    ! VALUE_ARRAY_RESULT is a fixed-size rank-1 array function result. Like the
+    ! derived and complex results it returns via a leading sret pointer: the
+    ! caller passes the destination array's base address as param 0 and the
+    ! callee binds the result symbol's element storage onto that pointer. The
+    ! element scalar kind comes from the result variable's body declaration.
+    integer, parameter, public :: VALUE_ARRAY_RESULT = 17
     ! Runtime type ids carried in a class(*) descriptor's type slot. Intrinsic
     ! ids are fixed and disjoint from derived-type ids (a derived type's id is
     ! its 1-based table index, always small).
@@ -171,6 +177,10 @@ module session_program_lowering_types
         logical :: is_derived = .false.
         integer :: derived_type_index = 0
         type(lr_operand_desc_t) :: element_address
+        ! A rank-1 array function result bound to the sret buffer (param 0). The
+        ! body array declaration rebinds its shape/element kind onto this symbol's
+        ! element_address instead of allocating fresh storage (array results).
+        logical :: is_array_result = .false.
         logical :: has_i32_constant = .false.
         integer(c_int64_t) :: i32_constant = 0_c_int64_t
         logical :: is_deferred_character = .false.

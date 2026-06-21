@@ -202,6 +202,12 @@
                                                      error_msg)
                 return
             end if
+            if (.not. node%is_array_access .and. &
+                is_contained_array_function(context, node%name)) then
+                call lower_print_array_result_call(arena, node_index, context, &
+                                                   error_msg)
+                return
+            end if
             ! any()/all() return LOGICAL and print as T/F (intrinsic agent).
             if (is_logical_reduction_call(arena, node_index, context)) then
                 call lower_i32_expression(arena, node_index, context, value, &
@@ -444,6 +450,12 @@
             if (is_contained_complex_function(context, node%name)) then
                 call lower_print_complex_result_call(arena, node_index, context, &
                                                      error_msg)
+                return
+            end if
+            if (.not. node%is_array_access .and. &
+                is_contained_array_function(context, node%name)) then
+                call lower_print_array_result_call(arena, node_index, context, &
+                                                   error_msg)
                 return
             end if
             ! any()/all() return LOGICAL and print as T/F (intrinsic agent).

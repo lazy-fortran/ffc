@@ -713,6 +713,68 @@
         end select
     end function is_derived_result_call
 
+    logical function is_array_result_call(arena, value_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_array_result_call = .false.
+        if (.not. node_exists(arena, value_index)) return
+        select type (v => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(v%name) .and. v%base_expr_index == 0 .and. &
+                .not. v%is_array_access) &
+                is_array_result_call = is_contained_array_function(context, v%name)
+        end select
+    end function is_array_result_call
+
+    subroutine lower_array_result_call(arena, value_index, dest_symbol_index, &
+                                       context, error_msg)
+        ! r = vec_fn(...): pass r's array storage as the hidden sret pointer; the
+        ! callee writes its array result straight into r (array function results).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: dest_symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: call_node
+        type(lr_operand_desc_t), allocatable :: user_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: func_name
+        integer :: i
+
+        select type (v => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            call_node = v
+        class default
+            error_msg = 'expected function call for array result'
+            return
+        end select
+        func_name = call_node%name
+
+        if (allocated(call_node%arg_indices)) then
+            call prepare_reference_args(arena, call_node%arg_indices, context, &
+                                        VALUE_I32, call_node%name, user_args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (user_args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        allocate (all_args(size(user_args) + 1))
+        all_args(1) = context%symbols(dest_symbol_index)%element_address
+        do i = 1, size(user_args)
+            all_args(i + 1) = user_args(i)
+        end do
+
+        if (.not. emit_void_call(context%session, &
+                                 call_emit_name(arena, trim(func_name)), &
+                                 all_args, error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, &
+                                      error_msg)
+    end subroutine lower_array_result_call
+
     subroutine lower_derived_result_call(arena, value_index, dest_symbol_index, &
                                          context, error_msg)
         ! q = make_point(): pass q's storage as the hidden result pointer; the

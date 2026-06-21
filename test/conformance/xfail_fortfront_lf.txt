@@ -5,7 +5,6 @@
 # Promote entries by removing them from this file when ffc starts passing.
 allocate_inference_missing_declaration.lf
 api_complex_transform.lf
-array_function_result.lf
 array_index_brackets_multi.lf
 array_index_brackets_simple.lf
 array_literal_integer.lf
@@ -23,7 +22,6 @@ implicit_do_print.lf
 intrinsic_functions.lf
 issue_1330_missing_declarations.lf
 issue_1410_pointer_null.lf
-issue_1413_array_function.lf
 issue_1414_implied_do.lf
 issue_1534_multi_dimension_allocatable.lf
 issue_1576_common_subroutine.lf

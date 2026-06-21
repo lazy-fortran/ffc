@@ -47,7 +47,11 @@ integer `pointer`/`target` with `p => t`, read/write through `p`,
 integer, real, logical, and `c_ptr` components, fixed-size integer array
 components, and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
-(`type, extends(parent) :: child`) with parent-first component layout. A module procedure may `contains` internal procedures, lowered as
+(`type, extends(parent) :: child`) with parent-first component layout. A
+contained function may return a fixed-size rank-1 array: the result lowers
+through the sret ABI (the caller passes the destination buffer as a hidden
+result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
+result straight into the destination. A module procedure may `contains` internal procedures, lowered as
 flat functions. Module-level integer variables persist as globals and are
 visible across `use`. The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real

@@ -35,7 +35,6 @@ issue_1614_character_module_variable.f90
 issue_1615_target_attribute.f90
 issue_1619_nested_types_complex.f90
 issue_1621_intent_out_array_shape.f90
-issue_1664_function_result.f90
 issue_1705_real_literal_generic.f90
 issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
@@ -108,7 +107,6 @@ issue_509_mixed_constructs_expected.f90
 issue_playtest5_array_parameter_rank_lost.f90
 library_usage_ast_node_counter.f90
 library_usage_ast_node_position.f90
-result_out_keyword.f90
 tmp_goto_ast.f90
 tooling_lightweight_ast.f90
 undefined_var_recursive_type.f90
