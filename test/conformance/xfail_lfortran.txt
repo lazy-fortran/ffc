@@ -1243,6 +1243,7 @@ entry_21.f90
 enum_02.f90
 enum_03.f90
 enum_04.f90
+enum_06.f90
 enum_06_module.f90
 enum_07.f90
 enum_07_module.f90
@@ -1679,7 +1680,6 @@ gpu_metal_157.f90
 gpu_metal_158.f90
 gpu_metal_159.f90
 gpu_metal_160.f90
-gpu_metal_161.f90
 gpu_metal_162.f90
 gpu_metal_163.f90
 gpu_metal_164.f90
@@ -3345,7 +3345,6 @@ separate_compilation_39.f90
 separate_compilation_40.f90
 separate_compilation_41a.f90
 separate_compilation_41b.f90
-separate_compilation_41.f90
 separate_compilation_42.f90
 separate_compilation_43b.f90
 separate_compilation_43.f90

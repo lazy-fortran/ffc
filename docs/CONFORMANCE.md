@@ -187,6 +187,33 @@ Seed baseline from lfortran commit `5e3229bd6`: `PASS=123`,
 `XFAIL=4134`, `XPASS=0`, `FAIL=0`, `NOREF=72`, `SKIP=0`,
 `TOTAL=4257`.
 
+## Separate compilation
+
+A test program often USEs a module defined in a sibling file in the same
+suite directory. The runner compiles those prerequisites first so the
+program links. Before building a file, it resolves the modules the file
+USEs that no `module` unit in the file itself defines. For each such
+module it finds the sibling `.f90`/`.lf` file whose `module <name>`
+matches (case-insensitive; `module procedure` and `submodule` are not
+definitions), follows module-to-module dependencies transitively, and
+appends any submodule files that implement a pulled-in module's
+interfaces. The prerequisites compile in dependency order with ffc into
+a per-test include directory, emitting their `.fmod` files there; the
+main file then builds with `-I <that dir>` plus the prerequisite object
+files. The `gfortran -w` reference compiles the same sibling sources, so
+its binary links too and the comparison is honest.
+
+A file that defines only modules and no program keeps the single-file
+handling. A self-contained file resolves to no prerequisites and builds
+exactly as before. When ffc cannot compile a prerequisite module, the
+main file's `-I` search finds no `.fmod` and the build fails as it would
+without separate compilation; the reference still receives the full
+source list. The `gfortran-dg` suite models multifile cases through its
+own `dg-additional-sources` directive and does not use this resolution.
+
+Only build artifacts live under `TMPDIR`; the no-vendoring rule holds,
+since prerequisite sources are referenced in place by path.
+
 ## xfail promotion workflow
 
 When an entry in an xfail manifest starts passing (XPASS), promote it
@@ -218,9 +245,11 @@ LIBRARY_PATH=../liric/build fpm test test_conformance_gauntlet_smoke
 gauntlet runner:
 
 - `find_ffc`: resolve ffc binary path
-- `compile_with_ffc`: compile through ffc
-- `compile_with_gfortran`: compile with `gfortran -w`
+- `compile_with_ffc`: compile through ffc, with extra `-I`/object args
+- `compile_with_gfortran`: compile with `gfortran -w`, prerequisite sources first
 - `run_capture`: run with timeout, capture stdout+stderr
 - `compare_outputs`: compare stdout files and exit statuses
+- `build_module_index`: map sibling module and submodule names to their files
+- `resolve_prerequisites`: order the sibling files a source must compile first
 
 Source this file from other scripts; do not execute it directly.

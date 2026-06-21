@@ -224,6 +224,17 @@ if [ "$FILE_COUNT" -eq 0 ]; then
     exit 0
 fi
 
+# Build a module/submodule index of the suite directory so a file that USEs a
+# module DEFINED in a sibling file can be compiled with separate compilation:
+# the sibling files are compiled first into a per-test include dir and linked in.
+# gfortran.dg models multifile cases through dg-additional-sources instead, so
+# the index is built only for the flat source-tree suites.
+MODULE_INDEX="$TMPDIR_WORK/module_index.tsv"
+: > "$MODULE_INDEX"
+if [ "$SUITE" != "gfortran-dg" ]; then
+    build_module_index "$SUITE_ROOT" "$MODULE_INDEX"
+fi
+
 echo "Running $SUITE: $FILE_COUNT files, timeout=${TIMEOUT}s, ffc=$FFC_BIN"
 
 # Process each file. The file list is read on FD 3, not stdin, so a compiled
@@ -341,8 +352,44 @@ while IFS= read -r full_path <&3; do
         fi
     fi
 
+    # Step 0: separate compilation. If this file USEs a module defined in a
+    # sibling file, compile the prerequisite module/submodule files first into a
+    # per-test include dir, then build this file with -I <dir> plus their object
+    # files. The gfortran reference compiles the same sibling sources so its
+    # binary links too. A self-contained file resolves to no prerequisites and
+    # follows the single-file path unchanged. If any prerequisite fails to
+    # compile with ffc, the module is unavailable and the main file falls
+    # through to its normal failure handling below.
+    ffc_extra=()
+    ref_extra=()
+    if [ -s "$MODULE_INDEX" ]; then
+        prereq_list="$TMPDIR_WORK/prereq_${TOTAL_COUNT}.txt"
+        resolve_prerequisites "$full_path" "$SUITE_ROOT" "$MODULE_INDEX" "$prereq_list"
+        if [ -s "$prereq_list" ]; then
+            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
+            mkdir -p "$inc_dir"
+            ffc_extra=(-I "$inc_dir")
+            # The gfortran reference ALWAYS receives the full prerequisite source
+            # list so its binary links: whether ffc can compile a prerequisite is
+            # an ffc concern, not the reference's. ffc objects are only added when
+            # the prerequisite compiles; otherwise the main ffc build fails for
+            # lack of the .fmod and is classified honestly below.
+            prereq_idx=0
+            while IFS= read -r prereq_src <&4; do
+                [ -z "$prereq_src" ] && continue
+                ref_extra+=("$prereq_src")
+                prereq_obj="$inc_dir/prereq_${prereq_idx}.o"
+                if compile_object_with_ffc_inc "$prereq_src" "$prereq_obj" \
+                    "$FFC_BIN" "$inc_dir"; then
+                    ffc_extra+=("$prereq_obj")
+                fi
+                prereq_idx=$((prereq_idx + 1))
+            done 4< "$prereq_list"
+        fi
+    fi
+
     # Step 1: compile with ffc
-    if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN"; then
+    if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN" "${ffc_extra[@]}"; then
         ffc_exit=0
     else
         ffc_exit=1
@@ -416,8 +463,9 @@ while IFS= read -r full_path <&3; do
         continue
     fi
 
-    # Step 5: standard suite, compile with gfortran reference.
-    if compile_with_gfortran "$full_path" "$ref_exe"; then
+    # Step 5: standard suite, compile with gfortran reference. Prerequisite
+    # sibling sources (if any) are compiled together so the reference links.
+    if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
         ref_exit=0
     else
         ref_exit=1
