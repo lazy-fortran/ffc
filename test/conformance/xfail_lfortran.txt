@@ -229,7 +229,6 @@ arrays_20.f90
 arrays_21.f90
 arrays_22.f90
 arrays_23.f90
-arrays_24.f90
 arrays_25.f90
 arrays_26.f90
 arrays_27.f90
@@ -710,7 +709,6 @@ class_16.f90
 class_17.f90
 class_18.f90
 class_19.f90
-class_20.f90
 class_21.f90
 class_22.f90
 class_23.f90
@@ -1937,7 +1935,6 @@ int_03.f90
 int_dp_param.f90
 integer_bin_op_dim_external_module.f90
 integer_boz_01.f90
-intent_01.f90
 intent_02.f90
 intent_03.f90
 intent_out_allocatable_component_dealloc.f90
@@ -1959,7 +1956,6 @@ interface_04.f90
 interface_05.f90
 interface_07.f90
 interface_09.f90
-interface_10.f90
 interface_11.f90
 interface_12a.f90
 interface_12.f90
@@ -1977,7 +1973,6 @@ interface_32_module.f90
 interface_33.f90
 interface_33_module.f90
 internal_subr_assumed_size_01.f90
-internal_subr_host_vars_01.f90
 intrinsic_reduce_01.f90
 intrinsic_reduce_derived_type_01.f90
 intrinsics_01.f90
@@ -2509,7 +2504,6 @@ logical_arrays_logical_binop_01.f90
 logical_casting_01.f90
 logical_kind_01.f90
 logical_kind_02.f90
-logical_kind_03.f90
 logical_kind_04.f90
 logical_kind_05.f90
 logical_kind_06.f90
@@ -2518,7 +2512,6 @@ logical_not_01.f90
 logical_testing.f90
 logical_to_integer_cast.f90
 loop_var_use_after_loop.f90
-mangle_underscore_01.f90
 matmul_01.f90
 matmul_02.f90
 matmul_03.f90
@@ -3807,7 +3800,6 @@ verify_intent_external_01.f90
 verify_intent_external_01_mod1.f90
 verify_intent_external_01_mod2.f90
 volatile_01.f90
-volatile_03.f90
 where_01.f90
 where_02.f90
 where_03.f90
