@@ -355,6 +355,14 @@
             ! Classify by kind: bare real and real(4) are f32; real(8) is f64.
             if (real_kind_is_f64(kind_spec)) then
                 value_kind = VALUE_F64
+            else if (len_trim(kind_spec) == 0 .and. &
+                     result_var_body_decl_is_f64(node, context)) then
+                ! FortFront sometimes renders an explicit real(8) function return
+                ! as a kindless "real" on the function statement (the kind is
+                ! dropped during inference). When the result variable carries an
+                ! explicit real(8)/real(real64)/double precision body declaration,
+                ! trust that over the kindless statement type.
+                value_kind = VALUE_F64
             else
                 value_kind = VALUE_F32
             end if
@@ -407,6 +415,53 @@
             end if
         end select
     end subroutine function_value_kind
+
+    logical function result_var_body_decl_is_f64(node, context) result(is_f64)
+        ! True when the function result variable has an explicit scalar
+        ! real(8)/real(real64)/double precision declaration in the body. Used to
+        ! recover the f64 kind when FortFront drops it from the function
+        ! statement's return type, leaving a kindless "real".
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: result_name, decl_err
+        integer :: i, k, value_kind, derived_index
+        logical :: is_array
+
+        is_f64 = .false.
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_array) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        call resolve_result_decl_kind(decl, context, value_kind, &
+                            derived_index, is_array, decl_err)
+                        if (len_trim(decl_err) == 0 .and. .not. is_array .and. &
+                            value_kind == VALUE_F64) is_f64 = .true.
+                        if (is_f64) return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            call resolve_result_decl_kind(decl, context, &
+                                value_kind, derived_index, is_array, decl_err)
+                            if (len_trim(decl_err) == 0 .and. .not. is_array .and. &
+                                value_kind == VALUE_F64) is_f64 = .true.
+                            if (is_f64) return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function result_var_body_decl_is_f64
 
     subroutine result_var_scalar_kind(node, context, value_kind, &
                                       derived_type_index, error_msg)

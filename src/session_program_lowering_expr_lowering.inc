@@ -247,6 +247,17 @@
                                             error_msg)) return
             return
         end if
+        ! A default-real (f32) sub-expression used in an f64 context promotes to
+        ! f64, matching Fortran's mixed-kind arithmetic (e.g. an f64 result body
+        ! that adds an f32 dummy argument).
+        if (is_f32_expression(arena, node_index, context)) then
+            call lower_f32_expression(arena, node_index, context, int_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_to_f64(context%session, int_value, value, &
+                                            error_msg)) return
+            return
+        end if
         call lower_f64_expression(arena, node_index, context, value, error_msg)
     end subroutine lower_f64_operand
 
