@@ -107,6 +107,23 @@
         context%symbols(index)%is_parameter = .true.
         call lower_scalar_initializer(context, name, value_kind, &
                                       node%initializer_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! A non-default-kind integer parameter (integer(int64) etc.) still has a
+        ! compile-time integer value; record it so array bounds and kind/size/len
+        ! inquiries that reference it fold like a default integer parameter.
+        if (value_kind == VALUE_I8 .or. value_kind == VALUE_I16 .or. &
+            value_kind == VALUE_I64) then
+            block
+                integer(c_int64_t) :: int_const
+                character(len=:), allocatable :: fold_err
+                call eval_i32_constant(context%arena, node%initializer_index, &
+                                       context, int_const, fold_err)
+                if (len_trim(fold_err) == 0) then
+                    context%symbols(index)%has_i32_constant = .true.
+                    context%symbols(index)%i32_constant = int_const
+                end if
+            end block
+        end if
     end subroutine lower_nonint_constant_declaration
 
     subroutine lower_character_constant_declaration(node, context, name, error_msg)

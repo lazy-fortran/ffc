@@ -743,11 +743,231 @@
             end if
             constant_value = selected_real_kind_value(p, r)
             call set_empty(error_msg)
+        else if (same_name(node%name, 'kind')) then
+            call eval_kind_of_arg(arena, node, context, constant_value, error_msg)
+        else if (same_name(node%name, 'size')) then
+            call eval_size_constant(arena, node, context, constant_value, error_msg)
+        else if (same_name(node%name, 'len')) then
+            call eval_len_constant(arena, node, context, constant_value, error_msg)
         else
             error_msg = 'compile-time integer expression uses unsupported call: '// &
                         trim(node%name)
         end if
     end subroutine eval_kind_inquiry_constant
+
+    ! Map an internal value kind to the Fortran KIND number gfortran reports.
+    pure integer(c_int64_t) function value_kind_number(value_kind) result(k)
+        integer, intent(in) :: value_kind
+
+        select case (value_kind)
+        case (VALUE_I8)
+            k = 1_c_int64_t
+        case (VALUE_I16)
+            k = 2_c_int64_t
+        case (VALUE_I32, VALUE_F32, VALUE_LOGICAL, VALUE_C4)
+            k = 4_c_int64_t
+        case (VALUE_I64, VALUE_F64, VALUE_C8)
+            k = 8_c_int64_t
+        case (VALUE_CHARACTER)
+            k = 1_c_int64_t
+        case default
+            k = -1_c_int64_t
+        end select
+    end function value_kind_number
+
+    ! Fold kind(x): the kind of a literal argument follows its type and any
+    ! kind suffix; the kind of a named entity follows its declared value kind.
+    subroutine eval_kind_of_arg(arena, node, context, constant_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: arg_index, sym
+        integer(c_int64_t) :: k
+        character(len=:), allocatable :: id_name
+
+        constant_value = 0_c_int64_t
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'kind requires one argument'
+            return
+        end if
+        arg_index = node%arg_indices(1)
+        if (.not. node_exists(arena, arg_index)) then
+            error_msg = 'kind argument does not reference an AST node'
+            return
+        end if
+
+        if (is_literal(arena, arg_index)) then
+            call kind_of_literal(arena, arg_index, k, error_msg)
+            if (len_trim(error_msg) > 0) return
+            constant_value = k
+            call set_empty(error_msg)
+            return
+        end if
+
+        if (is_identifier(arena, arg_index)) then
+            call get_identifier_name(arena, arg_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym <= 0) then
+                error_msg = 'kind argument was not declared: '//trim(id_name)
+                return
+            end if
+            k = value_kind_number(context%symbols(sym)%value_kind)
+            if (k < 0) then
+                error_msg = 'kind argument has no compile-time kind: '// &
+                            trim(id_name)
+                return
+            end if
+            constant_value = k
+            call set_empty(error_msg)
+            return
+        end if
+
+        error_msg = 'kind argument is not a literal or named entity'
+    end subroutine eval_kind_of_arg
+
+    ! Determine the Fortran kind of a literal node from its type and suffix.
+    subroutine kind_of_literal(arena, node_index, k, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(out) :: k
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type
+
+        k = 0_c_int64_t
+        call set_empty(error_msg)
+        if (is_character_literal(arena, node_index)) then
+            k = 1_c_int64_t
+        else if (is_logical_literal(arena, node_index)) then
+            k = 4_c_int64_t
+        else if (is_real_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (literal_is_f64(lit_value)) then
+                k = 8_c_int64_t
+            else
+                k = 4_c_int64_t
+            end if
+        else
+            ! Default integer literal.
+            k = 4_c_int64_t
+        end if
+    end subroutine kind_of_literal
+
+    ! Fold size(arr[, dim]) for a fixed-size array symbol.
+    subroutine eval_size_constant(arena, node, context, constant_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym, nargs
+        integer(c_int64_t) :: dim
+        character(len=:), allocatable :: id_name
+
+        constant_value = 0_c_int64_t
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'size requires an array argument'
+            return
+        end if
+        nargs = size(node%arg_indices)
+        if (nargs < 1 .or. nargs > 2) then
+            error_msg = 'size requires one or two arguments'
+            return
+        end if
+        if (.not. is_identifier(arena, node%arg_indices(1))) then
+            error_msg = 'size argument is not a named array'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, id_name)
+        if (sym <= 0) then
+            error_msg = 'size argument was not declared: '//trim(id_name)
+            return
+        end if
+        if (.not. context%symbols(sym)%is_array) then
+            error_msg = 'size argument is not an array: '//trim(id_name)
+            return
+        end if
+        if (context%symbols(sym)%array_size <= 0) then
+            error_msg = 'size argument is not a fixed-size array: '//trim(id_name)
+            return
+        end if
+
+        if (nargs == 1) then
+            constant_value = int(context%symbols(sym)%array_size, c_int64_t)
+            call set_empty(error_msg)
+            return
+        end if
+
+        call eval_i32_constant(arena, node%arg_indices(2), context, dim, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (dim < 1 .or. dim > int(context%symbols(sym)%array_rank, c_int64_t)) then
+            error_msg = 'size dim out of range for: '//trim(id_name)
+            return
+        end if
+        constant_value = int(context%symbols(sym)%array_dim_sizes(int(dim)), &
+                             c_int64_t)
+        call set_empty(error_msg)
+    end subroutine eval_size_constant
+
+    ! Fold len(s) for a fixed-length character entity or character literal.
+    subroutine eval_len_constant(arena, node, context, constant_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+        character(len=:), allocatable :: id_name, lit_value, lit_type
+        character(len=:), allocatable :: stripped
+
+        constant_value = 0_c_int64_t
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'len requires one argument'
+            return
+        end if
+
+        if (is_literal(arena, node%arg_indices(1))) then
+            if (.not. is_character_literal(arena, node%arg_indices(1))) then
+                error_msg = 'len argument is not a character entity'
+                return
+            end if
+            call get_literal_info(arena, node%arg_indices(1), lit_value, lit_type, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            call strip_literal_quotes(lit_value, stripped)
+            constant_value = int(len(stripped), c_int64_t)
+            call set_empty(error_msg)
+            return
+        end if
+
+        if (.not. is_identifier(arena, node%arg_indices(1))) then
+            error_msg = 'len argument is not a named character entity'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol(context, id_name)
+        if (sym <= 0) then
+            error_msg = 'len argument was not declared: '//trim(id_name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_CHARACTER) then
+            error_msg = 'len argument is not a character entity: '//trim(id_name)
+            return
+        end if
+        if (context%symbols(sym)%character_length <= 0) then
+            error_msg = 'len argument is not a fixed-length character: '// &
+                        trim(id_name)
+            return
+        end if
+        constant_value = int(context%symbols(sym)%character_length, c_int64_t)
+        call set_empty(error_msg)
+    end subroutine eval_len_constant
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
                                             array_size, value_kind, error_msg, &

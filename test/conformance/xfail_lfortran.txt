@@ -110,7 +110,6 @@ any_01.f90
 any_02.f90
 any_03.f90
 arithmetic_if_03.f90
-arithmetic_if_04.f90
 array_01.f90
 array_01_pack.f90
 array_01_transfer.f90
@@ -170,7 +169,6 @@ arrays_01_logical.f90
 arrays_01_multi_dim.f90
 arrays_01_real.f90
 arrays_01_size.f90
-arrays_02.f90
 arrays_02_size.f90
 arrays_03_func_pass_arr_dims.f90
 arrays_03_size.f90
@@ -344,7 +342,6 @@ array_shape_func_call.f90
 arrays_inputs_15.f90
 arrays_intrin_02.f90
 arrays_intrin_03.f90
-arrays_intrin_04.f90
 arrays_intrin_05.f90
 arrays_intrin_06.f90
 arrays_intrin_07.f90
@@ -887,7 +884,6 @@ cond_04.f90
 cond_05.f90
 cond_06.f90
 const_array_01.f90
-const_array_02.f90
 const_real_dp.f90
 contig.f90
 contig_stmt_01.f90
@@ -952,7 +948,6 @@ cycle_and_exit5.f90
 dabs_01.f90
 data_02.f90
 data_03.f90
-data_04.f90
 data_05.f90
 data_06.f90
 data_07.f90
@@ -1245,7 +1240,6 @@ entry_18.f90
 entry_19.f90
 entry_20.f90
 entry_21.f90
-enum_01.f90
 enum_02.f90
 enum_03.f90
 enum_04.f90
@@ -1299,9 +1293,7 @@ exponent_inf_01.f90
 expr_01.f90
 expr_04.f90
 expr_05.f90
-expr_08.f90
 expr_09.f90
-expr_10.f90
 expr_12.f90
 expr_13.f90
 expr_16.f90
@@ -2022,7 +2014,6 @@ intrinsics_136.f90
 intrinsics_137.f90
 intrinsics_138.f90
 intrinsics_139.f90
-intrinsics_13.f90
 intrinsics_140.f90
 intrinsics_141.f90
 intrinsics_142.f90
@@ -2101,7 +2092,6 @@ intrinsics_206.f90
 intrinsics_207.f90
 intrinsics_208.f90
 intrinsics_209.f90
-intrinsics_20.f90
 intrinsics_210.f90
 intrinsics_211.f90
 intrinsics_212.f90
@@ -2525,7 +2515,6 @@ min_02.f90
 minmax_01.f90
 minpack_01.f90
 minpack_01_func.f90
-minpack_02.f90
 minpack_03.f90
 module_array_init.f90
 module_function_with_nopass.f90
@@ -2842,7 +2831,6 @@ optional_12.f90
 optional_13.f90
 parameter_01.f90
 parameter_02.f90
-parameter_03.f90
 parameter_04.f90
 parameter_05.f90
 parameter_06.f90
@@ -2886,7 +2874,6 @@ pdt_04.f90
 pdt_05.f90
 pdt_06.f90
 pdt_07.f90
-pdt_08.f90
 pdt_09.f90
 pdt_10.f90
 pdt_11.f90
@@ -2934,7 +2921,6 @@ print_04.f90
 print_05.f90
 print_06.f90
 print_07.f90
-print_09.f90
 print_10.f90
 print_11.f90
 print_12.f90
@@ -3684,7 +3670,6 @@ test_endfile_01.f90
 test_endfile_02.f90
 test_endfile_03.f90
 test_format_inf_nan.f90
-test_ieee_arithmetic_02.f90
 test_ieee_arithmetic_03.f90
 test_ieee_arithmetic_04.f90
 test_ieee_arithmetic.f90

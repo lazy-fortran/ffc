@@ -88,7 +88,5 @@ issue_2815_ieee_arithmetic.lf
 # Walrus declaration ':=' produces a dangling AST target index in FortFront.
 issue_2816_walrus_declaration.lf
 issue_2816_walrus_redeclaration.lf
-# kind(1.0d0) in a parameter initializer is not folded at compile time.
-issue_2820_dp_collision.lf
 # Derived-type constructor in lazy mode lowered as a real function call.
 issue_2827_derived_constructor_inference.lf
