@@ -488,7 +488,8 @@
         if (.not. context%symbols(sym)%is_array .and. &
             .not. context%symbols(sym)%is_allocatable) return
         vk = context%symbols(sym)%value_kind
-        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64) return
+        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
+            vk /= VALUE_LOGICAL) return
         if (context%symbols(sym)%is_allocatable) then
             call emit_allocatable_print_items(context, sym, vk, handled, error_msg)
             return
@@ -506,6 +507,10 @@
             else if (vk == VALUE_F64) then
                 if (.not. emit_liric_print_f64_value(context%session, &
                                                      value, error_msg)) return
+            else if (vk == VALUE_LOGICAL) then
+                ! A logical element occupies an i32 slot (0/1); print it as T/F.
+                call lower_print_logical_value(context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 if (.not. emit_liric_print_i32_value(context%session, &
                                                      context%i32_print_format_id, &
@@ -551,6 +556,9 @@
             else if (vk == VALUE_F64) then
                 if (.not. emit_liric_print_f64_value(context%session, &
                                                      value, error_msg)) return
+            else if (vk == VALUE_LOGICAL) then
+                call lower_print_logical_value(context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 if (.not. emit_liric_print_i32_value(context%session, &
                                                      context%i32_print_format_id, &
