@@ -79,8 +79,9 @@
                 if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
-                                           default_kind, args(i), &
-                                           copyback_indices(i), error_msg)
+                                           arg_default_kind(arena, callee_name, &
+                                                            i, default_kind), &
+                                           args(i), copyback_indices(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
         end do
@@ -305,6 +306,28 @@
                                  error_msg)) return
         call set_empty(error_msg)
     end subroutine char_actual_descriptor
+
+    integer function arg_default_kind(arena, callee_name, param_pos, &
+                                      fallback_kind) result(kind)
+        ! The kind a scalar actual should adopt at param_pos: the callee dummy's
+        ! declared kind when it is a contained procedure whose dummy is known,
+        ! otherwise the caller's fallback. This lets a real literal actual match a
+        ! real(4)/real(8) dummy independent of the call-site default kind, which
+        ! matters when a single call mixes integer and real dummies (e.g. an
+        ! array function result called as f(n, step)).
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer, intent(in) :: fallback_kind
+        integer :: dummy_kind
+
+        kind = fallback_kind
+        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos)
+        if (dummy_kind == VALUE_I32 .or. dummy_kind == VALUE_F32 .or. &
+            dummy_kind == VALUE_F64 .or. dummy_kind == VALUE_LOGICAL) then
+            kind = dummy_kind
+        end if
+    end function arg_default_kind
 
     subroutine prepare_reference_arg(arena, node_index, context, default_kind, &
                                      arg, copyback_index, error_msg)

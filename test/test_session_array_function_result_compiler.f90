@@ -72,6 +72,44 @@ program test_session_array_function_result_compiler
         'end program main', &
         'int_assign')) all_passed = .false.
 
+    ! Runtime-sized result: the result extent is a dummy-argument value, while
+    ! the caller's destination has a compile-time size that fixes the actual.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  real, dimension(5) :: r'//new_line('a')// &
+        '  r = generate_sequence(5, 2.0)'//new_line('a')// &
+        '  print *, r'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function generate_sequence(n, step) result(seq)'//new_line('a')// &
+        '    integer, intent(in) :: n'//new_line('a')// &
+        '    real, intent(in) :: step'//new_line('a')// &
+        '    real, dimension(n) :: seq'//new_line('a')// &
+        '    integer :: i'//new_line('a')// &
+        '    do i = 1, n'//new_line('a')// &
+        '      seq(i) = real(i) * step'//new_line('a')// &
+        '    end do'//new_line('a')// &
+        '  end function generate_sequence'//new_line('a')// &
+        'end program main', &
+        'runtime_real')) all_passed = .false.
+
+    ! Runtime-sized integer result.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer, dimension(4) :: r'//new_line('a')// &
+        '  r = ramp(4)'//new_line('a')// &
+        '  print *, r'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function ramp(n) result(out)'//new_line('a')// &
+        '    integer, intent(in) :: n'//new_line('a')// &
+        '    integer, dimension(n) :: out'//new_line('a')// &
+        '    integer :: i'//new_line('a')// &
+        '    do i = 1, n'//new_line('a')// &
+        '      out(i) = i * 10'//new_line('a')// &
+        '    end do'//new_line('a')// &
+        '  end function ramp'//new_line('a')// &
+        'end program main', &
+        'runtime_int')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: fixed-size array function results lower through '// &
         'direct LIRIC session'

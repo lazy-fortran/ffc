@@ -32,6 +32,66 @@
         is_assumed = .true.
     end function declaration_is_assumed_shape
 
+    logical function declaration_is_runtime_rank1(node, context) result(is_runtime)
+        ! A rank-1 explicit-shape array whose single extent is a runtime integer
+        ! expression (a dummy-argument value such as dimension(n)) rather than a
+        ! compile-time constant. Allocatable and assumed-shape declarations are
+        ! excluded; they have their own lowering paths.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: dim_index
+        integer(c_int64_t) :: folded
+        character(len=:), allocatable :: fold_error
+
+        is_runtime = .false.
+        if (.not. node%is_array) return
+        if (node%is_allocatable) return
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) return
+        if (declaration_is_assumed_shape(node, context)) return
+        dim_index = node%dimension_indices(1)
+        if (.not. node_exists(context%arena, dim_index)) return
+        select type (dim_node => context%arena%entries(dim_index)%node)
+        type is (range_expression_node)
+            call eval_i32_constant(context%arena, dim_node%end_index, context, &
+                                   folded, fold_error)
+        class default
+            call eval_i32_constant(context%arena, dim_index, context, folded, &
+                                   fold_error)
+        end select
+        is_runtime = len_trim(fold_error) > 0
+    end function declaration_is_runtime_rank1
+
+    logical function declaration_rebinds_runtime_array_result(node, context) &
+            result(is_rebind)
+        ! True when this body array declaration names the pre-bound array function
+        ! result symbol and has a runtime (non-foldable) rank-1 extent. Such a
+        ! declaration rebinds the sret buffer view rather than allocating storage,
+        ! so its bounds must not be folded at compile time.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: index, k
+
+        is_rebind = .false.
+        if (.not. declaration_is_runtime_rank1(node, context)) return
+        if (allocated(node%var_name)) then
+            index = find_symbol(context, node%var_name)
+            if (index > 0) then
+                if (context%symbols(index)%is_array_result) is_rebind = .true.
+            end if
+            if (is_rebind) return
+        end if
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do k = 1, size(node%var_names)
+                index = find_symbol(context, node%var_names(k))
+                if (index > 0) then
+                    if (context%symbols(index)%is_array_result) is_rebind = .true.
+                end if
+                if (is_rebind) return
+            end do
+        end if
+    end function declaration_rebinds_runtime_array_result
+
     logical function declaration_is_assumed_rank(node, context) result(is_rank)
         ! An assumed-rank dummy arr(..) parses to a single array_bounds_node
         ! flagged is_assumed_rank. Its runtime rank comes from the caller's
@@ -762,6 +822,24 @@
                 context%symbols(index)%array_dim_lowers(i) = 1
                 context%symbols(index)%array_dim_sizes(i) = assumed_extents(i)
             end do
+            context%symbols(index)%element_address = param_base
+            call set_empty(error_msg)
+            return
+        end if
+
+        ! An array function result whose extent is a dummy-argument value (e.g.
+        ! `real, dimension(n) :: seq`) has no compile-time size. The result is
+        ! bound to the caller's sret buffer (param 0), so element addressing GEPs
+        ! the runtime subscript with the element stride and the array-type extent
+        ! is irrelevant. Skip folding and keep array_size as the sentinel 0; the
+        ! caller-side destination supplies the real storage and the do-loop bound
+        ! n drives the element count at run time.
+        if (context%symbols(index)%is_array_result .and. &
+            declaration_is_runtime_rank1(node, context)) then
+            context%symbols(index)%array_lower_bound = 1
+            context%symbols(index)%array_dim_lowers(1) = 1
+            context%symbols(index)%array_dim_sizes(1) = 0
+            context%symbols(index)%array_size = 0
             context%symbols(index)%element_address = param_base
             call set_empty(error_msg)
             return

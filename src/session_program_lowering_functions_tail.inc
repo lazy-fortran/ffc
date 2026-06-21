@@ -432,6 +432,88 @@
         is_char = dummy_is_character(arena, body_indices, name)
     end function param_at_is_character
 
+    integer function callee_dummy_value_kind(arena, callee_name, param_pos) &
+            result(value_kind)
+        ! The scalar value kind of the param_pos-th (1-based) dummy of the
+        ! contained procedure callee_name, read from its body declaration.
+        ! Returns 0 when the procedure or its dummy declaration is not found, so
+        ! the caller falls back to its own default. Lets a real literal actual
+        ! adopt the dummy's kind (e.g. 2.0 to a real(4) step) regardless of the
+        ! caller-side default kind.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        value_kind = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                value_kind = param_at_value_kind(arena, sb_node%param_indices, &
+                    sb_node%body_indices, param_pos)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                value_kind = param_at_value_kind(arena, fn_node%param_indices, &
+                    fn_node%body_indices, param_pos)
+                return
+            end if
+        end do
+    end function callee_dummy_value_kind
+
+    integer function param_at_value_kind(arena, param_indices, body_indices, &
+                                         param_pos) result(value_kind)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable :: name, name_err, kind_err
+        integer :: i, k
+
+        value_kind = 0
+        if (.not. allocated(param_indices)) return
+        if (param_pos < 1 .or. param_pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(param_pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_array) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(name)) then
+                        call declaration_value_kind(decl, value_kind, kind_err)
+                        if (len_trim(kind_err) > 0) value_kind = 0
+                        return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(name)) then
+                            call declaration_value_kind(decl, value_kind, kind_err)
+                            if (len_trim(kind_err) > 0) value_kind = 0
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function param_at_value_kind
+
     function procedure_emit_name(fortran_name, bind_c_clause) result(emit_name)
         ! The LIRIC symbol a contained procedure is emitted under: its
         ! bind(c, name="...") C name when present, otherwise its Fortran name.

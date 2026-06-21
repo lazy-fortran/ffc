@@ -388,9 +388,18 @@ contains
                                                      error_msg)
                 return
             end if
-            call get_array_bounds(node, context, array_lower_bound, array_size, &
-                                  error_msg)
-            if (len_trim(error_msg) > 0) return
+            ! A runtime-sized array function result (dimension(n) with dummy n):
+            ! its extent does not fold at compile time. The result symbol is
+            ! pre-bound to the sret buffer, so skip bound folding and let
+            ! define_declared_array_symbol bind the runtime view onto param 0.
+            if (declaration_rebinds_runtime_array_result(node, context)) then
+                array_lower_bound = 1
+                array_size = 0
+            else
+                call get_array_bounds(node, context, array_lower_bound, &
+                                      array_size, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (node%is_multi_declaration .and. allocated(node%var_names)) then
                 do i = 1, size(node%var_names)
                     call define_declared_array_symbol( &
