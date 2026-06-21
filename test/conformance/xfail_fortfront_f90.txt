@@ -62,7 +62,6 @@ issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2390_module_implicit_rules.f90
 issue_2394_allocatable_function.f90
-issue_2414_module_internal_implicit_none.f90
 issue_2416_io_format_variable.f90
 issue_2416_io_formats_comprehensive.f90
 issue_2416_io_namelist_read.f90
