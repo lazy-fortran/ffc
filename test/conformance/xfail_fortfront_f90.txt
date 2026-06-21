@@ -70,7 +70,6 @@ issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2390_module_implicit_rules.f90
 issue_2394_allocatable_function.f90
-issue_2394_bind_c_interface.f90
 issue_2414_module_internal_implicit_none.f90
 issue_2416_io_format_variable.f90
 issue_2416_io_formats_comprehensive.f90
@@ -123,7 +122,6 @@ tmp_goto_ast.f90
 tooling_lightweight_ast.f90
 undefined_var_recursive_type.f90
 undefined_var_segfault.f90
-use_intrinsic_only.f90
 variable_tracking_function_calls.f90
 issue_2348_interface_block_procedures.f90
 

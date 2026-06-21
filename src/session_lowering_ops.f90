@@ -29,6 +29,15 @@ contains
             return
         end if
 
+        ! A kind-suffixed literal (123_int32, 0_C_INT, 1_4) carries an
+        ! underscore-delimited kind parameter that list-directed read cannot
+        ! parse; the magnitude is the digit string before the underscore.
+        call parse_kind_suffixed_integer(text, value, io_status)
+        if (io_status == 0) then
+            call set_empty(error_msg)
+            return
+        end if
+
         read (text, *, iostat=io_status) value
         if (io_status == 0) then
             call set_empty(error_msg)
@@ -37,6 +46,23 @@ contains
                         trim(text)
         end if
     end subroutine parse_i32_literal
+
+    subroutine parse_kind_suffixed_integer(text, value, status)
+        !! Decode digit-string_kind into its integer value. status==0 on
+        !! success; nonzero leaves value untouched so the caller falls back.
+        character(len=*), intent(in) :: text
+        integer(c_int64_t), intent(out) :: value
+        integer, intent(out) :: status
+        character(len=:), allocatable :: trimmed
+        integer :: us
+
+        status = 1
+        value = 0_c_int64_t
+        trimmed = trim(adjustl(text))
+        us = index(trimmed, '_')
+        if (us <= 1) return
+        read (trimmed(1:us - 1), *, iostat=status) value
+    end subroutine parse_kind_suffixed_integer
 
     subroutine parse_boz_literal(text, value, status)
         !! Decode a BOZ constant into an integer value. Recognises the standard
