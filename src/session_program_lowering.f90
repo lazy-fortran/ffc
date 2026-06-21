@@ -36,6 +36,7 @@ module session_program_lowering
                          print_statement_node, program_node, read_statement_node, &
                          module_node, &
                          return_node, select_case_node, stop_node, &
+                         error_stop_node, &
                          subroutine_def_node, write_statement_node, &
                          allocate_statement_node, deallocate_statement_node, &
                          where_node, forall_node, &
@@ -1265,6 +1266,71 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine emit_stop_banner
+
+    subroutine lower_error_stop(arena, node, context, value, error_msg)
+        ! ERROR STOP terminates with an error code: the given integer code, or 1
+        ! when none is supplied (gfortran's default error-termination status).
+        type(ast_arena_t), intent(in) :: arena
+        type(error_stop_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        if (node%error_code_index <= 0) then
+            value = i32_immediate(context%session, 1_c_int64_t)
+            call set_empty(error_msg)
+        else
+            call lower_i32_expression(arena, node%error_code_index, context, &
+                                      value, error_msg)
+        end if
+    end subroutine lower_error_stop
+
+    subroutine emit_error_stop_banner(node, code_value, context, error_msg)
+        ! gfortran writes "ERROR STOP <message>" / "ERROR STOP <n>" / "ERROR STOP"
+        ! to stderr (fd 2). Mirror emit_stop_banner with the ERROR STOP prefix.
+        type(error_stop_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(in) :: code_value
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fa(3), fmtop, msgop
+        character(len=:), allocatable :: msg_text
+        integer(c_int32_t) :: fmt_gid, msg_gid
+        character(len=64) :: gname
+
+        call set_empty(error_msg)
+        if (allocated(node%error_message)) then
+            call strip_literal_quotes(node%error_message, msg_text)
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.estop.msg.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             msg_text, msg_gid, error_msg)
+            if (len_trim(error_msg) > 0) return
+            msgop = printf_format_ptr(context%session, msg_gid)
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             'ERROR STOP %s'//achar(10), fmt_gid, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            fmtop = printf_format_ptr(context%session, fmt_gid)
+            fa(1) = i32_immediate(context%session, 2_c_int64_t)
+            fa(2) = fmtop
+            fa(3) = msgop
+            if (.not. emit_dprintf(context%session, fa, error_msg)) return
+        else if (node%error_code_index > 0) then
+            context%string_literal_count = context%string_literal_count + 1
+            write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
+            call create_printf_format_global(context%session, trim(gname), &
+                                             'ERROR STOP %d'//achar(10), fmt_gid, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            fmtop = printf_format_ptr(context%session, fmt_gid)
+            fa(1) = i32_immediate(context%session, 2_c_int64_t)
+            fa(2) = fmtop
+            fa(3) = code_value
+            if (.not. emit_dprintf(context%session, fa, error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_error_stop_banner
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_read_ops.inc'

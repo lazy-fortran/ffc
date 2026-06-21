@@ -531,6 +531,30 @@
                 end if
                 context%current_block_terminated = .true.
             end if
+        type is (error_stop_node)
+            call lower_error_stop(arena, node, context, value, error_msg)
+            if (len_trim(error_msg) == 0) then
+                call emit_error_stop_banner(node, value, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                ! ERROR STOP always terminates the whole program with the error
+                ! code (default 1). From a contained procedure use libc exit();
+                ! at top level return the code.
+                if (context%in_internal_function .or. &
+                    context%in_internal_subroutine) then
+                    if (.not. emit_void_call(context%session, 'exit', [value], &
+                                             error_msg)) return
+                    if (context%in_internal_subroutine) then
+                        if (.not. emit_ret_void(context%session, error_msg)) return
+                    else
+                        if (.not. emit_ret_i32_operand(context%session, value, &
+                                                       error_msg)) return
+                    end if
+                else
+                    if (.not. emit_ret_i32_operand(context%session, value, &
+                                                   error_msg)) return
+                end if
+                context%current_block_terminated = .true.
+            end if
         type is (exit_node)
             if (.not. context%in_counted_do) then
                 call unsupported_feature_error('exit statement', node%line, &
