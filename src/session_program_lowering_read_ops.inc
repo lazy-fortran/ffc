@@ -66,7 +66,55 @@
             if (len_trim(error_msg) > 0) return
         end do
         call store_read_iostat_from_eof(node, fp, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call branch_on_eof_to_end_label(node, fp, context, error_msg)
     end subroutine lower_read_file
+
+    subroutine branch_on_eof_to_end_label(node, fp, context, error_msg)
+        ! Honour a READ end= label: when the read reaches end-of-file, transfer
+        ! control to the named statement label instead of falling through.
+        ! Requires a labeled program body, where the label owns a LIRIC block.
+        use liric_session_complex_print_bindings, only: emit_extern_i32_call
+        type(read_statement_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(in) :: fp
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: end_label
+        type(lr_operand_desc_t) :: eof_flag, at_eof, fp_arg(1)
+        integer(c_int32_t) :: target_block, continue_block
+        logical :: found
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%io_control_list)) return
+        call io_control_value(node%io_control_list, 'end', end_label)
+        if (len_trim(end_label) == 0) return
+        if (.not. context%in_labeled_body) then
+            call unsupported_feature_error('read from file unit', node%line, &
+                node%column, 'end= label is only lowered inside a labeled '// &
+                'program body (#247)', error_msg)
+            return
+        end if
+        target_block = find_label_block(context, trim(end_label), found)
+        if (.not. found) then
+            error_msg = 'read end= targets undefined statement label: '// &
+                        trim(end_label)
+            return
+        end if
+
+        fp_arg(1) = fp
+        if (.not. emit_extern_i32_call(context%session, 'feof', fp_arg, eof_flag, &
+                                       error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eof_flag, &
+                i32_immediate(context%session, 0_c_int64_t), at_eof, &
+                error_msg)) return
+        continue_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, at_eof, target_block, &
+                                     continue_block, error_msg)) return
+        if (.not. set_liric_block(context%session, continue_block, error_msg)) &
+            return
+        context%current_block_id = continue_block
+        context%current_block_terminated = .false.
+    end subroutine branch_on_eof_to_end_label
 
     subroutine store_read_iostat_success(node, context, error_msg)
         ! No item list: a READ with no targets always succeeds; iostat = 0.

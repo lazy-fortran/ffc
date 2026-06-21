@@ -18,7 +18,8 @@
         character(len=:), allocatable, intent(out) :: status_str
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: text, kw, val
-        integer :: p, eq_pos, cp, qend
+        integer :: p, eq_pos, cp, qend, arg_end
+        logical :: first_arg
         character :: qc
 
         call set_empty(error_msg)
@@ -28,6 +29,7 @@
         status_str = ''
         text = trim(adjustl(spec))
         p = 1
+        first_arg = .true.
         do while (p <= len(text))
             do while (p <= len(text))
                 if (text(p:p) == ' ' .or. text(p:p) == ',') then
@@ -37,8 +39,23 @@
                 end if
             end do
             if (p > len(text)) exit
-            eq_pos = index(text(p:), '=')
-            if (eq_pos <= 0) exit
+            ! A keyword's '=' must appear before the next comma to count as a
+            ! keyword argument; otherwise the argument is positional. The first
+            ! positional argument of OPEN is the unit number (no unit= keyword).
+            cp = index(text(p:), ',')
+            if (cp <= 0) then
+                arg_end = len(text)
+            else
+                arg_end = p + cp - 2
+            end if
+            eq_pos = index(text(p:arg_end), '=')
+            if (eq_pos <= 0) then
+                if (first_arg) unit_str = trim(adjustl(text(p:arg_end)))
+                p = arg_end + 2
+                first_arg = .false.
+                cycle
+            end if
+            first_arg = .false.
             eq_pos = p + eq_pos - 1
             kw = spec_lower(text(p:eq_pos - 1))
             p = eq_pos + 1
@@ -320,8 +337,8 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: slot
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: plain
-        integer :: unit_number, sym, ios, eq_pos
+        character(len=:), allocatable :: plain, head
+        integer :: unit_number, sym, ios, eq_pos, cpos
         character(len=24) :: pseudo_name
 
         call set_empty(error_msg)
@@ -332,9 +349,18 @@
                 plain = trim(adjustl(plain(2:len(plain) - 1)))
             end if
         end if
-        eq_pos = index(plain, '=')
-        if (eq_pos > 0) plain = adjustl(plain(eq_pos + 1:))
-        plain = trim(plain)
+        ! CLOSE/REWIND carry trailing keyword arguments (e.g. status="delete");
+        ! the unit is the first argument. Take only that argument, then drop a
+        ! leading unit= keyword if present.
+        cpos = index(plain, ',')
+        if (cpos > 0) then
+            head = trim(adjustl(plain(1:cpos - 1)))
+        else
+            head = trim(plain)
+        end if
+        eq_pos = index(head, '=')
+        if (eq_pos > 0) head = adjustl(head(eq_pos + 1:))
+        plain = trim(head)
 
         unit_number = -1
         read (plain, *, iostat=ios) unit_number

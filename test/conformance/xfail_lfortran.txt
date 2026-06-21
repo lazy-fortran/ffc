@@ -491,7 +491,6 @@ assumed_type_03.f90
 assumed_type_04.f90
 assumed_type_05.f90
 assume_rank_shape_product_01.f90
-asynchronous_01.f90
 attr_dim_01.f90
 attr_dim_03.f90
 attr_intrinsic.f90
@@ -1392,7 +1391,6 @@ file_64.f90
 file_65.f90
 file_66.f90
 file_67.f90
-file_68.f90
 file_69.f90
 file_70.f90
 file_71.f90
@@ -1430,7 +1428,6 @@ fixed_form_stmt_func_01.f90
 fixed_form_where_01.f90
 floor_01.f90
 floor_02.f90
-flush_01.f90
 flush_02.f90
 flush_05.f90
 fma_02.f90
@@ -3054,10 +3051,7 @@ read_11.f90
 read_12.f90
 read_13.f90
 read_14.f90
-read_15.f90
 read_16.f90
-read_17.f90
-read_18.f90
 read_19.f90
 read_20.f90
 read_21.f90
@@ -3122,7 +3116,6 @@ read_80.f90
 read_81.f90
 read_82.f90
 read_83.f90
-read_84.f90
 read_85.f90
 read_86.f90
 read_87.f90
@@ -3171,7 +3164,6 @@ return_03.f90
 return_05.f90
 return_06.f90
 rewind_01.f90
-rewind_02.f90
 rewind_inquire_flush.f90
 save_01.f90
 save_02.f90
