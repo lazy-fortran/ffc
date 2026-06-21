@@ -659,6 +659,14 @@
         case ('continue_node')
             ! CONTINUE is a no-op statement (often only a loop label target).
             call set_empty(error_msg)
+        case ('directive')
+            ! OpenMP/OpenACC directives are conditional-compilation comments.
+            ! The gfortran reference is built without -fopenmp/-fopenacc, so it
+            ! also ignores them; lowering them as no-ops keeps output matching.
+            call set_empty(error_msg)
+        case ('intrinsic_statement')
+            ! INTRINSIC only marks names as intrinsic procedures; no code.
+            call set_empty(error_msg)
         case ('use_statement')
             call unsupported_feature_error('use statement', line, column, &
                                            'direct LIRIC session does not '// &

@@ -20,7 +20,6 @@ f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
-intrinsic_statement_program.f90
 issue2456.f90
 issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
@@ -64,8 +63,6 @@ issue_2236_optional_assumed_rank_bridge.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
-issue_2285_openmp_directives.f90
-issue_2286_openacc_internal.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2390_module_implicit_rules.f90
@@ -77,8 +74,6 @@ issue_2416_io_namelist_read.f90
 issue_2417_minloc_with_mask.f90
 issue_2418_intrinsic_keywords_declared.f90
 issue_2419_data_variable_in_allocate.f90
-issue_2449_openacc_clauses.f90
-issue_2449_openacc_directives.f90
 issue_2450_procedure_interfaces.f90
 issue_2452_roundtrip_timeout.f90
 issue_2453_character_array_constructor.f90
