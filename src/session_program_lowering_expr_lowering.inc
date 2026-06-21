@@ -75,6 +75,14 @@
             return
         end if
 
+        ! A logical-valued binary op (comparison such as x > 3, a chained
+        ! comparison rewritten to 1 < x .and. x < 10, or a logical connective)
+        ! reuses the IF-condition lowering, which yields the i1 truth value.
+        if (is_binary_op(arena, node_index)) then
+            call lower_i1_condition(arena, node_index, context, value, error_msg)
+            return
+        end if
+
         if (is_literal(arena, node_index)) then
             if (.not. is_logical_literal(arena, node_index)) then
                 error_msg = 'direct LIRIC session expected a logical literal'

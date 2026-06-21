@@ -14,7 +14,6 @@ array_slice_empty_bounds.lf
 array_slice_stride.lf
 boolean_assign_bare_false.lf
 boolean_assign_bare_true.lf
-chained_comparison.lf
 debug_mixed_constructs.lf
 docs_character_arrays.lf
 docs_unsigned_integers.lf
@@ -63,7 +62,6 @@ issue_2153_array_call_scalar_param.lf
 issue_2160_global_var_and_calls.lf
 issue_2163_character_substring_lengths.lf
 issue_2165_undeclared_argument.lf
-issue_216_comparison_chain.lf
 issue_2659_implicit_contains_pure_subroutine.lf
 issue_2691_implied_do_static_size_known.lf
 issue_2691_implied_do_static_size_unknown.lf
