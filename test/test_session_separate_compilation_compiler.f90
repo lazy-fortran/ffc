@@ -38,7 +38,7 @@ contains
         ! Compile the module (emits the object and its .fmod), then compile the
         ! program naming the object; the .fmod is found beside it.
         call execute_command_line( &
-            "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | head -n 1); "// &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | head -n 1); "// &
             'test -n "$exe" || exit 90; '// &
             '"$exe" -c '//m_src//' -o '//m_obj//' || exit 91; '// &
             '"$exe" '//main_src//' '//m_obj//' -o '//main_exe//" || exit 92'", &

@@ -215,6 +215,13 @@
             ! statements become the main body (#266, #275). Constructs the body
             ! still rejects (derived types, modules) keep their own diagnostics.
             continue
+        else if (get_node_type_at(arena, root_index) == &
+                 'multi_unit_container') then
+            ! Several top-level units parsed from one source (a module plus its
+            ! program, separate compilation tests). FortFront aggregates them
+            ! under this container (#2830). lower_program_return walks the body,
+            ! lowering the nested program and emitting module diagnostics.
+            continue
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
                  get_node_type_at(arena, root_index) == 'module') then
             ! A bare module unit is accepted only when it declares no symbols;
@@ -257,7 +264,8 @@
         call set_empty(error_msg)
         if (get_node_type_at(arena, root_index) == 'program_node' .or. &
             get_node_type_at(arena, root_index) == 'program' .or. &
-            get_node_type_at(arena, root_index) == 'mixed_construct_container') then
+            get_node_type_at(arena, root_index) == 'mixed_construct_container' .or. &
+            get_node_type_at(arena, root_index) == 'multi_unit_container') then
             call get_unit_body_indices(arena, root_index, body_indices, ff_error)
             if (len_trim(ff_error) > 0) then
                 error_msg = ff_error

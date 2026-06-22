@@ -196,7 +196,8 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     use fortfront_utils, only: get_node_as_function_def, &
                                get_node_as_program, &
                                get_node_as_subroutine_def
-    use ast_nodes_data, only: mixed_construct_container_node
+    use ast_nodes_data, only: mixed_construct_container_node, &
+                              multi_unit_container_node
     use fortfront, only: get_node_line, get_node_column
     use ast_arena_source_text, only: get_source_line
     use session_program_lowering_types, only: lowering_context_t, &

@@ -336,8 +336,8 @@ contains
                                   exe_path)
         if (.not. write_source_file(source_path, source)) return
 
-        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | "// &
-                  "head -n 1); "// &
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc "// &
+                  "2>/dev/null | head -n 1); "// &
                   "test -n ""$exe"" && ""$exe"" "// &
                   source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
@@ -387,8 +387,8 @@ contains
                                   exe_path)
         if (.not. write_source_file(source_path, source)) return
 
-        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | "// &
-                  "head -n 1); "// &
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc "// &
+                  "2>/dev/null | head -n 1); "// &
                   "test -n ""$exe"" && ""$exe"" "// &
                   source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)

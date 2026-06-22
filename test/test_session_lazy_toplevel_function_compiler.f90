@@ -86,7 +86,7 @@ contains
         write (unit, '(A)', advance='no') source
         close (unit)
 
-        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | head -n 1); "// &
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | head -n 1); "// &
                   "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then
@@ -129,7 +129,7 @@ contains
         write (unit, '(A)', advance='no') source
         close (unit)
 
-        command = "sh -c 'exe=$(ls -t build/*/app/ffc 2>/dev/null | head -n 1); "// &
+        command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | head -n 1); "// &
                   "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then

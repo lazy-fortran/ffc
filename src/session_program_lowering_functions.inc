@@ -27,6 +27,17 @@
             if (n_impl > 0) &
                 body_indices(n_expl + 1:n_expl + n_impl) = &
                     root%implicit_declaration_indices
+        type is (multi_unit_container_node)
+            ! Several top-level units from one source (e.g. a module followed by
+            ! its program). FortFront aggregates them under this container
+            ! (#2830, formerly the __MULTI_UNIT__ sentinel program); its
+            ! body_indices are the contained units, walked like a program body.
+            if (allocated(root%body_indices)) then
+                allocate(body_indices(size(root%body_indices)))
+                body_indices = root%body_indices
+            else
+                allocate(body_indices(0))
+            end if
         class default
             call get_program_body_info(arena, root_index, prog_name, &
                                        body_indices, ff_error)

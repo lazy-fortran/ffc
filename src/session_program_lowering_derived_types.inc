@@ -74,6 +74,25 @@
                     if (len_trim(error_msg) > 0) return
                 end select
             end do
+        type is (multi_unit_container_node)
+            ! Multi-unit source (#2830 container): register derived types from
+            ! every contained module and any top-level type, as for a program.
+            if (.not. allocated(program%body_indices)) return
+            do i = 1, size(program%body_indices)
+                select type (node => arena%entries(program%body_indices(i))%node)
+                type is (derived_type_node)
+                    call lower_derived_type_definition(node, context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call emit_type_info_constant(context, &
+                                                 context%derived_type_count, &
+                                                 error_msg)
+                    if (len_trim(error_msg) > 0) return
+                type is (module_node)
+                    call collect_module_derived_types(arena, node, context, &
+                                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end select
+            end do
         type is (module_node)
             ! Bare module compilation unit: register its types so module
             ! procedures can name them as dummy/local/component types.
@@ -175,6 +194,17 @@
 
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
+            if (.not. allocated(program%body_indices)) return
+            do i = 1, size(program%body_indices)
+                select type (mod_node => arena%entries(program%body_indices(i))%node)
+                type is (module_node)
+                    call collect_one_module_exports(arena, mod_node, context)
+                end select
+            end do
+        type is (multi_unit_container_node)
+            ! Several units from one source (a module plus its program). Register
+            ! the exports of every contained module so the program's USE-renamed
+            ! references resolve (#2830 container; was the __MULTI_UNIT__ program).
             if (.not. allocated(program%body_indices)) return
             do i = 1, size(program%body_indices)
                 select type (mod_node => arena%entries(program%body_indices(i))%node)
