@@ -45,13 +45,21 @@ program ffc_main
         call append_path(search_paths, dirname(trim(opts%link_inputs(i))))
     end do
 
-    ! Lower from the declared AST first. This preserves the diagnostics for
-    ! genuinely unsupported constructs and compiles every declared program.
-    ! Only when the failure is an undeclared-variable signal (a bare lazy
-    ! fragment) retry under lazy inference, which standardizes the AST so the
-    ! inferred variables gain explicit declarations. The standard diagnostic is
-    ! reported on total failure, never the lazy retry's.
-    if (.not. try_compile(INPUT_MODE_STANDARD, .false.)) then
+    ! A .lf file is lazy Fortran by definition: compile it under lazy inference,
+    ! which standardizes the AST so inferred declarations (including function
+    ! result variables) gain explicit types before lowering. Routing by
+    ! extension is robust: it does not depend on standard-mode semantics
+    ! rejecting the bare lazy fragment to trigger a retry.
+    !
+    ! For standard sources, lower from the declared AST first. This preserves the
+    ! diagnostics for genuinely unsupported constructs and compiles every
+    ! declared program. Only when the failure is an undeclared-variable signal (a
+    ! bare lazy fragment in a non-.lf file) retry under lazy inference. The
+    ! standard diagnostic is reported on total failure, never the lazy retry's.
+    if (is_lazy_source(opts%input_file)) then
+        if (.not. try_compile(INPUT_MODE_LAZY, .true.)) &
+            call report_failure(diag_msg)
+    else if (.not. try_compile(INPUT_MODE_STANDARD, .false.)) then
         primary_diag = diag_msg
         if (needs_inference(primary_diag)) then
             if (.not. try_compile(INPUT_MODE_LAZY, .true.)) &
@@ -118,6 +126,16 @@ contains
                 index(diag, 'not been declared') > 0 .or. &
                 index(diag, 'implicit none') > 0
     end function needs_inference
+
+    logical function is_lazy_source(path) result(lazy)
+        ! A .lf file is lazy Fortran and must be standardized via lazy inference.
+        character(len=*), intent(in) :: path
+        integer :: n
+
+        n = len_trim(path)
+        lazy = n >= 3
+        if (lazy) lazy = path(n - 2:n) == '.lf'
+    end function is_lazy_source
 
     subroutine print_usage()
         print '(A)', 'Usage: ffc <input.f90> [options]'
