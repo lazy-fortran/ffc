@@ -51,7 +51,6 @@ issue_2075_stop_keyword_collision_in_function_param.lf
 issue_2106_missing_intent_monomorphization.lf
 issue_2110_array_param_hardcoded.lf
 issue_2111_recursive_missing_result.lf
-issue_2142_mono_wrong_return_types.lf
 issue_2147_mono_name_collision_wrong_types.lf
 issue_2150_reshape_variable_vs_literal_shape.lf
 issue_2151_array_function_broken.lf
@@ -64,7 +63,6 @@ issue_2691_implied_do_static_size_known.lf
 issue_2691_implied_do_static_size_unknown.lf
 issue_2694_strict_zero_iter_implied_do.lf
 issue_2694_strict_zero_sized_array_constructor.lf
-issue_509_mixed_constructs_input.lf
 issue_652_multi_var_allocatable.lf
 issue_935_multidim_arrays.lf
 issue_nested_internal_procedures.lf
@@ -74,7 +72,6 @@ issue_playtest5_reshape_allocatable_never_allocated.lf
 issue_playtest5_subroutine_name_collision.lf
 module_contains_suite.lf
 monomorphization_add_three_types.lf
-monomorphization_simple.lf
 read_statement.lf
 test_209_all.lf
 test_209_complex.lf
@@ -86,7 +83,6 @@ test_subroutine_monomorphization.lf
 # IEEE arithmetic intrinsic module (ieee_is_nan/ieee_is_finite/...) unsupported.
 issue_2815_ieee_arithmetic.lf
 # Walrus declaration ':=' produces a dangling AST target index in FortFront.
-issue_2816_walrus_declaration.lf
 issue_2816_walrus_redeclaration.lf
 # Derived-type constructor in lazy mode lowered as a real function call.
 issue_2827_derived_constructor_inference.lf

@@ -117,10 +117,8 @@ issue_2817_inline_instantiate_caret.f90
 issue_2819_implied_do_index_out_of_scope.f90
 # FortFront parser rejects these (semicolon in interface block; type() return
 # in interface body). Blocked on a FortFront fix, not an ffc lowering gap.
-issue_2837_interface_semicolon.f90
 issue_2837_interface_type_return.f90
 # Unary user-defined operator: FortFront emits a dangling operand index
 # ("argument index does not reference an AST node"). Blocked on FortFront.
 issue_2838_unary_defined_operator.f90
 # VALUE attribute on dummy args mis-declared as a symbol named "value".
-issue_2813_value_attribute.f90
