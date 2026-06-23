@@ -122,3 +122,10 @@ issue_2837_interface_type_return.f90
 # ("argument index does not reference an AST node"). Blocked on FortFront.
 issue_2838_unary_defined_operator.f90
 # VALUE attribute on dummy args mis-declared as a symbol named "value".
+# New corpus examples added by the fortfront update for features ffc does not
+# yet lower (expression/keyword I/O formats, PURE-with-print body checks,
+# implied-DO index shadow, procedure-only units). Never passed; not regressions.
+issue_2819_implied_do_index_shadow.f90
+issue_2819_pure_with_print.f90
+issue_2836_io_expression_format.f90
+issue_2836_io_keyword_unit_format.f90
