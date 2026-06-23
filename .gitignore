@@ -59,7 +59,18 @@ debug_*.mlir
 
 # OS files
 .DS_Store
+._*
 Thumbs.db
+*.log
+
+# File-I/O conformance test artifacts written to cwd
+fort.*
+fname
+file_*_data.*
+file_*_test.*
+file_overwrite.*
+test.bin
+test.dat
 
 # Coverage reports
 *.gcda
