@@ -22,18 +22,18 @@ contains
 
         ok = .false.
         if (.not. write_file(m_src, &
-                'module ffc_sep_mod'//new_line('a')// &
-                '  implicit none'//new_line('a')// &
-                '  integer, parameter :: answer = 42'//new_line('a')// &
-                'end module ffc_sep_mod')) return
+            'module ffc_sep_mod'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer, parameter :: answer = 42'//new_line('a')// &
+            'end module ffc_sep_mod')) return
         if (.not. write_file(main_src, &
-                'program main'//new_line('a')// &
-                '  use ffc_sep_mod'//new_line('a')// &
-                '  stop answer'//new_line('a')// &
-                'end program main')) return
+            'program main'//new_line('a')// &
+            '  use ffc_sep_mod'//new_line('a')// &
+            '  stop answer'//new_line('a')// &
+            'end program main')) return
 
         call execute_command_line('rm -f '//m_obj//' /tmp/ffc_sep_mod.fmod '// &
-                                  main_exe)
+            main_exe)
 
         ! Compile the module (emits the object and its .fmod), then compile the
         ! program naming the object; the .fmod is found beside it.
@@ -54,7 +54,7 @@ contains
 
         call execute_command_line(main_exe, exitstat=exit_stat, cmdstat=cmd_stat)
         call execute_command_line('rm -f '//m_src//' '//main_src//' '//m_obj// &
-                                  ' /tmp/ffc_sep_mod.fmod '//main_exe)
+            ' /tmp/ffc_sep_mod.fmod '//main_exe)
         if (cmd_stat /= 0) then
             print *, 'FAIL: could not run the linked program'
             return
@@ -74,7 +74,7 @@ contains
 
         ok = .false.
         open (newunit=unit, file=path, status='replace', action='write', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) then
             print *, 'FAIL: could not write ', path
             return

@@ -1,274 +1,274 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_char, c_double, c_float, c_int, &
-                                           c_int32_t, c_int64_t
+        c_int32_t, c_int64_t
     use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
-                                range_expression_node
+        range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
-                              pointer_assignment_node, literal_node, &
-                              identifier_node
+        pointer_assignment_node, literal_node, &
+        identifier_node
     use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
-                              block_data_node
+        block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
     use string_types, only: string_t
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
-                            rewind_statement_node, io_implied_do_node
+        rewind_statement_node, io_implied_do_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
-                              module_procedure_node, &
-                              visibility_statement_node, data_statement_node, &
-                              complex_literal_node, comment_node, &
-                              namelist_statement_node, statement_function_node, &
-                              end_statement_node
+        module_procedure_node, &
+        visibility_statement_node, data_statement_node, &
+        complex_literal_node, comment_node, &
+        namelist_statement_node, statement_function_node, &
+        end_statement_node
     use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
-                                     select_rank_node, rank_block_node
+        select_rank_node, rank_block_node
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
-                                 elsewhere_clause_t, goto_node, pause_node, &
-                                 continue_node
+        elsewhere_clause_t, goto_node, pause_node, &
+        continue_node
     use fortfront, only: assignment_node, ast_arena_t, &
-                         call_or_subscript_node, case_block_node, &
-                         case_range_node, &
-                         case_default_node, declaration_node, do_loop_node, &
-                         do_while_node, cycle_node, exit_node, function_def_node, &
-                         if_node, &
-                         parameter_declaration_node, &
-                         print_statement_node, program_node, read_statement_node, &
-                         module_node, &
-                         return_node, select_case_node, stop_node, &
-                         error_stop_node, &
-                         subroutine_def_node, write_statement_node, &
-                         allocate_statement_node, deallocate_statement_node, &
-                         where_node, forall_node, &
-                         get_subroutine_call_arg_indices, &
-                         get_subroutine_call_name, is_subroutine_call_statement, &
-                         is_binary_op, get_binary_op_info, &
-                         is_literal, get_literal_info, &
-                         is_identifier, get_identifier_name, &
-                         is_declaration_node, is_module_node, is_program_node
+        call_or_subscript_node, case_block_node, &
+        case_range_node, &
+        case_default_node, declaration_node, do_loop_node, &
+        do_while_node, cycle_node, exit_node, function_def_node, &
+        if_node, &
+        parameter_declaration_node, &
+        print_statement_node, program_node, read_statement_node, &
+        module_node, &
+        return_node, select_case_node, stop_node, &
+        error_stop_node, &
+        subroutine_def_node, write_statement_node, &
+        allocate_statement_node, deallocate_statement_node, &
+        where_node, forall_node, &
+        get_subroutine_call_arg_indices, &
+        get_subroutine_call_name, is_subroutine_call_statement, &
+        is_binary_op, get_binary_op_info, &
+        is_literal, get_literal_info, &
+        is_identifier, get_identifier_name, &
+        is_declaration_node, is_module_node, is_program_node
     use liric_session_bindings, only: destroy, begin_i32_main, &
-                                       begin_i32_function, begin_void_subroutine, &
-                                       begin_ptr_function, &
-                                       emit_ret_i32_operand, emit_ret_void, &
-                                       finish_function, finish_and_emit_exe, &
-                                       finish_and_emit_object, emit_void_call, &
-                                       emit_i32_call, emit_ptr_call, &
-                                       emit_i32_indirect_call, &
-                                       emit_void_indirect_call, &
-                                       liric_session_create, &
-                                       i32_immediate, i32_vreg, lr_operand_desc_t, &
-                                       lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
-                                       lr_type_array_s, &
-                                       lr_session_global, lr_session_intern, &
-                                       lr_session_emit, lr_inst_desc_t, lr_error_t, &
-                                       clear_liric_error, status_ok, to_c_chars, &
-                                       LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
-                                       LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
-                                       LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
-                                       LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, &
-                                       LR_OP_KIND_GLOBAL
+        begin_i32_function, begin_void_subroutine, &
+        begin_ptr_function, &
+        emit_ret_i32_operand, emit_ret_void, &
+        finish_function, finish_and_emit_exe, &
+        finish_and_emit_object, emit_void_call, &
+        emit_i32_call, emit_ptr_call, &
+        emit_i32_indirect_call, &
+        emit_void_indirect_call, &
+        liric_session_create, &
+        i32_immediate, i32_vreg, lr_operand_desc_t, &
+        lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
+        lr_type_array_s, &
+        lr_session_global, lr_session_intern, &
+        lr_session_emit, lr_inst_desc_t, lr_error_t, &
+        clear_liric_error, status_ok, to_c_chars, &
+        LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
+        LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
+        LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
+        LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, &
+        LR_OP_KIND_GLOBAL
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
-                                              ptr_vreg, &
-                                              emit_i32_binary, emit_i32_binary_into, &
-                                              emit_i32_copy_to, emit_i32_alloca, &
-                                              emit_ptr_alloca, &
-                                              emit_i32_load, emit_i32_store, &
-                                              emit_i64_load, emit_ptr_load, &
-                                              emit_i64_store, &
-                                              emit_i64_binary, emit_i64_alloca, &
-                                              emit_alloca_bytes, emit_malloc, &
-                                              emit_free, emit_ptr_store, &
-                                               emit_memcpy, emit_i64_load_at, &
-                                               emit_i64_store_at, &
-                                               emit_i32_array_alloca, &
-                                              emit_i32_array_element_addr, &
-                                              emit_f32_array_alloca, &
-                                              emit_f32_array_element_addr, &
-                                              emit_f64_array_alloca, &
-                                              emit_f64_array_element_addr, &
-                                              emit_ptr_offset, emit_ptr_offset_dyn, &
-                                              ptr_param, &
-                                              i8_immediate, emit_i8_alloca, &
-                                              emit_i8_load, emit_i8_store, emit_i8_binary, &
-                                              i16_immediate, emit_i16_alloca, &
-                                              emit_i16_load, emit_i16_store, emit_i16_binary
+        ptr_vreg, &
+        emit_i32_binary, emit_i32_binary_into, &
+        emit_i32_copy_to, emit_i32_alloca, &
+        emit_ptr_alloca, &
+        emit_i32_load, emit_i32_store, &
+        emit_i64_load, emit_ptr_load, &
+        emit_i64_store, &
+        emit_i64_binary, emit_i64_alloca, &
+        emit_alloca_bytes, emit_malloc, &
+        emit_free, emit_ptr_store, &
+        emit_memcpy, emit_i64_load_at, &
+        emit_i64_store_at, &
+        emit_i32_array_alloca, &
+        emit_i32_array_element_addr, &
+        emit_f32_array_alloca, &
+        emit_f32_array_element_addr, &
+        emit_f64_array_alloca, &
+        emit_f64_array_element_addr, &
+        emit_ptr_offset, emit_ptr_offset_dyn, &
+        ptr_param, &
+        i8_immediate, emit_i8_alloca, &
+        emit_i8_load, emit_i8_store, emit_i8_binary, &
+        i16_immediate, emit_i16_alloca, &
+        emit_i16_load, emit_i16_store, emit_i16_binary
     use liric_session_control_bindings, only: create_liric_block, &
-                                              emit_liric_br, &
-                                              emit_liric_condbr, &
-                                              emit_liric_f32_fcmp, &
-                                              emit_liric_f64_fcmp, &
-                                              emit_liric_i32_icmp, &
-                                              emit_liric_i32_phi, &
-                                              emit_liric_phi, &
-                                              emit_liric_phi_n, &
-                                              LR_FCMP_OGT, &
-                                              LR_FCMP_OGE, &
-                                              LR_FCMP_OLT, &
-                                              LR_FCMP_OLE, &
-                                              LR_FCMP_OEQ, &
-                                              LR_FCMP_ONE, &
-                                              LR_CMP_SGE, &
-                                              LR_CMP_SGT, &
-                                              LR_CMP_SLE, &
-                                              LR_CMP_SLT, &
-                                              LR_CMP_NE, &
-                                              LR_CMP_EQ, &
-                                              set_liric_block
-use liric_session_format_bindings, only: LR_OP_FSUB, &
-                                            prepare_liric_print_runtime, &
-                                            create_printf_format_global, &
-                                            printf_format_ptr, &
-                                            create_type_info_global
+        emit_liric_br, &
+        emit_liric_condbr, &
+        emit_liric_f32_fcmp, &
+        emit_liric_f64_fcmp, &
+        emit_liric_i32_icmp, &
+        emit_liric_i32_phi, &
+        emit_liric_phi, &
+        emit_liric_phi_n, &
+        LR_FCMP_OGT, &
+        LR_FCMP_OGE, &
+        LR_FCMP_OLT, &
+        LR_FCMP_OLE, &
+        LR_FCMP_OEQ, &
+        LR_FCMP_ONE, &
+        LR_CMP_SGE, &
+        LR_CMP_SGT, &
+        LR_CMP_SLE, &
+        LR_CMP_SLT, &
+        LR_CMP_NE, &
+        LR_CMP_EQ, &
+        set_liric_block
+    use liric_session_format_bindings, only: LR_OP_FSUB, &
+        prepare_liric_print_runtime, &
+        create_printf_format_global, &
+        printf_format_ptr, &
+        create_type_info_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
-                                                 synthesize_real4_printer, &
-                                                 synthesize_get_arg_helper, &
-                                                 emit_get_arg_call, emit_snprintf, &
-                                                 emit_sscanf, emit_scanf, &
-                                                 emit_fscanf, &
-                                                 emit_fprintf, emit_dprintf, &
-                                                 emit_getchar, emit_exit
+        synthesize_real4_printer, &
+        synthesize_get_arg_helper, &
+        emit_get_arg_call, emit_snprintf, &
+        emit_sscanf, emit_scanf, &
+        emit_fscanf, &
+        emit_fprintf, emit_dprintf, &
+        emit_getchar, emit_exit
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
-                                                    synthesize_complex8_printer, &
-                                                    emit_complex4_print_call, &
-                                                    emit_complex8_print_call
+        synthesize_complex8_printer, &
+        emit_complex4_print_call, &
+        emit_complex8_print_call
     use liric_session_io_bindings, only: emit_liric_f32_binary, &
-                                          emit_liric_i32_to_f32, &
-                                          emit_liric_f32_to_i32, &
-                                          emit_liric_f32_to_f64, &
-                                          emit_liric_print_f32, &
-                                          emit_liric_print_f32_value, &
-                                          emit_liric_f64_binary, &
-                                          emit_liric_i32_to_f64, &
-                                          emit_liric_f64_to_i32, &
-                                          emit_liric_char_byte_zext, &
-                                          emit_liric_i32_to_i64, &
-                                          emit_liric_store_char_byte, &
-                                          emit_liric_print_f64, &
-                                          emit_liric_print_f64_value, &
-                                          emit_liric_print_i32, &
-                                          emit_liric_print_i32_value, &
-                                          emit_liric_print_i64, &
-                                          emit_liric_print_i64_value, &
-                                          emit_liric_print_newline, &
-                                          emit_liric_print_space, &
-                                          emit_liric_print_string_operand, &
-                                          emit_liric_print_string_operand_value, &
-                                          emit_liric_print_string, &
-                                          emit_liric_print_string_value, &
-                                          liric_f32_immediate, &
-                                          liric_f64_immediate, &
-                                          materialize_liric_string, &
-                                          emit_liric_i8_to_i32, &
-                                          emit_liric_i16_to_i32, &
-                                          emit_liric_print_i8, &
-                                          emit_liric_print_i8_value, &
-                                          emit_liric_print_i16, &
-                                          emit_liric_print_i16_value
+        emit_liric_i32_to_f32, &
+        emit_liric_f32_to_i32, &
+        emit_liric_f32_to_f64, &
+        emit_liric_print_f32, &
+        emit_liric_print_f32_value, &
+        emit_liric_f64_binary, &
+        emit_liric_i32_to_f64, &
+        emit_liric_f64_to_i32, &
+        emit_liric_char_byte_zext, &
+        emit_liric_i32_to_i64, &
+        emit_liric_store_char_byte, &
+        emit_liric_print_f64, &
+        emit_liric_print_f64_value, &
+        emit_liric_print_i32, &
+        emit_liric_print_i32_value, &
+        emit_liric_print_i64, &
+        emit_liric_print_i64_value, &
+        emit_liric_print_newline, &
+        emit_liric_print_space, &
+        emit_liric_print_string_operand, &
+        emit_liric_print_string_operand_value, &
+        emit_liric_print_string, &
+        emit_liric_print_string_value, &
+        liric_f32_immediate, &
+        liric_f64_immediate, &
+        materialize_liric_string, &
+        emit_liric_i8_to_i32, &
+        emit_liric_i16_to_i32, &
+        emit_liric_print_i8, &
+        emit_liric_print_i8_value, &
+        emit_liric_print_i16, &
+        emit_liric_print_i16_value
     use liric_session_procedure_bindings, only: begin_liric_f32_function, &
-                                                emit_liric_f32_alloca, &
-                                                emit_liric_f32_call, &
-                                                emit_liric_f32_load, &
-                                                emit_liric_f32_store, &
-                                                begin_liric_f64_function, &
-                                                emit_liric_f64_alloca, &
-                                                emit_liric_f64_call, &
-                                                emit_liric_f64_load, &
-                                                emit_liric_f64_store
+        emit_liric_f32_alloca, &
+        emit_liric_f32_call, &
+        emit_liric_f32_load, &
+        emit_liric_f32_store, &
+        begin_liric_f64_function, &
+        emit_liric_f64_alloca, &
+        emit_liric_f64_call, &
+        emit_liric_f64_load, &
+        emit_liric_f64_store
     use liric_session_timing_bindings, only: emit_cpu_time_value, &
-                                             emit_system_clock_value
+        emit_system_clock_value
     use session_lowering_ops, only: integer_compare_predicate, &
-                                    integer_opcode, parse_i32_literal
-  use ffc_strings, only: set_empty
+        integer_opcode, parse_i32_literal
+    use ffc_strings, only: set_empty
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
-                                     get_program_body_info, get_module_body_info, &
-                                     get_function_body_info, get_subroutine_body_info, &
-                                     get_select_case_info, get_case_block_info, &
-                                     get_case_default_body, get_case_range_info, &
-                                     get_select_type_info, get_type_guard_info, &
-                                     is_derived_type_node, is_declaration_node, &
-                                     get_derived_type_name, get_derived_type_components, &
-                                     get_declaration_var_name, get_declaration_type_name, &
-                                     get_declaration_has_initializer, &
-                                     get_declaration_initializer_index, &
-                                     get_node_stmt_label, get_goto_label, &
-                                     goto_is_computed, get_goto_label_list, &
-                                     get_goto_selector_index
+        get_program_body_info, get_module_body_info, &
+        get_function_body_info, get_subroutine_body_info, &
+        get_select_case_info, get_case_block_info, &
+        get_case_default_body, get_case_range_info, &
+        get_select_type_info, get_type_guard_info, &
+        is_derived_type_node, is_declaration_node, &
+        get_derived_type_name, get_derived_type_components, &
+        get_declaration_var_name, get_declaration_type_name, &
+        get_declaration_has_initializer, &
+        get_declaration_initializer_index, &
+        get_node_stmt_label, get_goto_label, &
+        goto_is_computed, get_goto_label_list, &
+        get_goto_selector_index
     use fortfront_utils, only: get_node_as_function_def, &
-                               get_node_as_program, &
-                               get_node_as_subroutine_def
+        get_node_as_program, &
+        get_node_as_subroutine_def
     use ast_nodes_data, only: mixed_construct_container_node, &
-                              multi_unit_container_node
+        multi_unit_container_node
     use fortfront, only: get_node_line, get_node_column
     use ast_arena_source_text, only: get_source_line
     use session_program_lowering_types, only: lowering_context_t, &
-                                                branch_result_t, symbol_t, &
-                                                array_section_info_t, &
-                                                derived_type_info_t, &
-                                                module_exports_t, &
-                                                external_procedure_t, &
-                                                generic_interface_t, &
-                                                operator_interface_t, &
-                                                MAX_PROC_ARGS, &
-                                                MAX_GENERIC_SPECIFICS, &
-                                                MODVAR_OK, MODVAR_UNSUPPORTED, &
-                                                common_slot_t, COMMON_MAX_SLOTS, &
-                                                EQUIV_MAX_MEMBERS, &
-                                                namelist_group_t, &
-                                                statement_function_t, &
-                                                MAX_STMT_FN_ARGS, &
-                                                MAX_NAMELIST_MEMBERS, &
-                                                VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
-                                                VALUE_C4, VALUE_C8, &
-                                                 VALUE_LOGICAL, VALUE_CHARACTER, &
-                                                 VALUE_DERIVED, &
-                                                 VALUE_DEFERRED_CHARACTER_RESULT, &
-                                                 VALUE_SUBROUTINE, VALUE_C_PTR, &
-                                                 VALUE_CLASS_STAR, VALUE_PROC_PTR, &
-                                                 VALUE_ARRAY_RESULT, &
-                                                 TYPE_ID_INTEGER, TYPE_ID_REAL, &
-                                                 TYPE_ID_LOGICAL, &
-                                                 I32_INTRINSIC_NONE, &
-                                                I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
-                                                I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
-                                                I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
-                                                I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, &
-                                                I32_INTRINSIC_ISHFT, &
-                                                I32_INTRINSIC_ISHFTC, &
-                                                I32_INTRINSIC_SIGN, &
-                                                I32_INTRINSIC_INT, I32_INTRINSIC_NINT, &
-                                                I32_INTRINSIC_FLOOR, &
-                                                I32_INTRINSIC_CEILING, &
-                                                 I32_INTRINSIC_MATMUL, &
-                                                 I32_INTRINSIC_TRANSPOSE, &
-                                                 I32_INTRINSIC_DOT_PRODUCT, &
-                                                 I32_INTRINSIC_RESHAPE, &
-                                                 I32_INTRINSIC_SELECTED_INT_KIND, &
-                                                 I32_INTRINSIC_SELECTED_REAL_KIND, &
-                                                I32_INTRINSIC_MODULO, &
-                                                I32_INTRINSIC_DIM, &
-                                                 F64_INTRINSIC_SIGN, &
-                                                F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
-                                                F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
-                                                F64_INTRINSIC_COS, F64_INTRINSIC_TAN, &
-                                                F64_INTRINSIC_ATAN, F64_INTRINSIC_ATAN2, &
-                                                F64_INTRINSIC_ASIN, F64_INTRINSIC_ACOS, &
-                                                F64_INTRINSIC_SINH, F64_INTRINSIC_COSH, &
-                                                F64_INTRINSIC_TANH, F64_INTRINSIC_ASINH, &
-                                                F64_INTRINSIC_ACOSH, F64_INTRINSIC_ATANH, &
-                                                F64_INTRINSIC_LOG10, F64_INTRINSIC_ERF, &
-                                                F64_INTRINSIC_ERFC, F64_INTRINSIC_GAMMA, &
-                                                F64_INTRINSIC_LOG_GAMMA, &
-                                                F64_INTRINSIC_HYPOT, &
-                                                F64_INTRINSIC_AINT, &
-                                                F64_INTRINSIC_ANINT, &
-                                                F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
-                                                F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
-                                                F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
-                                                I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
-                                                F64_INTRINSIC_IDS
+        branch_result_t, symbol_t, &
+        array_section_info_t, &
+        derived_type_info_t, &
+        module_exports_t, &
+        external_procedure_t, &
+        generic_interface_t, &
+        operator_interface_t, &
+        MAX_PROC_ARGS, &
+        MAX_GENERIC_SPECIFICS, &
+        MODVAR_OK, MODVAR_UNSUPPORTED, &
+        common_slot_t, COMMON_MAX_SLOTS, &
+        EQUIV_MAX_MEMBERS, &
+        namelist_group_t, &
+        statement_function_t, &
+        MAX_STMT_FN_ARGS, &
+        MAX_NAMELIST_MEMBERS, &
+        VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
+        VALUE_C4, VALUE_C8, &
+        VALUE_LOGICAL, VALUE_CHARACTER, &
+        VALUE_DERIVED, &
+        VALUE_DEFERRED_CHARACTER_RESULT, &
+        VALUE_SUBROUTINE, VALUE_C_PTR, &
+        VALUE_CLASS_STAR, VALUE_PROC_PTR, &
+        VALUE_ARRAY_RESULT, &
+        TYPE_ID_INTEGER, TYPE_ID_REAL, &
+        TYPE_ID_LOGICAL, &
+        I32_INTRINSIC_NONE, &
+        I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
+        I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
+        I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
+        I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, &
+        I32_INTRINSIC_ISHFT, &
+        I32_INTRINSIC_ISHFTC, &
+        I32_INTRINSIC_SIGN, &
+        I32_INTRINSIC_INT, I32_INTRINSIC_NINT, &
+        I32_INTRINSIC_FLOOR, &
+        I32_INTRINSIC_CEILING, &
+        I32_INTRINSIC_MATMUL, &
+        I32_INTRINSIC_TRANSPOSE, &
+        I32_INTRINSIC_DOT_PRODUCT, &
+        I32_INTRINSIC_RESHAPE, &
+        I32_INTRINSIC_SELECTED_INT_KIND, &
+        I32_INTRINSIC_SELECTED_REAL_KIND, &
+        I32_INTRINSIC_MODULO, &
+        I32_INTRINSIC_DIM, &
+        F64_INTRINSIC_SIGN, &
+        F64_INTRINSIC_SQRT, F64_INTRINSIC_EXP, &
+        F64_INTRINSIC_LOG, F64_INTRINSIC_SIN, &
+        F64_INTRINSIC_COS, F64_INTRINSIC_TAN, &
+        F64_INTRINSIC_ATAN, F64_INTRINSIC_ATAN2, &
+        F64_INTRINSIC_ASIN, F64_INTRINSIC_ACOS, &
+        F64_INTRINSIC_SINH, F64_INTRINSIC_COSH, &
+        F64_INTRINSIC_TANH, F64_INTRINSIC_ASINH, &
+        F64_INTRINSIC_ACOSH, F64_INTRINSIC_ATANH, &
+        F64_INTRINSIC_LOG10, F64_INTRINSIC_ERF, &
+        F64_INTRINSIC_ERFC, F64_INTRINSIC_GAMMA, &
+        F64_INTRINSIC_LOG_GAMMA, &
+        F64_INTRINSIC_HYPOT, &
+        F64_INTRINSIC_AINT, &
+        F64_INTRINSIC_ANINT, &
+        F64_INTRINSIC_NONE, F64_INTRINSIC_ABS, &
+        F64_INTRINSIC_MIN, F64_INTRINSIC_MAX, &
+        F64_INTRINSIC_REAL, I32_INTRINSIC_NAMES, &
+        I32_INTRINSIC_IDS, F64_INTRINSIC_NAMES, &
+        F64_INTRINSIC_IDS
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
-                                   fmod_component_t, fmod_derived_type_t, &
-                                   fmod_variable_t, write_fmod, read_fmod
+        fmod_component_t, fmod_derived_type_t, &
+        fmod_variable_t, write_fmod, read_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe
@@ -278,12 +278,12 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
     ! implied-do value (e.g. (i*1.0, i=1,2)) unrolls its inner expression,
     ! binding the control variable before each is handed to the consumer.
     type :: data_value_cursor_t
-        integer :: vpos = 0      ! index into value_indices
-        integer :: count = 0     ! values remaining in active implied-do
-        integer :: var_sym = 0   ! control symbol of active implied-do
-        integer :: cur = 0       ! current control value
+        integer :: vpos = 0 ! index into value_indices
+        integer :: count = 0 ! values remaining in active implied-do
+        integer :: var_sym = 0 ! control symbol of active implied-do
+        integer :: cur = 0 ! current control value
         integer :: step = 1
-        integer :: inner = 0     ! single inner value expression index
+        integer :: inner = 0 ! single inner value expression index
     end type data_value_cursor_t
 
     ! Body emitter for the reusable counted-loop scaffold. lower_counted_loop
@@ -314,14 +314,14 @@ contains
         derived_type_index = declaration_derived_type_index(context, node)
         if (derived_type_index > 0) then
             call lower_derived_type_declaration(node, context, derived_type_index, &
-                                                error_msg)
+                error_msg)
             return
         end if
         ! Procedure pointer: procedure(iface), pointer :: fp (#245 B3d).
         ! Detected by type_name starting with "procedure" and is_pointer.
         if (node%is_pointer .and. allocated(node%type_name)) then
             if (lowercase_text(trim(adjustl(node%type_name(1:min(9, &
-                    len_trim(node%type_name)))))) == 'procedure') then
+                len_trim(node%type_name)))))) == 'procedure') then
                 call lower_proc_pointer_declaration(node, context, error_msg)
                 return
             end if
@@ -359,11 +359,11 @@ contains
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
                 call unsupported_feature_error('array declaration', node%line, &
-                                               node%column, &
-                                               'ffc direct-session lowering only '// &
-                                               'supports integer, real, and '// &
-                                               'logical arrays', &
-                                               error_msg)
+                    node%column, &
+                    'ffc direct-session lowering only '// &
+                    'supports integer, real, and '// &
+                    'logical arrays', &
+                    error_msg)
                 return
             end if
             if (node%is_allocatable) then
@@ -375,7 +375,7 @@ contains
             ! select rank dispatches on that resolved rank (#273).
             if (declaration_is_assumed_rank(node, context)) then
                 call lower_assumed_rank_declaration(node, context, value_kind, &
-                                                    error_msg)
+                    error_msg)
                 return
             end if
             ! Assumed-shape dummy a(:): no compile-time bound on the colon
@@ -383,7 +383,7 @@ contains
             ! from the caller's actual instead of folding the declaration.
             if (declaration_is_assumed_shape(node, context)) then
                 call lower_assumed_shape_declaration(node, context, value_kind, &
-                                                     error_msg)
+                    error_msg)
                 return
             end if
             ! A runtime-sized array function result (dimension(n) with dummy n):
@@ -395,7 +395,7 @@ contains
                 array_size = 0
             else
                 call get_array_bounds(node, context, array_lower_bound, &
-                                      array_size, error_msg)
+                    array_size, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
             if (node%is_multi_declaration .and. allocated(node%var_names)) then
@@ -407,8 +407,8 @@ contains
                 end do
             else if (allocated(node%var_name)) then
                 call define_declared_array_symbol(context, node, node%var_name, &
-                                                  array_lower_bound, array_size, &
-                                                  value_kind, error_msg)
+                    array_lower_bound, array_size, &
+                    value_kind, error_msg)
             else
                 error_msg = 'array declaration did not expose a variable name'
             end if
@@ -430,29 +430,29 @@ contains
         ! so it is backed by a global with a once-applied initializer (#1541).
         if (node%is_save) then
             call lower_saved_scalar_declaration(node, node_index, context, &
-                                                value_kind, error_msg)
+                value_kind, error_msg)
             return
         end if
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_declared_symbol(context, node, node%var_names(i), &
-                                            value_kind, error_msg)
+                    value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
             call define_declared_symbol(context, node, node%var_name, &
-                                        value_kind, error_msg)
+                value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             if (node%has_initializer .and. node%initializer_index > 0) then
                 if (value_kind == VALUE_CHARACTER) then
                     call lower_character_initializer(context, node%var_name, &
-                                                     node%initializer_index, &
-                                                     error_msg)
+                        node%initializer_index, &
+                        error_msg)
                 else
                     call lower_scalar_initializer(context, node%var_name, &
-                                                  value_kind, &
-                                                  node%initializer_index, &
-                                                  error_msg)
+                        value_kind, &
+                        node%initializer_index, &
+                        error_msg)
                 end if
             end if
         else
@@ -461,7 +461,7 @@ contains
     end subroutine lower_declaration
 
     subroutine lower_scalar_initializer(context, name, value_kind, init_index, &
-                                        error_msg)
+            error_msg)
         !! Apply a scalar declaration initializer (integer :: x = 2) by lowering
         !! the initializer expression and storing it into the variable, mirroring
         !! a plain assignment. Without this the variable keeps its zero default.
@@ -478,35 +478,35 @@ contains
         select case (value_kind)
         case (VALUE_F32)
             call lower_f32_expression(context%arena, init_index, context, value, &
-                                      error_msg)
+                error_msg)
         case (VALUE_F64)
             call lower_f64_expression(context%arena, init_index, context, value, &
-                                      error_msg)
+                error_msg)
         case (VALUE_LOGICAL)
             call lower_logical_expression(context%arena, init_index, context, &
-                                          value, error_msg)
+                value, error_msg)
         case (VALUE_I32)
             call lower_i32_expression(context%arena, init_index, context, value, &
-                                      error_msg)
+                error_msg)
         case (VALUE_I8)
             call lower_i8_expression(context%arena, init_index, context, value, &
-                                     error_msg)
+                error_msg)
         case (VALUE_I16)
             call lower_i16_expression(context%arena, init_index, context, value, &
-                                      error_msg)
+                error_msg)
         case (VALUE_I64)
             call lower_i64_expression(context%arena, init_index, context, value, &
-                                      error_msg)
+                error_msg)
         case (VALUE_C4)
             ! Complex initializers write re/im into the symbol's two slots
             ! directly, so reuse the assignment helper and skip the scalar
             ! value-store path below.
             call lower_c4_assignment(context%arena, init_index, symbol_index, &
-                                     context, error_msg)
+                context, error_msg)
             return
         case (VALUE_C8)
             call lower_c8_assignment(context%arena, init_index, symbol_index, &
-                                     context, error_msg)
+                context, error_msg)
             return
         case default
             return
@@ -538,7 +538,7 @@ contains
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) return
         call concat_character_literals(context%arena, init_index, literal_text, &
-                                       fold_ok)
+            fold_ok)
         if (.not. fold_ok) then
             call unsupported_feature_error('character initializer', 0, 0, &
                 'only character-literal initializers are supported by direct '// &
@@ -550,9 +550,9 @@ contains
         context%string_literal_count = context%string_literal_count + 1
         write (string_name, '(A,I0)') '.ffc.char.', context%string_literal_count
         call materialize_liric_string(context%session, trim(string_name), &
-                                      literal_text, &
-                                      context%symbols(symbol_index)%value, &
-                                      error_msg)
+            literal_text, &
+            context%symbols(symbol_index)%value, &
+            error_msg)
         if (len_trim(error_msg) > 0) return
         context%symbols(symbol_index)%has_character_value = .true.
     end subroutine lower_character_initializer
@@ -651,14 +651,14 @@ contains
         end if
         if (node%is_array) then
             call unsupported_feature_error('array parameter declaration', &
-                                           node%line, node%column, &
-                                           'array parameters are not supported '// &
-                                           'by direct LIRIC session', error_msg)
+                node%line, node%column, &
+                'array parameters are not supported '// &
+                'by direct LIRIC session', error_msg)
             return
         end if
         if (allocated(node%type_name)) then
             call type_name_value_kind(node%type_name, node%line, node%column, &
-                                      value_kind, error_msg)
+                value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             value_kind = VALUE_I32
@@ -666,12 +666,12 @@ contains
         symbol_index = find_symbol(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'parameter declaration did not match a dummy argument: '// &
-                        trim(node%name)
+                trim(node%name)
             return
         end if
         if (.not. context%symbols(symbol_index)%is_parameter) then
             error_msg = 'parameter declaration did not match a dummy argument: '// &
-                        trim(node%name)
+                trim(node%name)
             return
         end if
         if (value_kind == VALUE_CHARACTER) then
@@ -687,7 +687,7 @@ contains
             call bind_character_parameter_symbol(context, symbol_index, error_msg)
         else
             call update_parameter_symbol(context, symbol_index, value_kind, &
-                                         error_msg)
+                error_msg)
         end if
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
@@ -710,7 +710,7 @@ contains
         if (existing_index > 0 .and. existing_index > context%block_scope_floor) then
             if (context%symbols(existing_index)%is_parameter) then
                 call update_parameter_symbol(context, existing_index, value_kind, &
-                                             error_msg)
+                    error_msg)
                 return
             end if
             ! A re-declaration of an existing same-kind symbol is benign (e.g. a
@@ -763,10 +763,10 @@ contains
         context%symbols(index)%value_kind = value_kind
         if (value_kind == VALUE_F32) then
             context%symbols(index)%value = liric_f32_immediate(context%session, &
-                                                               0.0_c_float)
+                0.0_c_float)
         else if (value_kind == VALUE_F64) then
             context%symbols(index)%value = liric_f64_immediate(context%session, &
-                                                               0.0_c_double)
+                0.0_c_double)
         else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
             context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         else if (value_kind == VALUE_C_PTR) then
@@ -864,7 +864,7 @@ contains
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_F32
         context%symbols(index)%value = liric_f32_immediate(context%session, &
-                                                           0.0_c_float)
+            0.0_c_float)
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_f32_symbol
@@ -882,7 +882,7 @@ contains
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_F64
         context%symbols(index)%value = liric_f64_immediate(context%session, &
-                                                           0.0_c_double)
+            0.0_c_double)
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_f64_symbol
@@ -902,11 +902,11 @@ contains
         context%symbols(index)%value_kind = VALUE_C4
         ! Alloca re and im slots; re in address, im in element_address.
         if (.not. emit_liric_f32_alloca(context%session, &
-                                        context%symbols(index)%address, &
-                                        error_msg)) return
+            context%symbols(index)%address, &
+            error_msg)) return
         if (.not. emit_liric_f32_alloca(context%session, &
-                                        context%symbols(index)%element_address, &
-                                        error_msg)) return
+            context%symbols(index)%element_address, &
+            error_msg)) return
         context%symbols(index)%has_address = .true.
         context%symbols(index)%value = liric_f32_immediate(context%session, 0.0_c_float)
         context%symbol_count = index
@@ -927,11 +927,11 @@ contains
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_C8
         if (.not. emit_liric_f64_alloca(context%session, &
-                                        context%symbols(index)%address, &
-                                        error_msg)) return
+            context%symbols(index)%address, &
+            error_msg)) return
         if (.not. emit_liric_f64_alloca(context%session, &
-                                        context%symbols(index)%element_address, &
-                                        error_msg)) return
+            context%symbols(index)%element_address, &
+            error_msg)) return
         context%symbols(index)%has_address = .true.
         context%symbols(index)%value = liric_f64_immediate(context%session, 0.0_c_double)
         context%symbol_count = index
@@ -946,7 +946,7 @@ contains
             error_msg = 'duplicate logical declaration: '//trim(name)
             return
         end if
-       call grow_symbols(context)
+        call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_LOGICAL
@@ -965,7 +965,7 @@ contains
         logical :: handled
 
         call try_lower_overloaded_assignment(arena, node, context, handled, &
-                                             error_msg)
+            error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
         ! A spec-section assignment that defines a statement function (the
         ! explicit-program path leaves it as an assignment) emits no code; the
@@ -975,7 +975,7 @@ contains
             return
         end if
         select type (target => arena%entries(node%target_index)%node)
-        type is (call_or_subscript_node)
+            type is (call_or_subscript_node)
             if (target%base_expr_index > 0) then
                 call lower_derived_component_element_assignment(arena, node, &
                     target, context, error_msg)
@@ -983,7 +983,7 @@ contains
             end if
             if (target%is_array_access) then
                 call lower_array_element_assignment(arena, node, target, context, &
-                                                    value, error_msg)
+                    value, error_msg)
                 return
             end if
             if (allocated(target%name) .and. allocated(target%arg_indices)) then
@@ -991,18 +991,18 @@ contains
                 if (symbol_index > 0) then
                     if (context%symbols(symbol_index)%is_allocatable) then
                         call lower_array_element_assignment(arena, node, target, &
-                                                            context, value, error_msg)
+                            context, value, error_msg)
                         return
                     end if
                 end if
             end if
-        type is (component_access_node)
+            type is (component_access_node)
             call lower_derived_component_assignment(arena, node, target, context, &
-                                                    value, error_msg)
+                value, error_msg)
             return
-        type is (array_slice_node)
+            type is (array_slice_node)
             call lower_array_section_assignment(arena, node, target, context, &
-                                                error_msg)
+                error_msg)
             return
         end select
         call identifier_name(arena, node%target_index, name, error_msg)
@@ -1015,14 +1015,14 @@ contains
         if (context%symbols(symbol_index)%is_allocatable) then
             if (node_exists(arena, node%value_index)) then
                 select type (rhs => arena%entries(node%value_index)%node)
-                type is (array_literal_node)
+                    type is (array_literal_node)
                     call lower_allocatable_constructor_assignment(arena, rhs, &
                         symbol_index, context, error_msg)
                     return
                 end select
             end if
             if (is_scalar_broadcast_to_allocatable(arena, node%value_index, &
-                                                   context)) then
+                context)) then
                 call lower_allocatable_scalar_broadcast(arena, node%value_index, &
                     symbol_index, context, error_msg)
                 return
@@ -1036,18 +1036,18 @@ contains
         if (context%symbols(symbol_index)%is_array) then
             if (is_array_result_call(arena, node%value_index, context)) then
                 call lower_array_result_call(arena, node%value_index, &
-                                             symbol_index, context, error_msg)
+                    symbol_index, context, error_msg)
                 return
             end if
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
-                type is (array_literal_node)
+                    type is (array_literal_node)
                     call lower_array_constructor_assignment(arena, val, &
                         symbol_index, context, error_msg)
                     return
                 class default
                     call lower_array_whole_assignment(arena, node, symbol_index, &
-                                                      context, error_msg)
+                        context, error_msg)
                     return
                 end select
             end if
@@ -1058,59 +1058,59 @@ contains
                     'whole-array assignment is not supported', error_msg)
             else
                 call unsupported_feature_error('array assignment target', &
-                                               node%line, node%column, &
-                                               'whole-array assignment is not '// &
-                                               'supported', error_msg)
+                    node%line, node%column, &
+                    'whole-array assignment is not '// &
+                    'supported', error_msg)
             end if
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then
             if (is_derived_result_call(arena, node%value_index, context)) then
                 call lower_derived_result_call(arena, node%value_index, &
-                                               symbol_index, context, error_msg)
+                    symbol_index, context, error_msg)
                 return
             end if
             call lower_derived_whole_assignment_diagnostic(arena, node, &
-                                                           context, symbol_index, &
-                                                           error_msg)
+                context, symbol_index, &
+                error_msg)
             return
         end if
         if (context%symbols(symbol_index)%value_kind == VALUE_I8) then
             call lower_i8_expression(arena, node%value_index, context, value, &
-                                     error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_I16) then
             call lower_i16_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_I64) then
             call lower_i64_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
             call lower_f32_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
             call lower_f64_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
             call lower_logical_expression(arena, node%value_index, context, &
-                                          value, error_msg)
+                value, error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
             call lower_character_assignment(arena, node, context, symbol_index, &
-                                            error_msg)
+                error_msg)
             return
         else if (context%symbols(symbol_index)%value_kind == VALUE_C_PTR) then
             call lower_c_ptr_expression(arena, node%value_index, context, value, &
-                                        error_msg)
+                error_msg)
         else if (context%symbols(symbol_index)%value_kind == VALUE_C4) then
             call lower_c4_assignment(arena, node%value_index, symbol_index, &
-                                     context, error_msg)
+                context, error_msg)
             return
         else if (context%symbols(symbol_index)%value_kind == VALUE_C8) then
             call lower_c8_assignment(arena, node%value_index, symbol_index, &
-                                     context, error_msg)
+                context, error_msg)
             return
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+                error_msg)
         end if
         if (len_trim(error_msg) > 0) return
         context%symbols(symbol_index)%value = value
@@ -1120,7 +1120,7 @@ contains
             if (len_trim(error_msg) > 0) return
         end if
         call track_assigned_i32_constant(arena, node%value_index, context, &
-                                         symbol_index)
+            symbol_index)
         call set_empty(error_msg)
     end subroutine lower_assignment
 
@@ -1150,7 +1150,7 @@ contains
     end subroutine track_assigned_i32_constant
 
     subroutine try_lower_overloaded_assignment(arena, node, context, handled, &
-                                               error_msg)
+            error_msg)
         ! An interface assignment(=) maps `lhs = rhs` to a subroutine call
         ! specific(lhs, rhs) when the operand kinds match a registered overload.
         ! The LHS is the intent(out)/(inout) first dummy, so it is passed by
@@ -1174,11 +1174,11 @@ contains
         if (slot == 0) return
         specific = operator_specific_name(context, slot)
         call prepare_reference_args(arena, [node%target_index, node%value_index], &
-                                    context, VALUE_I32, specific, args, &
-                                    copyback_indices, error_msg)
+            context, VALUE_I32, specific, args, &
+            copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_void_call(context%session, &
-                call_emit_name(arena, specific), args, error_msg)) return
+            call_emit_name(arena, specific), args, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
         handled = len_trim(error_msg) == 0
     end subroutine try_lower_overloaded_assignment
@@ -1200,14 +1200,14 @@ contains
         case (VALUE_I32, VALUE_LOGICAL, VALUE_F32, VALUE_F64)
             result_value = context%symbols(idx)%value
             if (.not. emit_ret_i32_operand(context%session, result_value, &
-                                                           error_msg)) return
+                error_msg)) return
             context%current_block_terminated = .true.
         case default
             call unsupported_feature_error('return from non-scalar function', &
-                                           node%line, node%column, &
-                                           'only integer, logical and real '// &
-                                           'function returns are supported', &
-                                           error_msg)
+                node%line, node%column, &
+                'only integer, logical and real '// &
+                'function returns are supported', &
+                error_msg)
         end select
     end subroutine lower_function_return
     subroutine lower_stop(arena, node, context, value, error_msg)
@@ -1221,7 +1221,7 @@ contains
             call set_empty(error_msg)
         else
             call lower_i32_expression(arena, node%stop_code_index, context, &
-                                      value, error_msg)
+                value, error_msg)
         end if
     end subroutine lower_stop
 
@@ -1244,14 +1244,14 @@ contains
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.stop.msg.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             msg_text, msg_gid, error_msg)
+                msg_text, msg_gid, error_msg)
             if (len_trim(error_msg) > 0) return
             msgop = printf_format_ptr(context%session, msg_gid)
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             'STOP %s'//achar(10), fmt_gid, &
-                                             error_msg)
+                'STOP %s'//achar(10), fmt_gid, &
+                error_msg)
             if (len_trim(error_msg) > 0) return
             fmtop = printf_format_ptr(context%session, fmt_gid)
             fa(1) = i32_immediate(context%session, 2_c_int64_t)
@@ -1262,8 +1262,8 @@ contains
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             'STOP %d'//achar(10), fmt_gid, &
-                                             error_msg)
+                'STOP %d'//achar(10), fmt_gid, &
+                error_msg)
             if (len_trim(error_msg) > 0) return
             fmtop = printf_format_ptr(context%session, fmt_gid)
             fa(1) = i32_immediate(context%session, 2_c_int64_t)
@@ -1287,7 +1287,7 @@ contains
             call set_empty(error_msg)
         else
             call lower_i32_expression(arena, node%error_code_index, context, &
-                                      value, error_msg)
+                value, error_msg)
         end if
     end subroutine lower_error_stop
 
@@ -1309,14 +1309,14 @@ contains
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.estop.msg.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             msg_text, msg_gid, error_msg)
+                msg_text, msg_gid, error_msg)
             if (len_trim(error_msg) > 0) return
             msgop = printf_format_ptr(context%session, msg_gid)
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             'ERROR STOP %s'//achar(10), fmt_gid, &
-                                             error_msg)
+                'ERROR STOP %s'//achar(10), fmt_gid, &
+                error_msg)
             if (len_trim(error_msg) > 0) return
             fmtop = printf_format_ptr(context%session, fmt_gid)
             fa(1) = i32_immediate(context%session, 2_c_int64_t)
@@ -1327,8 +1327,8 @@ contains
             context%string_literal_count = context%string_literal_count + 1
             write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
             call create_printf_format_global(context%session, trim(gname), &
-                                             'ERROR STOP %d'//achar(10), fmt_gid, &
-                                             error_msg)
+                'ERROR STOP %d'//achar(10), fmt_gid, &
+                error_msg)
             if (len_trim(error_msg) > 0) return
             fmtop = printf_format_ptr(context%session, fmt_gid)
             fa(1) = i32_immediate(context%session, 2_c_int64_t)
@@ -1371,14 +1371,14 @@ contains
             return
         end if
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
-                                             error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         ! Resolve generic -> specific (#249 B7c).
         first_arg_kind = VALUE_I32
         if (allocated(arg_indices)) then
             if (size(arg_indices) > 0) then
                 first_arg_kind = expression_value_kind(arena, arg_indices(1), &
-                                                       context, VALUE_I32)
+                    context, VALUE_I32)
             end if
         end if
         call_name = degeneric_call_name(context, name, first_arg_kind)
@@ -1404,7 +1404,7 @@ contains
         end if
         if (is_method_subroutine_call(call_name)) then
             call lower_method_subroutine_call(arena, call_name, arg_indices, &
-                                              context, error_msg)
+                context, error_msg)
             return
         end if
         if (external_procedure_index(context, call_name) > 0) then
@@ -1413,10 +1413,10 @@ contains
             return
         end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
-                                    call_name, args, copyback_indices, error_msg)
+            call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_call_with_optional_padding(context, &
-                call_emit_name(arena, call_name), args, error_msg)) &
+            call_emit_name(arena, call_name), args, error_msg)) &
             return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
@@ -1432,7 +1432,7 @@ contains
         integer :: symbol_index
 
         call intrinsic_out_scalar(arena, arg_indices, context, 'cpu_time', &
-                                  VALUE_F32, symbol_index, error_msg)
+            VALUE_F32, symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_cpu_time_value(context%session, value, error_msg)) return
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
@@ -1449,14 +1449,14 @@ contains
         integer :: symbol_index
 
         call intrinsic_out_scalar(arena, arg_indices, context, 'system_clock', &
-                                  VALUE_I32, symbol_index, error_msg)
+            VALUE_I32, symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_system_clock_value(context%session, value, error_msg)) return
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
     end subroutine lower_system_clock
 
     subroutine intrinsic_out_scalar(arena, arg_indices, context, name, kind, &
-                                    symbol_index, error_msg)
+            symbol_index, error_msg)
         ! Resolve the single intent(out) scalar argument of a timing intrinsic
         ! and verify its declared kind.
         type(ast_arena_t), intent(in) :: arena
@@ -1492,7 +1492,7 @@ contains
     end subroutine intrinsic_out_scalar
 
     subroutine store_intrinsic_scalar_result(context, symbol_index, value, &
-                                             error_msg)
+            error_msg)
         ! Write a freshly computed scalar into its symbol, persisting through the
         ! backing address when the variable lives in memory.
         type(lowering_context_t), intent(inout) :: context
@@ -1509,7 +1509,7 @@ contains
     end subroutine store_intrinsic_scalar_result
 
     logical function emit_call_with_optional_padding(context, name, args, &
-                                                     error_msg) result(ok)
+            error_msg) result(ok)
         ! Emit a void call to a contained subroutine, padding omitted trailing
         ! optional dummies with null pointers up to the callee's declared
         ! parameter count.
@@ -1540,7 +1540,7 @@ contains
         ok = emit_void_call(context%session, name, padded, error_msg)
     end function emit_call_with_optional_padding
     recursive subroutine lower_i1_condition(arena, node_index, context, &
-                                            value, error_msg)
+            value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -1557,19 +1557,19 @@ contains
         end if
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
-                                    bin_right, bin_line, bin_col, error_msg)
+                bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
             if (trim(adjustl(lowercase_text(bin_op))) == '.not.') then
                 ! Unary .not. is parsed as a binary op with a virtual operand;
                 ! the real condition is the right operand. Invert it.
                 call lower_i1_condition(arena, bin_right, context, lhs, &
-                                        error_msg)
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
                 rhs = lhs
                 rhs%kind = LR_OP_KIND_IMM_I64
                 rhs%payload = 0_c_int64_t
                 if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, lhs, &
-                                              rhs, value, error_msg)) return
+                    rhs, value, error_msg)) return
                 call set_empty(error_msg)
                 return
             end if
@@ -1578,7 +1578,7 @@ contains
                 ! operands are lowered (Fortran does not short-circuit), then
                 ! combined with the matching bitwise op on the i1 values.
                 call lower_logical_connective(arena, bin_op, bin_left, &
-                                              bin_right, context, value, error_msg)
+                    bin_right, context, value, error_msg)
                 return
             end if
             ! A comparison whose operands are real (including libm intrinsic
@@ -1594,7 +1594,7 @@ contains
                 call real_compare_predicate(bin_op, pred, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_f32_fcmp(context%session, pred, lhs, rhs, &
-                                              value, error_msg)) return
+                    value, error_msg)) return
                 return
             end if
             if (is_f64_expression(arena, bin_left, context) .or. &
@@ -1606,7 +1606,7 @@ contains
                 call real_compare_predicate(bin_op, pred, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_f64_fcmp(context%session, pred, lhs, rhs, &
-                                              value, error_msg)) return
+                    value, error_msg)) return
                 return
             end if
             call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
@@ -1616,66 +1616,66 @@ contains
             call integer_compare_predicate(bin_op, pred, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
-                                          value, error_msg)) return
+                value, error_msg)) return
             return
         end if
         if (is_literal(arena, node_index)) then
             call lower_logical_expression(arena, node_index, context, lhs, &
-                                          error_msg)
+                error_msg)
             if (len_trim(error_msg) > 0) return
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
-                                          rhs, value, error_msg)) return
+                rhs, value, error_msg)) return
             return
         end if
         if (is_identifier(arena, node_index)) then
             call lower_logical_expression(arena, node_index, context, lhs, &
-                                          error_msg)
+                error_msg)
             if (len_trim(error_msg) > 0) return
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
-                                          rhs, value, error_msg)) return
+                rhs, value, error_msg)) return
             return
         end if
         select type (node => arena%entries(node_index)%node)
-        type is (component_access_node)
+            type is (component_access_node)
             ! Scalar logical component used directly as a condition: x%flag.
             call lower_logical_expression(arena, node_index, context, lhs, &
-                                          error_msg)
+                error_msg)
             if (len_trim(error_msg) > 0) return
             rhs = i32_immediate(context%session, 0_c_int64_t)
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
-                                          rhs, value, error_msg)) return
-        type is (call_or_subscript_node)
+                rhs, value, error_msg)) return
+            type is (call_or_subscript_node)
             if (node%base_expr_index > 0) then
                 ! Logical array-component element used as a condition: x%flag(i).
                 call lower_logical_expression(arena, node_index, context, lhs, &
-                                              error_msg)
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
                 rhs = i32_immediate(context%session, 0_c_int64_t)
                 if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
-                                              rhs, value, error_msg)) return
+                    rhs, value, error_msg)) return
             else if (is_present_call(arena, node_index)) then
                 call lower_present_condition(arena, node_index, context, value, &
-                                             error_msg)
+                    error_msg)
             else if (allocated(node%name)) then
                 if (same_name(node%name, 'c_associated')) then
                     call lower_c_associated(arena, node%arg_indices, context, &
-                                            value, error_msg)
+                        value, error_msg)
                 else if (same_name(node%name, 'associated')) then
                     call lower_associated(arena, node%arg_indices, context, &
-                                          value, error_msg)
+                        value, error_msg)
                 else
                     error_msg = 'direct LIRIC session IF condition supports '// &
-                                'comparisons, logicals, and present()'
+                        'comparisons, logicals, and present()'
                 end if
             else
                 error_msg = 'direct LIRIC session IF condition supports '// &
-                            'comparisons, logicals, and present()'
+                    'comparisons, logicals, and present()'
             end if
         class default
             error_msg = 'direct LIRIC session IF requires an integer '// &
-                        'comparison or logical expression'
+                'comparison or logical expression'
         end select
     end subroutine lower_i1_condition
 
@@ -1690,7 +1690,7 @@ contains
     end function is_logical_connective
 
     subroutine lower_logical_connective(arena, op, left_index, right_index, &
-                                        context, value, error_msg)
+            context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: op
         integer, intent(in) :: left_index, right_index
@@ -1714,17 +1714,17 @@ contains
         case ('.eqv.')
             ! a .eqv. b is .not. (a .neqv. b): xor then invert the i1.
             if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, rhs, &
-                                      value, error_msg)) return
+                value, error_msg)) return
             if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, value, &
-                    i32_immediate(context%session, 0_c_int64_t), value, &
-                    error_msg)) return
+                i32_immediate(context%session, 0_c_int64_t), value, &
+                error_msg)) return
             return
         case default
             error_msg = 'unsupported logical connective: '//trim(op)
             return
         end select
         if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
-                                  error_msg)) return
+            error_msg)) return
     end subroutine lower_logical_connective
 
     subroutine identifier_name(arena, node_index, name, error_msg)
@@ -1742,7 +1742,7 @@ contains
             return
         end if
         select type (node => arena%entries(node_index)%node)
-        type is (call_or_subscript_node)
+            type is (call_or_subscript_node)
             if (allocated(node%arg_indices)) then
                 error_msg = 'expected scalar assignment target'
                 call set_empty(name)
@@ -1750,12 +1750,12 @@ contains
             end if
             name = node%name
             call set_empty(error_msg)
-        type is (component_access_node)
+            type is (component_access_node)
             call unsupported_feature_error('derived type component assignment target', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support assigning to components', &
-                                           error_msg)
+                node%line, node%column, &
+                'direct LIRIC session does not '// &
+                'support assigning to components', &
+                error_msg)
             call set_empty(name)
         class default
             error_msg = 'expected identifier assignment target'

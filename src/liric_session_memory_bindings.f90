@@ -1,13 +1,13 @@
 module liric_session_memory_bindings
     use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char, c_int, &
-                                              c_int32_t, c_int64_t
+        c_int32_t, c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr
     use liric_session_common, only: require_open_session, status_ok, &
-                                    liric_session_error_message, &
-                                    clear_liric_error, to_c_chars, set_empty, &
-                                    lr_error_t, lr_inst_desc_t
+        liric_session_error_message, &
+        clear_liric_error, to_c_chars, set_empty, &
+        lr_error_t, lr_inst_desc_t
     use liric_session_bindings, only: liric_session_t, lr_operand_desc_t, &
-                                      i32_vreg, i32_immediate
+        i32_vreg, i32_immediate
     implicit none
     private
 
@@ -25,7 +25,7 @@ module liric_session_memory_bindings
     logical(c_bool), parameter :: c_true = .true.
 
     public :: i64_immediate, ptr_param, &
-              reserve_i32_vreg, ptr_vreg, i64_vreg
+        reserve_i32_vreg, ptr_vreg, i64_vreg
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
     public :: emit_i32_alloca, emit_i64_alloca, emit_ptr_alloca
     public :: emit_i32_load, emit_i64_load, emit_ptr_load
@@ -184,7 +184,7 @@ contains
     end function i64_immediate
 
     logical function emit_i32_binary(session, opcode, lhs, rhs, result, &
-                                     error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -206,7 +206,7 @@ contains
     end function emit_i32_binary
 
     logical function emit_i32_binary_into(session, opcode, lhs, rhs, &
-                                          dest_vreg, result, error_msg)
+            dest_vreg, result, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -225,7 +225,7 @@ contains
         end if
 
         vreg = emit_binary_with_dest(session%handle, opcode, lhs, rhs, &
-                                     error, dest_vreg)
+            error, dest_vreg)
         if (.not. status_ok(error%code, error, error_msg)) return
         if (vreg /= dest_vreg) then
             error_msg = 'LIRIC did not honor explicit binary destination vreg'
@@ -238,7 +238,7 @@ contains
     end function emit_i32_binary_into
 
     logical function emit_i32_copy_to(session, value, dest_vreg, result, &
-                                      error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: value
         integer(c_int32_t), intent(in) :: dest_vreg
@@ -246,8 +246,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         emit_i32_copy_to = emit_i32_binary_into(session, &
-                           LR_OP_ADD, value, i32_immediate(session, 0_c_int64_t), &
-                           dest_vreg, result, error_msg)
+            LR_OP_ADD, value, i32_immediate(session, 0_c_int64_t), &
+            dest_vreg, result, error_msg)
     end function emit_i32_copy_to
 
     logical function emit_i32_alloca(session, address, error_msg)
@@ -380,7 +380,7 @@ contains
     end function emit_i64_store
 
     logical function emit_i64_load_at(session, base, offset, result, &
-                                      error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: base
         integer(c_int64_t), intent(in) :: offset
@@ -537,7 +537,7 @@ contains
     end function emit_ptr_offset_dyn
 
     logical function emit_i64_store_at(session, value, base, offset, &
-                                       error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: value
         type(lr_operand_desc_t), intent(in) :: base
@@ -610,7 +610,7 @@ contains
     end function emit_i64_store_at
 
     logical function emit_i64_binary(session, opcode, lhs, rhs, result, &
-                                     error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -771,7 +771,7 @@ contains
     end function emit_memcpy
 
     logical function emit_i32_array_alloca(session, array_size, address, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(out) :: address
@@ -785,8 +785,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_i32_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_i32_s(session%handle), &
+            int(array_size, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return an integer array type'
             return
@@ -818,8 +818,8 @@ contains
     end function emit_i32_array_alloca
 
     logical function emit_i32_array_element_addr(session, array_size, &
-                                                 base_ptr, index_0based, &
-                                                 element_addr, error_msg)
+            base_ptr, index_0based, &
+            element_addr, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(in) :: base_ptr
@@ -837,8 +837,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_i32_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_i32_s(session%handle), &
+            int(array_size, c_int64_t))
 
         zero64%kind = LR_OP_KIND_IMM_I64
         zero64%payload = 0_c_int64_t
@@ -875,7 +875,7 @@ contains
         emit_i32_array_element_addr = .true.
     end function emit_i32_array_element_addr
     logical function emit_f32_array_alloca(session, array_size, address, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(out) :: address
@@ -889,8 +889,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_f32_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_f32_s(session%handle), &
+            int(array_size, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return an f32 array type'
             return
@@ -922,8 +922,8 @@ contains
     end function emit_f32_array_alloca
 
     logical function emit_f32_array_element_addr(session, array_size, &
-                                                  base_ptr, index_0based, &
-                                                  element_addr, error_msg)
+            base_ptr, index_0based, &
+            element_addr, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(in) :: base_ptr
@@ -941,8 +941,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_f32_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_f32_s(session%handle), &
+            int(array_size, c_int64_t))
 
         zero64%kind = LR_OP_KIND_IMM_I64
         zero64%payload = 0_c_int64_t
@@ -980,7 +980,7 @@ contains
     end function emit_f32_array_element_addr
 
     logical function emit_f64_array_alloca(session, array_size, address, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(out) :: address
@@ -994,8 +994,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_f64_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_f64_s(session%handle), &
+            int(array_size, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return an f64 array type'
             return
@@ -1027,8 +1027,8 @@ contains
     end function emit_f64_array_alloca
 
     logical function emit_f64_array_element_addr(session, array_size, &
-                                                  base_ptr, index_0based, &
-                                                  element_addr, error_msg)
+            base_ptr, index_0based, &
+            element_addr, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer, intent(in) :: array_size
         type(lr_operand_desc_t), intent(in) :: base_ptr
@@ -1046,8 +1046,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         array_type = lr_type_array_s(session%handle, &
-                                     lr_type_f64_s(session%handle), &
-                                     int(array_size, c_int64_t))
+            lr_type_f64_s(session%handle), &
+            int(array_size, c_int64_t))
 
         zero64%kind = LR_OP_KIND_IMM_I64
         zero64%payload = 0_c_int64_t
@@ -1098,7 +1098,7 @@ contains
         emit_ptr_alloca = .false.
         if (.not. require_open_session(session, error_msg)) return
         vreg = emit_alloca_typed(session%handle, &
-                                  lr_type_ptr_s(session%handle), error)
+            lr_type_ptr_s(session%handle), error)
         if (.not. status_ok(error%code, error, error_msg)) return
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)

@@ -67,33 +67,33 @@ contains
             'end program main'
 
         test_module_sub_with_internal_function = expect_exit_status( &
-            source, 12, '/tmp/ffc_session_mod_internal_fn_test')
-    end function test_module_sub_with_internal_function
+                source, 12, '/tmp/ffc_session_mod_internal_fn_test')
+        end function test_module_sub_with_internal_function
 
-    logical function test_module_function_with_internal_function()
-        ! A module integer function that contains an internal integer function;
-        ! the program reports the outer function's result.
-        character(len=*), parameter :: source = &
-            'module m'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  integer function compute(n)'//new_line('a')// &
-            '    integer, intent(in) :: n'//new_line('a')// &
-            '    compute = bump(n) + 1'//new_line('a')// &
-            '  contains'//new_line('a')// &
-            '    integer function bump(x)'//new_line('a')// &
-            '      integer, intent(in) :: x'//new_line('a')// &
-            '      bump = x * 2'//new_line('a')// &
-            '    end function bump'//new_line('a')// &
-            '  end function compute'//new_line('a')// &
-            'end module m'//new_line('a')// &
-            'program main'//new_line('a')// &
-            '  use m'//new_line('a')// &
-            '  stop compute(5)'//new_line('a')// &
-            'end program main'
+        logical function test_module_function_with_internal_function()
+            ! A module integer function that contains an internal integer function;
+            ! the program reports the outer function's result.
+            character(len=*), parameter :: source = &
+                'module m'//new_line('a')// &
+                '  implicit none'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  integer function compute(n)'//new_line('a')// &
+                '    integer, intent(in) :: n'//new_line('a')// &
+                '    compute = bump(n) + 1'//new_line('a')// &
+                '  contains'//new_line('a')// &
+                '    integer function bump(x)'//new_line('a')// &
+                '      integer, intent(in) :: x'//new_line('a')// &
+                '      bump = x * 2'//new_line('a')// &
+                '    end function bump'//new_line('a')// &
+                '  end function compute'//new_line('a')// &
+                'end module m'//new_line('a')// &
+                'program main'//new_line('a')// &
+                '  use m'//new_line('a')// &
+                '  stop compute(5)'//new_line('a')// &
+                'end program main'
 
-        test_module_function_with_internal_function = expect_exit_status( &
-            source, 11, '/tmp/ffc_session_mod_fn_internal_fn_test')
-    end function test_module_function_with_internal_function
+            test_module_function_with_internal_function = expect_exit_status( &
+                    source, 11, '/tmp/ffc_session_mod_fn_internal_fn_test')
+            end function test_module_function_with_internal_function
 
-end program test_session_module_internal_proc
+        end program test_session_module_internal_proc

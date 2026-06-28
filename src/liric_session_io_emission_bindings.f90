@@ -1,32 +1,32 @@
 module liric_session_io_emission_bindings
     use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char
     use, intrinsic :: iso_c_binding, only: c_double, c_int, c_int32_t, &
-                                              c_int64_t
+        c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr, &
-                                              c_size_t
+        c_size_t
     use liric_session_bindings, only: liric_session_t, lr_error_t, &
-                                      lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
-                                      LR_OP_KIND_VREG, LR_OP_KIND_GLOBAL, &
-                                      LR_OP_CALL, LR_OP_BITCAST, LR_OP_SITOFP, &
-                                      LR_OP_FPTOSI, LR_OP_FPEXT, LR_OP_FPTRUNC, &
-                                      LR_OP_SEXT, LR_OP_ZEXT, LR_OP_TRUNC, &
-                                      LR_OP_GEP, LR_OP_LOAD, LR_OP_STORE, &
-                                      LR_OP_KIND_IMM_I64, &
-                                      LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
-                                      liric_session_error_message, &
-                                      lr_type_i32_s, lr_type_f32_s, lr_type_f64_s, &
-                                      lr_type_i64_s, &
-                                      lr_type_ptr_s, lr_type_i8_s, lr_type_i16_s, &
-                                      lr_type_array_s, lr_session_emit, &
-                                      lr_session_intern, lr_session_global, &
-                                      global_operand, &
-                                      status_ok, clear_liric_error, &
-                                      set_empty, require_open_session, &
-                                      to_c_chars, i32_vreg
+        lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
+        LR_OP_KIND_VREG, LR_OP_KIND_GLOBAL, &
+        LR_OP_CALL, LR_OP_BITCAST, LR_OP_SITOFP, &
+        LR_OP_FPTOSI, LR_OP_FPEXT, LR_OP_FPTRUNC, &
+        LR_OP_SEXT, LR_OP_ZEXT, LR_OP_TRUNC, &
+        LR_OP_GEP, LR_OP_LOAD, LR_OP_STORE, &
+        LR_OP_KIND_IMM_I64, &
+        LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
+        liric_session_error_message, &
+        lr_type_i32_s, lr_type_f32_s, lr_type_f64_s, &
+        lr_type_i64_s, &
+        lr_type_ptr_s, lr_type_i8_s, lr_type_i16_s, &
+        lr_type_array_s, lr_session_emit, &
+        lr_session_intern, lr_session_global, &
+        global_operand, &
+        status_ok, clear_liric_error, &
+        set_empty, require_open_session, &
+        to_c_chars, i32_vreg
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg
     use liric_session_format_bindings, only: LR_OP_FSUB
     use liric_session_real_print_bindings, only: emit_real8_print_call, &
-                                                 emit_real4_print_call
+        emit_real4_print_call
     implicit none
     private
 
@@ -86,7 +86,7 @@ contains
     end function global_operand_session
 
     logical function emit_liric_print_i32(session, format_global_id, value, &
-                                          error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: value
@@ -94,7 +94,7 @@ contains
 
         emit_liric_print_i32 = .false.
         if (.not. emit_liric_print_i32_value(session, format_global_id, value, &
-                                             error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i32 = .true.
@@ -112,8 +112,8 @@ contains
         emit_liric_print_f64 = .true.
     end function emit_liric_print_f64
 
-  logical function emit_liric_print_string(session, format_global_id, &
-                                              string_global_name, text, error_msg)
+    logical function emit_liric_print_string(session, format_global_id, &
+            string_global_name, text, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         character(len=*), intent(in) :: string_global_name
@@ -122,15 +122,15 @@ contains
 
         emit_liric_print_string = .false.
         if (.not. emit_liric_print_string_value(session, format_global_id, &
-                                                string_global_name, text, &
-                                                error_msg)) return
+            string_global_name, text, &
+            error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_string = .true.
     end function emit_liric_print_string
 
-  logical function emit_liric_print_string_operand(session, format_global_id, &
-                                                       string_ptr, error_msg)
+    logical function emit_liric_print_string_operand(session, format_global_id, &
+            string_ptr, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: string_ptr
@@ -138,14 +138,14 @@ contains
 
         emit_liric_print_string_operand = .false.
         if (.not. emit_liric_print_string_operand_value(session, format_global_id, &
-                                                        string_ptr, error_msg)) return
+            string_ptr, error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_string_operand = .true.
     end function emit_liric_print_string_operand
 
     logical function emit_liric_print_i32_value(session, format_global_id, &
-                                                value, error_msg)
+            value, error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: value
@@ -162,11 +162,11 @@ contains
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
 
         unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
-                                    error)
+            error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -174,7 +174,7 @@ contains
     end function emit_liric_print_i32_value
 
     logical function emit_liric_print_i64(session, format_global_id, value, &
-                                          error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: value
@@ -182,14 +182,14 @@ contains
 
         emit_liric_print_i64 = .false.
         if (.not. emit_liric_print_i64_value(session, format_global_id, value, &
-                                             error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i64 = .true.
     end function emit_liric_print_i64
 
     logical function emit_liric_print_i64_value(session, format_global_id, &
-                                                value, error_msg)
+            value, error_msg)
         ! Print an i64 value via printf with the %20ld format global. The
         ! variadic printf call promotes the i64 value verbatim.
         type(liric_session_t), intent(inout) :: session
@@ -208,11 +208,11 @@ contains
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
 
         unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
-                                    error)
+            error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -256,8 +256,8 @@ contains
     end function emit_liric_print_f32_value
 
     logical function emit_liric_print_string_value(session, format_global_id, &
-                                                   string_global_name, text, &
-                                                   error_msg)
+            string_global_name, text, &
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         character(len=*), intent(in) :: string_global_name
@@ -267,18 +267,18 @@ contains
 
         emit_liric_print_string_value = .false.
         call materialize_liric_string(session, string_global_name, text, &
-                                      string_ptr, error_msg)
+            string_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
 
         emit_liric_print_string_value = emit_liric_print_string_operand_value( &
-                                          session, format_global_id, string_ptr, &
-                                          error_msg)
+            session, format_global_id, string_ptr, &
+            error_msg)
     end function emit_liric_print_string_value
 
     logical function emit_liric_print_string_operand_value(session, &
-                                                           format_global_id, &
-                                                           string_ptr, &
-                                                           error_msg)
+            format_global_id, &
+            string_ptr, &
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
         type(lr_operand_desc_t), intent(in) :: string_ptr
@@ -295,11 +295,11 @@ contains
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
 
         unused_vreg = emit_call_ptr(session%handle, callee, format_ptr, &
-                                    string_ptr, error)
+            string_ptr, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -347,7 +347,7 @@ contains
     end function emit_liric_print_space
 
     subroutine materialize_liric_string(session, string_global_name, text, &
-                                        operand, error_msg)
+            operand, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: string_global_name
         character(len=*), intent(in) :: text
@@ -355,7 +355,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         call make_string_literal_operand(session, string_global_name, text, &
-                                         operand, error_msg)
+            operand, error_msg)
     end subroutine materialize_liric_string
 
     subroutine make_printf_operand(session, operand, error_msg)
@@ -374,10 +374,10 @@ contains
 
         operand = global_operand_session(session, symbol_id, lr_type_ptr_s(session%handle))
         call set_empty(error_msg)
-   end subroutine make_printf_operand
+    end subroutine make_printf_operand
 
     subroutine make_string_literal_operand(session, name, text, operand, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         character(len=*), intent(in) :: text
@@ -397,15 +397,15 @@ contains
         text_chars(len(text) + 1) = c_null_char
 
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                      int(len(text) + 1, c_int64_t))
+            int(len(text) + 1, c_int64_t))
         if (.not. c_associated(array_type)) then
             error_msg = 'LIRIC did not return a string literal array type'
             return
         end if
 
         global_id = lr_session_global(session%handle, c_name, array_type, &
-                                      c_true, c_loc(text_chars(1)), &
-                                      int(len(text) + 1, c_size_t))
+            c_true, c_loc(text_chars(1)), &
+            int(len(text) + 1, c_size_t))
         if (global_id < 0_c_int32_t) then
             error_msg = 'LIRIC could not create string literal'
             return
@@ -421,8 +421,8 @@ contains
     end subroutine make_string_literal_operand
 
     subroutine make_string_literal_operand_from_chars(handle, name, text_chars, &
-                                                      total_size, operand, &
-                                                      error)
+            total_size, operand, &
+            error)
         type(c_ptr), intent(in) :: handle
         character(len=*), intent(in) :: name
         character(kind=c_char), intent(in), target :: text_chars(:)
@@ -443,8 +443,8 @@ contains
         end if
 
         global_id = lr_session_global(handle, c_name, array_type, c_true, &
-                                      c_loc(text_chars(1)), &
-                                      int(total_size, c_size_t))
+            c_loc(text_chars(1)), &
+            int(total_size, c_size_t))
         if (global_id < 0_c_int32_t) then
             error%code = 1_c_int
             error%msg = c_null_char
@@ -465,7 +465,7 @@ contains
     end subroutine make_string_literal_operand_from_chars
 
     subroutine materialize_global_pointer(session, global_id, operand, &
-                                          error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: global_id
         type(lr_operand_desc_t), intent(out) :: operand
@@ -474,8 +474,8 @@ contains
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
-      global_ref = global_operand_session(session, global_id, &
-                                           lr_type_ptr_s(session%handle))
+        global_ref = global_operand_session(session, global_id, &
+            lr_type_ptr_s(session%handle))
         vreg = emit_bitcast_ptr(session%handle, global_ref, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
@@ -648,7 +648,7 @@ contains
     end function liric_f64_immediate
 
     logical function emit_liric_f32_binary(session, opcode, lhs, rhs, result, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -736,7 +736,7 @@ contains
     end function emit_liric_f32_to_f64
 
     logical function emit_liric_f64_binary(session, opcode, lhs, rhs, result, &
-                                           error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: opcode
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -831,7 +831,7 @@ contains
     end function emit_cast_i32
 
     logical function emit_liric_char_byte_zext(session, base, index_op, result, &
-                                               error_msg)
+            error_msg)
         ! Load the byte at base[index] and zero-extend it to i32.
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: base
@@ -891,7 +891,7 @@ contains
     end function emit_liric_char_byte_zext
 
     logical function emit_liric_store_char_byte(session, base, index_op, value, &
-                                                error_msg)
+            error_msg)
         ! Store the low byte of value (i32) at base[index].
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: base
@@ -1219,7 +1219,7 @@ contains
     end function emit_liric_i16_to_i32
 
     logical function emit_liric_print_i8(session, format_global_id, value, &
-                                         error_msg)
+            error_msg)
         ! Print an i8 value: sext to i32, then printf with i8 format.
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
@@ -1228,14 +1228,14 @@ contains
 
         emit_liric_print_i8 = .false.
         if (.not. emit_liric_print_i8_value(session, format_global_id, value, &
-                                             error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i8 = .true.
     end function emit_liric_print_i8
 
     logical function emit_liric_print_i8_value(session, format_global_id, &
-                                               value, error_msg)
+            value, error_msg)
         ! Emit printf(fmt, (i32)value) for an i8 value (sext to i32 first).
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
@@ -1251,17 +1251,17 @@ contains
         call make_printf_operand(session, callee, error_msg)
         if (len_trim(error_msg) > 0) return
         call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         unused_vreg = emit_call_i32(session%handle, callee, format_ptr, i32_value, &
-                                    error)
+            error)
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i8_value = .true.
     end function emit_liric_print_i8_value
 
     logical function emit_liric_print_i16(session, format_global_id, value, &
-                                          error_msg)
+            error_msg)
         ! Print an i16 value: sext to i32, then printf with i16 format.
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
@@ -1270,14 +1270,14 @@ contains
 
         emit_liric_print_i16 = .false.
         if (.not. emit_liric_print_i16_value(session, format_global_id, value, &
-                                              error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_print_newline(session, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i16 = .true.
     end function emit_liric_print_i16
 
     logical function emit_liric_print_i16_value(session, format_global_id, &
-                                                value, error_msg)
+            value, error_msg)
         ! Emit printf(fmt, (i32)value) for an i16 value (sext to i32 first).
         type(liric_session_t), intent(inout) :: session
         integer(c_int32_t), intent(in) :: format_global_id
@@ -1293,10 +1293,10 @@ contains
         call make_printf_operand(session, callee, error_msg)
         if (len_trim(error_msg) > 0) return
         call materialize_global_pointer(session, format_global_id, format_ptr, &
-                                        error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         unused_vreg = emit_call_i32(session%handle, callee, format_ptr, i32_value, &
-                                    error)
+            error)
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i16_value = .true.

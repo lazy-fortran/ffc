@@ -2,16 +2,16 @@ module liric_session_common
     use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr, &
-                                              c_size_t
+        c_size_t
     implicit none
     private
 
     public :: lr_session_config_t, lr_error_t, lr_operand_desc_t, &
-              lr_inst_desc_t, liric_session_t
+        lr_inst_desc_t, liric_session_t
     public :: LR_OK, LR_OP_KIND_VREG, LR_OP_KIND_IMM_I64, LR_OP_KIND_GLOBAL, &
-              LR_OP_KIND_BLOCK
+        LR_OP_KIND_BLOCK
     public :: require_open_session, status_ok, liric_session_error_message, &
-              clear_liric_error, to_c_chars, set_empty
+        clear_liric_error, to_c_chars, set_empty
 
     integer(c_int), parameter :: LR_OK = 0_c_int
     integer(c_int), parameter :: LR_OP_RET = 0_c_int
@@ -55,8 +55,8 @@ module liric_session_common
     end type lr_inst_desc_t
 
     type, public :: liric_session_t
-         type(c_ptr) :: handle = c_null_ptr
-     end type liric_session_t
+        type(c_ptr) :: handle = c_null_ptr
+    end type liric_session_t
 
 contains
 

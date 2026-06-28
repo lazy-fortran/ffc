@@ -34,11 +34,11 @@ contains
             'end program main'
         test_spread_dim2 = expect_output( &
             source, '           1'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           3'//new_line('a')// &
-                    '           1'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           3'//new_line('a'), &
+            '           2'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '           1'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           3'//new_line('a'), &
             '/tmp/ffc_session_spread_dim2_test')
     end function test_spread_dim2
 
@@ -60,11 +60,11 @@ contains
             'end program main'
         test_spread_dim1 = expect_output( &
             source, '           1'//new_line('a')// &
-                    '           1'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           3'//new_line('a')// &
-                    '           3'//new_line('a'), &
+            '           1'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '           3'//new_line('a'), &
             '/tmp/ffc_session_spread_dim1_test')
     end function test_spread_dim1
 
@@ -85,9 +85,9 @@ contains
             'end program main'
         test_spread_real = expect_output( &
             source, '   1.50000000    '//new_line('a')// &
-                    '   2.50000000    '//new_line('a')// &
-                    '   1.50000000    '//new_line('a')// &
-                    '   2.50000000    '//new_line('a'), &
+            '   2.50000000    '//new_line('a')// &
+            '   1.50000000    '//new_line('a')// &
+            '   2.50000000    '//new_line('a'), &
             '/tmp/ffc_session_spread_real_test')
     end function test_spread_real
 

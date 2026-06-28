@@ -3,13 +3,13 @@ module liric_session_procedure_bindings
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr
     use liric_session_common, only: require_open_session, status_ok, &
-                                    liric_session_error_message, &
-                                    clear_liric_error, to_c_chars, set_empty, &
-                                    lr_error_t, lr_inst_desc_t, lr_operand_desc_t, &
-                                    LR_OK, LR_OP_KIND_GLOBAL, LR_OP_KIND_VREG
+        liric_session_error_message, &
+        clear_liric_error, to_c_chars, set_empty, &
+        lr_error_t, lr_inst_desc_t, lr_operand_desc_t, &
+        LR_OK, LR_OP_KIND_GLOBAL, LR_OP_KIND_VREG
     use liric_session_bindings, only: liric_session_t
     use liric_session_memory_bindings, only: ptr_param, &
-              emit_alloca_typed, emit_load_typed, emit_store_typed
+        emit_alloca_typed, emit_load_typed, emit_store_typed
     implicit none
     private
 
@@ -50,7 +50,7 @@ module liric_session_procedure_bindings
         end function lr_type_ptr_s
 
         function lr_session_func_begin(handle, name, ret, params, n, &
-                                       vararg, err) result(status) bind(c)
+                vararg, err) result(status) bind(c)
             import :: c_bool, c_char, c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             character(kind=c_char), intent(in) :: name(*)
@@ -69,7 +69,7 @@ module liric_session_procedure_bindings
         end function lr_session_block
 
         function lr_session_set_block(handle, block_id, err) result(status) &
-            bind(c)
+                bind(c)
             import :: c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             integer(c_int32_t), value :: block_id
@@ -96,7 +96,7 @@ module liric_session_procedure_bindings
 contains
 
     logical function begin_liric_f32_function(session, name, param_count, &
-                                              error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         integer, intent(in) :: param_count
@@ -111,370 +111,370 @@ contains
         integer :: i
 
         begin_liric_f32_function = .false.
-        if (.not. require_open_session(session, error_msg)) return
+            if (.not. require_open_session(session, error_msg)) return
 
-        param_type = lr_type_ptr_s(session%handle)
-        if (.not. c_associated(param_type)) then
-            error_msg = 'LIRIC did not return a pointer type'
-            return
-        end if
+            param_type = lr_type_ptr_s(session%handle)
+            if (.not. c_associated(param_type)) then
+                error_msg = 'LIRIC did not return a pointer type'
+                return
+            end if
 
-        params_ptr = c_null_ptr
-        if (param_count > 0) then
-            allocate (params(param_count))
-            do i = 1, param_count
-                params(i) = param_type
-            end do
-            params_ptr = c_loc(params)
-        end if
+            params_ptr = c_null_ptr
+            if (param_count > 0) then
+                allocate (params(param_count))
+                do i = 1, param_count
+                    params(i) = param_type
+                end do
+                params_ptr = c_loc(params)
+            end if
 
-        call clear_liric_error(error)
-        call to_c_chars(trim(name), c_name)
-        status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_f32_s(session%handle), &
-                                       params_ptr, int(param_count, c_int32_t), &
-                                       c_false, error)
-        if (.not. status_ok(status, error, error_msg)) return
-
-        block_id = lr_session_block(session%handle)
-        status = lr_session_set_block(session%handle, block_id, error)
-        if (.not. status_ok(status, error, error_msg)) return
-
-        call set_empty(error_msg)
-        begin_liric_f32_function = .true.
-    end function begin_liric_f32_function
-
-    logical function emit_liric_f32_alloca(session, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f32_alloca = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_alloca_typed(session%handle, lr_type_f32_s(session%handle), &
-                                 error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        address = ptr_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f32_alloca = .true.
-    end function emit_liric_f32_alloca
-
-    logical function emit_liric_f32_load(session, address, value, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f32_load = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_load_typed(session%handle, lr_type_f32_s(session%handle), &
-                               address, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        value = f32_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f32_load = .true.
-    end function emit_liric_f32_load
-
-    logical function emit_liric_f32_store(session, value, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(in) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: unused_vreg
-
-        emit_liric_f32_store = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        call set_empty(error_msg)
-        emit_liric_f32_store = .true.
-    end function emit_liric_f32_store
-
-    logical function emit_liric_f32_call(session, name, args, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f32_call = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_call_f32_function(session%handle, name, args, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        result = f32_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f32_call = .true.
-    end function emit_liric_f32_call
-
-    logical function begin_liric_f64_function(session, name, param_count, &
-                                              error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        integer, intent(in) :: param_count
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(kind=c_char), allocatable :: c_name(:)
-        type(c_ptr), allocatable, target :: params(:)
-        type(c_ptr) :: params_ptr
-        type(c_ptr) :: param_type
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: block_id
-        integer(c_int) :: status
-        integer :: i
-
-        begin_liric_f64_function = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        param_type = lr_type_ptr_s(session%handle)
-        if (.not. c_associated(param_type)) then
-            error_msg = 'LIRIC did not return a pointer type'
-            return
-        end if
-
-        params_ptr = c_null_ptr
-        if (param_count > 0) then
-            allocate (params(param_count))
-            do i = 1, param_count
-                params(i) = param_type
-            end do
-            params_ptr = c_loc(params)
-        end if
-
-        call clear_liric_error(error)
-        call to_c_chars(trim(name), c_name)
-        status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_f64_s(session%handle), &
-                                       params_ptr, int(param_count, c_int32_t), &
-                                       c_false, error)
-        if (.not. status_ok(status, error, error_msg)) return
-
-        block_id = lr_session_block(session%handle)
-        status = lr_session_set_block(session%handle, block_id, error)
-        if (.not. status_ok(status, error, error_msg)) return
-
-        call set_empty(error_msg)
-        begin_liric_f64_function = .true.
-    end function begin_liric_f64_function
-
-    logical function emit_liric_f64_alloca(session, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f64_alloca = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_alloca_typed(session%handle, lr_type_f64_s(session%handle), &
-                                 error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        address = ptr_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f64_alloca = .true.
-    end function emit_liric_f64_alloca
-
-    logical function emit_liric_f64_load(session, address, value, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f64_load = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_load_typed(session%handle, lr_type_f64_s(session%handle), &
-                               address, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        value = f64_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f64_load = .true.
-    end function emit_liric_f64_load
-
-    logical function emit_liric_f64_store(session, value, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(in) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: unused_vreg
-
-        emit_liric_f64_store = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        call set_empty(error_msg)
-        emit_liric_f64_store = .true.
-    end function emit_liric_f64_store
-
-    logical function emit_liric_f64_call(session, name, args, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_error_t) :: error
-        integer(c_int32_t) :: vreg
-
-        emit_liric_f64_call = .false.
-        if (.not. require_open_session(session, error_msg)) return
-
-        vreg = emit_call_f64_function(session%handle, name, args, error)
-        if (.not. status_ok(error%code, error, error_msg)) return
-
-        result = f64_vreg(session%handle, vreg)
-        call set_empty(error_msg)
-        emit_liric_f64_call = .true.
-    end function emit_liric_f64_call
-
-    function emit_call_f32_function(handle, name, args, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(9)
-        type(lr_inst_desc_t) :: inst
-        character(kind=c_char), allocatable :: c_name(:)
-        integer(c_int32_t) :: symbol_id
-        integer :: i
-
-        call to_c_chars(trim(name), c_name)
-        symbol_id = lr_session_intern(handle, c_name)
-        if (symbol_id < 0_c_int32_t .or. size(args) > 8) then
             call clear_liric_error(error)
-            error%code = 1_c_int
-            return
-        end if
+            call to_c_chars(trim(name), c_name)
+            status = lr_session_func_begin(session%handle, c_name, &
+                lr_type_f32_s(session%handle), &
+                params_ptr, int(param_count, c_int32_t), &
+                c_false, error)
+            if (.not. status_ok(status, error, error_msg)) return
 
-        operands(1) = global_operand(handle, symbol_id)
-        do i = 1, size(args)
-            operands(i + 1) = args(i)
-        end do
+            block_id = lr_session_block(session%handle)
+            status = lr_session_set_block(session%handle, block_id, error)
+            if (.not. status_ok(status, error, error_msg)) return
 
-        inst%op = LR_OP_CALL
-        inst%typ = lr_type_f32_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = int(size(args) + 1, c_int32_t)
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
+            call set_empty(error_msg)
+            begin_liric_f32_function = .true.
+            end function begin_liric_f32_function
 
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_call_f32_function
+            logical function emit_liric_f32_alloca(session, address, error_msg)
+                type(liric_session_t), intent(inout) :: session
+                type(lr_operand_desc_t), intent(out) :: address
+                character(len=:), allocatable, intent(out) :: error_msg
+                type(lr_error_t) :: error
+                integer(c_int32_t) :: vreg
 
-    function f32_vreg(handle, vreg) result(operand)
-        type(c_ptr), intent(in) :: handle
-        integer(c_int32_t), intent(in) :: vreg
-        type(lr_operand_desc_t) :: operand
+                emit_liric_f32_alloca = .false.
+                if (.not. require_open_session(session, error_msg)) return
 
-        operand%kind = LR_OP_KIND_VREG
-        operand%payload = int(vreg, c_int64_t)
-        operand%typ = lr_type_f32_s(handle)
-        operand%global_offset = 0_c_int64_t
-    end function f32_vreg
+                vreg = emit_alloca_typed(session%handle, lr_type_f32_s(session%handle), &
+                    error)
+                if (.not. status_ok(error%code, error, error_msg)) return
 
-    function emit_call_f64_function(handle, name, args, error) result(vreg)
-        type(c_ptr), intent(in) :: handle
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(lr_error_t), intent(inout) :: error
-        integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(9)
-        type(lr_inst_desc_t) :: inst
-        character(kind=c_char), allocatable :: c_name(:)
-        integer(c_int32_t) :: symbol_id
-        integer :: i
+                address = ptr_vreg(session%handle, vreg)
+                call set_empty(error_msg)
+                emit_liric_f32_alloca = .true.
+            end function emit_liric_f32_alloca
 
-        call to_c_chars(trim(name), c_name)
-        symbol_id = lr_session_intern(handle, c_name)
-        if (symbol_id < 0_c_int32_t .or. size(args) > 8) then
-            call clear_liric_error(error)
-            error%code = 1_c_int
-            return
-        end if
+            logical function emit_liric_f32_load(session, address, value, error_msg)
+                type(liric_session_t), intent(inout) :: session
+                type(lr_operand_desc_t), intent(in) :: address
+                type(lr_operand_desc_t), intent(out) :: value
+                character(len=:), allocatable, intent(out) :: error_msg
+                type(lr_error_t) :: error
+                integer(c_int32_t) :: vreg
 
-        operands(1) = global_operand(handle, symbol_id)
-        do i = 1, size(args)
-            operands(i + 1) = args(i)
-        end do
+                emit_liric_f32_load = .false.
+                if (.not. require_open_session(session, error_msg)) return
 
-        inst%op = LR_OP_CALL
-        inst%typ = lr_type_f64_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = int(size(args) + 1, c_int32_t)
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
+                vreg = emit_load_typed(session%handle, lr_type_f32_s(session%handle), &
+                    address, error)
+                if (.not. status_ok(error%code, error, error_msg)) return
 
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
-    end function emit_call_f64_function
+                value = f32_vreg(session%handle, vreg)
+                call set_empty(error_msg)
+                emit_liric_f32_load = .true.
+            end function emit_liric_f32_load
 
-    function f64_vreg(handle, vreg) result(operand)
-        type(c_ptr), intent(in) :: handle
-        integer(c_int32_t), intent(in) :: vreg
-        type(lr_operand_desc_t) :: operand
+            logical function emit_liric_f32_store(session, value, address, error_msg)
+                type(liric_session_t), intent(inout) :: session
+                type(lr_operand_desc_t), intent(in) :: value
+                type(lr_operand_desc_t), intent(in) :: address
+                character(len=:), allocatable, intent(out) :: error_msg
+                type(lr_error_t) :: error
+                integer(c_int32_t) :: unused_vreg
 
-        operand%kind = LR_OP_KIND_VREG
-        operand%payload = int(vreg, c_int64_t)
-        operand%typ = lr_type_f64_s(handle)
-        operand%global_offset = 0_c_int64_t
-    end function f64_vreg
+                emit_liric_f32_store = .false.
+                if (.not. require_open_session(session, error_msg)) return
 
-    function ptr_vreg(handle, vreg) result(operand)
-        type(c_ptr), intent(in) :: handle
-        integer(c_int32_t), intent(in) :: vreg
-        type(lr_operand_desc_t) :: operand
+                unused_vreg = emit_store_typed(session%handle, value, address, error)
+                if (.not. status_ok(error%code, error, error_msg)) return
 
-        operand%kind = LR_OP_KIND_VREG
-        operand%payload = int(vreg, c_int64_t)
-        operand%typ = lr_type_ptr_s(handle)
-        operand%global_offset = 0_c_int64_t
-    end function ptr_vreg
+                call set_empty(error_msg)
+                emit_liric_f32_store = .true.
+            end function emit_liric_f32_store
 
-    function global_operand(handle, id) result(operand)
-        type(c_ptr), intent(in) :: handle
-        integer(c_int32_t), intent(in) :: id
-        type(lr_operand_desc_t) :: operand
+            logical function emit_liric_f32_call(session, name, args, result, error_msg)
+                type(liric_session_t), intent(inout) :: session
+                character(len=*), intent(in) :: name
+                type(lr_operand_desc_t), intent(in) :: args(:)
+                type(lr_operand_desc_t), intent(out) :: result
+                character(len=:), allocatable, intent(out) :: error_msg
+                type(lr_error_t) :: error
+                integer(c_int32_t) :: vreg
 
-        operand%kind = LR_OP_KIND_GLOBAL
-        operand%payload = int(id, c_int64_t)
-        operand%typ = lr_type_ptr_s(handle)
-        operand%global_offset = 0_c_int64_t
-    end function global_operand
+                emit_liric_f32_call = .false.
+                if (.not. require_open_session(session, error_msg)) return
 
-end module liric_session_procedure_bindings
+                vreg = emit_call_f32_function(session%handle, name, args, error)
+                if (.not. status_ok(error%code, error, error_msg)) return
+
+                result = f32_vreg(session%handle, vreg)
+                call set_empty(error_msg)
+                emit_liric_f32_call = .true.
+            end function emit_liric_f32_call
+
+            logical function begin_liric_f64_function(session, name, param_count, &
+                    error_msg)
+                type(liric_session_t), intent(inout) :: session
+                character(len=*), intent(in) :: name
+                integer, intent(in) :: param_count
+                character(len=:), allocatable, intent(out) :: error_msg
+                character(kind=c_char), allocatable :: c_name(:)
+                type(c_ptr), allocatable, target :: params(:)
+                type(c_ptr) :: params_ptr
+                type(c_ptr) :: param_type
+                type(lr_error_t) :: error
+                integer(c_int32_t) :: block_id
+                integer(c_int) :: status
+                integer :: i
+
+                begin_liric_f64_function = .false.
+                    if (.not. require_open_session(session, error_msg)) return
+
+                    param_type = lr_type_ptr_s(session%handle)
+                    if (.not. c_associated(param_type)) then
+                        error_msg = 'LIRIC did not return a pointer type'
+                        return
+                    end if
+
+                    params_ptr = c_null_ptr
+                    if (param_count > 0) then
+                        allocate (params(param_count))
+                        do i = 1, param_count
+                            params(i) = param_type
+                        end do
+                        params_ptr = c_loc(params)
+                    end if
+
+                    call clear_liric_error(error)
+                    call to_c_chars(trim(name), c_name)
+                    status = lr_session_func_begin(session%handle, c_name, &
+                        lr_type_f64_s(session%handle), &
+                        params_ptr, int(param_count, c_int32_t), &
+                        c_false, error)
+                    if (.not. status_ok(status, error, error_msg)) return
+
+                    block_id = lr_session_block(session%handle)
+                    status = lr_session_set_block(session%handle, block_id, error)
+                    if (.not. status_ok(status, error, error_msg)) return
+
+                    call set_empty(error_msg)
+                    begin_liric_f64_function = .true.
+                    end function begin_liric_f64_function
+
+                    logical function emit_liric_f64_alloca(session, address, error_msg)
+                        type(liric_session_t), intent(inout) :: session
+                        type(lr_operand_desc_t), intent(out) :: address
+                        character(len=:), allocatable, intent(out) :: error_msg
+                        type(lr_error_t) :: error
+                        integer(c_int32_t) :: vreg
+
+                        emit_liric_f64_alloca = .false.
+                        if (.not. require_open_session(session, error_msg)) return
+
+                        vreg = emit_alloca_typed(session%handle, lr_type_f64_s(session%handle), &
+                            error)
+                        if (.not. status_ok(error%code, error, error_msg)) return
+
+                        address = ptr_vreg(session%handle, vreg)
+                        call set_empty(error_msg)
+                        emit_liric_f64_alloca = .true.
+                    end function emit_liric_f64_alloca
+
+                    logical function emit_liric_f64_load(session, address, value, error_msg)
+                        type(liric_session_t), intent(inout) :: session
+                        type(lr_operand_desc_t), intent(in) :: address
+                        type(lr_operand_desc_t), intent(out) :: value
+                        character(len=:), allocatable, intent(out) :: error_msg
+                        type(lr_error_t) :: error
+                        integer(c_int32_t) :: vreg
+
+                        emit_liric_f64_load = .false.
+                        if (.not. require_open_session(session, error_msg)) return
+
+                        vreg = emit_load_typed(session%handle, lr_type_f64_s(session%handle), &
+                            address, error)
+                        if (.not. status_ok(error%code, error, error_msg)) return
+
+                        value = f64_vreg(session%handle, vreg)
+                        call set_empty(error_msg)
+                        emit_liric_f64_load = .true.
+                    end function emit_liric_f64_load
+
+                    logical function emit_liric_f64_store(session, value, address, error_msg)
+                        type(liric_session_t), intent(inout) :: session
+                        type(lr_operand_desc_t), intent(in) :: value
+                        type(lr_operand_desc_t), intent(in) :: address
+                        character(len=:), allocatable, intent(out) :: error_msg
+                        type(lr_error_t) :: error
+                        integer(c_int32_t) :: unused_vreg
+
+                        emit_liric_f64_store = .false.
+                        if (.not. require_open_session(session, error_msg)) return
+
+                        unused_vreg = emit_store_typed(session%handle, value, address, error)
+                        if (.not. status_ok(error%code, error, error_msg)) return
+
+                        call set_empty(error_msg)
+                        emit_liric_f64_store = .true.
+                    end function emit_liric_f64_store
+
+                    logical function emit_liric_f64_call(session, name, args, result, error_msg)
+                        type(liric_session_t), intent(inout) :: session
+                        character(len=*), intent(in) :: name
+                        type(lr_operand_desc_t), intent(in) :: args(:)
+                        type(lr_operand_desc_t), intent(out) :: result
+                        character(len=:), allocatable, intent(out) :: error_msg
+                        type(lr_error_t) :: error
+                        integer(c_int32_t) :: vreg
+
+                        emit_liric_f64_call = .false.
+                        if (.not. require_open_session(session, error_msg)) return
+
+                        vreg = emit_call_f64_function(session%handle, name, args, error)
+                        if (.not. status_ok(error%code, error, error_msg)) return
+
+                        result = f64_vreg(session%handle, vreg)
+                        call set_empty(error_msg)
+                        emit_liric_f64_call = .true.
+                    end function emit_liric_f64_call
+
+                    function emit_call_f32_function(handle, name, args, error) result(vreg)
+                        type(c_ptr), intent(in) :: handle
+                        character(len=*), intent(in) :: name
+                        type(lr_operand_desc_t), intent(in) :: args(:)
+                        type(lr_error_t), intent(inout) :: error
+                        integer(c_int32_t) :: vreg
+                        type(lr_operand_desc_t), target :: operands(9)
+                        type(lr_inst_desc_t) :: inst
+                        character(kind=c_char), allocatable :: c_name(:)
+                        integer(c_int32_t) :: symbol_id
+                        integer :: i
+
+                        call to_c_chars(trim(name), c_name)
+                        symbol_id = lr_session_intern(handle, c_name)
+                        if (symbol_id < 0_c_int32_t .or. size(args) > 8) then
+                            call clear_liric_error(error)
+                            error%code = 1_c_int
+                            return
+                        end if
+
+                        operands(1) = global_operand(handle, symbol_id)
+                        do i = 1, size(args)
+                            operands(i + 1) = args(i)
+                        end do
+
+                        inst%op = LR_OP_CALL
+                        inst%typ = lr_type_f32_s(handle)
+                        inst%dest = 0_c_int32_t
+                        inst%operands = c_loc(operands)
+                        inst%num_operands = int(size(args) + 1, c_int32_t)
+                        inst%indices = c_null_ptr
+                        inst%num_indices = 0_c_int32_t
+                        inst%align = 0_c_int32_t
+                        inst%icmp_pred = 0_c_int
+                        inst%fcmp_pred = 0_c_int
+                        inst%call_external_abi = c_false
+                        inst%call_vararg = c_false
+                        inst%call_fixed_args = 0_c_int32_t
+
+                        call clear_liric_error(error)
+                        vreg = lr_session_emit(handle, inst, error)
+                    end function emit_call_f32_function
+
+                    function f32_vreg(handle, vreg) result(operand)
+                        type(c_ptr), intent(in) :: handle
+                        integer(c_int32_t), intent(in) :: vreg
+                        type(lr_operand_desc_t) :: operand
+
+                        operand%kind = LR_OP_KIND_VREG
+                        operand%payload = int(vreg, c_int64_t)
+                        operand%typ = lr_type_f32_s(handle)
+                        operand%global_offset = 0_c_int64_t
+                    end function f32_vreg
+
+                    function emit_call_f64_function(handle, name, args, error) result(vreg)
+                        type(c_ptr), intent(in) :: handle
+                        character(len=*), intent(in) :: name
+                        type(lr_operand_desc_t), intent(in) :: args(:)
+                        type(lr_error_t), intent(inout) :: error
+                        integer(c_int32_t) :: vreg
+                        type(lr_operand_desc_t), target :: operands(9)
+                        type(lr_inst_desc_t) :: inst
+                        character(kind=c_char), allocatable :: c_name(:)
+                        integer(c_int32_t) :: symbol_id
+                        integer :: i
+
+                        call to_c_chars(trim(name), c_name)
+                        symbol_id = lr_session_intern(handle, c_name)
+                        if (symbol_id < 0_c_int32_t .or. size(args) > 8) then
+                            call clear_liric_error(error)
+                            error%code = 1_c_int
+                            return
+                        end if
+
+                        operands(1) = global_operand(handle, symbol_id)
+                        do i = 1, size(args)
+                            operands(i + 1) = args(i)
+                        end do
+
+                        inst%op = LR_OP_CALL
+                        inst%typ = lr_type_f64_s(handle)
+                        inst%dest = 0_c_int32_t
+                        inst%operands = c_loc(operands)
+                        inst%num_operands = int(size(args) + 1, c_int32_t)
+                        inst%indices = c_null_ptr
+                        inst%num_indices = 0_c_int32_t
+                        inst%align = 0_c_int32_t
+                        inst%icmp_pred = 0_c_int
+                        inst%fcmp_pred = 0_c_int
+                        inst%call_external_abi = c_false
+                        inst%call_vararg = c_false
+                        inst%call_fixed_args = 0_c_int32_t
+
+                        call clear_liric_error(error)
+                        vreg = lr_session_emit(handle, inst, error)
+                    end function emit_call_f64_function
+
+                    function f64_vreg(handle, vreg) result(operand)
+                        type(c_ptr), intent(in) :: handle
+                        integer(c_int32_t), intent(in) :: vreg
+                        type(lr_operand_desc_t) :: operand
+
+                        operand%kind = LR_OP_KIND_VREG
+                        operand%payload = int(vreg, c_int64_t)
+                        operand%typ = lr_type_f64_s(handle)
+                        operand%global_offset = 0_c_int64_t
+                    end function f64_vreg
+
+                    function ptr_vreg(handle, vreg) result(operand)
+                        type(c_ptr), intent(in) :: handle
+                        integer(c_int32_t), intent(in) :: vreg
+                        type(lr_operand_desc_t) :: operand
+
+                        operand%kind = LR_OP_KIND_VREG
+                        operand%payload = int(vreg, c_int64_t)
+                        operand%typ = lr_type_ptr_s(handle)
+                        operand%global_offset = 0_c_int64_t
+                    end function ptr_vreg
+
+                    function global_operand(handle, id) result(operand)
+                        type(c_ptr), intent(in) :: handle
+                        integer(c_int32_t), intent(in) :: id
+                        type(lr_operand_desc_t) :: operand
+
+                        operand%kind = LR_OP_KIND_GLOBAL
+                        operand%payload = int(id, c_int64_t)
+                        operand%typ = lr_type_ptr_s(handle)
+                        operand%global_offset = 0_c_int64_t
+                    end function global_operand
+
+                end module liric_session_procedure_bindings

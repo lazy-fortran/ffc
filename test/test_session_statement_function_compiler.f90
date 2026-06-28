@@ -31,24 +31,24 @@ contains
             'end program main'
 
         test_integer_statement_function = expect_output( &
-            source, '          17'//new_line('a'), &
-            '/tmp/ffc_stmt_fn_int')
-    end function test_integer_statement_function
+                source, '          17'//new_line('a'), &
+                '/tmp/ffc_stmt_fn_int')
+        end function test_integer_statement_function
 
-    logical function test_real_statement_function()
-        ! area(r) = pi*r*r called with 2.0 yields 12.5663605 (single precision).
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  real :: r, a'//new_line('a')// &
-            '  real, parameter :: pi = 3.14159'//new_line('a')// &
-            '  area(r) = pi * r * r'//new_line('a')// &
-            '  a = area(2.0)'//new_line('a')// &
-            '  print *, a'//new_line('a')// &
-            'end program main'
+        logical function test_real_statement_function()
+            ! area(r) = pi*r*r called with 2.0 yields 12.5663605 (single precision).
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  real :: r, a'//new_line('a')// &
+                '  real, parameter :: pi = 3.14159'//new_line('a')// &
+                '  area(r) = pi * r * r'//new_line('a')// &
+                '  a = area(2.0)'//new_line('a')// &
+                '  print *, a'//new_line('a')// &
+                'end program main'
 
-        test_real_statement_function = expect_output( &
-            source, '   12.5663605    '//new_line('a'), &
-            '/tmp/ffc_stmt_fn_real')
-    end function test_real_statement_function
+            test_real_statement_function = expect_output( &
+                    source, '   12.5663605    '//new_line('a'), &
+                    '/tmp/ffc_stmt_fn_real')
+            end function test_real_statement_function
 
-end program test_session_statement_function
+        end program test_session_statement_function

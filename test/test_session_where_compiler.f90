@@ -47,7 +47,7 @@ contains
             'end program main'
 
         ok = expect_output(source, i12([10, 0, 30, 0, 50]), &
-                           '/tmp/ffc_where_masked_test')
+            '/tmp/ffc_where_masked_test')
     end function test_where_masked_assignment
 
     logical function test_where_elsewhere() result(ok)
@@ -67,7 +67,7 @@ contains
             'end program main'
 
         ok = expect_output(source, i12([1, 2, 30, 40]), &
-                           '/tmp/ffc_where_elsewhere_test')
+            '/tmp/ffc_where_elsewhere_test')
     end function test_where_elsewhere
 
 end program test_session_where_compiler

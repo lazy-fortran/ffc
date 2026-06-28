@@ -55,7 +55,7 @@ contains
 
         allocate (character(len=0) :: error_msg)
         open (newunit=unit, file=path, status='replace', action='write', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) then
             error_msg = 'could not open .fmod artefact for writing: '//trim(path)
             return

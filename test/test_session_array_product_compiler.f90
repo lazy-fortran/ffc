@@ -17,11 +17,11 @@ contains
 
     logical function test_rank1_product()
         character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: a(1:4)'//new_line('a')// &
-                                       '  a = [2, 3, 4, 5]'//new_line('a')// &
-                                       '  print *, product(a)'//new_line('a')// &
-                                       'end program main'
+            'program main'//new_line('a')// &
+            '  integer :: a(1:4)'//new_line('a')// &
+            '  a = [2, 3, 4, 5]'//new_line('a')// &
+            '  print *, product(a)'//new_line('a')// &
+            'end program main'
 
         test_rank1_product = expect_output( &
             source, '         120'//new_line('a'), &
@@ -30,11 +30,11 @@ contains
 
     logical function test_rank2_product()
         character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  integer :: a(1:2, 1:2)'//new_line('a')// &
-                                       '  a = [1, 2, 3, 4]'//new_line('a')// &
-                                       '  print *, product(a)'//new_line('a')// &
-                                       'end program main'
+            'program main'//new_line('a')// &
+            '  integer :: a(1:2, 1:2)'//new_line('a')// &
+            '  a = [1, 2, 3, 4]'//new_line('a')// &
+            '  print *, product(a)'//new_line('a')// &
+            'end program main'
 
         test_rank2_product = expect_output( &
             source, '          24'//new_line('a'), &

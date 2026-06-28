@@ -106,7 +106,7 @@ contains
 
         ! print_val(7, result) -> print_int(7, result) -> result = 7 + 1 = 8
         test_generic_subroutine = expect_exit_status( &
-            source, 8, '/tmp/ffc_session_generic_sub')
-    end function test_generic_subroutine
+                source, 8, '/tmp/ffc_session_generic_sub')
+        end function test_generic_subroutine
 
-end program test_session_generic_interface_compiler
+    end program test_session_generic_interface_compiler

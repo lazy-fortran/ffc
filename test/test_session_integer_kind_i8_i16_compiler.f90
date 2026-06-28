@@ -3,9 +3,9 @@ program test_session_integer_kind_i8_i16_compiler
     ! arithmetic, and list-directed print match gfortran byte-for-byte (#246).
     use session_program_lowering, only: lower_program_to_liric_exe
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                   compiler_frontend_result_t, &
-                                   compile_frontend_from_string, &
-                                   INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, &
+        INPUT_MODE_STANDARD
     implicit none
 
     logical :: all_passed
@@ -106,7 +106,7 @@ contains
         end if
 
         call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe, error_msg)
+            frontend_result%root_index, exe, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL[', trim(stem), ']: ffc lowering failed: ', trim(error_msg)
             return
@@ -116,7 +116,7 @@ contains
         write (unit, '(A)') source
         close (unit)
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
-                                  exitstat=exit_stat)
+            exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL[', trim(stem), ']: gfortran rejected source'
             return
@@ -125,14 +125,14 @@ contains
         call execute_command_line(exe//' > '//ffc_out//' 2>&1', exitstat=exit_stat)
         call execute_command_line(ref//' > '//ref_out//' 2>&1', exitstat=exit_stat)
         call execute_command_line('diff '//ffc_out//' '//ref_out// &
-                                  ' > /dev/null 2>&1', exitstat=status)
+            ' > /dev/null 2>&1', exitstat=status)
         if (status /= 0) then
             print *, 'FAIL[', trim(stem), ']: ffc output differs from gfortran'
             call execute_command_line('diff '//ffc_out//' '//ref_out)
             return
         end if
         call execute_command_line('rm -f '//src//' '//exe//' '//ref// &
-                                  ' '//ffc_out//' '//ref_out)
+            ' '//ffc_out//' '//ref_out)
         matches_gfortran = .true.
     end function matches_gfortran
 

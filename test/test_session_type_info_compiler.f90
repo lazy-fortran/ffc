@@ -34,10 +34,10 @@ contains
 
         test_each_derived_type_definition_emits_type_info = .true.
         if (.not. expect_exe_has_symbol(source, &
-                '/tmp/ffc_type_info_point.o', '__ffc_type_info_point_t')) &
+            '/tmp/ffc_type_info_point.o', '__ffc_type_info_point_t')) &
             test_each_derived_type_definition_emits_type_info = .false.
         if (.not. expect_exe_has_symbol(source, &
-                '/tmp/ffc_type_info_pair.o', '__ffc_type_info_pair_t')) &
+            '/tmp/ffc_type_info_pair.o', '__ffc_type_info_pair_t')) &
             test_each_derived_type_definition_emits_type_info = .false.
     end function test_each_derived_type_definition_emits_type_info
 

@@ -65,7 +65,7 @@ contains
         ! A bare module lowers but has no entry point; a successful compile is the
         ! pass condition, so reuse expect_exit_status with the no-main exit code 0.
         test_recursive_module_function = expect_exit_status( &
-            source, 0, '/tmp/ffc_session_recursive_module_test')
-    end function test_recursive_module_function
+                source, 0, '/tmp/ffc_session_recursive_module_test')
+        end function test_recursive_module_function
 
-end program test_session_recursive_function_compiler
+    end program test_session_recursive_function_compiler

@@ -2,10 +2,10 @@ module session_lowering_ops
     use, intrinsic :: iso_c_binding, only: c_int, c_int64_t
     use ffc_strings, only: set_empty
     use liric_session_bindings, only: LR_OP_ADD, LR_OP_MUL, LR_OP_SDIV, &
-                                      LR_OP_SUB
+        LR_OP_SUB
     use liric_session_control_bindings, only: LR_CMP_EQ, LR_CMP_NE, &
-                                              LR_CMP_SGE, LR_CMP_SGT, &
-                                              LR_CMP_SLE, LR_CMP_SLT
+        LR_CMP_SGE, LR_CMP_SGT, &
+        LR_CMP_SLE, LR_CMP_SLT
     implicit none
     private
 
@@ -43,7 +43,7 @@ contains
             call set_empty(error_msg)
         else
             error_msg = 'invalid integer literal for direct LIRIC lowering: '// &
-                        trim(text)
+                trim(text)
         end if
     end subroutine parse_i32_literal
 
@@ -167,7 +167,7 @@ contains
             opcode = LR_OP_SDIV
         case default
             error_msg = 'ffc direct-session lowering does not support operator: '// &
-                        trim(source_op)
+                trim(source_op)
             opcode = 0
         end select
     end subroutine integer_opcode
@@ -193,7 +193,7 @@ contains
             predicate = LR_CMP_SLE
         case default
             error_msg = 'ffc direct-session lowering does not support comparison: '// &
-                        trim(source_op)
+                trim(source_op)
             predicate = LR_CMP_EQ
         end select
     end subroutine integer_compare_predicate

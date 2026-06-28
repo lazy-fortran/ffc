@@ -20,8 +20,8 @@ program test_conformance_gauntlet_smoke
 
     ! Build the command string at runtime
     cmd = 'timeout 120 bash ' // SCRIPT // &
-          ' --suite fortfront-f90 --max-files 20' // &
-          ' --report ' // REPORT
+        ' --suite fortfront-f90 --max-files 20' // &
+        ' --report ' // REPORT
 
     call execute_command_line(cmd, exitstat=exit_stat)
 
@@ -44,7 +44,7 @@ program test_conformance_gauntlet_smoke
     has_summary = .false.
     has_zero_fail_summary = .false.
     open(newunit=unit, file=REPORT, status='old', action='read', &
-         iostat=io_stat)
+        iostat=io_stat)
     if (io_stat /= 0) then
         print *, 'FAIL: cannot open report ', trim(adjustl(REPORT))
         stop 1

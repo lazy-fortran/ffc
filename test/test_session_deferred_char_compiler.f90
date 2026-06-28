@@ -128,7 +128,7 @@ contains
 
         test_two_deferred_characters_get_independent_descriptors = &
             expect_exit_status( &
-                source, 0, '/tmp/ffc_session_deferred_two_decl_test')
+            source, 0, '/tmp/ffc_session_deferred_two_decl_test')
     end function test_two_deferred_characters_get_independent_descriptors
 
     logical function test_deferred_literal_assignment_sets_length()
