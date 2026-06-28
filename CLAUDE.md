@@ -29,14 +29,16 @@ explicit decision.
 
 ## Build and test
 
+Use `fo` for every build/test loop; call `fpm` directly only to isolate one named test or diagnose a `fo` failure.
+
 The LIRIC static library must be on the linker path:
 
 ```bash
 export LIBRARY_PATH=/home/ert/code/liric/build   # adjust to your liric build dir
-fpm build
-fpm test                                         # full behavioural suite
-fpm test test_session_stop_code_compiler         # one test
-fpm run ffc -- empty.f90 -o empty                # use the CLI
+fo build
+fo test                                          # full behavioural suite
+fpm test test_session_stop_code_compiler         # isolate one named test
+fo exec ffc -- empty.f90 -o empty                # use the CLI
 ```
 
 If you do not have LIRIC built locally, build it first in its own repo
@@ -77,8 +79,8 @@ program`. fpm auto-discovery picks it up. No `fpm.toml` edit needed.
 
 ## Quality gates
 
-1. `fpm build` clean.
-2. `fpm test` all green — never skip, weaken, or label tests as
+1. `fo build` clean.
+2. `fo test` all green — never skip, weaken, or label tests as
    "unrelated".
 3. CI green on the PR before merging.
 4. Update `README.md`'s supported-features list when you add a real
