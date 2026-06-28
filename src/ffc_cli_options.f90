@@ -14,6 +14,8 @@ module ffc_cli_options
         character(len=CLI_PATH_LEN), allocatable :: link_inputs(:)
         logical :: error = .false.
         character(len=:), allocatable :: error_message
+        logical :: show_version = .false.
+        logical :: show_help = .false.
     end type cli_options_t
 
 contains
@@ -37,6 +39,10 @@ contains
         i = 1
         do while (i <= n)
             select case (trim(argv(i)))
+            case ('--version')
+                opts%show_version = .true.
+            case ('--help', '-h')
+                opts%show_help = .true.
             case ('-c')
                 opts%emit_object = .true.
             case ('-o')
@@ -65,6 +71,8 @@ contains
             end select
             i = i + 1
         end do
+
+        if (opts%show_version .or. opts%show_help) return
 
         if (len_trim(opts%input_file) == 0) then
             call set_error(opts, 'missing input file')

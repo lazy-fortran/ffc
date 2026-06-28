@@ -1,4 +1,5 @@
 program ffc_main
+    use ffc_module_artefact, only: FFC_FMOD_VERSION
     use fortfront_compiler, only: compiler_frontend_options_t, &
                                   compiler_frontend_result_t, &
                                   compile_frontend_from_file, INPUT_MODE_LAZY, &
@@ -30,6 +31,14 @@ program ffc_main
         call get_command_argument(i, argv(i))
     end do
     call parse_arguments(argv, opts)
+    if (opts%show_version) then
+        print '(A)', 'ffc '//FFC_FMOD_VERSION
+        stop 0
+    end if
+    if (opts%show_help) then
+        call print_usage()
+        stop 0
+    end if
     if (opts%error) then
         print '(A)', opts%error_message
         stop 1
@@ -145,6 +154,8 @@ contains
         print '(A)', '  -I <dir>      Add module/include search directory'
         print '(A)', '  <file>.o      Link input object (its directory is '// &
             'searched for .fmod)'
+        print '(A)', '  --version     Print version and exit'
+        print '(A)', '  --help, -h    Print this help and exit'
     end subroutine print_usage
 
     function default_output_name(emit_object) result(name)
