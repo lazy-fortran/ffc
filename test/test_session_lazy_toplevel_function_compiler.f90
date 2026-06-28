@@ -16,22 +16,22 @@ program test_session_lazy_toplevel_function_compiler
     ! The issue_2812 corpus case: a function with inferred argument and result
     ! types, called with first-assignment inference at top level.
     if (.not. lazy_runs( &
-            'function add(a, b)'//new_line('a')// &
-            '    add = a + b'//new_line('a')// &
-            'end function'//new_line('a')// &
-            ''//new_line('a')// &
-            'x = add(5, 3)'//new_line('a')// &
-            'print *, x'//new_line('a'), &
-            '           8', 'ffc_lazy_toplevel_add')) ok = .false.
+        'function add(a, b)'//new_line('a')// &
+        '    add = a + b'//new_line('a')// &
+        'end function'//new_line('a')// &
+        ''//new_line('a')// &
+        'x = add(5, 3)'//new_line('a')// &
+        'print *, x'//new_line('a'), &
+        '           8', 'ffc_lazy_toplevel_add')) ok = .false.
 
     ! A top-level subroutine through the same standardization path.
     if (.not. lazy_runs( &
-            'subroutine show(n)'//new_line('a')// &
-            '    print *, n'//new_line('a')// &
-            'end subroutine'//new_line('a')// &
-            ''//new_line('a')// &
-            'call show(7)'//new_line('a'), &
-            '           7', 'ffc_lazy_toplevel_show')) ok = .false.
+        'subroutine show(n)'//new_line('a')// &
+        '    print *, n'//new_line('a')// &
+        'end subroutine'//new_line('a')// &
+        ''//new_line('a')// &
+        'call show(7)'//new_line('a'), &
+        '           7', 'ffc_lazy_toplevel_show')) ok = .false.
 
     ! A top-level subroutine with an explicit local declaration plus bare main
     ! statements parses to a mixed_construct_container root rather than a
@@ -39,25 +39,25 @@ program test_session_lazy_toplevel_function_compiler
     ! the subroutine becomes a contained procedure, the bare statements the
     ! main body (#266, #275). Mirrors monomorphization_scale_subroutine.lf.
     if (.not. lazy_runs( &
-            'subroutine bump(v)'//new_line('a')// &
-            '    integer :: v'//new_line('a')// &
-            '    v = v + 1'//new_line('a')// &
-            '    print *, v'//new_line('a')// &
-            'end subroutine'//new_line('a')// &
-            ''//new_line('a')// &
-            'integer :: k'//new_line('a')// &
-            'k = 41'//new_line('a')// &
-            'call bump(k)'//new_line('a'), &
-            '          42', 'ffc_mixed_container_subroutine')) ok = .false.
+        'subroutine bump(v)'//new_line('a')// &
+        '    integer :: v'//new_line('a')// &
+        '    v = v + 1'//new_line('a')// &
+        '    print *, v'//new_line('a')// &
+        'end subroutine'//new_line('a')// &
+        ''//new_line('a')// &
+        'integer :: k'//new_line('a')// &
+        'k = 41'//new_line('a')// &
+        'call bump(k)'//new_line('a'), &
+        '          42', 'ffc_mixed_container_subroutine')) ok = .false.
 
     ! A declaration-only unit (no executable statements) parses to a
     ! mixed_construct_container whose body holds only specification nodes. It
     ! must lower to a runnable empty main rather than a blanket "unsupported
     ! program unit" rejection (#266, #275). Mirrors the header-only corpus case.
     if (.not. lazy_runs_empty( &
-            'integer :: x'//new_line('a')// &
-            'real :: y'//new_line('a'), &
-            'ffc_mixed_container_decls_only')) ok = .false.
+        'integer :: x'//new_line('a')// &
+        'real :: y'//new_line('a'), &
+        'ffc_mixed_container_decls_only')) ok = .false.
 
     if (.not. ok) stop 1
     print *, 'PASS: top-level lazy function and subroutine lower and run'
@@ -87,7 +87,7 @@ contains
         close (unit)
 
         command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | head -n 1); "// &
-                  "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
+            "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then
             print *, 'FAIL: ffc rejected lazy source ', stem, ' exit=', exit_stat
@@ -95,7 +95,7 @@ contains
         end if
 
         call execute_command_line(exe_path//' > '//out_path, &
-                                  exitstat=exit_stat, cmdstat=cmd_stat)
+            exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then
             print *, 'FAIL: lazy executable did not run cleanly: ', stem
             return
@@ -130,7 +130,7 @@ contains
         close (unit)
 
         command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | head -n 1); "// &
-                  "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
+            "test -n ""$exe"" && ""$exe"" "//src_path//' -o '//exe_path//"'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then
             print *, 'FAIL: ffc rejected declaration-only source ', stem, &

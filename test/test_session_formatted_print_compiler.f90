@@ -1,7 +1,7 @@
 program test_session_formatted_print_compiler
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                  compiler_frontend_result_t, &
-                                  compile_frontend_from_string, INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, INPUT_MODE_STANDARD
     use ffc_test_support, only: expect_output
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
@@ -33,7 +33,7 @@ contains
             'end program main'
 
         test_integer_i0 = expect_output(source, '42'//new_line('a'), &
-                                        '/tmp/ffc_fmt_i0_test')
+            '/tmp/ffc_fmt_i0_test')
     end function test_integer_i0
 
     logical function test_integer_i5()
@@ -45,7 +45,7 @@ contains
             'end program main'
 
         test_integer_i5 = expect_output(source, '   42'//new_line('a'), &
-                                        '/tmp/ffc_fmt_i5_test')
+            '/tmp/ffc_fmt_i5_test')
     end function test_integer_i5
 
     logical function test_string_a_literal()
@@ -55,7 +55,7 @@ contains
             'end program main'
 
         test_string_a_literal = expect_output(source, 'hello'//new_line('a'), &
-                                              '/tmp/ffc_fmt_a_lit_test')
+            '/tmp/ffc_fmt_a_lit_test')
     end function test_string_a_literal
 
     logical function test_string_a_variable()
@@ -137,8 +137,8 @@ contains
         end if
 
         call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe, &
-                                        error_msg)
+            frontend_result%root_index, exe, &
+            error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL[', stem, ']: ffc lowering failed: ', trim(error_msg)
             return
@@ -148,7 +148,7 @@ contains
         write (unit, '(A)') source
         close (unit)
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
-                                  exitstat=exit_stat)
+            exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL[', stem, ']: gfortran rejected source'
             return
@@ -157,7 +157,7 @@ contains
         call execute_command_line(exe//' > '//ffc_out, exitstat=exit_stat)
         call execute_command_line(ref//' > '//ref_out, exitstat=exit_stat)
         call execute_command_line('diff '//ffc_out//' '//ref_out// &
-                                  ' > /dev/null 2>&1', exitstat=status)
+            ' > /dev/null 2>&1', exitstat=status)
         if (status /= 0) then
             print *, 'FAIL[', stem, ']: ffc output differs from gfortran'
             call execute_command_line('diff '//ffc_out//' '//ref_out)
@@ -165,7 +165,7 @@ contains
             matches_gfortran = .true.
         end if
         call execute_command_line('rm -f '//src//' '//exe//' '//ref//' '// &
-                                  ffc_out//' '//ref_out)
+            ffc_out//' '//ref_out)
     end function matches_gfortran
 
 end program test_session_formatted_print_compiler

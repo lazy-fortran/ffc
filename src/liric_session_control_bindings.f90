@@ -3,11 +3,11 @@ module liric_session_control_bindings
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
     use, intrinsic :: iso_c_binding, only: c_loc, c_null_ptr, c_ptr
     use liric_session_common, only: require_open_session, status_ok, &
-                                    clear_liric_error, set_empty, &
-                                    liric_session_error_message, lr_error_t, &
-                                    lr_inst_desc_t, lr_operand_desc_t, &
-                                    liric_session_t, LR_OK, LR_OP_KIND_BLOCK, &
-                                    LR_OP_KIND_VREG
+        clear_liric_error, set_empty, &
+        liric_session_error_message, lr_error_t, &
+        lr_inst_desc_t, lr_operand_desc_t, &
+        liric_session_t, LR_OK, LR_OP_KIND_BLOCK, &
+        LR_OP_KIND_VREG
     use liric_session_bindings, only: i32_vreg
     implicit none
     private
@@ -57,7 +57,7 @@ module liric_session_control_bindings
         end function lr_session_block
 
         function lr_session_set_block(handle, block_id, err) result(status) &
-            bind(c)
+                bind(c)
             import :: c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             integer(c_int32_t), value :: block_id
@@ -112,7 +112,7 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         unused_vreg = emit_br_inst(session%handle, block_operand(target_block), &
-                                   error)
+            error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -120,7 +120,7 @@ contains
     end function emit_liric_br
 
     logical function emit_liric_i32_icmp(session, pred, lhs, rhs, result, &
-                                         error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: pred
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -142,7 +142,7 @@ contains
     end function emit_liric_i32_icmp
 
     logical function emit_liric_f32_fcmp(session, pred, lhs, rhs, result, &
-                                         error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: pred
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -164,7 +164,7 @@ contains
     end function emit_liric_f32_fcmp
 
     logical function emit_liric_f64_fcmp(session, pred, lhs, rhs, result, &
-                                         error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         integer(c_int), intent(in) :: pred
         type(lr_operand_desc_t), intent(in) :: lhs
@@ -186,7 +186,7 @@ contains
     end function emit_liric_f64_fcmp
 
     logical function emit_liric_condbr(session, condition, true_block, &
-                                       false_block, error_msg)
+            false_block, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: condition
         integer(c_int32_t), intent(in) :: true_block
@@ -199,8 +199,8 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         unused_vreg = emit_condbr_inst(session%handle, condition, &
-                                       block_operand(true_block), &
-                                       block_operand(false_block), error)
+            block_operand(true_block), &
+            block_operand(false_block), error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -208,7 +208,7 @@ contains
     end function emit_liric_condbr
 
     logical function emit_liric_phi(session, lhs, lhs_block, rhs, rhs_block, &
-                                    result, error_msg)
+            result, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: lhs
         integer(c_int32_t), intent(in) :: lhs_block
@@ -223,7 +223,7 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         vreg = emit_phi_inst(session%handle, lhs, block_operand(lhs_block), rhs, &
-                             block_operand(rhs_block), error)
+            block_operand(rhs_block), error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         result = vreg_like(vreg, lhs)
@@ -232,7 +232,7 @@ contains
     end function emit_liric_phi
 
     logical function emit_liric_i32_phi(session, lhs, lhs_block, rhs, rhs_block, &
-                                        result, error_msg)
+            result, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: lhs
         integer(c_int32_t), intent(in) :: lhs_block
@@ -242,7 +242,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         emit_liric_i32_phi = emit_liric_phi(session, lhs, lhs_block, rhs, &
-                                            rhs_block, result, error_msg)
+            rhs_block, result, error_msg)
         if (.not. emit_liric_i32_phi) return
         result = i32_vreg(session, int(result%payload, c_int32_t))
         emit_liric_i32_phi = .true.
@@ -386,7 +386,7 @@ contains
     end function emit_fcmp
 
     function emit_condbr_inst(handle, condition, true_target, false_target, &
-                              error) result(vreg)
+            error) result(vreg)
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: condition
         type(lr_operand_desc_t), intent(in) :: true_target
@@ -408,7 +408,7 @@ contains
     end function emit_condbr_inst
 
     function emit_phi_inst(handle, lhs, lhs_block, rhs, rhs_block, error) &
-        result(vreg)
+            result(vreg)
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: lhs
         type(lr_operand_desc_t), intent(in) :: lhs_block

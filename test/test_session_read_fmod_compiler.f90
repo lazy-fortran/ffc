@@ -1,12 +1,12 @@
 program test_session_read_fmod_compiler
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                  compiler_frontend_result_t, &
-                                  compile_frontend_from_string, INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
-                                        lower_program_to_liric_object
+        lower_program_to_liric_object
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
-                                   fmod_derived_type_t, fmod_variable_t, &
-                                   write_fmod
+        fmod_derived_type_t, fmod_variable_t, &
+        write_fmod
     implicit none
 
     logical :: all_passed
@@ -49,13 +49,13 @@ contains
         end if
 
         call compile_with_include(source, '/tmp/ffc_read_fmod_use', dir, &
-                                  error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: lowering through .fmod failed: ', trim(error_msg)
             return
         end if
         call execute_command_line('/tmp/ffc_read_fmod_use', exitstat=exit_stat, &
-                                  cmdstat=cmd_stat)
+            cmdstat=cmd_stat)
         call execute_command_line('rm -f /tmp/ffc_read_fmod_use')
         if (cmd_stat /= 0) then
             print *, 'FAIL: could not run binary'
@@ -78,7 +78,7 @@ contains
 
         ok = .false.
         call compile_with_include(source, '/tmp/ffc_read_fmod_missing', &
-                                  '/tmp/ffc_read_fmod_empty', error_msg)
+            '/tmp/ffc_read_fmod_empty', error_msg)
         call execute_command_line('rm -f /tmp/ffc_read_fmod_missing')
         if (len_trim(error_msg) == 0) then
             print *, 'FAIL: expected a module-not-found diagnostic'
@@ -135,9 +135,9 @@ contains
         paths(1) = dir
         call execute_command_line('rm -f /tmp/ffc_read_fmod_var.o')
         call lower_program_to_liric_object(frontend_result%arena, &
-                                           frontend_result%root_index, &
-                                           '/tmp/ffc_read_fmod_var.o', &
-                                           error_msg, paths)
+            frontend_result%root_index, &
+            '/tmp/ffc_read_fmod_var.o', &
+            error_msg, paths)
         call execute_command_line('rm -f /tmp/ffc_read_fmod_var.o')
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: USE of .fmod variable did not resolve: ', &
@@ -162,14 +162,14 @@ contains
         call compile_frontend_from_string(source, frontend_result, options)
         if (.not. frontend_result%success()) then
             error_msg = 'FortFront rejected source: '// &
-                        trim(frontend_result%diagnostic_text)
+                trim(frontend_result%diagnostic_text)
             return
         end if
         paths(1) = include_dir
         call execute_command_line('rm -f '//exe_path)
         call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe_path, &
-                                        error_msg, paths)
+            frontend_result%root_index, exe_path, &
+            error_msg, paths)
     end subroutine compile_with_include
 
 end program test_session_read_fmod_compiler

@@ -1,14 +1,14 @@
 module ffc_fortfront_queries
     use fortfront_compiler, only: ast_arena_t, get_program_body_info, &
-                                  get_module_body_info, &
-                                  get_function_body_info, &
-                                  get_subroutine_body_info, &
-                                  get_select_case_info, get_case_block_info, &
-                                  get_case_default_body, get_case_range_info, &
-                                  get_select_type_info, get_type_guard_info
+        get_module_body_info, &
+        get_function_body_info, &
+        get_subroutine_body_info, &
+        get_select_case_info, get_case_block_info, &
+        get_case_default_body, get_case_range_info, &
+        get_select_type_info, get_type_guard_info
     use fortfront_utils, only: node_exists, get_node_type_at
     use fortfront, only: is_derived_type_node, derived_type_node, &
-                         is_declaration_node, declaration_node
+        is_declaration_node, declaration_node
     use ast_nodes_control, only: goto_node
     implicit none
     private
@@ -42,7 +42,7 @@ contains
             return
         end if
         select type (node => arena%entries(type_index)%node)
-        type is (derived_type_node)
+            type is (derived_type_node)
             if (allocated(node%name)) name = node%name
             call set_empty(error_msg)
         class default
@@ -60,7 +60,7 @@ contains
             return
         end if
         select type (node => arena%entries(type_index)%node)
-        type is (derived_type_node)
+            type is (derived_type_node)
             if (allocated(node%component_indices)) then
                 components = node%component_indices
             else
@@ -72,7 +72,7 @@ contains
     end subroutine get_derived_type_components
 
     subroutine get_declaration_var_name(arena, decl_index, var_name, &
-                                        error_msg)
+            error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: decl_index
         character(len=:), allocatable, intent(out) :: var_name
@@ -84,7 +84,7 @@ contains
             return
         end if
         select type (node => arena%entries(decl_index)%node)
-        type is (declaration_node)
+            type is (declaration_node)
             if (allocated(node%var_name)) var_name = node%var_name
             call set_empty(error_msg)
         class default
@@ -93,7 +93,7 @@ contains
     end subroutine get_declaration_var_name
 
     subroutine get_declaration_type_name(arena, decl_index, type_name, &
-                                         error_msg)
+            error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: decl_index
         character(len=:), allocatable, intent(out) :: type_name
@@ -105,7 +105,7 @@ contains
             return
         end if
         select type (node => arena%entries(decl_index)%node)
-        type is (declaration_node)
+            type is (declaration_node)
             if (allocated(node%type_name)) type_name = node%type_name
             call set_empty(error_msg)
         class default
@@ -114,20 +114,20 @@ contains
     end subroutine get_declaration_type_name
 
     logical function get_declaration_has_initializer(arena, decl_index) &
-        result(has_init)
+            result(has_init)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: decl_index
 
         has_init = .false.
         if (.not. node_exists(arena, decl_index)) return
         select type (node => arena%entries(decl_index)%node)
-        type is (declaration_node)
+            type is (declaration_node)
             has_init = node%has_initializer
         end select
     end function get_declaration_has_initializer
 
     function get_declaration_initializer_index(arena, decl_index) &
-        result(init_index)
+            result(init_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: decl_index
         integer :: init_index
@@ -135,7 +135,7 @@ contains
         init_index = 0
         if (.not. node_exists(arena, decl_index)) return
         select type (node => arena%entries(decl_index)%node)
-        type is (declaration_node)
+            type is (declaration_node)
             if (node%has_initializer .and. node%initializer_index > 0) then
                 init_index = node%initializer_index
             end if
@@ -166,7 +166,7 @@ contains
         call set_empty(label)
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
-        type is (goto_node)
+            type is (goto_node)
             if (allocated(node%label)) label = node%label
         end select
     end function get_goto_label
@@ -180,9 +180,9 @@ contains
         is_computed = .false.
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
-        type is (goto_node)
+            type is (goto_node)
             is_computed = node%selector_index /= 0 .or. &
-                          allocated(node%label_list)
+                allocated(node%label_list)
         end select
     end function goto_is_computed
 
@@ -196,7 +196,7 @@ contains
         call set_empty(label_list)
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
-        type is (goto_node)
+            type is (goto_node)
             if (allocated(node%label_list)) label_list = node%label_list
         end select
     end function get_goto_label_list
@@ -209,7 +209,7 @@ contains
         idx = 0
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
-        type is (goto_node)
+            type is (goto_node)
             idx = node%selector_index
         end select
     end function get_goto_selector_index

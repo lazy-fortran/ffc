@@ -1,7 +1,7 @@
 program test_session_multi_value_print_compiler
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                  compiler_frontend_result_t, &
-                                  compile_frontend_from_string, INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
@@ -46,8 +46,8 @@ program test_session_multi_value_print_compiler
     close (unit)
 
     call lower_program_to_liric_exe(frontend_result%arena, &
-                                    frontend_result%root_index, exe_path, &
-                                    error_msg)
+        frontend_result%root_index, exe_path, &
+        error_msg)
     if (len_trim(error_msg) > 0) then
         print *, 'FAIL: direct LIRIC lowering failed: ', trim(error_msg)
         stop 1
@@ -61,7 +61,7 @@ program test_session_multi_value_print_compiler
     end if
 
     call execute_command_line('gfortran -w '//src_path//' -o '//ref_path, &
-                              exitstat=exit_stat)
+        exitstat=exit_stat)
     if (exit_stat /= 0) then
         print *, 'FAIL: gfortran failed to compile ffc output'
         call execute_command_line('rm -f '//exe_path//' '//out_path//' '//ref_path//' '//src_path)
@@ -92,7 +92,7 @@ contains
         integer :: status
 
         call execute_command_line('diff -q '//left//' '//right// &
-                                  ' > /dev/null 2>&1', exitstat=status)
+            ' > /dev/null 2>&1', exitstat=status)
         files_equal = status == 0
     end function files_equal
 
@@ -109,7 +109,7 @@ contains
         call normalize_file(right, norm_right, .false.)
 
         call execute_command_line('diff -q '//norm_left//' '//norm_right// &
-                                  ' > /dev/null 2>&1', exitstat=status)
+            ' > /dev/null 2>&1', exitstat=status)
         outputs_match = status == 0
 
         call execute_command_line('rm -f '//norm_left//' '//norm_right)
@@ -130,7 +130,7 @@ contains
         end if
 
         cmd = 'sed "s/^[[:space:]]*//;s/[[:space:]]*$//;s/[[:space:]]\{1,\}/ /g" '// &
-              in_path//' > '//norm_path//' 2>/dev/null'
+            in_path//' > '//norm_path//' 2>/dev/null'
         call execute_command_line(cmd, exitstat=io_stat)
         allocate (character(len=len_trim(norm_path)) :: out_path)
         out_path = trim(norm_path)
@@ -141,7 +141,7 @@ contains
         integer :: unit, io_stat
 
         open (newunit=unit, file=path, status='old', action='read', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) return
         do
             read (unit, '(A)', iostat=io_stat) output_line

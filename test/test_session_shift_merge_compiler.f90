@@ -34,9 +34,9 @@ contains
             'end program main'
         test_cshift_positive = expect_output( &
             source, '           2'//new_line('a')// &
-                    '           3'//new_line('a')// &
-                    '           4'//new_line('a')// &
-                    '           1'//new_line('a'), &
+            '           3'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           1'//new_line('a'), &
             '/tmp/ffc_session_cshift_pos_test')
     end function test_cshift_positive
 
@@ -55,9 +55,9 @@ contains
             'end program main'
         test_cshift_negative = expect_output( &
             source, '           4'//new_line('a')// &
-                    '           1'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           3'//new_line('a'), &
+            '           1'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           3'//new_line('a'), &
             '/tmp/ffc_session_cshift_neg_test')
     end function test_cshift_negative
 
@@ -76,9 +76,9 @@ contains
             'end program main'
         test_eoshift_fills_zero = expect_output( &
             source, '           2'//new_line('a')// &
-                    '           3'//new_line('a')// &
-                    '           4'//new_line('a')// &
-                    '           0'//new_line('a'), &
+            '           3'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           0'//new_line('a'), &
             '/tmp/ffc_session_eoshift_zero_test')
     end function test_eoshift_fills_zero
 
@@ -101,8 +101,8 @@ contains
             'end program main'
         test_merge_integer = expect_output( &
             source, '           1'//new_line('a')// &
-                    '           5'//new_line('a')// &
-                    '           3'//new_line('a'), &
+            '           5'//new_line('a')// &
+            '           3'//new_line('a'), &
             '/tmp/ffc_session_merge_int_test')
     end function test_merge_integer
 
@@ -123,7 +123,7 @@ contains
             'end program main'
         test_merge_real = expect_output( &
             source, '   3.50000000    '//new_line('a')// &
-                    '   2.50000000    '//new_line('a'), &
+            '   2.50000000    '//new_line('a'), &
             '/tmp/ffc_session_merge_real_test')
     end function test_merge_real
 

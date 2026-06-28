@@ -30,7 +30,7 @@ contains
             '    -0.1235E+05'//new_line('a')
 
         test_plain_e_descriptors = expect_output(source, expected, &
-                                                 '/tmp/ffc_fmt_e_test')
+            '/tmp/ffc_fmt_e_test')
     end function test_plain_e_descriptors
 
     logical function test_en_descriptors()
@@ -46,7 +46,7 @@ contains
             ' 123.000E-06'//new_line('a')
 
         test_en_descriptors = expect_output(source, expected, &
-                                            '/tmp/ffc_fmt_en_test')
+            '/tmp/ffc_fmt_en_test')
     end function test_en_descriptors
 
 end program test_session_e_descriptor_compiler

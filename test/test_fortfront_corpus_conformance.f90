@@ -44,8 +44,8 @@ contains
         ! Generous per-file timeout so a single slow compile under full-suite
         ! load is not a false failure (idle compiles are well under a second).
         cmd = 'timeout '//trim(timeout_text)//' bash '//SCRIPT// &
-              ' --suite '//suite//' --report '//report// &
-              ' --timeout 30 > '//log_path//' 2>&1'
+            ' --suite '//suite//' --report '//report// &
+            ' --timeout 30 > '//log_path//' 2>&1'
         call execute_command_line(cmd, exitstat=exit_stat)
 
         if (exit_stat /= 0) then
@@ -89,7 +89,7 @@ contains
         summary = ''
 
         open (newunit=unit, file=report, status='old', action='read', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) return
 
         do

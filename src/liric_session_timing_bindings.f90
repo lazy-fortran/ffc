@@ -8,20 +8,20 @@ module liric_session_timing_bindings
     ! structure. The actual magnitudes are nondeterministic; the conformance
     ! gauntlet compares such programs structurally (see lib_conformance.sh).
     use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_float, c_int, &
-                                           c_int32_t, c_int64_t, c_loc, &
-                                           c_null_ptr, c_ptr
+        c_int32_t, c_int64_t, c_loc, &
+        c_null_ptr, c_ptr
     use liric_session_bindings, only: liric_session_t, lr_error_t, &
-                                      lr_inst_desc_t, lr_operand_desc_t, &
-                                      LR_OP_CALL, LR_OP_TRUNC, LR_OP_SITOFP, &
-                                      LR_OP_FMUL, LR_OP_KIND_VREG, &
-                                      LR_OP_KIND_GLOBAL, LR_OP_KIND_IMM_I64, &
-                                      lr_type_i32_s, lr_type_f32_s, &
-                                      lr_type_i64_s, lr_type_ptr_s, &
-                                      lr_session_emit, lr_session_intern, &
-                                      status_ok, clear_liric_error, set_empty, &
-                                      require_open_session, to_c_chars
+        lr_inst_desc_t, lr_operand_desc_t, &
+        LR_OP_CALL, LR_OP_TRUNC, LR_OP_SITOFP, &
+        LR_OP_FMUL, LR_OP_KIND_VREG, &
+        LR_OP_KIND_GLOBAL, LR_OP_KIND_IMM_I64, &
+        lr_type_i32_s, lr_type_f32_s, &
+        lr_type_i64_s, lr_type_ptr_s, &
+        lr_session_emit, lr_session_intern, &
+        status_ok, clear_liric_error, set_empty, &
+        require_open_session, to_c_chars
     use liric_session_io_bindings, only: liric_f32_immediate, &
-                                         emit_liric_f32_binary
+        emit_liric_f32_binary
     implicit none
     private
 
@@ -32,7 +32,7 @@ module liric_session_timing_bindings
 
     interface
         function lr_session_declare(handle, name, ret, params, n, vararg, &
-                                    err) result(status) bind(c)
+                err) result(status) bind(c)
             import :: c_bool, c_char, c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             character(kind=c_char), intent(in) :: name(*)
@@ -57,14 +57,14 @@ contains
         emit_cpu_time_value = .false.
         if (.not. require_open_session(session, error_msg)) return
         if (.not. declare_extern(session, 'clock', &
-                                 lr_type_i64_s(session%handle), error_msg)) return
+            lr_type_i64_s(session%handle), error_msg)) return
         if (.not. call_extern_i64(session, 'clock', ticks_i64, error_msg)) return
         if (.not. emit_cast(session, LR_OP_SITOFP, ticks_i64, &
-                            lr_type_f32_s(session%handle), ticks_f32, &
-                            error_msg)) return
+            lr_type_f32_s(session%handle), ticks_f32, &
+            error_msg)) return
         scale = liric_f32_immediate(session, 1.0e-6_c_float)
         if (.not. emit_liric_f32_binary(session, LR_OP_FMUL, ticks_f32, scale, &
-                                        result, error_msg)) return
+            result, error_msg)) return
         call set_empty(error_msg)
         emit_cpu_time_value = .true.
     end function emit_cpu_time_value
@@ -79,15 +79,15 @@ contains
         emit_system_clock_value = .false.
         if (.not. require_open_session(session, error_msg)) return
         if (.not. declare_extern_ptr_arg(session, 'time', &
-                                         lr_type_i64_s(session%handle), &
-                                         error_msg)) return
+            lr_type_i64_s(session%handle), &
+            error_msg)) return
         args(1) = i64_null_ptr(session)
         if (.not. call_extern(session, 'time', args, &
-                              lr_type_i64_s(session%handle), 1_c_int32_t, &
-                              secs_i64, error_msg)) return
+            lr_type_i64_s(session%handle), 1_c_int32_t, &
+            secs_i64, error_msg)) return
         if (.not. emit_cast(session, LR_OP_TRUNC, secs_i64, &
-                            lr_type_i32_s(session%handle), result, &
-                            error_msg)) return
+            lr_type_i32_s(session%handle), result, &
+            error_msg)) return
         call set_empty(error_msg)
         emit_system_clock_value = .true.
     end function emit_system_clock_value
@@ -117,7 +117,7 @@ contains
         call clear_liric_error(error)
         call to_c_chars(name, c_name)
         status = lr_session_declare(session%handle, c_name, ret_typ, c_null_ptr, &
-                                    0_c_int32_t, c_false, error)
+            0_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
         declare_extern = .true.
     end function declare_extern
@@ -138,7 +138,7 @@ contains
         call clear_liric_error(error)
         call to_c_chars(name, c_name)
         status = lr_session_declare(session%handle, c_name, ret_typ, &
-                                    c_loc(params), 1_c_int32_t, c_false, error)
+            c_loc(params), 1_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
         declare_extern_ptr_arg = .true.
     end function declare_extern_ptr_arg
@@ -152,12 +152,12 @@ contains
         type(lr_operand_desc_t) :: args(0)
 
         call_extern_i64 = call_extern(session, name, args, &
-                                      lr_type_i64_s(session%handle), &
-                                      0_c_int32_t, result, error_msg)
+            lr_type_i64_s(session%handle), &
+            0_c_int32_t, result, error_msg)
     end function call_extern_i64
 
     logical function call_extern(session, name, args, ret_typ, fixed_args, &
-                                 result, error_msg)
+            result, error_msg)
         ! Emit a fixed-arg external-ABI call and capture its result vreg.
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name

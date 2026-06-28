@@ -15,31 +15,31 @@ module liric_session_complex_print_bindings
     ! and .ffc.fmt_r8(f64 x, ptr buf) -> i32, then .ffc.print_c4 and
     ! .ffc.print_c8 call these for re and im, compute padding, and printf.
     use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int, c_int32_t, &
-                                           c_int64_t, c_loc, c_null_char, &
-                                           c_null_ptr, c_ptr, c_size_t
+        c_int64_t, c_loc, c_null_char, &
+        c_null_ptr, c_ptr, c_size_t
     use liric_session_bindings, only: liric_session_t, lr_error_t, &
-                                      lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
-                                      LR_OP_CALL, LR_OP_TRUNC, LR_OP_FPEXT, &
-                                      LR_OP_ADD, LR_OP_SUB, &
-                                      LR_OP_STORE, LR_OP_GEP, LR_OP_RET, &
-                                      LR_OP_RET_VOID, &
-                                      LR_OP_KIND_VREG, LR_OP_KIND_IMM_I64, &
-                                      LR_OP_KIND_GLOBAL, &
-                                      lr_type_i32_s, lr_type_f32_s, lr_type_f64_s, &
-                                      lr_type_i64_s, lr_type_ptr_s, lr_type_i8_s, &
-                                      lr_type_array_s, lr_type_void_s, &
-                                      lr_session_emit, lr_session_intern, &
-                                      lr_session_global, lr_session_param, &
-                                      status_ok, clear_liric_error, &
-                                      set_empty, require_open_session, to_c_chars, &
-                                      i32_vreg, i32_immediate
+        lr_inst_desc_t, lr_operand_desc_t, LR_OK, &
+        LR_OP_CALL, LR_OP_TRUNC, LR_OP_FPEXT, &
+        LR_OP_ADD, LR_OP_SUB, &
+        LR_OP_STORE, LR_OP_GEP, LR_OP_RET, &
+        LR_OP_RET_VOID, &
+        LR_OP_KIND_VREG, LR_OP_KIND_IMM_I64, &
+        LR_OP_KIND_GLOBAL, &
+        lr_type_i32_s, lr_type_f32_s, lr_type_f64_s, &
+        lr_type_i64_s, lr_type_ptr_s, lr_type_i8_s, &
+        lr_type_array_s, lr_type_void_s, &
+        lr_session_emit, lr_session_intern, &
+        lr_session_global, lr_session_param, &
+        status_ok, clear_liric_error, &
+        set_empty, require_open_session, to_c_chars, &
+        i32_vreg, i32_immediate
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg, i64_immediate, &
-                                             emit_alloca_bytes, emit_i32_binary
+        emit_alloca_bytes, emit_i32_binary
     use liric_session_control_bindings, only: create_liric_block, set_liric_block, &
-                                              emit_liric_br, emit_liric_condbr, &
-                                              emit_liric_i32_icmp, &
-                                              LR_CMP_NE, LR_CMP_SGE, &
-                                              LR_CMP_SLE, LR_CMP_SLT
+        emit_liric_br, emit_liric_condbr, &
+        emit_liric_i32_icmp, &
+        LR_CMP_NE, LR_CMP_SGE, &
+        LR_CMP_SLE, LR_CMP_SLT
     implicit none
     private
 
@@ -58,7 +58,7 @@ module liric_session_complex_print_bindings
 
     interface
         function lr_session_func_begin(handle, name, ret, params, n, &
-                                       vararg, err) result(status) bind(c)
+                vararg, err) result(status) bind(c)
             import :: c_bool, c_char, c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             character(kind=c_char), intent(in) :: name(*)
@@ -79,7 +79,7 @@ module liric_session_complex_print_bindings
         end function lr_session_func_end
 
         function lr_session_declare(handle, name, ret, params, n, vararg, &
-                                    err) result(status) bind(c)
+                err) result(status) bind(c)
             import :: c_bool, c_char, c_int, c_int32_t, c_ptr, lr_error_t
             type(c_ptr), value :: handle
             character(kind=c_char), intent(in) :: name(*)
@@ -109,15 +109,15 @@ contains
         integer(c_int32_t) :: vreg
 
         emit_extern_i32_call = cx_emit_call(session, name, args, &
-                                            lr_type_i32_s(session%handle), &
-                                            0_c_int32_t, c_false, &
-                                            vreg, error_msg)
+            lr_type_i32_s(session%handle), &
+            0_c_int32_t, c_false, &
+            vreg, error_msg)
         if (.not. emit_extern_i32_call) return
         result = i32_vreg(session, vreg)
     end function emit_extern_i32_call
 
     logical function cx_emit_call(session, name, args, ret_typ, fixed_args, &
-                                  vararg, vreg, error_msg)
+            vararg, vreg, error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         type(lr_operand_desc_t), intent(in) :: args(:)
@@ -361,10 +361,10 @@ contains
         end do
         bytes(n) = c_null_char
         array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
-                                     int(n, c_int64_t))
+            int(n, c_int64_t))
         call to_c_chars(name, c_name)
         global_id = lr_session_global(session%handle, c_name, array_type, c_true, &
-                                      c_loc(bytes), int(n, c_size_t))
+            c_loc(bytes), int(n, c_size_t))
         if (global_id < 0_c_int32_t) then
             error_msg = 'cx: cannot create string global '//trim(name)
             return
@@ -383,7 +383,7 @@ contains
     end function cx_create_cstring
 
     logical function cx_declare_one(session, name, ret, params_ptr, n, vararg, &
-                                    error_msg)
+            error_msg)
         type(liric_session_t), intent(inout) :: session
         character(len=*), intent(in) :: name
         type(c_ptr), intent(in) :: ret, params_ptr
@@ -398,7 +398,7 @@ contains
         call clear_liric_error(error)
         call to_c_chars(name, c_name)
         status = lr_session_declare(session%handle, c_name, ret, params_ptr, n, &
-                                    vararg, error)
+            vararg, error)
         if (.not. status_ok(status, error, error_msg)) return
         cx_declare_one = .true.
     end function cx_declare_one
@@ -413,18 +413,18 @@ contains
         p3(2) = lr_type_i64_s(session%handle)
         p3(3) = lr_type_ptr_s(session%handle)
         if (.not. cx_declare_one(session, 'snprintf', lr_type_i32_s(session%handle), &
-                                 c_loc(p3), 3_c_int32_t, c_true, error_msg)) return
+            c_loc(p3), 3_c_int32_t, c_true, error_msg)) return
         p1(1) = lr_type_ptr_s(session%handle)
         if (.not. cx_declare_one(session, 'printf', lr_type_i32_s(session%handle), &
-                                 c_loc(p1), 1_c_int32_t, c_true, error_msg)) return
+            c_loc(p1), 1_c_int32_t, c_true, error_msg)) return
         if (.not. cx_declare_one(session, 'strlen', lr_type_i64_s(session%handle), &
-                                 c_loc(p1), 1_c_int32_t, c_false, error_msg)) return
+            c_loc(p1), 1_c_int32_t, c_false, error_msg)) return
         if (.not. cx_declare_one(session, 'atoi', lr_type_i32_s(session%handle), &
-                                 c_loc(p1), 1_c_int32_t, c_false, error_msg)) return
+            c_loc(p1), 1_c_int32_t, c_false, error_msg)) return
         p2(1) = lr_type_ptr_s(session%handle)
         p2(2) = lr_type_i32_s(session%handle)
         if (.not. cx_declare_one(session, 'strchr', lr_type_ptr_s(session%handle), &
-                                 c_loc(p2), 2_c_int32_t, c_false, error_msg)) return
+            c_loc(p2), 2_c_int32_t, c_false, error_msg)) return
         cx_declare_libc = .true.
     end function cx_declare_libc
 
@@ -467,19 +467,19 @@ contains
         ! gfortran complex(4) exponential form carries 9 fraction digits
         ! (d.dddddddddE+nn, 9 significant). %.9e matches; %.8e drops one.
         if (.not. cx_create_cstring(session, '.ffc.c4.fe', '%.9e', g_fe, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c4.ff', '%#.*f', g_ff, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c4.feo', '%sE%c%02d', g_feo, &
-                                    error_msg)) return
+            error_msg)) return
 
         params(1) = lr_type_f64_s(session%handle)
         params(2) = lr_type_ptr_s(session%handle)
         call clear_liric_error(error)
         call to_c_chars(FMT_R4_HELPER, c_name)
         status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_i32_s(session%handle), &
-                                       c_loc(params), 2_c_int32_t, c_false, error)
+            lr_type_i32_s(session%handle), &
+            c_loc(params), 2_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
 
         x = cx_typed_param(session, 0_c_int32_t, lr_type_f64_s(session%handle))
@@ -499,23 +499,23 @@ contains
         ! entry: tmp = alloca 36; num = alloca 32; snprintf(tmp, 36, "%.8e", x)
         if (.not. set_liric_block(session, entry_blk, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 36_c_int64_t), &
-                                    tmp, error_msg)) return
+            tmp, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 32_c_int64_t), &
-                                    num, error_msg)) return
+            num, error_msg)) return
         args(1) = tmp
         args(2) = i64_immediate(session, 36_c_int64_t)
         args(3) = g_fe
         args(4) = x
         if (.not. cx_emit_call(session, 'snprintf', args(1:4), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
 
         ! p = strchr(tmp, 'e')
         args(1) = tmp
         args(2) = i32_immediate(session, int(iachar('e'), c_int64_t))
         if (.not. cx_emit_call(session, 'strchr', args(1:2), &
-                               lr_type_ptr_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_ptr_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         p = ptr_vreg(session, vreg)
 
         nullptr%kind = LR_OP_KIND_IMM_I64
@@ -523,7 +523,7 @@ contains
         nullptr%typ = lr_type_ptr_s(session%handle)
         nullptr%global_offset = 0_c_int64_t
         if (.not. emit_liric_i32_icmp(session, LR_CMP_NE, p, nullptr, cond, &
-                                      error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_condbr(session, cond, finblk, nfblk, error_msg)) return
 
         ! finblk: pe1 = p+1; ex = atoi(pe1); *p = '\0'
@@ -531,43 +531,43 @@ contains
         if (.not. cx_gep_byte(session, p, 1_c_int64_t, pe1, error_msg)) return
         args(1) = pe1
         if (.not. cx_emit_call(session, 'atoi', args(1:1), &
-                               lr_type_i32_s(session%handle), 1_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 1_c_int32_t, &
+            c_false, vreg, error_msg)) return
         ex = i32_vreg(session, vreg)
         if (.not. cx_store_zero_byte(session, p, error_msg)) return
 
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SGE, ex, &
-                i32_immediate(session, -1_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, -1_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, chkhi, eblk, error_msg)) return
 
         if (.not. set_liric_block(session, chkhi, error_msg)) return
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SLE, ex, &
-                i32_immediate(session, 8_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, 8_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, fblk, eblk, error_msg)) return
 
         ! fblk: buf = snprintf("%#.*f", 8-ex, x)
         if (.not. set_liric_block(session, fblk, error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 8_c_int64_t), ex, prec, error_msg)) return
+            i32_immediate(session, 8_c_int64_t), ex, prec, error_msg)) return
         args(1) = buf
         args(2) = i64_immediate(session, 32_c_int64_t)
         args(3) = g_ff
         args(4) = prec
         args(5) = x
         if (.not. cx_emit_call(session, 'snprintf', args(1:5), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         ! eblk: exponential. eneg: negative exponent; epos: positive.
         if (.not. set_liric_block(session, eblk, error_msg)) return
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SLT, ex, &
-                i32_immediate(session, 0_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, 0_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, eneg, epos, error_msg)) return
 
         if (.not. set_liric_block(session, eneg, error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 0_c_int64_t), ex, negex, error_msg)) return
+            i32_immediate(session, 0_c_int64_t), ex, negex, error_msg)) return
         args(1) = num
         args(2) = i64_immediate(session, 32_c_int64_t)
         args(3) = g_feo
@@ -575,16 +575,16 @@ contains
         args(5) = i32_immediate(session, int(iachar('-'), c_int64_t))
         args(6) = negex
         if (.not. cx_emit_call(session, 'snprintf', args, &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, eprint, error_msg)) return
 
         if (.not. set_liric_block(session, epos, error_msg)) return
         args(5) = i32_immediate(session, int(iachar('+'), c_int64_t))
         args(6) = ex
         if (.not. cx_emit_call(session, 'snprintf', args, &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, eprint, error_msg)) return
 
         ! eprint: copy num -> buf
@@ -593,8 +593,8 @@ contains
         args(2) = i64_immediate(session, 32_c_int64_t)
         args(3) = num
         if (.not. cx_emit_call(session, 'snprintf', args(1:3), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         ! nfblk: non-finite (Inf/NaN). Copy tmp -> buf.
@@ -603,18 +603,18 @@ contains
         args(2) = i64_immediate(session, 32_c_int64_t)
         args(3) = tmp
         if (.not. cx_emit_call(session, 'snprintf', args(1:3), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         ! exitb: return (i32) strlen(buf)
         if (.not. set_liric_block(session, exitb, error_msg)) return
         args(1) = buf
         if (.not. cx_emit_call(session, 'strlen', args(1:1), &
-                               lr_type_i64_s(session%handle), 1_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i64_s(session%handle), 1_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. cx_emit_cast(session, LR_OP_TRUNC, i64_vreg(session, vreg), &
-                               lr_type_i32_s(session%handle), slen, error_msg)) return
+            lr_type_i32_s(session%handle), slen, error_msg)) return
         if (.not. cx_ret_i32(session, slen, error_msg)) return
 
         call clear_liric_error(error)
@@ -648,19 +648,19 @@ contains
         if (.not. require_open_session(session, error_msg)) return
 
         if (.not. cx_create_cstring(session, '.ffc.c8.fe', '%.17e', g_fe, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c8.ff', '%#.*f', g_ff, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c8.feo', '%sE%c%03d', g_feo, &
-                                    error_msg)) return
+            error_msg)) return
 
         params(1) = lr_type_f64_s(session%handle)
         params(2) = lr_type_ptr_s(session%handle)
         call clear_liric_error(error)
         call to_c_chars(FMT_R8_HELPER, c_name)
         status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_i32_s(session%handle), &
-                                       c_loc(params), 2_c_int32_t, c_false, error)
+            lr_type_i32_s(session%handle), &
+            c_loc(params), 2_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
 
         x = cx_typed_param(session, 0_c_int32_t, lr_type_f64_s(session%handle))
@@ -679,22 +679,22 @@ contains
 
         if (.not. set_liric_block(session, entry_blk, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 48_c_int64_t), &
-                                    tmp, error_msg)) return
+            tmp, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 48_c_int64_t), &
-                                    num, error_msg)) return
+            num, error_msg)) return
         args(1) = tmp
         args(2) = i64_immediate(session, 48_c_int64_t)
         args(3) = g_fe
         args(4) = x
         if (.not. cx_emit_call(session, 'snprintf', args(1:4), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
 
         args(1) = tmp
         args(2) = i32_immediate(session, int(iachar('e'), c_int64_t))
         if (.not. cx_emit_call(session, 'strchr', args(1:2), &
-                               lr_type_ptr_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_ptr_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         p = ptr_vreg(session, vreg)
 
         nullptr%kind = LR_OP_KIND_IMM_I64
@@ -702,48 +702,48 @@ contains
         nullptr%typ = lr_type_ptr_s(session%handle)
         nullptr%global_offset = 0_c_int64_t
         if (.not. emit_liric_i32_icmp(session, LR_CMP_NE, p, nullptr, cond, &
-                                      error_msg)) return
+            error_msg)) return
         if (.not. emit_liric_condbr(session, cond, finblk, nfblk, error_msg)) return
 
         if (.not. set_liric_block(session, finblk, error_msg)) return
         if (.not. cx_gep_byte(session, p, 1_c_int64_t, pe1, error_msg)) return
         args(1) = pe1
         if (.not. cx_emit_call(session, 'atoi', args(1:1), &
-                               lr_type_i32_s(session%handle), 1_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 1_c_int32_t, &
+            c_false, vreg, error_msg)) return
         ex = i32_vreg(session, vreg)
         if (.not. cx_store_zero_byte(session, p, error_msg)) return
 
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SGE, ex, &
-                i32_immediate(session, -1_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, -1_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, chkhi, eblk, error_msg)) return
 
         if (.not. set_liric_block(session, chkhi, error_msg)) return
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SLE, ex, &
-                i32_immediate(session, 16_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, 16_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, fblk, eblk, error_msg)) return
 
         if (.not. set_liric_block(session, fblk, error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 16_c_int64_t), ex, prec, error_msg)) return
+            i32_immediate(session, 16_c_int64_t), ex, prec, error_msg)) return
         args(1) = buf
         args(2) = i64_immediate(session, 48_c_int64_t)
         args(3) = g_ff
         args(4) = prec
         args(5) = x
         if (.not. cx_emit_call(session, 'snprintf', args(1:5), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         if (.not. set_liric_block(session, eblk, error_msg)) return
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SLT, ex, &
-                i32_immediate(session, 0_c_int64_t), cond, error_msg)) return
+            i32_immediate(session, 0_c_int64_t), cond, error_msg)) return
         if (.not. emit_liric_condbr(session, cond, eneg, epos, error_msg)) return
 
         if (.not. set_liric_block(session, eneg, error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 0_c_int64_t), ex, negex, error_msg)) return
+            i32_immediate(session, 0_c_int64_t), ex, negex, error_msg)) return
         args(1) = num
         args(2) = i64_immediate(session, 48_c_int64_t)
         args(3) = g_feo
@@ -751,16 +751,16 @@ contains
         args(5) = i32_immediate(session, int(iachar('-'), c_int64_t))
         args(6) = negex
         if (.not. cx_emit_call(session, 'snprintf', args, &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, eprint, error_msg)) return
 
         if (.not. set_liric_block(session, epos, error_msg)) return
         args(5) = i32_immediate(session, int(iachar('+'), c_int64_t))
         args(6) = ex
         if (.not. cx_emit_call(session, 'snprintf', args, &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_true, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_true, vreg, error_msg)) return
         if (.not. emit_liric_br(session, eprint, error_msg)) return
 
         if (.not. set_liric_block(session, eprint, error_msg)) return
@@ -768,8 +768,8 @@ contains
         args(2) = i64_immediate(session, 48_c_int64_t)
         args(3) = num
         if (.not. cx_emit_call(session, 'snprintf', args(1:3), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         if (.not. set_liric_block(session, nfblk, error_msg)) return
@@ -777,17 +777,17 @@ contains
         args(2) = i64_immediate(session, 48_c_int64_t)
         args(3) = tmp
         if (.not. cx_emit_call(session, 'snprintf', args(1:3), &
-                               lr_type_i32_s(session%handle), 3_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 3_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. emit_liric_br(session, exitb, error_msg)) return
 
         if (.not. set_liric_block(session, exitb, error_msg)) return
         args(1) = buf
         if (.not. cx_emit_call(session, 'strlen', args(1:1), &
-                               lr_type_i64_s(session%handle), 1_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i64_s(session%handle), 1_c_int32_t, &
+            c_false, vreg, error_msg)) return
         if (.not. cx_emit_cast(session, LR_OP_TRUNC, i64_vreg(session, vreg), &
-                               lr_type_i32_s(session%handle), slen, error_msg)) return
+            lr_type_i32_s(session%handle), slen, error_msg)) return
         if (.not. cx_ret_i32(session, slen, error_msg)) return
 
         call clear_liric_error(error)
@@ -822,17 +822,17 @@ contains
         if (.not. synthesize_fmt_r4_helper(session, error_msg)) return
 
         if (.not. cx_create_cstring(session, '.ffc.c4.pf', '%*s(%s,%s)', g_pf, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c4.es', '', empty, &
-                                    error_msg)) return
+            error_msg)) return
 
         params(1) = lr_type_f32_s(session%handle)
         params(2) = lr_type_f32_s(session%handle)
         call clear_liric_error(error)
         call to_c_chars(COMPLEX4_PRINTER, c_name)
         status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_void_s(session%handle), &
-                                       c_loc(params), 2_c_int32_t, c_false, error)
+            lr_type_void_s(session%handle), &
+            c_loc(params), 2_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
 
         re = cx_typed_param(session, 0_c_int32_t, lr_type_f32_s(session%handle))
@@ -843,36 +843,36 @@ contains
 
         ! Extend f32 params to f64 for fmt_r4 (takes f64)
         if (.not. cx_emit_cast(session, LR_OP_FPEXT, re, &
-                lr_type_f64_s(session%handle), re_f64, error_msg)) return
+            lr_type_f64_s(session%handle), re_f64, error_msg)) return
         if (.not. cx_emit_cast(session, LR_OP_FPEXT, im, &
-                lr_type_f64_s(session%handle), im_f64, error_msg)) return
+            lr_type_f64_s(session%handle), im_f64, error_msg)) return
 
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 36_c_int64_t), &
-                                    re_buf, error_msg)) return
+            re_buf, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 36_c_int64_t), &
-                                    im_buf, error_msg)) return
+            im_buf, error_msg)) return
 
         ! w1 = .ffc.fmt_r4(re_f64, re_buf)
         args(1) = re_f64
         args(2) = re_buf
         if (.not. cx_emit_call(session, FMT_R4_HELPER, args(1:2), &
-                               lr_type_i32_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         w1 = i32_vreg(session, vreg)
 
         ! w2 = .ffc.fmt_r4(im_f64, im_buf)
         args(1) = im_f64
         args(2) = im_buf
         if (.not. cx_emit_call(session, FMT_R4_HELPER, args(1:2), &
-                               lr_type_i32_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         w2 = i32_vreg(session, vreg)
 
         ! pad = 32 - w1 - w2  (field 35, parens/comma occupy 3 chars)
         if (.not. emit_i32_binary(session, LR_OP_ADD, w1, w2, wsum, &
-                                  error_msg)) return
+            error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 32_c_int64_t), wsum, pad, error_msg)) return
+            i32_immediate(session, 32_c_int64_t), wsum, pad, error_msg)) return
 
         ! printf("%*s(%s,%s)", pad, "", re_buf, im_buf)
         args(1) = g_pf
@@ -881,7 +881,7 @@ contains
         args(4) = re_buf
         args(5) = im_buf
         if (.not. cx_emit_call(session, 'printf', args, lr_type_i32_s(session%handle), &
-                               1_c_int32_t, c_true, vreg, error_msg)) return
+            1_c_int32_t, c_true, vreg, error_msg)) return
 
         if (.not. cx_ret_void(session, error_msg)) return
 
@@ -917,17 +917,17 @@ contains
         if (.not. synthesize_fmt_r8_helper(session, error_msg)) return
 
         if (.not. cx_create_cstring(session, '.ffc.c8.pf', '%*s(%s,%s)', g_pf, &
-                                    error_msg)) return
+            error_msg)) return
         if (.not. cx_create_cstring(session, '.ffc.c8.es', '', empty, &
-                                    error_msg)) return
+            error_msg)) return
 
         params(1) = lr_type_f64_s(session%handle)
         params(2) = lr_type_f64_s(session%handle)
         call clear_liric_error(error)
         call to_c_chars(COMPLEX8_PRINTER, c_name)
         status = lr_session_func_begin(session%handle, c_name, &
-                                       lr_type_void_s(session%handle), &
-                                       c_loc(params), 2_c_int32_t, c_false, error)
+            lr_type_void_s(session%handle), &
+            c_loc(params), 2_c_int32_t, c_false, error)
         if (.not. status_ok(status, error, error_msg)) return
 
         re = cx_typed_param(session, 0_c_int32_t, lr_type_f64_s(session%handle))
@@ -937,29 +937,29 @@ contains
         if (.not. set_liric_block(session, entry_blk, error_msg)) return
 
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 48_c_int64_t), &
-                                    re_buf, error_msg)) return
+            re_buf, error_msg)) return
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 48_c_int64_t), &
-                                    im_buf, error_msg)) return
+            im_buf, error_msg)) return
 
         args(1) = re
         args(2) = re_buf
         if (.not. cx_emit_call(session, FMT_R8_HELPER, args(1:2), &
-                               lr_type_i32_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         w1 = i32_vreg(session, vreg)
 
         args(1) = im
         args(2) = im_buf
         if (.not. cx_emit_call(session, FMT_R8_HELPER, args(1:2), &
-                               lr_type_i32_s(session%handle), 2_c_int32_t, &
-                               c_false, vreg, error_msg)) return
+            lr_type_i32_s(session%handle), 2_c_int32_t, &
+            c_false, vreg, error_msg)) return
         w2 = i32_vreg(session, vreg)
 
         ! pad = 50 - w1 - w2  (field 53, parens/comma = 3)
         if (.not. emit_i32_binary(session, LR_OP_ADD, w1, w2, wsum, &
-                                  error_msg)) return
+            error_msg)) return
         if (.not. emit_i32_binary(session, LR_OP_SUB, &
-                i32_immediate(session, 50_c_int64_t), wsum, pad, error_msg)) return
+            i32_immediate(session, 50_c_int64_t), wsum, pad, error_msg)) return
 
         args(1) = g_pf
         args(2) = pad
@@ -967,7 +967,7 @@ contains
         args(4) = re_buf
         args(5) = im_buf
         if (.not. cx_emit_call(session, 'printf', args, lr_type_i32_s(session%handle), &
-                               1_c_int32_t, c_true, vreg, error_msg)) return
+            1_c_int32_t, c_true, vreg, error_msg)) return
 
         if (.not. cx_ret_void(session, error_msg)) return
 
@@ -992,8 +992,8 @@ contains
         args(1) = re
         args(2) = im
         emit_complex4_print_call = cx_emit_call(session, COMPLEX4_PRINTER, args, &
-                                                lr_type_void_s(session%handle), &
-                                                2_c_int32_t, c_false, vreg, error_msg)
+            lr_type_void_s(session%handle), &
+            2_c_int32_t, c_false, vreg, error_msg)
     end function emit_complex4_print_call
 
     logical function emit_complex8_print_call(session, re, im, error_msg)
@@ -1006,8 +1006,8 @@ contains
         args(1) = re
         args(2) = im
         emit_complex8_print_call = cx_emit_call(session, COMPLEX8_PRINTER, args, &
-                                                lr_type_void_s(session%handle), &
-                                                2_c_int32_t, c_false, vreg, error_msg)
+            lr_type_void_s(session%handle), &
+            2_c_int32_t, c_false, vreg, error_msg)
     end function emit_complex8_print_call
 
 end module liric_session_complex_print_bindings

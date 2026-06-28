@@ -1,7 +1,7 @@
 program test_session_unit_boundary_diagnostics
     use ffc_test_support, only: expect_exit_status, &
-                                expect_cli_no_error, &
-                                expect_no_error
+        expect_cli_no_error, &
+        expect_no_error
     implicit none
 
     logical :: all_passed
@@ -20,9 +20,9 @@ contains
 
     logical function test_use_intrinsic_module_no_error()
         character(len=*), parameter :: source = &
-                                       'program main'//new_line('a')// &
-                                       '  use iso_fortran_env'//new_line('a')// &
-                                       'end program main'
+            'program main'//new_line('a')// &
+            '  use iso_fortran_env'//new_line('a')// &
+            'end program main'
 
         ! USE of intrinsic module should be silently ignored (no error)
         test_use_intrinsic_module_no_error = expect_no_error( &

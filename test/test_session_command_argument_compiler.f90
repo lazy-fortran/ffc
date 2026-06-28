@@ -3,8 +3,8 @@ program test_session_command_argument_compiler
     ! compiled binaries are invoked with arguments to check the runtime
     ! behaviour against gfortran.
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                  compiler_frontend_result_t, &
-                                  compile_frontend_from_string, INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
@@ -41,7 +41,7 @@ contains
             return
         end if
         call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe, error_msg)
+            frontend_result%root_index, exe, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: ffc lowering failed: ', trim(error_msg)
             return
@@ -134,7 +134,7 @@ contains
 
         file_first_line_is = .false.
         open (newunit=unit, file=path, status='old', action='read', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) return
         read (unit, '(A)', iostat=io_stat) line
         close (unit)

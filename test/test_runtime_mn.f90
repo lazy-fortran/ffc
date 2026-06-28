@@ -2,7 +2,7 @@ program test_runtime_mn
     use ffc_test_support, only: expect_exit_status
     implicit none
     logical :: ok
-    
+
     ! Use runtime M and N (passed from command-line or computed)
     ! Actually allocate(a(m,n)) where m,n are variables
     ok = expect_exit_status(&

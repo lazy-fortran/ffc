@@ -1,6 +1,6 @@
 program test_session_iso_c_binding_compiler
     use ffc_test_support, only: expect_exit_status, expect_error_contains, &
-                                expect_exe_has_symbol
+        expect_exe_has_symbol
     implicit none
 
     logical :: all_passed
@@ -193,149 +193,149 @@ contains
 
         ! abs(-3) + abs(10) = 13
         test_call_bind_c_integer_function = expect_exit_status( &
-            source, 13, '/tmp/ffc_session_call_bindc_test')
-    end function test_call_bind_c_integer_function
+                source, 13, '/tmp/ffc_session_call_bindc_test')
+        end function test_call_bind_c_integer_function
 
-    logical function test_call_external_void_subroutine_with_c_ptr()
-        ! Void bind(c) subroutine with a c_ptr argument; passing c_null_ptr
-        ! sends a null pointer (free(NULL) is a no-op), exits 0.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  use iso_c_binding'//new_line('a')// &
-            '  interface'//new_line('a')// &
-            '    subroutine free_c(p) bind(c, name="free")'//new_line('a')// &
-            '      import :: c_ptr'//new_line('a')// &
-            '      type(c_ptr), value :: p'//new_line('a')// &
-            '    end subroutine free_c'//new_line('a')// &
-            '  end interface'//new_line('a')// &
-            '  call free_c(c_null_ptr)'//new_line('a')// &
-            '  stop 0'//new_line('a')// &
-            'end program main'
+        logical function test_call_external_void_subroutine_with_c_ptr()
+            ! Void bind(c) subroutine with a c_ptr argument; passing c_null_ptr
+            ! sends a null pointer (free(NULL) is a no-op), exits 0.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  use iso_c_binding'//new_line('a')// &
+                '  interface'//new_line('a')// &
+                '    subroutine free_c(p) bind(c, name="free")'//new_line('a')// &
+                '      import :: c_ptr'//new_line('a')// &
+                '      type(c_ptr), value :: p'//new_line('a')// &
+                '    end subroutine free_c'//new_line('a')// &
+                '  end interface'//new_line('a')// &
+                '  call free_c(c_null_ptr)'//new_line('a')// &
+                '  stop 0'//new_line('a')// &
+                'end program main'
 
-        test_call_external_void_subroutine_with_c_ptr = expect_exit_status( &
-            source, 0, '/tmp/ffc_session_extern_void_test')
-    end function test_call_external_void_subroutine_with_c_ptr
+            test_call_external_void_subroutine_with_c_ptr = expect_exit_status( &
+                source, 0, '/tmp/ffc_session_extern_void_test')
+        end function test_call_external_void_subroutine_with_c_ptr
 
-    logical function test_internal_function_bind_c_emits_named_symbol()
-        ! A contained function with bind(c, name="...") is emitted under the
-        ! unmangled C symbol so other languages can link against it.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: r'//new_line('a')// &
-            '  r = my_add(2, 3)'//new_line('a')// &
-            '  stop r'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  integer function my_add(a, b) bind(c, name="my_add")'// &
-            new_line('a')// &
-            '    integer, intent(in) :: a, b'//new_line('a')// &
-            '    my_add = a + b'//new_line('a')// &
-            '  end function my_add'//new_line('a')// &
-            'end program main'
+        logical function test_internal_function_bind_c_emits_named_symbol()
+            ! A contained function with bind(c, name="...") is emitted under the
+            ! unmangled C symbol so other languages can link against it.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  integer :: r'//new_line('a')// &
+                '  r = my_add(2, 3)'//new_line('a')// &
+                '  stop r'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  integer function my_add(a, b) bind(c, name="my_add")'// &
+                new_line('a')// &
+                '    integer, intent(in) :: a, b'//new_line('a')// &
+                '    my_add = a + b'//new_line('a')// &
+                '  end function my_add'//new_line('a')// &
+                'end program main'
 
-        test_internal_function_bind_c_emits_named_symbol = &
-            expect_exe_has_symbol(source, '/tmp/ffc_session_bindc_sym_test', &
-                                  'my_add')
-    end function test_internal_function_bind_c_emits_named_symbol
+            test_internal_function_bind_c_emits_named_symbol = &
+                expect_exe_has_symbol(source, '/tmp/ffc_session_bindc_sym_test', &
+                'my_add')
+        end function test_internal_function_bind_c_emits_named_symbol
 
-    logical function test_internal_bind_c_function_is_callable()
-        ! The bind(c) function is still callable internally under its C name.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer :: r'//new_line('a')// &
-            '  r = my_add(2, 3)'//new_line('a')// &
-            '  stop r'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  integer function my_add(a, b) bind(c, name="my_add")'// &
-            new_line('a')// &
-            '    integer, intent(in) :: a, b'//new_line('a')// &
-            '    my_add = a + b'//new_line('a')// &
-            '  end function my_add'//new_line('a')// &
-            'end program main'
+        logical function test_internal_bind_c_function_is_callable()
+            ! The bind(c) function is still callable internally under its C name.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  integer :: r'//new_line('a')// &
+                '  r = my_add(2, 3)'//new_line('a')// &
+                '  stop r'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  integer function my_add(a, b) bind(c, name="my_add")'// &
+                new_line('a')// &
+                '    integer, intent(in) :: a, b'//new_line('a')// &
+                '    my_add = a + b'//new_line('a')// &
+                '  end function my_add'//new_line('a')// &
+                'end program main'
 
-        test_internal_bind_c_function_is_callable = expect_exit_status( &
-            source, 5, '/tmp/ffc_session_bindc_call_test')
-    end function test_internal_bind_c_function_is_callable
+            test_internal_bind_c_function_is_callable = expect_exit_status( &
+                source, 5, '/tmp/ffc_session_bindc_call_test')
+        end function test_internal_bind_c_function_is_callable
 
-    logical function test_c_loc_of_integer_round_trip_with_c_associated()
-        ! c_loc(x) returns a non-null pointer; c_associated reports it true.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  use iso_c_binding'//new_line('a')// &
-            '  integer, target :: x'//new_line('a')// &
-            '  type(c_ptr) :: p'//new_line('a')// &
-            '  x = 42'//new_line('a')// &
-            '  p = c_loc(x)'//new_line('a')// &
-            '  if (c_associated(p)) then'//new_line('a')// &
-            '    stop 1'//new_line('a')// &
-            '  else'//new_line('a')// &
-            '    stop 2'//new_line('a')// &
-            '  end if'//new_line('a')// &
-            'end program main'
+        logical function test_c_loc_of_integer_round_trip_with_c_associated()
+            ! c_loc(x) returns a non-null pointer; c_associated reports it true.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  use iso_c_binding'//new_line('a')// &
+                '  integer, target :: x'//new_line('a')// &
+                '  type(c_ptr) :: p'//new_line('a')// &
+                '  x = 42'//new_line('a')// &
+                '  p = c_loc(x)'//new_line('a')// &
+                '  if (c_associated(p)) then'//new_line('a')// &
+                '    stop 1'//new_line('a')// &
+                '  else'//new_line('a')// &
+                '    stop 2'//new_line('a')// &
+                '  end if'//new_line('a')// &
+                'end program main'
 
-        test_c_loc_of_integer_round_trip_with_c_associated = &
-            expect_exit_status(source, 1, '/tmp/ffc_session_c_loc_test')
-    end function test_c_loc_of_integer_round_trip_with_c_associated
+            test_c_loc_of_integer_round_trip_with_c_associated = &
+                expect_exit_status(source, 1, '/tmp/ffc_session_c_loc_test')
+        end function test_c_loc_of_integer_round_trip_with_c_associated
 
-    logical function test_c_associated_on_null_returns_false()
-        ! c_associated(c_null_ptr) is false.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  use iso_c_binding'//new_line('a')// &
-            '  type(c_ptr) :: p'//new_line('a')// &
-            '  p = c_null_ptr'//new_line('a')// &
-            '  if (c_associated(p)) then'//new_line('a')// &
-            '    stop 1'//new_line('a')// &
-            '  else'//new_line('a')// &
-            '    stop 2'//new_line('a')// &
-            '  end if'//new_line('a')// &
-            'end program main'
+        logical function test_c_associated_on_null_returns_false()
+            ! c_associated(c_null_ptr) is false.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  use iso_c_binding'//new_line('a')// &
+                '  type(c_ptr) :: p'//new_line('a')// &
+                '  p = c_null_ptr'//new_line('a')// &
+                '  if (c_associated(p)) then'//new_line('a')// &
+                '    stop 1'//new_line('a')// &
+                '  else'//new_line('a')// &
+                '    stop 2'//new_line('a')// &
+                '  end if'//new_line('a')// &
+                'end program main'
 
-        test_c_associated_on_null_returns_false = &
-            expect_exit_status(source, 2, '/tmp/ffc_session_c_assoc_null_test')
-    end function test_c_associated_on_null_returns_false
+            test_c_associated_on_null_returns_false = &
+                expect_exit_status(source, 2, '/tmp/ffc_session_c_assoc_null_test')
+        end function test_c_associated_on_null_returns_false
 
-    logical function test_c_f_pointer_assigns_storage()
-        ! c_f_pointer(p, q) crosses p into q; q then reports associated.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  use iso_c_binding'//new_line('a')// &
-            '  integer, target :: x'//new_line('a')// &
-            '  type(c_ptr) :: p, q'//new_line('a')// &
-            '  x = 7'//new_line('a')// &
-            '  p = c_loc(x)'//new_line('a')// &
-            '  call c_f_pointer(p, q)'//new_line('a')// &
-            '  if (c_associated(q)) then'//new_line('a')// &
-            '    stop 3'//new_line('a')// &
-            '  else'//new_line('a')// &
-            '    stop 4'//new_line('a')// &
-            '  end if'//new_line('a')// &
-            'end program main'
+        logical function test_c_f_pointer_assigns_storage()
+            ! c_f_pointer(p, q) crosses p into q; q then reports associated.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  use iso_c_binding'//new_line('a')// &
+                '  integer, target :: x'//new_line('a')// &
+                '  type(c_ptr) :: p, q'//new_line('a')// &
+                '  x = 7'//new_line('a')// &
+                '  p = c_loc(x)'//new_line('a')// &
+                '  call c_f_pointer(p, q)'//new_line('a')// &
+                '  if (c_associated(q)) then'//new_line('a')// &
+                '    stop 3'//new_line('a')// &
+                '  else'//new_line('a')// &
+                '    stop 4'//new_line('a')// &
+                '  end if'//new_line('a')// &
+                'end program main'
 
-        test_c_f_pointer_assigns_storage = &
-            expect_exit_status(source, 3, '/tmp/ffc_session_c_f_pointer_test')
-    end function test_c_f_pointer_assigns_storage
+            test_c_f_pointer_assigns_storage = &
+                expect_exit_status(source, 3, '/tmp/ffc_session_c_f_pointer_test')
+        end function test_c_f_pointer_assigns_storage
 
-    logical function test_interface_bind_c_with_import_compiles()
-        ! An interface body may carry import :: of a host-scope type used as a
-        ! value argument; it parses and registers without error.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  use iso_c_binding'//new_line('a')// &
-            '  type, bind(c) :: my_type'//new_line('a')// &
-            '    integer(c_int) :: a'//new_line('a')// &
-            '  end type my_type'//new_line('a')// &
-            '  interface'//new_line('a')// &
-            '    integer(c_int) function use_it(v) bind(c, name="use_it")'// &
-            new_line('a')// &
-            '      import :: my_type, c_int'//new_line('a')// &
-            '      type(my_type), value :: v'//new_line('a')// &
-            '    end function use_it'//new_line('a')// &
-            '  end interface'//new_line('a')// &
-            '  stop 0'//new_line('a')// &
-            'end program main'
+        logical function test_interface_bind_c_with_import_compiles()
+            ! An interface body may carry import :: of a host-scope type used as a
+            ! value argument; it parses and registers without error.
+            character(len=*), parameter :: source = &
+                'program main'//new_line('a')// &
+                '  use iso_c_binding'//new_line('a')// &
+                '  type, bind(c) :: my_type'//new_line('a')// &
+                '    integer(c_int) :: a'//new_line('a')// &
+                '  end type my_type'//new_line('a')// &
+                '  interface'//new_line('a')// &
+                '    integer(c_int) function use_it(v) bind(c, name="use_it")'// &
+                new_line('a')// &
+                '      import :: my_type, c_int'//new_line('a')// &
+                '      type(my_type), value :: v'//new_line('a')// &
+                '    end function use_it'//new_line('a')// &
+                '  end interface'//new_line('a')// &
+                '  stop 0'//new_line('a')// &
+                'end program main'
 
-        test_interface_bind_c_with_import_compiles = expect_exit_status( &
-            source, 0, '/tmp/ffc_session_iface_import_test')
-    end function test_interface_bind_c_with_import_compiles
+            test_interface_bind_c_with_import_compiles = expect_exit_status( &
+                source, 0, '/tmp/ffc_session_iface_import_test')
+        end function test_interface_bind_c_with_import_compiles
 
-end program test_session_iso_c_binding_compiler
+    end program test_session_iso_c_binding_compiler

@@ -34,11 +34,11 @@ contains
             'end program main'
         test_identifier_source_rank2 = expect_output( &
             source, '           1'//new_line('a')// &
-                    '           3'//new_line('a')// &
-                    '           5'//new_line('a')// &
-                    '           2'//new_line('a')// &
-                    '           4'//new_line('a')// &
-                    '           6'//new_line('a'), &
+            '           3'//new_line('a')// &
+            '           5'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           6'//new_line('a'), &
             '/tmp/ffc_session_reshape_ident_test')
     end function test_identifier_source_rank2
 
@@ -55,9 +55,9 @@ contains
             'end program main'
         test_literal_source_rank2 = expect_output( &
             source, '          10'//new_line('a')// &
-                    '          20'//new_line('a')// &
-                    '          30'//new_line('a')// &
-                    '          40'//new_line('a'), &
+            '          20'//new_line('a')// &
+            '          30'//new_line('a')// &
+            '          40'//new_line('a'), &
             '/tmp/ffc_session_reshape_literal_test')
     end function test_literal_source_rank2
 
@@ -72,7 +72,7 @@ contains
             'end program main'
         test_real_literal_source_rank2 = expect_output( &
             source, '   1.50000000    '//new_line('a')// &
-                    '   4.50000000    '//new_line('a'), &
+            '   4.50000000    '//new_line('a'), &
             '/tmp/ffc_session_reshape_real_test')
     end function test_real_literal_source_rank2
 

@@ -4,10 +4,10 @@ module ffc_test_support
     ! test programs only describe the source they want compiled and the
     ! expected behaviour of the resulting executable.
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                 compiler_frontend_result_t, &
-                                 compile_frontend_from_string, INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
-                                        lower_program_to_liric_object
+        lower_program_to_liric_object
     implicit none
     private
 
@@ -26,7 +26,7 @@ module ffc_test_support
 contains
 
     logical function expect_stderr_and_exit(source, expected, expected_exit, &
-                                            exe_path) result(ok)
+            exe_path) result(ok)
         ! Compiles source, runs it capturing combined stdout+stderr, and checks
         ! both that combined output and the exit status. Used for STOP banners,
         ! which gfortran writes to stderr.
@@ -47,7 +47,7 @@ contains
 
         out_path = exe_path//'.out'
         call execute_command_line(exe_path//' > '//out_path//' 2>&1', &
-                                  exitstat=exit_stat, cmdstat=cmd_stat)
+            exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0) then
             print *, 'FAIL: emitted executable did not run: ', exe_path
             call execute_command_line('rm -f '//exe_path//' '//out_path)
@@ -75,7 +75,7 @@ contains
     end function expect_stderr_and_exit
 
     logical function expect_eof_stderr_and_exit(source, expected, expected_exit, &
-                                                exe_path) result(ok)
+            exe_path) result(ok)
         ! Like expect_stderr_and_exit but redirects stdin from /dev/null, so a
         ! PAUSE (which reads stdin) sees end-of-input and terminates exactly as
         ! the conformance gauntlet runs it.
@@ -96,7 +96,7 @@ contains
 
         out_path = exe_path//'.out'
         call execute_command_line(exe_path//' > '//out_path//' 2>&1 < /dev/null', &
-                                  exitstat=exit_stat, cmdstat=cmd_stat)
+            exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0) then
             print *, 'FAIL: emitted executable did not run: ', exe_path
             call execute_command_line('rm -f '//exe_path//' '//out_path)
@@ -146,8 +146,8 @@ contains
         end if
         call execute_command_line('rm -f '//object_path)
         call lower_program_to_liric_object(frontend_result%arena, &
-                                           frontend_result%root_index, &
-                                           object_path, error_msg)
+            frontend_result%root_index, &
+            object_path, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: object lowering failed: ', trim(error_msg)
             call execute_command_line('rm -f '//object_path)
@@ -155,7 +155,7 @@ contains
         end if
 
         call execute_command_line('nm '//object_path//' | grep -qw '//symbol, &
-                                  exitstat=stat, cmdstat=cmd_stat)
+            exitstat=stat, cmdstat=cmd_stat)
         call execute_command_line('rm -f '//object_path)
         if (cmd_stat /= 0) then
             print *, 'FAIL: could not run nm on ', object_path
@@ -216,7 +216,7 @@ contains
 
         stdout_path = exe_path//'.out'
         call execute_command_line(exe_path//' > '//stdout_path, &
-                                  exitstat=exit_stat, cmdstat=cmd_stat)
+            exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0) then
             print *, 'FAIL: emitted executable did not run: ', exe_path
             call execute_command_line('rm -f '//exe_path//' '//stdout_path)
@@ -264,8 +264,8 @@ contains
 
         stdout_path = exe_path//'.out'
         call execute_command_line("echo '"//stdin_input//"' | "//exe_path// &
-                                  " > "//stdout_path, &
-                                  exitstat=exit_stat, cmdstat=cmd_stat)
+            " > "//stdout_path, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0) then
             print *, 'FAIL: emitted executable did not run: ', exe_path
             call execute_command_line('rm -f '//exe_path//' '//stdout_path)
@@ -333,17 +333,17 @@ contains
         output_path = stem//'.out'
         exe_path = stem//'.exe'
         call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
-                                  exe_path)
+            exe_path)
         if (.not. write_source_file(source_path, source)) return
 
         command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc "// &
-                  "2>/dev/null | head -n 1); "// &
-                  "test -n ""$exe"" && ""$exe"" "// &
-                  source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
+            "2>/dev/null | head -n 1); "// &
+            "test -n ""$exe"" && ""$exe"" "// &
+            source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         output = read_text_file(output_path)
         call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
-                                  exe_path)
+            exe_path)
 
         if (cmd_stat /= 0) then
             print *, 'FAIL: ffc CLI command could not be executed'
@@ -384,17 +384,17 @@ contains
         output_path = stem//'.out'
         exe_path = stem//'.exe'
         call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
-                                  exe_path)
+            exe_path)
         if (.not. write_source_file(source_path, source)) return
 
         command = "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc "// &
-                  "2>/dev/null | head -n 1); "// &
-                  "test -n ""$exe"" && ""$exe"" "// &
-                  source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
+            "2>/dev/null | head -n 1); "// &
+            "test -n ""$exe"" && ""$exe"" "// &
+            source_path//' -o '//exe_path//' > '//output_path//" 2>&1'"
         call execute_command_line(command, exitstat=exit_stat, cmdstat=cmd_stat)
         output = read_text_file(output_path)
         call execute_command_line('rm -f '//source_path//' '//output_path//' '// &
-                                  exe_path)
+            exe_path)
 
         if (cmd_stat /= 0) then
             print *, 'FAIL: ffc CLI command could not be executed'
@@ -459,7 +459,7 @@ contains
 
         write_source_file = .false.
         open (newunit=unit, file=path, status='replace', action='write', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) then
             print *, 'FAIL: could not create source file ', path
             return
@@ -484,7 +484,7 @@ contains
 
         text = ''
         open (newunit=unit, file=path, status='old', action='read', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) return
 
         do
@@ -509,14 +509,14 @@ contains
         call compile_frontend_from_string(source, frontend_result, options)
         if (.not. frontend_result%success()) then
             error_msg = 'FortFront rejected source: '// &
-                        trim(frontend_result%diagnostic_text)
+                trim(frontend_result%diagnostic_text)
             return
         end if
 
         call execute_command_line('rm -f '//exe_path)
         call lower_program_to_liric_exe(frontend_result%arena, &
-                                        frontend_result%root_index, exe_path, &
-                                        error_msg)
+            frontend_result%root_index, exe_path, &
+            error_msg)
     end subroutine compile_to_exe
 
     subroutine read_file(path, contents)
@@ -527,7 +527,7 @@ contains
         integer :: bytes
 
         open (newunit=unit, file=path, status='old', action='read', &
-              access='stream', form='unformatted', iostat=io_stat)
+            access='stream', form='unformatted', iostat=io_stat)
         if (io_stat /= 0) return
         inquire (unit=unit, size=bytes)
         if (bytes <= 0) then

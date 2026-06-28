@@ -43,7 +43,7 @@ program test_liric_session_bindings
     end if
 
     call execute_command_line(exe_path, exitstat=exit_stat, &
-                              cmdstat=cmd_stat)
+        cmdstat=cmd_stat)
     if (cmd_stat /= 0) then
         print *, 'FAIL: could not run emitted executable'
         call destroy(session)
@@ -119,7 +119,7 @@ program test_liric_session_bindings
     call destroy(session)
 
     call execute_command_line(exe_path2, exitstat=exit_stat, &
-                              cmdstat=cmd_stat)
+        cmdstat=cmd_stat)
     if (cmd_stat /= 0) then
         print *, 'FAIL: could not run mem test executable'
         call execute_command_line('rm -f '//exe_path2)

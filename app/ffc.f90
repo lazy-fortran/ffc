@@ -1,11 +1,11 @@
 program ffc_main
     use ffc_module_artefact, only: FFC_FMOD_VERSION
     use fortfront_compiler, only: compiler_frontend_options_t, &
-                                  compiler_frontend_result_t, &
-                                  compile_frontend_from_file, INPUT_MODE_LAZY, &
-                                  INPUT_MODE_STANDARD
+        compiler_frontend_result_t, &
+        compile_frontend_from_file, INPUT_MODE_LAZY, &
+        INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
-                                        lower_program_to_liric_object
+        lower_program_to_liric_object
     use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
     implicit none
 
@@ -93,7 +93,7 @@ contains
         frontend_options%standardize = standardize
 
         call compile_frontend_from_file(trim(opts%input_file), frontend_result, &
-                                        frontend_options)
+            frontend_options)
         if (.not. frontend_result%success()) then
             diag_msg = trim(frontend_result%diagnostic_text)
             return
@@ -102,14 +102,14 @@ contains
         error_msg = ''
         if (opts%emit_object) then
             call lower_program_to_liric_object(frontend_result%arena, &
-                                               frontend_result%root_index, &
-                                               trim(output_file), error_msg, &
-                                               search_paths)
+                frontend_result%root_index, &
+                trim(output_file), error_msg, &
+                search_paths)
         else
             call lower_program_to_liric_exe(frontend_result%arena, &
-                                            frontend_result%root_index, &
-                                            trim(output_file), error_msg, &
-                                            search_paths)
+                frontend_result%root_index, &
+                trim(output_file), error_msg, &
+                search_paths)
         end if
         if (len_trim(error_msg) > 0) then
             diag_msg = trim(error_msg)
@@ -132,8 +132,8 @@ contains
         character(len=*), intent(in) :: diag
 
         infer = index(diag, 'not declared') > 0 .or. &
-                index(diag, 'not been declared') > 0 .or. &
-                index(diag, 'implicit none') > 0
+            index(diag, 'not been declared') > 0 .or. &
+            index(diag, 'implicit none') > 0
     end function needs_inference
 
     logical function is_lazy_source(path) result(lazy)
