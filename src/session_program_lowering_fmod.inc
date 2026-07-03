@@ -68,7 +68,163 @@
         ! against the module object (#284).
         call build_fmod_procedures(arena, trim(export%module_name), &
                                    info%procedures, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! Named generic interfaces whose specifics are all exportable procedures
+        ! round-trip so a use-associated generic call in a separately compiled
+        ! program resolves to the matching specific and links.
+        call build_fmod_generics(arena, trim(export%module_name), &
+                                 info%procedures, info%generics, error_msg)
     end subroutine build_module_info
+
+    subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_name
+        type(fmod_procedure_t), allocatable, intent(in) :: procs(:)
+        type(fmod_generic_t), allocatable, intent(out) :: generics(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: module_index, d, count
+        integer, allocatable :: declaration_indices(:), procedure_indices(:)
+        character(len=:), allocatable :: mod_name, ff_error, specifics
+
+        call set_empty(error_msg)
+        allocate (generics(0))
+        call find_module_in_arena(arena, lowercase_text(module_name), module_index)
+        if (module_index == 0) return
+        call get_module_body_info(arena, module_index, mod_name, &
+                                  declaration_indices, procedure_indices, ff_error)
+        if (len_trim(ff_error) > 0) return
+        if (.not. allocated(declaration_indices)) return
+        count = 0
+        do d = 1, size(declaration_indices)
+            call fmod_generic_specifics(arena, declaration_indices(d), procs, &
+                                        mod_name, specifics)
+            if (len_trim(specifics) == 0) cycle
+            count = count + 1
+            call grow_fmod_generics(generics, count)
+            generics(count)%name = generic_block_name(arena, declaration_indices(d))
+            generics(count)%specifics = specifics
+        end do
+    end subroutine build_fmod_generics
+
+    function generic_block_name(arena, node_index) result(name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: name
+
+        name = ''
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (interface_block_node)
+            if (allocated(node%name)) name = trim(node%name)
+        end select
+    end function generic_block_name
+
+    subroutine fmod_generic_specifics(arena, node_index, procs, module_name, &
+                                      specifics)
+        ! Space-joined specific names of a named generic interface, but only when
+        ! every specific is an exportable procedure recorded in procs. An empty
+        ! result means the node is not an exportable generic (unnamed, operator,
+        ! private, or with a non-scalar specific), so it is skipped.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(fmod_procedure_t), allocatable, intent(in) :: procs(:)
+        character(len=*), intent(in) :: module_name
+        character(len=:), allocatable, intent(out) :: specifics
+        type(module_procedure_node), pointer :: mp_node
+        character(len=:), allocatable :: node_type, body_name
+        integer :: i, j
+
+        specifics = ''
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (interface_block_node)
+            if (node%is_abstract) return
+            if (allocated(node%kind)) then
+                node_type = lowercase_text(trim(node%kind))
+                if (node_type == 'operator' .or. node_type == 'assignment') return
+            end if
+            if (.not. allocated(node%name)) return
+            if (len_trim(node%name) == 0) return
+            if (.not. allocated(node%procedure_indices)) return
+            do i = 1, size(node%procedure_indices)
+                if (.not. node_exists(arena, node%procedure_indices(i))) return
+                node_type = get_node_type_at(arena, node%procedure_indices(i))
+                if (node_type == 'module_procedure_node' .or. &
+                    node_type == 'module_procedure') then
+                    select type (n => arena%entries(node%procedure_indices(i))%node)
+                    type is (module_procedure_node)
+                        mp_node => n
+                    class default
+                        specifics = ''
+                        return
+                    end select
+                    if (.not. allocated(mp_node%procedure_names)) return
+                    do j = 1, size(mp_node%procedure_names)
+                        call append_generic_specific(procs, &
+                            trim(mp_node%procedure_names(j)%s), specifics)
+                        if (len_trim(specifics) == 0) return
+                    end do
+                else if (node_type == 'function_def_node' .or. &
+                         node_type == 'function_def' .or. &
+                         node_type == 'subroutine_def_node' .or. &
+                         node_type == 'subroutine_def') then
+                    call interface_body_procedure_name(arena, &
+                        node%procedure_indices(i), body_name)
+                    if (len_trim(body_name) == 0) then
+                        specifics = ''
+                        return
+                    end if
+                    call append_generic_specific(procs, body_name, specifics)
+                    if (len_trim(specifics) == 0) return
+                else
+                    specifics = ''
+                    return
+                end if
+            end do
+        end select
+    end subroutine fmod_generic_specifics
+
+    subroutine append_generic_specific(procs, name, specifics)
+        ! Append name to the space-joined specifics list only when it names an
+        ! exportable procedure in procs; otherwise clear specifics to signal the
+        ! generic cannot be exported.
+        type(fmod_procedure_t), allocatable, intent(in) :: procs(:)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(inout) :: specifics
+        integer :: p
+        logical :: found
+
+        found = .false.
+        if (allocated(procs)) then
+            do p = 1, size(procs)
+                if (.not. allocated(procs(p)%name)) cycle
+                if (same_name(procs(p)%name, name)) then
+                    found = .true.
+                    exit
+                end if
+            end do
+        end if
+        if (.not. found) then
+            specifics = ''
+            return
+        end if
+        if (len_trim(specifics) == 0) then
+            specifics = trim(name)
+        else
+            specifics = specifics//' '//trim(name)
+        end if
+    end subroutine append_generic_specific
+
+    subroutine grow_fmod_generics(arr, n)
+        type(fmod_generic_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_generic_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_fmod_generics
 
     subroutine build_fmod_procedures(arena, module_name, procs, error_msg)
         type(ast_arena_t), intent(in) :: arena

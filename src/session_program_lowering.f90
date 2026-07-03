@@ -283,7 +283,8 @@ module session_program_lowering
         F64_INTRINSIC_IDS
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
         fmod_component_t, fmod_derived_type_t, &
-        fmod_variable_t, fmod_procedure_t, write_fmod, read_fmod
+        fmod_variable_t, fmod_procedure_t, fmod_generic_t, &
+        write_fmod, read_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe

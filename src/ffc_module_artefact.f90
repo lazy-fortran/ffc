@@ -12,6 +12,7 @@ module ffc_module_artefact
     public :: fmod_derived_type_t
     public :: fmod_variable_t
     public :: fmod_procedure_t
+    public :: fmod_generic_t
     public :: module_info_t
     public :: write_fmod
     public :: read_fmod
@@ -52,12 +53,23 @@ module ffc_module_artefact
         integer :: nargs = 0
     end type fmod_procedure_t
 
+    ! A named generic interface exported for separate compilation: its generic
+    ! name and the space-joined list of specific procedure names it resolves to
+    ! (e.g. "int8_fnv_1 int16_fnv_1"). Each specific is also carried in the
+    ! procedures list, so a using unit imports the specifics and resolves a
+    ! use-associated generic call to the matching one by argument kind.
+    type :: fmod_generic_t
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: specifics
+    end type fmod_generic_t
+
     type :: module_info_t
         character(len=:), allocatable :: name
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
         type(fmod_variable_t), allocatable :: variables(:)
         type(fmod_procedure_t), allocatable :: procedures(:)
+        type(fmod_generic_t), allocatable :: generics(:)
     end type module_info_t
 
 contains
@@ -130,6 +142,16 @@ contains
             end do
         end if
 
+        if (allocated(info%generics)) then
+            do i = 1, size(info%generics)
+                write (unit, '(A)') ''
+                write (unit, '(A)') '[[generic]]'
+                write (unit, '(A)') 'name = "'//field(info%generics(i)%name)//'"'
+                write (unit, '(A)') 'specifics = "'// &
+                    field(info%generics(i)%specifics)//'"'
+            end do
+        end if
+
         close (unit, iostat=io_stat)
         if (io_stat /= 0) then
             error_msg = 'could not close .fmod artefact: '//trim(path)
@@ -152,7 +174,8 @@ contains
         type(fmod_component_t), allocatable :: comps(:)
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
-        integer :: nparam, ndtype, ncomp, nvar, nproc, io_read
+        type(fmod_generic_t), allocatable :: gens(:)
+        integer :: nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
         character(len=:), allocatable :: cname, ckind
 
         allocate (character(len=0) :: error_msg)
@@ -162,11 +185,13 @@ contains
         allocate (comps(0))
         allocate (vars(0))
         allocate (procs(0))
+        allocate (gens(0))
         nparam = 0
         ndtype = 0
         ncomp = 0
         nvar = 0
         nproc = 0
+        ngen = 0
         section = ''
 
         open (newunit=unit, file=path, status='old', action='read', iostat=io_stat)
@@ -209,6 +234,14 @@ contains
                 procs(nproc)%kind = ''
                 procs(nproc)%arg_kinds = ''
                 procs(nproc)%nargs = 0
+                cycle
+            else if (line == '[[generic]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'generic'
+                ngen = ngen + 1
+                call grow_gens(gens, ngen)
+                gens(ngen)%name = ''
+                gens(ngen)%specifics = ''
                 cycle
             else if (line == '[[derived_type]]') then
                 call flush_component(comps, ncomp, dtypes, ndtype)
@@ -253,6 +286,9 @@ contains
                     read (val, *, iostat=io_read) procs(nproc)%nargs
                     if (io_read /= 0) procs(nproc)%nargs = 0
                 end if
+            case ('generic')
+                if (key == 'name') gens(ngen)%name = unquote(val)
+                if (key == 'specifics') gens(ngen)%specifics = unquote(val)
             end select
         end do
         close (unit)
@@ -262,6 +298,7 @@ contains
         info%derived_types = dtypes
         info%variables = vars(1:nvar)
         info%procedures = procs(1:nproc)
+        info%generics = gens(1:ngen)
         if (len_trim(info%name) == 0) error_msg = 'malformed .fmod (no module name): '// &
             trim(path)
     end subroutine read_fmod
@@ -391,6 +428,17 @@ contains
         tmp(1:size(arr)) = arr
         call move_alloc(tmp, arr)
     end subroutine grow_procs
+
+    subroutine grow_gens(arr, n)
+        type(fmod_generic_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_generic_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_gens
 
     pure function mod_name(info) result(name)
         type(module_info_t), intent(in) :: info

@@ -258,29 +258,127 @@
                 if (len_trim(error_msg) > 0) return
             end do
         end if
+        if (allocated(info%generics)) then
+            do i = 1, size(info%generics)
+                call import_fmod_generic(use_node, name, info%generics(i), info, &
+                                         context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
     end subroutine import_module_from_fmod
 
+    subroutine import_fmod_generic(use_node, module_name, gen, info, context, &
+                                   error_msg)
+        ! Register a use-associated generic interface so a call to its generic
+        ! name resolves to the matching specific and links against the module
+        ! object. Importing the generic also force-imports its specifics (they
+        ! need not be named individually in an only-list) and records each
+        ! specific's first-argument and return kind for resolution.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: module_name
+        type(fmod_generic_t), intent(in) :: gen
+        type(module_info_t), intent(in) :: info
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: rest, token
+        integer :: sep, ext_idx, next
+        integer :: p
+
+        call set_empty(error_msg)
+        if (.not. allocated(gen%name)) return
+        if (len_trim(gen%name) == 0) return
+        if (.not. use_only_wants(use_node, trim(gen%name))) return
+        if (.not. allocated(gen%specifics)) return
+        if (find_generic(context, trim(gen%name)) > 0) return
+        call grow_generics(context)
+        next = context%generic_count + 1
+        context%generics(next)%generic_name = trim(gen%name)
+        context%generics(next)%specific_count = 0
+        rest = trim(adjustl(gen%specifics))
+        do while (len_trim(rest) > 0)
+            sep = index(rest, ' ')
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (len_trim(token) == 0) cycle
+            do p = 1, size(info%procedures)
+                if (.not. allocated(info%procedures(p)%name)) cycle
+                if (same_name(info%procedures(p)%name, token)) then
+                    call import_fmod_procedure(use_node, module_name, &
+                        info%procedures(p), context, error_msg, force=.true.)
+                    if (len_trim(error_msg) > 0) return
+                    exit
+                end if
+            end do
+            ext_idx = external_procedure_index(context, trim(token))
+            if (ext_idx <= 0) cycle
+            call add_generic_specific_from_external(context, next, trim(token), &
+                                                    ext_idx)
+        end do
+        if (context%generics(next)%specific_count > 0) &
+            context%generic_count = next
+    end subroutine import_fmod_generic
+
+    subroutine add_generic_specific_from_external(context, generic_idx, name, &
+                                                  ext_idx)
+        ! Append a specific to a generic entry, taking its first-argument and
+        ! return kinds from an already-registered external procedure rather than
+        ! from an AST node (the specific was imported from a .fmod, #284).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: generic_idx
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: ext_idx
+        integer :: sc
+
+        if (context%generics(generic_idx)%specific_count >= &
+            MAX_GENERIC_SPECIFICS) return
+        context%generics(generic_idx)%specific_count = &
+            context%generics(generic_idx)%specific_count + 1
+        sc = context%generics(generic_idx)%specific_count
+        context%generics(generic_idx)%specific_names(sc) = trim(name)
+        context%generics(generic_idx)%return_kinds(sc) = &
+            context%external_procedures(ext_idx)%return_value_kind
+        if (context%external_procedures(ext_idx)%arg_count >= 1) then
+            context%generics(generic_idx)%first_arg_kinds(sc) = &
+                context%external_procedures(ext_idx)%arg_value_kinds(1)
+        else
+            context%generics(generic_idx)%first_arg_kinds(sc) = VALUE_I32
+        end if
+    end subroutine add_generic_specific_from_external
+
     subroutine import_fmod_procedure(use_node, module_name, proc, context, &
-                                     error_msg)
+                                     error_msg, force)
         ! Register a separately compiled module procedure so a call resolves to
         ! its mangled symbol __<module>_MOD_<name> and links against the module
         ! object (#284). The procedure passes arguments by reference; integer
         ! functions and subroutines whose arguments are all supported scalars are
         ! recorded in the .fmod, carrying each argument's kind so the by-reference
-        ! call materialises the actual with the right type.
+        ! call materialises the actual with the right type. force=.true. imports
+        ! the specific of a use-associated generic even when it is not named in
+        ! the only-list.
         type(use_statement_node), intent(in) :: use_node
         character(len=*), intent(in) :: module_name
         type(fmod_procedure_t), intent(in) :: proc
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: force
         character(len=:), allocatable :: mangled
         integer, allocatable :: arg_kinds(:)
         integer :: return_kind
+        logical :: forced
 
         call set_empty(error_msg)
+        forced = .false.
+        if (present(force)) forced = force
         if (.not. allocated(proc%name)) return
         if (len_trim(proc%name) == 0) return
-        if (.not. use_only_wants(use_node, trim(proc%name))) return
+        if (.not. forced) then
+            if (.not. use_only_wants(use_node, trim(proc%name))) return
+        end if
         if (external_procedure_index(context, trim(proc%name)) > 0) return
         if (contained_function_kind(context, trim(proc%name)) /= 0) return
         if (trim(proc%kind) == 'subroutine') then
