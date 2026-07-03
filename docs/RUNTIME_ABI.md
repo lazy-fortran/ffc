@@ -38,7 +38,14 @@ is closed with ABI documentation and executable tests.
 - Scalar `character(len=N)` variables keep an `i8*` pointer to literal-backed
   storage plus the declared length `N` in the lowering symbol. Assignment from
   character literals stores exactly `N` characters by truncating long literals
-  and blank-padding short literals.
+  and blank-padding short literals. Assignment from a character expression
+  (a variable, or a `trim`/`adjustl`/`adjustr`/`achar`/`repeat` result) copies
+  `min(source length, N)` bytes into a fresh blank-filled `N`-byte buffer at
+  runtime and rebinds the symbol to it, the same truncate/pad semantics with
+  a runtime rather than compile-time-known source length. `==`, `/=`, `<`,
+  `<=`, `>`, `>=` between character operands lower to a three-way compare
+  (-1/0/1) over the blank-padded common length, then test that result against
+  zero with the same predicate used for integer comparisons.
 - The current lowerer keeps ordinary scalar symbols as SSA-like current values.
 
 ### Allocatable array descriptor
@@ -194,7 +201,17 @@ contents; the next call through `fp` picks up the new address.
 - Names are emitted as source names for the current single-file subset. A
   deterministic mangling scheme is still required before broader procedure and
   module support.
-- Character procedure parameters and results are unsupported.
+- A character dummy argument, fixed-length (`character(len=N)`) or
+  assumed-length (`character(len=*)`), is bound through the same stack
+  {data pointer, i64 length} descriptor the caller builds for the actual
+  (see "Deferred-length character" below). An assumed-length dummy reads
+  both fields at each use, so `len`/`len_trim` see the caller's runtime
+  length. A fixed-length dummy reads only the data pointer at binding time
+  and keeps its own declared width N as a compile-time constant, so it sees
+  exactly the first N bytes of a (possibly longer) actual, matching
+  gfortran's fixed-length dummy association. Character function results are
+  supported for the deferred-length (`character(len=:), allocatable`) case;
+  see "Deferred-length character" below.
 - External procedures, modules, and separate compilation are unsupported; #54
   owns symbol mangling and link behavior.
 

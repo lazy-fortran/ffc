@@ -281,7 +281,6 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: arm_block, next_check_block, false_target
         type(lr_operand_desc_t) :: dummy_value
-        type(lr_operand_desc_t) :: lbl_data, lbl_len, eq, cond
         logical :: terminated
         integer :: i
         integer, allocatable :: value_indices(:), body(:)
@@ -298,24 +297,17 @@
         else
             next_check_block = create_liric_block(context%session)
         end if
-        ! Match the selector against each character label in turn.
+        ! Match the selector against each character label (or lexical range)
+        ! in turn.
         do i = 1, size(value_indices)
-            call char_expr_operands(arena, value_indices(i), context, &
-                                    lbl_data, lbl_len, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call char_equals(context, sel_data, sel_len, lbl_data, lbl_len, &
-                             eq, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eq, &
-                    i32_immediate(context%session, 0_c_int64_t), cond, &
-                    error_msg)) return
             if (i == size(value_indices)) then
                 false_target = next_check_block
             else
                 false_target = create_liric_block(context%session)
             end if
-            if (.not. emit_liric_condbr(context%session, cond, arm_block, &
-                    false_target, error_msg)) return
+            call emit_one_char_case_label(arena, value_indices(i), sel_data, &
+                sel_len, arm_block, false_target, context, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (i < size(value_indices)) then
                 if (.not. set_liric_block(context%session, false_target, &
                         error_msg)) return
@@ -574,6 +566,92 @@
                                     no_match_block, error_msg)) return
         call set_empty(error_msg)
     end subroutine emit_case_bound
+
+    subroutine emit_one_char_case_label(arena, value_index, sel_data, &
+                                        sel_len, arm_block, no_match_block, &
+                                        context, error_msg)
+        ! A character case label is either a literal/expression match (equal
+        ! to the selector) or a lexical range (lo:hi, lo:, or :hi), mirroring
+        ! emit_one_case_label's integer handling but with blank-padded
+        ! lexical comparison (char_compare) in place of integer icmp.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lr_operand_desc_t), intent(in) :: sel_data, sel_len
+        integer(c_int32_t), intent(in) :: arm_block
+        integer(c_int32_t), intent(in) :: no_match_block
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lbl_data, lbl_len, eq, cond
+        integer(c_int32_t) :: hi_check_block
+        integer :: start_value, end_value
+
+        call get_case_range_info(arena, value_index, start_value, end_value)
+        if (start_value > 0 .or. end_value > 0) then
+            if (start_value > 0 .and. end_value > 0) then
+                hi_check_block = create_liric_block(context%session)
+                call emit_char_case_bound(arena, start_value, sel_data, &
+                    sel_len, LR_CMP_SGE, hi_check_block, no_match_block, &
+                    context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. set_liric_block(context%session, hi_check_block, &
+                        error_msg)) return
+                context%current_block_id = hi_check_block
+                context%current_block_terminated = .false.
+                call emit_char_case_bound(arena, end_value, sel_data, &
+                    sel_len, LR_CMP_SLE, arm_block, no_match_block, context, &
+                    error_msg)
+            else if (start_value > 0) then
+                call emit_char_case_bound(arena, start_value, sel_data, &
+                    sel_len, LR_CMP_SGE, arm_block, no_match_block, context, &
+                    error_msg)
+            else
+                call emit_char_case_bound(arena, end_value, sel_data, &
+                    sel_len, LR_CMP_SLE, arm_block, no_match_block, context, &
+                    error_msg)
+            end if
+            return
+        end if
+
+        call char_expr_operands(arena, value_index, context, lbl_data, &
+                                lbl_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_equals(context, sel_data, sel_len, lbl_data, lbl_len, eq, &
+                         error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eq, &
+                i32_immediate(context%session, 0_c_int64_t), cond, &
+                error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, arm_block, &
+                no_match_block, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_one_char_case_label
+
+    subroutine emit_char_case_bound(arena, bound_index, sel_data, sel_len, &
+                                    predicate, match_block, no_match_block, &
+                                    context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: bound_index
+        type(lr_operand_desc_t), intent(in) :: sel_data, sel_len
+        integer(c_int), intent(in) :: predicate
+        integer(c_int32_t), intent(in) :: match_block
+        integer(c_int32_t), intent(in) :: no_match_block
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: bound_data, bound_len, cmp, cond
+
+        call char_expr_operands(arena, bound_index, context, bound_data, &
+                                bound_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_compare(context, sel_data, sel_len, bound_data, bound_len, &
+                          cmp, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, predicate, cmp, &
+                i32_immediate(context%session, 0_c_int64_t), cond, &
+                error_msg)) return
+        if (.not. emit_liric_condbr(context%session, cond, match_block, &
+                no_match_block, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_char_case_bound
 
     subroutine lower_select_type(arena, node_index, context, error_msg)
         ! Lower select type on a class(*) selector: load the descriptor's

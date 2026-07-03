@@ -217,6 +217,10 @@ module session_program_lowering_types
             ! not affect array-bound or kind-inquiry constant folding.
             logical :: has_unit_const = .false.
             integer :: unit_const = 0
+            ! Compile-time text of a character named constant (PARAMETER),
+            ! kept so a later constant's initializer can fold a reference to
+            ! this one (z_pad = x_pad // y_pad) at compile time.
+            character(len=:), allocatable :: character_constant_text
         end type symbol_t
 
         type, public :: array_section_info_t

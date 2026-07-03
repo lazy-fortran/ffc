@@ -34,19 +34,21 @@
                 return
             end if
             if (context%symbols(existing_index)%is_parameter) then
+                ! Both a fixed-length dummy (character(len=N)) and an
+                ! assumed-length one (character(len=*)) read their data
+                ! pointer from the caller's {data, length} descriptor; a
+                ! fixed-length dummy keeps its own declared width N rather
+                ! than the caller's runtime length.
                 call declaration_character_length(context, node, &
                                                   character_length, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (character_length > 0) then
-                    call unsupported_feature_error( &
-                        'character parameter declaration', node%line, &
-                        node%column, 'only assumed-length character '// &
-                        'parameters are supported by direct LIRIC session', &
-                        error_msg)
-                    return
+                    call bind_fixed_character_parameter_symbol(context, &
+                        existing_index, character_length, error_msg)
+                else
+                    call bind_character_parameter_symbol(context, &
+                        existing_index, error_msg)
                 end if
-                call bind_character_parameter_symbol(context, existing_index, &
-                                                     error_msg)
                 return
             end if
         end if
@@ -364,6 +366,14 @@
                                   error_msg)
             if (len_trim(error_msg) > 0) return
             call strip_literal_quotes(lit_value, literal_text)
+        else if (is_identifier(arena, node%value_index) .or. &
+                 is_char_expr_call(arena, node%value_index)) then
+            ! A character variable, trim()/adjustl()/adjustr()/achar()/repeat()
+            ! result assigned to a fixed-length target: pad or truncate to the
+            ! target's declared width like gfortran's fixed-length assignment.
+            call lower_fixed_char_expr_assignment(arena, node%value_index, &
+                context, symbol_index, error_msg)
+            return
         else
             call unsupported_feature_error('character assignment', &
                                            node%line, node%column, &
@@ -598,6 +608,32 @@
         call set_empty(error_msg)
     end subroutine bind_character_parameter_symbol
 
+    subroutine bind_fixed_character_parameter_symbol(context, symbol_index, &
+                                                      character_length, &
+                                                      error_msg)
+        ! A fixed-length dummy (character(len=N)) is associated with exactly
+        ! the first N bytes of the caller's actual: its own length is the
+        ! declared N, not the caller's runtime length, so it binds as a
+        ! non-deferred symbol whose data pointer is read from the shared
+        ! {data, length} descriptor's data slot.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_addr
+
+        context%symbols(symbol_index)%value_kind = VALUE_CHARACTER
+        context%symbols(symbol_index)%is_deferred_character = .false.
+        context%symbols(symbol_index)%character_length = character_length
+        context%symbols(symbol_index)%has_character_value = .true.
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(symbol_index)%address, 0_c_int64_t, data_addr, &
+            error_msg)) return
+        if (.not. emit_ptr_load(context%session, data_addr, &
+            context%symbols(symbol_index)%value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine bind_fixed_character_parameter_symbol
+
     subroutine char_length_arg_symbol(arena, node, context, symbol_index, &
                                        error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -670,6 +706,65 @@
             call set_empty(error_msg)
         end if
     end subroutine char_length_operands
+
+    subroutine lower_fixed_char_expr_assignment(arena, value_index, context, &
+                                                dest_symbol_index, error_msg)
+        ! Assign a character expression (a variable, or a trim()/adjustl()/
+        ! adjustr()/achar()/repeat() result) to a fixed-length target: copy
+        ! min(source length, target length) bytes into a blank-filled buffer
+        ! of the target's declared width, matching gfortran's fixed-length
+        ! assignment padding/truncation.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: src_data, src_len, dest_len_i32, cmp
+        type(lr_operand_desc_t) :: copy_len, copy_len64, buf, offset, null_ptr
+        character(len=64) :: null_name
+        integer :: dest_len
+
+        call char_expr_operands(arena, value_index, context, src_data, src_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        dest_len = context%symbols(dest_symbol_index)%character_length
+        dest_len_i32 = i32_immediate(context%session, int(dest_len, c_int64_t))
+
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, int(dest_len + 1, c_int64_t)), buf, &
+            error_msg)) return
+        call fill_spaces(context, buf, dest_len_i32, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, src_len, &
+                dest_len_i32, cmp, error_msg)) return
+        call select_value(context, cmp, src_len, dest_len_i32, copy_len, &
+                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_len, copy_len64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, buf, src_data, copy_len64, &
+                error_msg)) return
+
+        ! Null-terminate at the fixed end so the print path stops after dest_len.
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, &
+            i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
+            error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        write (null_name, '(A,I0)') '.ffc.fassign.term.', &
+            context%string_literal_count
+        call materialize_liric_string(context%session, trim(null_name), '', &
+                                      null_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_memcpy(context%session, offset, null_ptr, &
+            i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+
+        context%symbols(dest_symbol_index)%value = buf
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_fixed_char_expr_assignment
 
     subroutine lower_deferred_trim_assignment(arena, trim_index, context, &
                                               dest_symbol_index, error_msg)
@@ -895,6 +990,37 @@
                           VALUE_CHARACTER
         end if
     end function is_character_operand
+
+    subroutine lower_character_condition(arena, bin_op, left_idx, right_idx, &
+                                         context, value, error_msg)
+        ! A character comparison (==, /=, <, <=, >, >=) with Fortran's
+        ! blank-padded lexical ordering. char_compare reduces both operands
+        ! to a three-way -1/0/1 result; the same integer predicate used for
+        ! numeric comparisons then tests that result against zero.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: bin_op
+        integer, intent(in) :: left_idx, right_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a_data, a_len, b_data, b_len, cmp
+        integer(c_int) :: pred
+
+        call char_expr_operands(arena, left_idx, context, a_data, a_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_expr_operands(arena, right_idx, context, b_data, b_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_compare(context, a_data, a_len, b_data, b_len, cmp, &
+                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        call integer_compare_predicate(bin_op, pred, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, pred, cmp, &
+                i32_immediate(context%session, 0_c_int64_t), value, &
+                error_msg)) return
+    end subroutine lower_character_condition
 
     logical function is_named_char_call(arena, node_index, name)
         type(ast_arena_t), intent(in) :: arena

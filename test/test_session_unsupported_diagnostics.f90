@@ -12,7 +12,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_unassigned_character_print_diagnostic()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
-    if (.not. test_character_parameter_diagnostic()) all_passed = .false.
+    if (.not. test_character_parameter_lowers()) all_passed = .false.
     if (.not. test_complex_scalar_lowers()) all_passed = .false.
     if (.not. test_select_case_no_default_lowers()) all_passed = .false.
     if (.not. test_do_zero_step_diagnostic()) all_passed = .false.
@@ -34,7 +34,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_unassigned_character_print_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
-    if (.not. test_cli_character_parameter_diagnostic()) all_passed = .false.
+    if (.not. test_cli_character_parameter_lowers()) all_passed = .false.
     if (.not. test_cli_complex_scalar_lowers()) &
         all_passed = .false.
     if (.not. test_cli_select_case_no_default_lowers()) all_passed = .false.
@@ -104,10 +104,10 @@ contains
             '/tmp/ffc_session_module_diagnostic_test')
     end function test_module_diagnostic
 
-    logical function test_character_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-            'unsupported character parameter '// &
-            'declaration'
+    ! A fixed-length character dummy (character(len=N)) now lowers: it reads
+    ! the first N bytes of the caller's actual through the shared descriptor,
+    ! keeping its own declared width rather than the caller's runtime length.
+    logical function test_character_parameter_lowers()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  call show("hi")'//new_line('a')// &
@@ -120,10 +120,10 @@ contains
             '  end subroutine show'//new_line('a')// &
             'end program main'
 
-        test_character_parameter_diagnostic = expect_error_contains( &
-            source, expected, &
+        test_character_parameter_lowers = expect_output( &
+            source, ' hi'//new_line('a'), &
             '/tmp/ffc_session_char_param_test')
-    end function test_character_parameter_diagnostic
+    end function test_character_parameter_lowers
 
     ! complex scalars are supported now; verify they lower and match gfortran.
     logical function test_complex_scalar_lowers()
@@ -371,10 +371,8 @@ contains
             '/tmp/ffc_cli_module_diagnostic_test')
     end function test_cli_module_diagnostic
 
-    logical function test_cli_character_parameter_diagnostic()
-        character(len=*), parameter :: expected = &
-            'unsupported character parameter '// &
-            'declaration'
+    ! Same construct through the CLI: it compiles cleanly with no diagnostic.
+    logical function test_cli_character_parameter_lowers()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  call show("hi")'//new_line('a')// &
@@ -387,10 +385,9 @@ contains
             '  end subroutine show'//new_line('a')// &
             'end program main'
 
-        test_cli_character_parameter_diagnostic = expect_cli_error_contains( &
-            source, expected, &
-            '/tmp/ffc_cli_char_param_test')
-    end function test_cli_character_parameter_diagnostic
+        test_cli_character_parameter_lowers = expect_cli_no_error( &
+            source, '/tmp/ffc_cli_char_param_test')
+    end function test_cli_character_parameter_lowers
 
     logical function test_cli_complex_scalar_lowers()
         character(len=*), parameter :: source = &

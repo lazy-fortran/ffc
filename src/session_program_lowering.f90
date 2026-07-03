@@ -682,16 +682,20 @@ contains
             return
         end if
         if (value_kind == VALUE_CHARACTER) then
+            ! Both a fixed-length dummy (character(len=N)) and an
+            ! assumed-length one (character(len=*)) read their data pointer
+            ! from the caller's {data, length} descriptor; a fixed-length
+            ! dummy keeps its own declared width N rather than the caller's
+            ! runtime length.
             call parse_character_length(node%type_name, character_length, error_msg)
             if (len_trim(error_msg) > 0) return
             if (character_length > 0) then
-                call unsupported_feature_error( &
-                    'character parameter declaration', node%line, node%column, &
-                    'only assumed-length character parameters are supported '// &
-                    'by direct LIRIC session', error_msg)
-                return
+                call bind_fixed_character_parameter_symbol(context, &
+                    symbol_index, character_length, error_msg)
+            else
+                call bind_character_parameter_symbol(context, symbol_index, &
+                    error_msg)
             end if
-            call bind_character_parameter_symbol(context, symbol_index, error_msg)
         else
             call update_parameter_symbol(context, symbol_index, value_kind, &
                 error_msg)
@@ -1590,6 +1594,14 @@ contains
                 ! operands are lowered (Fortran does not short-circuit), then
                 ! combined with the matching bitwise op on the i1 values.
                 call lower_logical_connective(arena, bin_op, bin_left, &
+                    bin_right, context, value, error_msg)
+                return
+            end if
+            ! A comparison with a character operand lowers through Fortran's
+            ! blank-padded lexical ordering.
+            if (is_character_operand(arena, bin_left, context) .or. &
+                is_character_operand(arena, bin_right, context)) then
+                call lower_character_condition(arena, bin_op, bin_left, &
                     bin_right, context, value, error_msg)
                 return
             end if

@@ -127,9 +127,15 @@
     end subroutine lower_nonint_constant_declaration
 
     subroutine lower_character_constant_declaration(node, context, name, error_msg)
-        ! A character named constant takes its length from the folded literal
-        ! (character(len=*), parameter :: s = "Hello"). The value operand holds
-        ! a materialized LIRIC string so references and print read it directly.
+        ! A character named constant with an assumed length
+        ! (character(len=*), parameter :: s = "Hello") takes its length from
+        ! the folded initializer text. A declared length
+        ! (character(len=N), parameter :: s = "Hello") instead pads or
+        ! truncates the folded text to N, matching gfortran's fixed-length
+        ! assignment. The initializer may reference an earlier character
+        ! named constant (z = x // y), not just literals. The value operand
+        ! holds a materialized LIRIC string so references and print read it
+        ! directly.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
@@ -137,15 +143,22 @@
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
         logical :: fold_ok
-        integer :: index
+        integer :: index, declared_length
 
-        call concat_character_literals(context%arena, node%initializer_index, &
-                                       literal_text, fold_ok)
+        call fold_char_constant_expr(context, node%initializer_index, &
+                                     literal_text, fold_ok)
         if (.not. fold_ok) then
             call unsupported_feature_error('character parameter declaration', &
                 node%line, node%column, 'only character-literal initializers '// &
                 'are supported for named constants', error_msg)
             return
+        end if
+
+        call declaration_character_length(context, node, declared_length, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (declared_length > 0) then
+            call normalize_character_literal(literal_text, declared_length)
         end if
 
         call define_character_symbol(context, name, len(literal_text), error_msg)
@@ -165,8 +178,60 @@
         if (len_trim(error_msg) > 0) return
         context%symbols(index)%has_character_value = .true.
         context%symbols(index)%is_parameter = .true.
+        context%symbols(index)%character_constant_text = literal_text
         call set_empty(error_msg)
     end subroutine lower_character_constant_declaration
+
+    recursive subroutine fold_char_constant_expr(context, node_index, &
+                                                 accumulated, ok)
+        ! Fold a character-parameter initializer (a literal, a // chain of
+        ! literals and/or earlier character named constants) into its
+        ! compile-time text.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: accumulated
+        logical, intent(out) :: ok
+        character(len=:), allocatable :: left_text, right_text
+        character(len=:), allocatable :: bin_op, bin_err
+        integer :: bin_left, bin_right, bin_line, bin_col
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        ok = .false.
+        if (.not. node_exists(context%arena, node_index)) return
+
+        if (is_binary_op(context%arena, node_index)) then
+            call get_binary_op_info(context%arena, node_index, bin_op, &
+                                    bin_left, bin_right, bin_line, bin_col, &
+                                    bin_err)
+            if (len_trim(bin_err) > 0) return
+            if (trim(bin_op) /= '//') return
+            call fold_char_constant_expr(context, bin_left, left_text, ok)
+            if (.not. ok) return
+            call fold_char_constant_expr(context, bin_right, right_text, ok)
+            if (.not. ok) return
+            accumulated = left_text//right_text
+            ok = .true.
+            return
+        end if
+
+        if (is_identifier(context%arena, node_index)) then
+            call get_identifier_name(context%arena, node_index, id_name, &
+                                     id_err)
+            if (len_trim(id_err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) return
+            if (.not. &
+                allocated(context%symbols(symbol_index)%character_constant_text)) &
+                return
+            accumulated = context%symbols(symbol_index)%character_constant_text
+            ok = .true.
+            return
+        end if
+
+        call concat_character_literals(context%arena, node_index, &
+                                       accumulated, ok)
+    end subroutine fold_char_constant_expr
 
     subroutine type_name_value_kind(type_name, line, column, value_kind, error_msg)
         character(len=*), intent(in) :: type_name

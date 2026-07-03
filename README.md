@@ -80,7 +80,15 @@ scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
 `adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, and `iachar` are
 supported. A `//` concatenation of character variables, literals, and these
 intrinsics assigns into a fixed-length scalar, truncating or blank-padding to
-the declared length. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
+the declared length, and so does assigning a plain character variable or
+intrinsic result to a fixed-length target. `==`, `/=`, `<`, `<=`, `>`, `>=`
+between character operands use Fortran's blank-padded lexical ordering, and a
+character `SELECT CASE` accepts a lexical range label (`case ('a':'j')`). A
+fixed-length dummy (`character(len=N), intent(in)`) keeps its own declared
+width rather than the caller's runtime length. A character `parameter` named
+constant may declare a fixed length, padded or truncated from its folded
+initializer, and that initializer may concatenate an earlier character named
+constant. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
 `log_gamma`, and `hypot`.
