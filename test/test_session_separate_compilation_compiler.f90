@@ -9,6 +9,7 @@ program test_session_separate_compilation_compiler
     if (.not. test_two_file_module_and_main_links_and_runs()) all_passed = .false.
     if (.not. test_module_print_and_real_state()) all_passed = .false.
     if (.not. test_two_module_container_object_links()) all_passed = .false.
+    if (.not. test_procedures_only_module_links()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: two-file separate compilation'
@@ -110,6 +111,43 @@ contains
             '/tmp/ffc_box_a.fmod /tmp/ffc_box_b.fmod')) return
         ok = .true.
     end function test_two_module_container_object_links
+
+    logical function test_procedures_only_module_links() result(ok)
+        ! A module whose only exports are contained procedures (no module-level
+        ! declaration part) must still emit a .fmod so a separately compiled
+        ! program that USEs it resolves the module and links the procedure.
+        character(len=*), parameter :: m_src = '/tmp/ffc_sep4_m.f90'
+        character(len=*), parameter :: main_src = '/tmp/ffc_sep4_main.f90'
+        character(len=*), parameter :: m_obj = '/tmp/ffc_sep4_m.o'
+        character(len=*), parameter :: main_exe = '/tmp/ffc_sep4_main'
+        character(len=*), parameter :: out_file = '/tmp/ffc_sep4_out.txt'
+
+        ok = .false.
+        if (.not. write_file(m_src, &
+            'module ffc_only_procs'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function twice(x) result(r)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    r = 2 * x'//new_line('a')// &
+            '  end function twice'//new_line('a')// &
+            'end module ffc_only_procs')) return
+        if (.not. write_file(main_src, &
+            'program main'//new_line('a')// &
+            '  use ffc_only_procs, only: twice'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  if (twice(21) /= 42) error stop'//new_line('a')// &
+            "  print *, 'OK'"//new_line('a')// &
+            'end program main')) return
+
+        if (.not. build_and_run(m_src, main_src, m_obj, main_exe, out_file, &
+            '/tmp/ffc_only_procs.fmod')) return
+        if (.not. file_contains(out_file, 'OK')) then
+            print *, 'FAIL: procedures-only module did not round-trip'
+            return
+        end if
+        ok = .true.
+    end function test_procedures_only_module_links
 
     logical function build_and_run(m_src, main_src, m_obj, main_exe, out_file, &
                                    fmods) result(ok)
