@@ -26,14 +26,6 @@
                     'allocatables', error_msg)
                 return
             end if
-            ! Only integer rank-2 is wired through allocate/element/print.
-            if (rank == 2 .and. value_kind /= VALUE_I32) then
-                call unsupported_feature_error('allocatable declaration', &
-                    node%line, node%column, &
-                    'direct LIRIC session supports rank-2 allocatables for '// &
-                    'integer elements only', error_msg)
-                return
-            end if
         end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then

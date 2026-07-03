@@ -233,6 +233,15 @@
                                                          .false., error_msg)
                 return
             end if
+            if ((node%is_array_access .or. &
+                 is_allocatable_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, node_index, context, value, &
+                                              error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_print_logical_value(context, value, error_msg)
+                return
+            end if
             if (is_contained_complex_function(context, node%name)) then
                 call lower_print_complex_result_call(arena, node_index, context, &
                                                      error_msg)
@@ -579,7 +588,8 @@
                 return
             end if
             if ((node%is_array_access .or. &
-                 is_declared_array_element_ref(node, context)) .and. &
+                 is_declared_array_element_ref(node, context) .or. &
+                 is_allocatable_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_LOGICAL) then
                 ! Logical array element: load as i32 then format as T/F.
                 call lower_i32_array_element(arena, node, context, value, &
@@ -675,7 +685,8 @@
         if (.not. allocated(node%name)) return
         symbol_index = find_symbol(context, node%name)
         if (symbol_index <= 0) return
-        if (.not. context%symbols(symbol_index)%is_array) return
+        if (.not. context%symbols(symbol_index)%is_array .and. &
+            .not. context%symbols(symbol_index)%is_allocatable) return
         value_kind = context%symbols(symbol_index)%value_kind
     end function array_access_value_kind
 
