@@ -251,7 +251,95 @@
                 if (len_trim(error_msg) > 0) return
             end do
         end if
+        if (allocated(info%procedures)) then
+            do i = 1, size(info%procedures)
+                call import_fmod_procedure(use_node, name, info%procedures(i), &
+                                           context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
     end subroutine import_module_from_fmod
+
+    subroutine import_fmod_procedure(use_node, module_name, proc, context, &
+                                     error_msg)
+        ! Register a separately compiled module procedure so a call resolves to
+        ! its mangled symbol __<module>_MOD_<name> and links against the module
+        ! object (#284). The procedure passes arguments by reference; integer
+        ! functions and subroutines whose arguments are all supported scalars are
+        ! recorded in the .fmod, carrying each argument's kind so the by-reference
+        ! call materialises the actual with the right type.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: module_name
+        type(fmod_procedure_t), intent(in) :: proc
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mangled
+        integer, allocatable :: arg_kinds(:)
+        integer :: return_kind
+
+        call set_empty(error_msg)
+        if (.not. allocated(proc%name)) return
+        if (len_trim(proc%name) == 0) return
+        if (.not. use_only_wants(use_node, trim(proc%name))) return
+        if (external_procedure_index(context, trim(proc%name)) > 0) return
+        if (contained_function_kind(context, trim(proc%name)) /= 0) return
+        if (trim(proc%kind) == 'subroutine') then
+            return_kind = VALUE_SUBROUTINE
+        else if (trim(proc%kind) == 'integer') then
+            return_kind = VALUE_I32
+        else
+            return
+        end if
+        call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
+        if (len_trim(error_msg) > 0) return
+        mangled = module_procedure_mangled(module_name, trim(proc%name))
+        call add_external_procedure(context, trim(proc%name), mangled, &
+                                    return_kind, proc%nargs, .true., arg_kinds)
+    end subroutine import_fmod_procedure
+
+    subroutine parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
+        ! Split the .fmod arg_kinds token string into per-argument value kinds.
+        ! An unrecognised or count-mismatched token list means the artefact does
+        ! not describe a callable signature, so the procedure is left out (#284).
+        type(fmod_procedure_t), intent(in) :: proc
+        integer, allocatable, intent(out) :: arg_kinds(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: rest, token
+        integer :: n, value_kind, sep
+
+        call set_empty(error_msg)
+        allocate (arg_kinds(max(proc%nargs, 0)))
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_kinds)) then
+            error_msg = 'missing argument kinds for module procedure '// &
+                trim(proc%name)
+            return
+        end if
+        rest = trim(adjustl(proc%arg_kinds))
+        n = 0
+        do while (len_trim(rest) > 0 .and. n < proc%nargs)
+            sep = index(rest, ' ')
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            value_kind = value_kind_of_token(token)
+            if (value_kind == 0) then
+                error_msg = 'unrecognised argument kind "'//trim(token)// &
+                    '" for module procedure '//trim(proc%name)
+                return
+            end if
+            n = n + 1
+            arg_kinds(n) = value_kind
+        end do
+        if (n /= proc%nargs) then
+            error_msg = 'argument kind count mismatch for module procedure '// &
+                trim(proc%name)
+        end if
+    end subroutine parse_fmod_arg_kinds
 
     logical function module_defined_in_unit(arena, module_lowered)
         ! Whether a module of this name is defined anywhere in this arena.
@@ -359,13 +447,14 @@
         character(len=:), allocatable :: mangled
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
-        integer :: sym_idx
+        integer :: sym_idx, value_kind
 
         call set_empty(error_msg)
         if (.not. allocated(var%name)) return
         if (len_trim(var%name) == 0) return
         if (.not. use_only_wants(use_node, trim(var%name))) return
-        if (trim(var%kind) /= 'integer') return
+        value_kind = value_kind_of_token(trim(var%kind))
+        if (value_kind == 0) return
         if (find_symbol(context, trim(var%name)) > 0) return
         mangled = module_procedure_mangled( &
             trim(use_node%module_name), trim(var%name))
@@ -378,7 +467,7 @@
         call grow_symbols(context)
         sym_idx = context%symbol_count + 1
         context%symbols(sym_idx)%name = trim(var%name)
-        context%symbols(sym_idx)%value_kind = VALUE_I32
+        context%symbols(sym_idx)%value_kind = value_kind
         context%symbols(sym_idx)%has_address = .true.
         context%symbols(sym_idx)%is_reference = .true.
         context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL

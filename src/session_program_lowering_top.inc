@@ -1,13 +1,15 @@
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
-                                          error_msg, include_paths)
+                                          error_msg, include_paths, link_objects)
 
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in), optional :: include_paths(:)
+        character(len=*), intent(in), optional :: link_objects(:)
         call lower_program_to_liric_path(arena, root_index, output_path, &
-                                         .true., error_msg, include_paths)
+                                         .true., error_msg, include_paths, &
+                                         link_objects)
     end subroutine lower_program_to_liric_exe
     subroutine lower_program_to_liric_object(arena, root_index, output_path, &
                                              error_msg, include_paths)
@@ -21,17 +23,19 @@
     end subroutine lower_program_to_liric_object
     subroutine lower_program_to_liric_path(arena, root_index, output_path, &
                                            emit_executable, error_msg, &
-                                           include_paths)
+                                           include_paths, link_objects)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=*), intent(in), optional :: include_paths(:)
+        character(len=*), intent(in), optional :: link_objects(:)
         logical, intent(in) :: emit_executable
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: return_value
         integer(c_int32_t) :: argc_vreg
         integer(c_int32_t) :: argv_vreg
+        logical :: needs_main
         call validate_program(arena, root_index, error_msg)
         if (len_trim(error_msg) > 0) return
         call liric_session_create(context%session, error_msg)
@@ -43,6 +47,14 @@
         allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         context%arena = arena
+        ! A module-only unit compiled to an object is linked beside the main and
+        ! sibling module objects. Tag its per-unit .ffc content globals with a
+        ! prefix derived from the output path so their counter-numbered names do
+        ! not collide across those objects at link time (#284).
+        if (.not. emit_executable .and. &
+            .not. unit_defines_main(arena, root_index)) then
+            context%unit_symbol_prefix = unit_prefix_from_path(output_path)
+        end if
         if (present(include_paths)) then
             context%include_paths = include_paths
             context%include_path_count = size(include_paths)
@@ -141,26 +153,42 @@
             call destroy(context%session)
             return
         end if
+        ! A bare module compiled on its own may USE another module resolved from
+        ! a .fmod. Its procedures reference those imports, so process the module
+        ! USE statements before lowering the procedure bodies (#284).
+        call import_bare_module_use_dependencies(arena, root_index, context, &
+                                                 error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_module_procedures(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-        if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
-                                 argv_vreg)) then
-            call destroy(context%session)
-            return
+        ! A bare-module or block-data object defines no main. Emitting one would
+        ! collide with the linked program's main when the object is a separate
+        ! compilation prerequisite (#284), so it is skipped for object output.
+        needs_main = emit_executable .or. unit_defines_main(arena, root_index)
+        context%unit_is_module_only = .not. needs_main
+        if (needs_main) then
+            if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
+                                     argv_vreg)) then
+                call destroy(context%session)
+                return
+            end if
+            context%argc_value = i32_vreg(context%session, argc_vreg)
+            context%argv_value = ptr_vreg(context%session, argv_vreg)
+            context%has_command_args = .true.
         end if
-        context%argc_value = i32_vreg(context%session, argc_vreg)
-        context%argv_value = ptr_vreg(context%session, argv_vreg)
-        context%has_command_args = .true.
         call lower_program_return(arena, root_index, context, return_value, &
                                   error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if
-        if (.not. context%current_block_terminated) then
+        if (needs_main .and. .not. context%current_block_terminated) then
             if (.not. emit_ret_i32_operand(context%session, return_value, &
                                                            error_msg)) then
                 call destroy(context%session)
@@ -168,16 +196,24 @@
             end if
         end if
         if (emit_executable) then
-            if (.not. finish_and_emit_exe(context%session, output_path, &
-                                                          error_msg)) then
+            if (.not. emit_executable_output(context%session, output_path, &
+                                             link_objects, error_msg)) then
                 call destroy(context%session)
                 return
             end if
         else
-            if (.not. finish_and_emit_object(context%session, output_path, &
-                                                             error_msg)) then
-                call destroy(context%session)
-                return
+            if (needs_main) then
+                if (.not. finish_and_emit_object(context%session, output_path, &
+                                                                 error_msg)) then
+                    call destroy(context%session)
+                    return
+                end if
+            else
+                if (.not. emit_object_no_active_function(context%session, &
+                        output_path, error_msg)) then
+                    call destroy(context%session)
+                    return
+                end if
             end if
             ! Emit a sibling .fmod for each module compiled with -c.
             if (context%module_export_count > 0) then
@@ -192,6 +228,175 @@
         call destroy(context%session)
         call set_empty(error_msg)
     end subroutine lower_program_to_liric_path
+
+    function unit_prefix_from_path(path) result(prefix)
+        ! A short, bounded, collision-resistant token for a module object's
+        ! per-unit .ffc content globals, derived from a djb2 hash of the output
+        ! path. Bounded length keeps the emitted symbol names inside their fixed
+        ! buffers; distinct objects in one link have distinct paths, hence
+        ! distinct prefixes (#284).
+        character(len=*), intent(in) :: path
+        character(len=:), allocatable :: prefix
+        integer(c_int64_t) :: hash
+        integer :: i
+        character(len=8) :: hex
+
+        hash = 5381_c_int64_t
+        do i = 1, len_trim(path)
+            hash = iand(hash * 33_c_int64_t + int(iachar(path(i:i)), c_int64_t), &
+                        int(z'FFFFFFFF', c_int64_t))
+        end do
+        write (hex, '(Z8.8)') int(hash, c_int32_t)
+        prefix = 'u'//hex//'.'
+    end function unit_prefix_from_path
+
+    logical function unit_defines_main(arena, root_index) result(has_main)
+        ! Whether the compilation unit contains a main program that requires a
+        ! `main` symbol. A bare module or block-data unit does not; a
+        ! multi-unit container does only when it holds a program node.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=:), allocatable :: node_type, ff_error
+        integer, allocatable :: body_indices(:)
+        integer :: i
+
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type == 'module_node' .or. node_type == 'module' .or. &
+            node_type == 'block_data_node' .or. node_type == 'block_data') then
+            has_main = .false.
+            return
+        end if
+        if (node_type == 'multi_unit_container') then
+            has_main = .false.
+            call get_unit_body_indices(arena, root_index, body_indices, ff_error)
+            if (len_trim(ff_error) > 0 .or. .not. allocated(body_indices)) return
+            do i = 1, size(body_indices)
+                if (is_program_node(arena, body_indices(i))) then
+                    has_main = .true.
+                    return
+                end if
+            end do
+            return
+        end if
+        has_main = .true.
+    end function unit_defines_main
+
+    subroutine import_bare_module_use_dependencies(arena, root_index, context, &
+                                                   error_msg)
+        ! Import the USE dependencies of a module-only compilation unit (a bare
+        ! module or a container of modules with no main program). Its procedure
+        ! bodies reference entities of the used modules, resolved from their
+        ! .fmod artefacts, so the imports must register before the bodies are
+        ! lowered (#284). A unit that defines a main program keeps its existing
+        ! body-walk USE handling and is left untouched.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type, ff_error
+        integer, allocatable :: body_indices(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        if (unit_defines_main(arena, root_index)) return
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            call import_one_module_use_statements(arena, root_index, context, &
+                                                  error_msg)
+            return
+        end if
+        call get_unit_body_indices(arena, root_index, body_indices, ff_error)
+        if (len_trim(ff_error) > 0 .or. .not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
+            call import_one_module_use_statements(arena, body_indices(i), &
+                                                  context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine import_bare_module_use_dependencies
+
+    subroutine import_one_module_use_statements(arena, module_index, context, &
+                                                error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: module_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mod_name, ff_error
+        integer, allocatable :: decl_indices(:), proc_indices(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        call get_module_body_info(arena, module_index, mod_name, decl_indices, &
+                                  proc_indices, ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (.not. allocated(decl_indices)) return
+        do i = 1, size(decl_indices)
+            if (.not. node_exists(arena, decl_indices(i))) cycle
+            call import_module_use_at_index(arena, decl_indices(i), context, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine import_one_module_use_statements
+
+    subroutine import_module_use_at_index(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select type (node => arena%entries(node_index)%node)
+        type is (use_statement_node)
+            if (.not. module_use_is_resolvable(arena, context, node)) return
+            call import_module_derived_types(arena, node, context, error_msg)
+        end select
+    end subroutine import_module_use_at_index
+
+    logical function module_use_is_resolvable(arena, context, use_node) &
+            result(resolvable)
+        ! Whether a bare module's USE target can be imported: defined in this
+        ! unit, an intrinsic module, or resolvable from a .fmod on the include
+        ! path. An unresolvable USE in a module-only object is tolerated (as it
+        ! was before separate-compilation import), so a module that merely names
+        ! an absent module still compiles; a genuine reference to a missing
+        ! entity fails later at its own site (#284).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        type(use_statement_node), intent(in) :: use_node
+        character(len=:), allocatable :: lowered, name
+
+        resolvable = .false.
+        if (.not. allocated(use_node%module_name)) return
+        name = trim(use_node%module_name)
+        lowered = lowercase_text(name)
+        if (find_module_export_index(context, lowered) > 0) resolvable = .true.
+        if (module_defined_in_unit(arena, lowered)) resolvable = .true.
+        if (is_intrinsic_module(name)) resolvable = .true.
+        if (len_trim(find_fmod_on_path(context, name)) > 0) resolvable = .true.
+    end function module_use_is_resolvable
+
+    logical function emit_executable_output(session, output_path, &
+                                            link_objects, error_msg) result(ok)
+        ! Finish main and emit the executable, statically linking any separately
+        ! compiled prerequisite objects (#284).
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: output_path
+        character(len=*), intent(in), optional :: link_objects(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (present(link_objects)) then
+            if (size(link_objects) > 0) then
+                ok = finish_and_emit_exe_objects(session, output_path, &
+                                                 link_objects, error_msg)
+                return
+            end if
+        end if
+        ok = finish_and_emit_exe(session, output_path, error_msg)
+    end function emit_executable_output
     subroutine validate_program(arena, root_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -303,8 +508,13 @@
                 end if
                 if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
                     get_node_type_at(arena, body_indices(i)) == 'module') then
-                    ! Skip module nodes only if there's a nested program
-                    if (.not. has_nested_program) then
+                    ! A module node carries no executable body for a main; its
+                    ! procedures are lowered separately. Skip it when a nested
+                    ! program owns the main, or when the whole unit is module-only
+                    ! and compiled to an object (#284). Only an executable build
+                    ! with no program to run rejects here.
+                    if (.not. has_nested_program .and. &
+                        .not. context%unit_is_module_only) then
                         call unsupported_feature_error('module definition', &
                             arena%entries(body_indices(i))%node%line, &
                             arena%entries(body_indices(i))%node%column, &

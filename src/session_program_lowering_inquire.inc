@@ -186,7 +186,8 @@
 
         call set_empty(error_msg)
         context%string_literal_count = context%string_literal_count + 1
-        write (path_name, '(A,I0)') '.ffc.inq.file.', context%string_literal_count
+        path_name = ffc_unit_global_name( &
+            context, 'inq.file.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(path_name), &
                                          trim(file_path), path_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -208,8 +209,8 @@
             end if
 
             context%string_literal_count = context%string_literal_count + 1
-            write (mode_name, '(A,I0)') '.ffc.inq.mode.', &
-                context%string_literal_count
+            mode_name = ffc_unit_global_name( &
+                context, 'inq.mode.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(mode_name), &
                                              'r', mode_id, error_msg)
             if (len_trim(error_msg) > 0) return

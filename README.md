@@ -91,7 +91,12 @@ flat functions. A `logical`-valued function call (contained or module) prints
 directly as `T`/`F`, and a module function with a deferred-length
 (`character(len=:)`) or runtime-length (`character(len=len(arg))`) character
 result is callable and printable from a program in the same file. Module-level
-integer variables persist as globals and are visible across `use`. A single-file
+integer, real, and logical scalar variables persist as globals and are visible
+across `use`, in the same file or across separate compilation. A module
+subroutine or integer function with integer, real, or logical scalar arguments
+is callable from a separately compiled program: its signature round-trips
+through the `.fmod` and the two objects link, each keeping its own string and
+format literals (#284). A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a

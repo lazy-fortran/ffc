@@ -200,8 +200,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! For literal-only concat, create a new global string
         if (left_is_literal .and. right_is_literal) then
             context%string_literal_count = context%string_literal_count + 1
-            write (string_name, '(A,I0)') '.ffc.cat.', &
-                context%string_literal_count
+            string_name = ffc_unit_global_name( &
+                context, 'cat.', context%string_literal_count)
             call materialize_liric_string(context%session, trim(string_name), &
                                           combined_text, new_ptr, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -250,8 +250,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
             error_msg)) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (null_name, '(A,I0)') '.ffc.cat.term.', &
-            context%string_literal_count
+        null_name = ffc_unit_global_name( &
+            context, 'cat.term.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(null_name), &
                                       '', null_byte_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -284,8 +284,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         character(len=64) :: string_name
 
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.cat.lit.', &
-            context%string_literal_count
+        string_name = ffc_unit_global_name( &
+            context, 'cat.lit.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
                                       text, data_op, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -789,7 +789,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
             i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
             error_msg)) return
         context%string_literal_count = context%string_literal_count + 1
-        write (null_name, '(A,I0)') '.ffc.fcat.term.', context%string_literal_count
+        null_name = ffc_unit_global_name( &
+            context, 'fcat.term.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(null_name), '', &
                                       null_ptr, error_msg)
         if (len_trim(error_msg) > 0) return

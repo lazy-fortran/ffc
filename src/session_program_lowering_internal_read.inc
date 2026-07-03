@@ -95,7 +95,8 @@
 
         if (.not. emit_i32_alloca(context%session, slot, error_msg)) return
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.irf.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'irf.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), '%d', &
                                          fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -145,7 +146,8 @@
         end if
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.ilrf.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'ilrf.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          scanf_fmt, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -209,7 +211,8 @@
         write (width_text, '(I0)') buflen
         scanf_fmt = ' %'//trim(width_text)//'s'
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.ilrfc.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'ilrfc.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          scanf_fmt, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return

@@ -336,13 +336,15 @@
         ! resume line; the message rides as a %s argument (empty when absent, so
         ! the no-message form is "PAUSE " with its trailing space, as gfortran).
         context%string_literal_count = context%string_literal_count + 1
-        write (gname, '(A,I0)') '.ffc.pause.msg.', context%string_literal_count
+        gname = ffc_unit_global_name( &
+            context, 'pause.msg.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(gname), &
                                          msg_text, msg_gid, error_msg)
         if (len_trim(error_msg) > 0) return
         msgop = printf_format_ptr(context%session, msg_gid)
         context%string_literal_count = context%string_literal_count + 1
-        write (gname, '(A,I0)') '.ffc.pause.fmt.', context%string_literal_count
+        gname = ffc_unit_global_name( &
+            context, 'pause.fmt.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(gname), &
                                          'PAUSE %s'//achar(10)//banner, fmt_gid, &
                                          error_msg)

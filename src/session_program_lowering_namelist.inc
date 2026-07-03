@@ -227,7 +227,8 @@
             payload = text
             if (newline) payload = payload//achar(10)
             context%string_literal_count = context%string_literal_count + 1
-            write (fgn, '(A,I0)') '.ffc.nml.txt.', context%string_literal_count
+            fgn = ffc_unit_global_name( &
+                context, 'nml.txt.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(fgn), &
                                               payload, fgid, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -237,7 +238,8 @@
             if (.not. emit_fprintf(context%session, fa, error_msg)) return
         else
             context%string_literal_count = context%string_literal_count + 1
-            write (sname, '(A,I0)') '.ffc.nml.s.', context%string_literal_count
+            sname = ffc_unit_global_name( &
+                context, 'nml.s.', context%string_literal_count)
             if (.not. emit_liric_print_string_value(context%session, &
                     context%str_print_format_id, trim(sname), text, &
                     error_msg)) return
@@ -340,7 +342,8 @@
 
         call set_empty(error_msg)
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.nml.v.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'nml.v.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), conv, &
                                           fgid, error_msg)
         if (len_trim(error_msg) > 0) return

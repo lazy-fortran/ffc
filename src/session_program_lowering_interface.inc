@@ -576,10 +576,13 @@
     end subroutine register_interface_procedure
 
     subroutine add_external_procedure(context, fortran_name, c_name, &
-                                      return_kind, arg_count)
+                                      return_kind, arg_count, by_reference, &
+                                      arg_kinds)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
+        logical, intent(in), optional :: by_reference
+        integer, intent(in), optional :: arg_kinds(:)
         integer :: j
 
         call grow_external_procedures(context)
@@ -590,11 +593,89 @@
             ep%c_name = trim(c_name)
             ep%return_value_kind = return_kind
             ep%arg_count = arg_count
+            ep%by_reference = .false.
+            if (present(by_reference)) ep%by_reference = by_reference
             do j = 1, arg_count
                 ep%arg_value_kinds(j) = VALUE_I32
             end do
+            if (present(arg_kinds)) then
+                do j = 1, min(arg_count, size(arg_kinds))
+                    ep%arg_value_kinds(j) = arg_kinds(j)
+                end do
+            end if
         end associate
     end subroutine add_external_procedure
+
+    subroutine lower_module_proc_i32_call(arena, node, ext_idx, context, value, &
+                                          error_msg)
+        ! Lower a call to a separately compiled integer module function. The
+        ! arguments pass by reference (Fortran ABI) and the call targets the
+        ! module procedure's mangled symbol resolved from the .fmod (#284).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: n
+
+        n = 0
+        if (allocated(node%arg_indices)) n = size(node%arg_indices)
+        if (n /= context%external_procedures(ext_idx)%arg_count) then
+            call unsupported_feature_error('module function call', node%line, &
+                node%column, 'argument count does not match the module '// &
+                'interface for '//trim(node%name), error_msg)
+            return
+        end if
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_I32, trim(node%name), args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+        if (.not. emit_i32_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, value, &
+                error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_module_proc_i32_call
+
+    subroutine lower_module_proc_void_call(arena, node_index, ext_idx, context, &
+                                           error_msg)
+        ! Lower a CALL to a separately compiled module subroutine (#284).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: arg_indices(:)
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: call_name
+        integer :: n
+
+        call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
+        n = 0
+        if (allocated(arg_indices)) n = size(arg_indices)
+        if (n /= context%external_procedures(ext_idx)%arg_count) then
+            error_msg = 'argument count does not match the module interface'
+            return
+        end if
+        call_name = trim(context%external_procedures(ext_idx)%fortran_name)
+        call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
+                                    call_name, args, copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_void_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, &
+                error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_module_proc_void_call
 
     logical function has_bind_c(clause)
         character(len=:), allocatable, intent(in) :: clause

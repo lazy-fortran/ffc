@@ -221,9 +221,16 @@
           first_call_arg_kind(arena, node, context, VALUE_I32))
 
       if (external_procedure_index(context, node%name) > 0) then
-          call lower_external_i32_call(arena, node, &
-              external_procedure_index(context, node%name), context, value, &
-              error_msg)
+          if (context%external_procedures( &
+                  external_procedure_index(context, node%name))%by_reference) then
+              call lower_module_proc_i32_call(arena, node, &
+                  external_procedure_index(context, node%name), context, value, &
+                  error_msg)
+          else
+              call lower_external_i32_call(arena, node, &
+                  external_procedure_index(context, node%name), context, value, &
+                  error_msg)
+          end if
           return
       end if
       if (same_name(node%name, 'command_argument_count') .and. .not. &

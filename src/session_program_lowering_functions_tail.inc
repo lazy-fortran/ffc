@@ -20,6 +20,8 @@
         context%i32_print_format_id = parent_context%i32_print_format_id
         context%str_print_format_id = parent_context%str_print_format_id
         context%string_literal_count = parent_context%string_literal_count
+        if (allocated(parent_context%unit_symbol_prefix)) &
+            context%unit_symbol_prefix = parent_context%unit_symbol_prefix
         context%arena = arena
         allocate(context%symbols(16))
         allocate(context%derived_types(8))

@@ -387,8 +387,8 @@
             literal_text, context%symbols(symbol_index)%character_length)
 
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.char.', &
-            context%string_literal_count
+        string_name = ffc_unit_global_name( &
+            context, 'char.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
                                       literal_text, &
                                       context%symbols(symbol_index)%value, &
@@ -753,8 +753,8 @@
             i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
             error_msg)) return
         context%string_literal_count = context%string_literal_count + 1
-        write (null_name, '(A,I0)') '.ffc.fassign.term.', &
-            context%string_literal_count
+        null_name = ffc_unit_global_name( &
+            context, 'fassign.term.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(null_name), '', &
                                       null_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1104,7 +1104,8 @@
 
         call strip_literal_quotes(literal_value, literal_text)
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.cexpr.', context%string_literal_count
+        string_name = ffc_unit_global_name( &
+            context, 'cexpr.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
                                       literal_text, data_ptr, error_msg)
         if (len_trim(error_msg) > 0) return

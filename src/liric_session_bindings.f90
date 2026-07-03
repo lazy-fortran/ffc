@@ -67,6 +67,7 @@ module liric_session_bindings
         emit_ret_i32_main_exe, &
         emit_ret_i32_operand, emit_ret_void, finish_function, &
         finish_and_emit_object, finish_and_emit_exe, &
+        finish_and_emit_exe_objects, emit_object_no_active_function, &
         emit_i32_call, emit_ptr_call, emit_void_call, &
         emit_i32_indirect_call, emit_void_indirect_call
 
@@ -205,6 +206,17 @@ module liric_session_bindings
             type(lr_error_t), intent(inout) :: err
             integer(c_int) :: status
         end function lr_session_emit_exe
+
+        function lr_session_emit_exe_objects(handle, path, extra_objs, n, err) &
+                result(status) bind(c)
+            import :: c_char, c_int, c_ptr, lr_error_t
+            type(c_ptr), value :: handle
+            character(kind=c_char), intent(in) :: path(*)
+            type(c_ptr), intent(in) :: extra_objs(*)
+            integer(c_int), value :: n
+            type(lr_error_t), intent(inout) :: err
+            integer(c_int) :: status
+        end function lr_session_emit_exe_objects
 
         function lr_session_emit_object(handle, path, err) result(status) &
                 bind(c)
@@ -553,6 +565,97 @@ contains
                                 call set_empty(error_msg)
                                 finish_and_emit_exe = .true.
                             end function finish_and_emit_exe
+
+                            logical function finish_and_emit_exe_objects( &
+                                    session, path, objects, error_msg)
+                                ! Close main and statically link the extra
+                                ! object files (separately compiled module
+                                ! objects) into the executable (#284).
+                                type(liric_session_t), intent(inout) :: session
+                                character(len=*), intent(in) :: path
+                                character(len=*), intent(in) :: objects(:)
+                                character(len=:), allocatable, intent(out) :: error_msg
+                                character(kind=c_char), allocatable, target :: &
+                                    c_path(:)
+                                character(kind=c_char), allocatable, target :: &
+                                    obj_bufs(:, :)
+                                type(c_ptr), allocatable :: obj_ptrs(:)
+                                type(c_ptr) :: out_addr
+                                type(lr_error_t) :: error
+                                integer(c_int) :: status
+                                integer :: n, i, maxlen, blen
+
+                                finish_and_emit_exe_objects = .false.
+                                if (.not. require_open_session(session, error_msg)) return
+
+                                n = size(objects)
+                                maxlen = 1
+                                do i = 1, n
+                                    if (len_trim(objects(i)) + 1 > maxlen) &
+                                        maxlen = len_trim(objects(i)) + 1
+                                end do
+                                allocate (obj_bufs(maxlen, max(n, 1)))
+                                allocate (obj_ptrs(max(n, 1)))
+                                do i = 1, n
+                                    blen = len_trim(objects(i))
+                                    call fill_c_string(obj_bufs(:, i), &
+                                                       trim(objects(i)), blen)
+                                    obj_ptrs(i) = c_loc(obj_bufs(1, i))
+                                end do
+
+                                call clear_liric_error(error)
+                                out_addr = c_null_ptr
+                                status = lr_session_func_end(session%handle, &
+                                                             out_addr, error)
+                                if (.not. status_ok(status, error, error_msg)) return
+
+                                call to_c_chars(path, c_path)
+                                status = lr_session_emit_exe_objects( &
+                                    session%handle, c_path, obj_ptrs, &
+                                    int(n, c_int), error)
+                                if (.not. status_ok(status, error, error_msg)) return
+
+                                call set_empty(error_msg)
+                                finish_and_emit_exe_objects = .true.
+                            end function finish_and_emit_exe_objects
+
+                            subroutine fill_c_string(buf, text, text_len)
+                                character(kind=c_char), intent(out) :: buf(:)
+                                character(len=*), intent(in) :: text
+                                integer, intent(in) :: text_len
+                                integer :: k
+
+                                do k = 1, text_len
+                                    buf(k) = text(k:k)
+                                end do
+                                buf(text_len + 1) = c_null_char
+                            end subroutine fill_c_string
+
+                            logical function emit_object_no_active_function( &
+                                    session, path, error_msg)
+                                ! Emit an object without closing a main function.
+                                ! A bare-module unit defines no main, so its
+                                ! object must not carry one (it would collide
+                                ! with the linked program's main, #284).
+                                type(liric_session_t), intent(inout) :: session
+                                character(len=*), intent(in) :: path
+                                character(len=:), allocatable, intent(out) :: error_msg
+                                character(kind=c_char), allocatable :: c_path(:)
+                                type(lr_error_t) :: error
+                                integer(c_int) :: status
+
+                                emit_object_no_active_function = .false.
+                                if (.not. require_open_session(session, error_msg)) return
+
+                                call clear_liric_error(error)
+                                call to_c_chars(path, c_path)
+                                status = lr_session_emit_object(session%handle, &
+                                                                c_path, error)
+                                if (.not. status_ok(status, error, error_msg)) return
+
+                                call set_empty(error_msg)
+                                emit_object_no_active_function = .true.
+                            end function emit_object_no_active_function
 
                             logical function finish_and_emit_object(session, path, error_msg)
                                 type(liric_session_t), intent(inout) :: session

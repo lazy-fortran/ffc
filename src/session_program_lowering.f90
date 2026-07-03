@@ -47,10 +47,12 @@ module session_program_lowering
         is_identifier, get_identifier_name, &
         is_declaration_node, is_module_node, is_program_node
     use liric_session_bindings, only: destroy, begin_i32_main, &
+        liric_session_t, &
         begin_i32_function, begin_void_subroutine, &
         begin_ptr_function, &
         emit_ret_i32_operand, emit_ret_void, &
         finish_function, finish_and_emit_exe, &
+        finish_and_emit_exe_objects, emit_object_no_active_function, &
         finish_and_emit_object, emit_void_call, &
         emit_i32_call, emit_ptr_call, &
         emit_i32_indirect_call, &
@@ -271,7 +273,7 @@ module session_program_lowering
         F64_INTRINSIC_IDS
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
         fmod_component_t, fmod_derived_type_t, &
-        fmod_variable_t, write_fmod, read_fmod
+        fmod_variable_t, fmod_procedure_t, write_fmod, read_fmod
     implicit none
     private
     public :: lower_program_to_liric_exe
@@ -561,7 +563,8 @@ contains
         call normalize_character_literal( &
             literal_text, context%symbols(symbol_index)%character_length)
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.char.', context%string_literal_count
+        string_name = ffc_unit_global_name( &
+            context, 'char.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
             literal_text, &
             context%symbols(symbol_index)%value, &
@@ -1293,13 +1296,15 @@ contains
         if (allocated(node%stop_message)) then
             call strip_literal_quotes(node%stop_message, msg_text)
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.stop.msg.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'stop.msg.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 msg_text, msg_gid, error_msg)
             if (len_trim(error_msg) > 0) return
             msgop = printf_format_ptr(context%session, msg_gid)
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'stop.fmt.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 'STOP %s'//achar(10), fmt_gid, &
                 error_msg)
@@ -1311,7 +1316,8 @@ contains
             if (.not. emit_dprintf(context%session, fa, error_msg)) return
         else if (node%stop_code_index > 0) then
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.stop.fmt.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'stop.fmt.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 'STOP %d'//achar(10), fmt_gid, &
                 error_msg)
@@ -1358,13 +1364,15 @@ contains
         if (allocated(node%error_message)) then
             call strip_literal_quotes(node%error_message, msg_text)
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.estop.msg.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'estop.msg.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 msg_text, msg_gid, error_msg)
             if (len_trim(error_msg) > 0) return
             msgop = printf_format_ptr(context%session, msg_gid)
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'estop.fmt.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 'ERROR STOP %s'//achar(10), fmt_gid, &
                 error_msg)
@@ -1376,7 +1384,8 @@ contains
             if (.not. emit_dprintf(context%session, fa, error_msg)) return
         else if (node%error_code_index > 0) then
             context%string_literal_count = context%string_literal_count + 1
-            write (gname, '(A,I0)') '.ffc.estop.fmt.', context%string_literal_count
+            gname = ffc_unit_global_name( &
+                context, 'estop.fmt.', context%string_literal_count)
             call create_printf_format_global(context%session, trim(gname), &
                 'ERROR STOP %d'//achar(10), fmt_gid, &
                 error_msg)
@@ -1460,8 +1469,16 @@ contains
             return
         end if
         if (external_procedure_index(context, call_name) > 0) then
-            call lower_external_void_call(arena, node_index, &
-                external_procedure_index(context, call_name), context, error_msg)
+            if (context%external_procedures( &
+                    external_procedure_index(context, call_name))%by_reference) then
+                call lower_module_proc_void_call(arena, node_index, &
+                    external_procedure_index(context, call_name), context, &
+                    error_msg)
+            else
+                call lower_external_void_call(arena, node_index, &
+                    external_procedure_index(context, call_name), context, &
+                    error_msg)
+            end if
             return
         end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &

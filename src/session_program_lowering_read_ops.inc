@@ -354,7 +354,8 @@
         end if
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.fscanf.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'fscanf.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          scanf_fmt, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -418,7 +419,8 @@
         write (width_text, '(I0)') buflen
         scanf_fmt = ' %'//trim(width_text)//'s'
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.fscanfc.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'fscanfc.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          scanf_fmt, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return

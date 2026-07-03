@@ -561,11 +561,33 @@
             pos = pos + 1
         end do
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.str.', context%string_literal_count
+        string_name = ffc_unit_global_name(context, 'str.', &
+                                           context%string_literal_count)
         if (.not. emit_liric_print_string_value(context%session, &
                 context%str_print_format_id, trim(string_name), text, &
                 error_msg)) return
     end subroutine lower_format_string_literal
+
+    function ffc_unit_global_name(context, kind_tag, counter) result(name)
+        ! Build a per-unit .ffc content-global symbol name. When the unit carries
+        ! a symbol prefix (a separately compiled module object), the prefix is
+        ! inserted after '.ffc.' so the counter-numbered global does not collide
+        ! with the main or a sibling module object at link time (#284). The fixed
+        ! shared runtime helpers keep their stable names and are emitted elsewhere.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: kind_tag
+        integer, intent(in) :: counter
+        character(len=:), allocatable :: name
+        character(len=32) :: num
+
+        write (num, '(I0)') counter
+        if (allocated(context%unit_symbol_prefix)) then
+            name = '.ffc.'//context%unit_symbol_prefix//trim(kind_tag)// &
+                   trim(num)
+        else
+            name = '.ffc.'//trim(kind_tag)//trim(num)
+        end if
+    end function ffc_unit_global_name
 
     subroutine lower_compound_logical_descriptor(arena, node, context, width, &
                                                  item_index, exhausted, error_msg)
@@ -630,7 +652,8 @@
         end if
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.fmt.user.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'fmt.user.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          printf_fmt, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -895,8 +918,8 @@
                 if (len_trim(error_msg) > 0) return
                 call strip_literal_quotes(lit_value, character_value)
                 context%string_literal_count = context%string_literal_count + 1
-                write (string_name, '(A,I0)') '.ffc.str.', &
-                    context%string_literal_count
+                string_name = ffc_unit_global_name(context, 'str.', &
+                                                   context%string_literal_count)
                 if (.not. emit_liric_print_string_value(context%session, fmt_id, &
                         trim(string_name), character_value, error_msg)) return
                 return

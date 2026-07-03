@@ -238,14 +238,16 @@
 
         call set_empty(error_msg)
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'open.file.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), &
                                          trim(fpath), fgid, error_msg)
         if (len_trim(error_msg) > 0) return
         file_ptr_op = printf_format_ptr(context%session, fgid)
 
         context%string_literal_count = context%string_literal_count + 1
-        write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
+        mgn = ffc_unit_global_name( &
+            context, 'open.mode.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(mgn), &
                                          trim(mode_str), mgid, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -480,14 +482,16 @@
         call set_empty(error_msg)
         write (fname, '(A,I0)') 'fort.', unit_number
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'open.file.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), &
                                          trim(fname), fgid, error_msg)
         if (len_trim(error_msg) > 0) return
         file_ptr_op = printf_format_ptr(context%session, fgid)
 
         context%string_literal_count = context%string_literal_count + 1
-        write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
+        mgn = ffc_unit_global_name( &
+            context, 'open.mode.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(mgn), 'w+', &
                                          mgid, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -649,7 +653,8 @@
         if (len_trim(error_msg) > 0) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.fprintf.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'fprintf.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), &
                                           trim(fmts), fgid, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -672,7 +677,8 @@
         character(len=64) :: fgn
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.fprintf.nl.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'fprintf.nl.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), &
                                           achar(10), fgid, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -702,7 +708,8 @@
         if (.not. fortran_fmt_to_c(trim(fmt_body), c_fmt, error_msg)) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fgn, '(A,I0)') '.ffc.fprintf.fmt.', context%string_literal_count
+        fgn = ffc_unit_global_name( &
+            context, 'fprintf.fmt.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fgn), &
                                           trim(c_fmt)//achar(10), fgid, error_msg)
         if (len_trim(error_msg) > 0) return

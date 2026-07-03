@@ -171,7 +171,8 @@
         end if
 
         context%string_literal_count = context%string_literal_count + 1
-        write (string_name, '(A,I0)') '.ffc.char.', context%string_literal_count
+        string_name = ffc_unit_global_name( &
+            context, 'char.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
                                       literal_text, &
                                       context%symbols(index)%value, error_msg)

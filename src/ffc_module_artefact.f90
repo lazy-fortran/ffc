@@ -11,6 +11,7 @@ module ffc_module_artefact
     public :: fmod_component_t
     public :: fmod_derived_type_t
     public :: fmod_variable_t
+    public :: fmod_procedure_t
     public :: module_info_t
     public :: write_fmod
     public :: read_fmod
@@ -38,11 +39,25 @@ module ffc_module_artefact
         character(len=:), allocatable :: kind
     end type fmod_variable_t
 
+    ! A module procedure exported for separate compilation: its Fortran name,
+    ! result kind ('integer' for an integer function, 'subroutine' for a
+    ! subroutine), argument count, and the space-joined per-argument scalar-kind
+    ! tokens (e.g. "integer real"). Only procedures whose arguments are all
+    ! supported by-reference scalars are recorded, so a using unit can call them
+    ! by reference and link against the module object (#284).
+    type :: fmod_procedure_t
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: kind
+        character(len=:), allocatable :: arg_kinds
+        integer :: nargs = 0
+    end type fmod_procedure_t
+
     type :: module_info_t
         character(len=:), allocatable :: name
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
         type(fmod_variable_t), allocatable :: variables(:)
+        type(fmod_procedure_t), allocatable :: procedures(:)
     end type module_info_t
 
 contains
@@ -103,6 +118,18 @@ contains
             end do
         end if
 
+        if (allocated(info%procedures)) then
+            do i = 1, size(info%procedures)
+                write (unit, '(A)') ''
+                write (unit, '(A)') '[[procedure]]'
+                write (unit, '(A)') 'name = "'//field(info%procedures(i)%name)//'"'
+                write (unit, '(A)') 'kind = "'//field(info%procedures(i)%kind)//'"'
+                write (unit, '(A,I0)') 'nargs = ', info%procedures(i)%nargs
+                write (unit, '(A)') 'arg_kinds = "'// &
+                    field(info%procedures(i)%arg_kinds)//'"'
+            end do
+        end if
+
         close (unit, iostat=io_stat)
         if (io_stat /= 0) then
             error_msg = 'could not close .fmod artefact: '//trim(path)
@@ -124,7 +151,8 @@ contains
         type(fmod_derived_type_t), allocatable :: dtypes(:)
         type(fmod_component_t), allocatable :: comps(:)
         type(fmod_variable_t), allocatable :: vars(:)
-        integer :: nparam, ndtype, ncomp, nvar
+        type(fmod_procedure_t), allocatable :: procs(:)
+        integer :: nparam, ndtype, ncomp, nvar, nproc, io_read
         character(len=:), allocatable :: cname, ckind
 
         allocate (character(len=0) :: error_msg)
@@ -133,10 +161,12 @@ contains
         allocate (dtypes(0))
         allocate (comps(0))
         allocate (vars(0))
+        allocate (procs(0))
         nparam = 0
         ndtype = 0
         ncomp = 0
         nvar = 0
+        nproc = 0
         section = ''
 
         open (newunit=unit, file=path, status='old', action='read', iostat=io_stat)
@@ -169,6 +199,16 @@ contains
                 call grow_vars(vars, nvar)
                 vars(nvar)%name = ''
                 vars(nvar)%kind = ''
+                cycle
+            else if (line == '[[procedure]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'procedure'
+                nproc = nproc + 1
+                call grow_procs(procs, nproc)
+                procs(nproc)%name = ''
+                procs(nproc)%kind = ''
+                procs(nproc)%arg_kinds = ''
+                procs(nproc)%nargs = 0
                 cycle
             else if (line == '[[derived_type]]') then
                 call flush_component(comps, ncomp, dtypes, ndtype)
@@ -205,6 +245,14 @@ contains
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
+            case ('procedure')
+                if (key == 'name') procs(nproc)%name = unquote(val)
+                if (key == 'kind') procs(nproc)%kind = unquote(val)
+                if (key == 'arg_kinds') procs(nproc)%arg_kinds = unquote(val)
+                if (key == 'nargs') then
+                    read (val, *, iostat=io_read) procs(nproc)%nargs
+                    if (io_read /= 0) procs(nproc)%nargs = 0
+                end if
             end select
         end do
         close (unit)
@@ -213,6 +261,7 @@ contains
         info%parameters = params
         info%derived_types = dtypes
         info%variables = vars(1:nvar)
+        info%procedures = procs(1:nproc)
         if (len_trim(info%name) == 0) error_msg = 'malformed .fmod (no module name): '// &
             trim(path)
     end subroutine read_fmod
@@ -331,6 +380,17 @@ contains
         tmp(1:size(arr)) = arr
         call move_alloc(tmp, arr)
     end subroutine grow_vars
+
+    subroutine grow_procs(arr, n)
+        type(fmod_procedure_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_procedure_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_procs
 
     pure function mod_name(info) result(name)
         type(module_info_t), intent(in) :: info

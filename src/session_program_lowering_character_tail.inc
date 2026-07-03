@@ -544,7 +544,8 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, n64, &
                 null_pos, error_msg)) return
         context%string_literal_count = context%string_literal_count + 1
-        write (null_name, '(A,I0)') '.ffc.trim.term.', context%string_literal_count
+        null_name = ffc_unit_global_name( &
+            context, 'trim.term.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(null_name), '', &
                                       null_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -621,8 +622,8 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, total64, &
                 null_pos, error_msg)) return
         context%string_literal_count = context%string_literal_count + 1
-        write (null_name, '(A,I0)') '.ffc.concat.term.', &
-            context%string_literal_count
+        null_name = ffc_unit_global_name( &
+            context, 'concat.term.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(null_name), '', &
                                       null_ptr, error_msg)
         if (len_trim(error_msg) > 0) return

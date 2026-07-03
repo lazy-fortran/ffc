@@ -29,7 +29,8 @@
 
         call set_empty(error_msg)
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.pad.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'pad.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          '%-*.*s', pad_id, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -114,7 +115,8 @@
                 error_msg)) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.iwf.', context%string_literal_count
+        fmt_name = ffc_unit_global_name( &
+            context, 'iwf.', context%string_literal_count)
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          printf_fmt, field_id, error_msg)
         if (len_trim(error_msg) > 0) return

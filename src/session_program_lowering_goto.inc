@@ -103,7 +103,8 @@
         ok = .false.
         node_type = get_node_type_at(arena, node_index)
         if (node_type == 'module_node' .or. node_type == 'module') then
-            if (.not. has_nested_program) then
+            if (.not. has_nested_program .and. &
+                .not. context%unit_is_module_only) then
                 call unsupported_feature_error('module definition', &
                     get_node_line(arena, node_index), &
                     get_node_column(arena, node_index), &

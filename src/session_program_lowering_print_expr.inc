@@ -24,8 +24,8 @@
             if (is_character_literal(arena, node_index)) then
                 call strip_literal_quotes(lit_value, character_value)
                 context%string_literal_count = context%string_literal_count + 1
-                write (string_name, '(A,I0)') '.ffc.str.', &
-                    context%string_literal_count
+                string_name = ffc_unit_global_name(context, 'str.', &
+                                                   context%string_literal_count)
                 if (.not. emit_liric_print_string(context%session, &
                                                   context%str_print_format_id, &
                                                   trim(string_name), &
@@ -291,8 +291,8 @@
             if (is_character_literal(arena, node_index)) then
                 call strip_literal_quotes(lit_value, character_value)
                 context%string_literal_count = context%string_literal_count + 1
-                write (string_name, '(A,I0)') '.ffc.str.', &
-                    context%string_literal_count
+                string_name = ffc_unit_global_name(context, 'str.', &
+                                                   context%string_literal_count)
                 if (.not. emit_liric_print_string_value(context%session, &
                                                         context%str_print_format_id, &
                                                         trim(string_name), &
@@ -705,7 +705,8 @@
                                     false_block, error_msg)) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (true_name, '(A,I0)') '.ffc.logical.', context%string_literal_count
+        true_name = ffc_unit_global_name( &
+            context, 'logical.', context%string_literal_count)
         if (.not. set_liric_block(context%session, true_block, error_msg)) return
         context%current_block_id = true_block
         if (.not. emit_liric_print_string_value(context%session, &
@@ -715,7 +716,8 @@
         if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
 
         context%string_literal_count = context%string_literal_count + 1
-        write (false_name, '(A,I0)') '.ffc.logical.', context%string_literal_count
+        false_name = ffc_unit_global_name( &
+            context, 'logical.', context%string_literal_count)
         if (.not. set_liric_block(context%session, false_block, error_msg)) return
         context%current_block_id = false_block
         if (.not. emit_liric_print_string_value(context%session, &

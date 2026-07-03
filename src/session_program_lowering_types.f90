@@ -319,6 +319,10 @@ module session_program_lowering_types
             integer :: return_value_kind = VALUE_I32
             integer :: arg_value_kinds(MAX_PROC_ARGS) = VALUE_I32
             integer :: arg_count = 0
+            ! A bind(c) external passes arguments by value; a separately
+            ! compiled module procedure resolved from a .fmod passes them by
+            ! reference (Fortran ABI) and targets its mangled name (#284).
+            logical :: by_reference = .false.
         end type external_procedure_t
 
         integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
@@ -362,7 +366,16 @@ module session_program_lowering_types
             integer(c_int32_t) :: i16_print_format_id = -1_c_int32_t
             integer(c_int32_t) :: str_print_format_id = -1_c_int32_t
             integer :: string_literal_count = 0
+            ! Per-unit token inserted into counter-named .ffc.* content globals
+            ! (string literals, char temporaries, user formats) so a separately
+            ! compiled module object does not collide with the main or a sibling
+            ! module object at link time (#284). Empty for a main executable.
+            character(len=:), allocatable :: unit_symbol_prefix
             logical :: has_command_args = .false.
+            ! A module-only compilation unit (bare module or a container of
+            ! modules with no main program) compiled to an object emits no main;
+            ! its module nodes carry no executable body to run (#284).
+            logical :: unit_is_module_only = .false.
             type(lr_operand_desc_t) :: argc_value
             type(lr_operand_desc_t) :: argv_value
             character(len=64), allocatable :: function_names(:)
