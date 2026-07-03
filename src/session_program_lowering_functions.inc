@@ -121,6 +121,11 @@
                 call register_module_procedures(arena, body_indices(i), context, &
                                                 error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (node_type == 'program_node' .or. &
+                     node_type == 'program') then
+                call register_program_contained_procedures(arena, &
+                    body_indices(i), context, error_msg)
+                if (len_trim(error_msg) > 0) return
             else if (is_submodule_unit(node_type)) then
                 call register_one_submodule_procedures(arena, body_indices(i), &
                                                        context, error_msg)
@@ -128,6 +133,79 @@
             end if
         end do
     end subroutine collect_internal_function_names
+
+    subroutine register_program_contained_procedures(arena, program_index, &
+                                                     context, error_msg)
+        ! A multi_unit_container holds a program alongside its modules; the
+        ! container walk sees only the program_node, so its own CONTAINS
+        ! procedures must be registered here for call dispatch, exactly as a
+        ! bare-program root's contained defs already are.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: program_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        integer, allocatable :: body_indices(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        call get_program_body_info(arena, program_index, prog_name, &
+                                   body_indices, ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                call register_internal_function_by_index(arena, body_indices(i), &
+                                                         context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                call register_internal_subroutine_by_index(arena, &
+                    body_indices(i), context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine register_program_contained_procedures
+
+    subroutine lower_program_contained_functions(arena, program_index, context, &
+                                                 error_msg)
+        ! Lower the CONTAINS procedures of a program nested in a
+        ! multi_unit_container. The container body-walk reaches only the
+        ! program_node, so its contained function and subroutine bodies are
+        ! emitted here alongside the sibling modules' procedures.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: program_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prog_name, ff_error, node_type
+        integer, allocatable :: body_indices(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        call get_program_body_info(arena, program_index, prog_name, &
+                                   body_indices, ff_error)
+        if (len_trim(ff_error) > 0) then
+            error_msg = ff_error
+            return
+        end if
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            node_type = get_node_type_at(arena, body_indices(i))
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                call lower_one_internal_function(arena, body_indices(i), context, &
+                                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine lower_program_contained_functions
 
     subroutine register_internal_subroutine_name(node, context, error_msg, &
                                                  node_index)
@@ -960,6 +1038,11 @@
                 node_type == 'subroutine_def') then
                 call lower_one_internal_function(arena, body_indices(i), context, &
                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'program_node' .or. &
+                     node_type == 'program') then
+                call lower_program_contained_functions(arena, body_indices(i), &
+                                                       context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
         end do
