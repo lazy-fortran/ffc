@@ -129,7 +129,8 @@
                                                           value, error_msg)
             else if ((node%is_array_access .and. &
                  array_access_value_kind(node, context) == VALUE_LOGICAL) .or. &
-                is_allocatable_element_ref(node, context)) then
+                is_allocatable_element_ref(node, context) .or. &
+                is_declared_array_element_ref(node, context)) then
                 ! Logical array element occupies an i32 slot; the load yields the
                 ! 0/1 value the logical-context callers expect. Allocatable
                 ! logical refs reuse the same i32-slot load.
@@ -438,7 +439,8 @@
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
 
-        if (node%is_array_access .or. is_allocatable_element_ref(node, context)) then
+        if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
+            .or. is_declared_array_element_ref(node, context)) then
             call lower_array_element_address_for_kind(arena, node, context, &
                 VALUE_F32, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
@@ -566,7 +568,8 @@
                 return
             end if
             if (allocated(node%name)) then
-                if (node%is_array_access) then
+                if (node%is_array_access .or. &
+                    is_declared_array_element_ref(node, context)) then
                     symbol_index = find_symbol(context, node%name)
                     if (symbol_index > 0) then
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
@@ -713,7 +716,8 @@
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
 
-        if (node%is_array_access .or. is_allocatable_element_ref(node, context)) then
+        if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
+            .or. is_declared_array_element_ref(node, context)) then
             call lower_array_element_address_for_kind(arena, node, context, &
                 VALUE_F64, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
@@ -954,7 +958,8 @@
                 return
             end if
             if (allocated(node%name)) then
-                if (node%is_array_access) then
+                if (node%is_array_access .or. &
+                    is_declared_array_element_ref(node, context)) then
                     symbol_index = find_symbol(context, node%name)
                     if (symbol_index > 0) then
                         is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64

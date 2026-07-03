@@ -49,8 +49,11 @@ allocated to a compile-time-constant extent (`a = b + c`, `a = a * 3`); and
 whole-array `print` of a 1-D allocatable whose extent is a compile-time
 constant; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
 base address, with their extent taken from a whole-array actual of
-compile-time size, so `size`, element access, `sum`, and whole-array `print`
-work in the callee. A scalar `integer`/`real`/`logical, allocatable` variable
+compile-time size (including a `dimension(n)` bound naming a caller-scope
+`parameter`), so element read/write, `size(a)`, `size(a, dim)`,
+`lbound`/`ubound`, `sum`, and whole-array `print` work in the callee, in both
+program-contained and module procedures. A scalar
+`integer`/`real`/`logical, allocatable` variable
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
 with any source expression; a rank-1/rank-2 allocatable array dummy argument
 aliases the caller's own descriptor, so `allocate`/`deallocate`/element writes

@@ -518,7 +518,8 @@
                                                      value, error_msg)) return
                 return
             end if
-            if (node%is_array_access .and. &
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_LOGICAL) then
                 ! Logical array element: load as i32 then format as T/F.
                 call lower_i32_array_element(arena, node, context, value, &

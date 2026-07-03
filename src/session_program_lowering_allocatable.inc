@@ -1034,6 +1034,38 @@
         is_ref = (nargs == rank)
     end function is_allocatable_element_ref
 
+    logical function is_declared_array_element_ref(node, context) result(is_ref)
+        ! a(i) or a(i,j) where a is a declared (non-allocatable) array symbol,
+        ! even when FortFront did not flag the node as an array access. This gap
+        ! shows up for array dummy arguments inside module procedures, where the
+        ! usage node keeps is_array_access = .false. The subscript count must
+        ! match the array rank and every subscript must be scalar (a range
+        ! subscript is an array section, handled elsewhere).
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index, rank, nargs, i
+
+        is_ref = .false.
+        if (.not. allocated(node%name)) return
+        if (.not. allocated(node%arg_indices)) return
+        nargs = size(node%arg_indices)
+        if (nargs < 1 .or. nargs > 2) return
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_array) return
+        if (context%symbols(symbol_index)%is_allocatable) return
+        do i = 1, nargs
+            if (.not. node_exists(context%arena, node%arg_indices(i))) return
+            select type (arg => context%arena%entries(node%arg_indices(i))%node)
+            type is (range_expression_node)
+                return
+            end select
+        end do
+        rank = context%symbols(symbol_index)%array_rank
+        if (rank == 0) rank = 1
+        is_ref = (nargs == rank)
+    end function is_declared_array_element_ref
+
     subroutine lower_allocatable_element_address(arena, node, symbol_index, &
                                                  context, element_address, error_msg)
         ! Runtime element address for a rank-1 or rank-2 integer allocatable.

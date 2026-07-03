@@ -999,6 +999,14 @@ contains
                     value, error_msg)
                 return
             end if
+            if (is_declared_array_element_ref(target, context)) then
+                ! a(i,j) = ... where FortFront left is_array_access unset (array
+                ! element write in a program that also defines a module, mirroring
+                ! the read-side fallback).
+                call lower_array_element_assignment(arena, node, target, context, &
+                    value, error_msg)
+                return
+            end if
             if (allocated(target%name) .and. allocated(target%arg_indices)) then
                 symbol_index = find_symbol(context, target%name)
                 if (symbol_index > 0) then

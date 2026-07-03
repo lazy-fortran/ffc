@@ -439,12 +439,16 @@
             decl => declaration_named(context%arena, n, var_name)
             if (.not. associated(decl)) cycle
             if (.not. decl%is_array) cycle
-            if (decl%is_allocatable) return
-            if (.not. allocated(decl%dimension_indices)) return
-            if (size(decl%dimension_indices) /= dim_count) return
+            if (decl%is_allocatable) cycle
+            if (.not. allocated(decl%dimension_indices)) cycle
+            if (size(decl%dimension_indices) /= dim_count) cycle
+            ! Skip the assumed-shape dummy's own colon declaration: its extents
+            ! are exactly what we are resolving. Only a caller-side whole-array
+            ! declaration with foldable bounds contributes a compile-time extent.
+            if (declaration_is_assumed_shape(decl, context)) cycle
             call array_decl_dim_extents(context, decl, dim_count, extents, &
                                         lower_bound, total, err)
-            if (len_trim(err) > 0) return
+            if (len_trim(err) > 0) cycle
             ok = .true.
             return
         end do
@@ -676,22 +680,25 @@
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol(context, id_name)
-            if (symbol_index <= 0) then
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%has_i32_constant) then
+                    constant_value = context%symbols(symbol_index)%i32_constant
+                    call set_empty(error_msg)
+                    return
+                end if
+            else
                 if (iso_c_binding_kind_value(id_name, constant_value)) then
                     call set_empty(error_msg)
                     return
                 end if
-                error_msg = 'compile-time integer parameter was not declared: '// &
-                            trim(id_name)
-                return
             end if
-            if (.not. context%symbols(symbol_index)%has_i32_constant) then
-                error_msg = 'integer identifier is not a compile-time parameter: '// &
-                            trim(id_name)
-                return
-            end if
-            constant_value = context%symbols(symbol_index)%i32_constant
-            call set_empty(error_msg)
+            ! The identifier is not a compile-time constant in the current scope.
+            ! When resolving an assumed-shape dummy's extent from a caller's actual
+            ! declared with a named-constant bound (dimension(n)), that constant
+            ! lives in the caller's scope, not the callee's. Fold it from its
+            ! PARAMETER declaration anywhere in the unit.
+            call fold_named_constant_from_arena(arena, context, id_name, &
+                                                constant_value, error_msg)
             return
         end if
 
@@ -703,6 +710,37 @@
             error_msg = 'array bound is not a compile-time integer expression'
         end select
     end subroutine eval_i32_constant
+
+    recursive subroutine fold_named_constant_from_arena(arena, context, name, &
+                                                        constant_value, error_msg)
+        ! Fold an integer named constant by finding its PARAMETER declaration
+        ! anywhere in the unit and evaluating its initializer. Used when the
+        ! constant is not in the current lowering scope, e.g. a caller-scope
+        ! parameter naming an assumed-shape actual's declared extent.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        constant_value = 0_c_int64_t
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. node%is_parameter) cycle
+                if (.not. node%has_initializer) cycle
+                if (node%initializer_index <= 0) cycle
+                if (.not. allocated(node%var_name)) cycle
+                if (trim(node%var_name) /= trim(name)) cycle
+                call eval_i32_constant(arena, node%initializer_index, context, &
+                                       constant_value, error_msg)
+                return
+            end select
+        end do
+        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
+    end subroutine fold_named_constant_from_arena
 
     ! Constant-fold selected_int_kind / selected_real_kind so they may appear
     ! in a compile-time integer parameter initializer (kind selection).
