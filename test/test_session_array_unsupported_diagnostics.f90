@@ -9,7 +9,7 @@ program test_session_array_unsupported_diagnostics
     print *, '=== direct session array unsupported diagnostic test ==='
 
     all_passed = .true.
-    if (.not. test_array_rank3_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_array_rank8_declaration_diagnostic()) all_passed = .false.
     if (.not. test_array_zero_extent_diagnostic()) all_passed = .false.
     if (.not. test_array_reversed_extent_diagnostic()) all_passed = .false.
     if (.not. test_noninteger_array_declaration_diagnostic()) &
@@ -23,7 +23,7 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_whole_array_assignment_target_diagnostic()) &
         all_passed = .false.
     if (.not. test_whole_array_argument_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_rank3_declaration_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_rank8_declaration_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_zero_extent_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_reversed_extent_diagnostic()) all_passed = .false.
     if (.not. test_cli_noninteger_array_declaration_diagnostic()) &
@@ -40,16 +40,18 @@ program test_session_array_unsupported_diagnostics
 
 contains
 
-    logical function test_array_rank3_declaration_diagnostic()
+    logical function test_array_rank8_declaration_diagnostic()
+        ! Ranks 1 through 7 lower; rank 8 exceeds ARRAY_MAX_RANK and stays a
+        ! diagnostic.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(2, 2, 2)'//new_line('a')// &
+            '  integer :: values(2, 2, 2, 2, 2, 2, 2, 2)'//new_line('a')// &
             'end program main'
 
-        test_array_rank3_declaration_diagnostic = expect_error_contains( &
+        test_array_rank8_declaration_diagnostic = expect_error_contains( &
             source, 'unsupported array declaration', &
             '/tmp/ffc_session_array_diagnostic_test')
-    end function test_array_rank3_declaration_diagnostic
+    end function test_array_rank8_declaration_diagnostic
 
     logical function test_array_zero_extent_diagnostic()
         character(len=*), parameter :: source = &
@@ -196,16 +198,16 @@ contains
             '/tmp/ffc_session_array_arg_test')
     end function test_whole_array_argument_diagnostic
 
-    logical function test_cli_array_rank3_declaration_diagnostic()
+    logical function test_cli_array_rank8_declaration_diagnostic()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(2, 2, 2)'//new_line('a')// &
+            '  integer :: values(2, 2, 2, 2, 2, 2, 2, 2)'//new_line('a')// &
             'end program main'
 
-        test_cli_array_rank3_declaration_diagnostic = expect_cli_error_contains( &
+        test_cli_array_rank8_declaration_diagnostic = expect_cli_error_contains( &
             source, 'unsupported array declaration', &
             '/tmp/ffc_cli_array_diagnostic_test')
-    end function test_cli_array_rank3_declaration_diagnostic
+    end function test_cli_array_rank8_declaration_diagnostic
 
     logical function test_cli_array_zero_extent_diagnostic()
         character(len=*), parameter :: source = &

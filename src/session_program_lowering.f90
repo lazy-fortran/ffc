@@ -215,6 +215,7 @@ module session_program_lowering
         MODVAR_OK, MODVAR_UNSUPPORTED, &
         common_slot_t, COMMON_MAX_SLOTS, &
         EQUIV_MAX_MEMBERS, &
+        ARRAY_MAX_RANK, &
         namelist_group_t, &
         statement_function_t, &
         MAX_STMT_FN_ARGS, &

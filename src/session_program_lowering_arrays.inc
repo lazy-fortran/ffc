@@ -548,11 +548,11 @@
         if (.not. allocated(node%dimension_indices)) return
 
         dim_count = size(node%dimension_indices)
-        if (dim_count < 1 .or. dim_count > 2) then
+        if (dim_count < 1 .or. dim_count > ARRAY_MAX_RANK) then
             call unsupported_feature_error('array declaration', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports '// &
-                                           'at most rank-2 arrays', error_msg)
+                                           'at most rank-7 arrays', error_msg)
             return
         end if
 
@@ -1806,9 +1806,13 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: array_name
         integer :: source_index
+        integer :: nargs
+        integer(c_int64_t) :: dim_val
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
-            error_msg = 'size requires exactly one array argument'
+        nargs = 0
+        if (allocated(node%arg_indices)) nargs = size(node%arg_indices)
+        if (nargs < 1 .or. nargs > 2) then
+            error_msg = 'size requires one or two arguments'
             return
         end if
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
@@ -1819,6 +1823,10 @@
             return
         end if
         if (context%symbols(source_index)%is_allocatable) then
+            if (nargs /= 1) then
+                error_msg = 'size with a dim over an allocatable is not supported'
+                return
+            end if
             if (context%symbols(source_index)%allocatable_static_size <= 0) then
                 error_msg = 'size requires a constant allocatable extent: '// &
                             trim(array_name)
@@ -1834,9 +1842,24 @@
             error_msg = 'size requires an array argument: '//trim(array_name)
             return
         end if
+        if (nargs == 1) then
+            value = i32_immediate(context%session, &
+                                  int(context%symbols(source_index)%array_size, &
+                                      c_int64_t))
+            call set_empty(error_msg)
+            return
+        end if
+        call eval_i32_constant(arena, node%arg_indices(2), context, dim_val, &
+                               error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (dim_val < 1 .or. &
+            dim_val > int(context%symbols(source_index)%array_rank, c_int64_t)) then
+            error_msg = 'size dim out of range for: '//trim(array_name)
+            return
+        end if
         value = i32_immediate(context%session, &
-                              int(context%symbols(source_index)%array_size, &
-                                  c_int64_t))
+                    int(context%symbols(source_index)%array_dim_sizes(int(dim_val)), &
+                        c_int64_t))
         call set_empty(error_msg)
     end subroutine lower_array_size_intrinsic
 

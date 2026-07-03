@@ -23,8 +23,12 @@ supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
 `F`, and `A` descriptors on stdout, including a bare array among other print
-items; fixed-size rank-1 and rank-2 arrays with
-`integer`, `real`, `real(8)`, and `logical` elements; fixed-size rank-1 and
+items; fixed-size arrays of rank 1 through 7 with
+`integer`, `real`, `real(8)`, and `logical` elements (rank 3 and above cover
+declaration, `a(i, j, k, ...)` element read/write, scalar broadcast,
+whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,
+`ubound`, `size(a[, dim])`, and `sum`; sections, `matmul`, `transpose`, and
+`reshape` stay rank-1/rank-2); fixed-size rank-1 and
 rank-2 `character(len=N)` arrays (character-literal element assignment, element
 `print`, and whole-array `print`); array constructors as
 whole-array assignment right-hand sides, plain (`[a, b, c]`), typed

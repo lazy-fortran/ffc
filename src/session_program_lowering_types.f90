@@ -150,6 +150,10 @@ module session_program_lowering_types
         ! a BLOCK DATA literal initialiser folded later into the global.
         integer, parameter, public :: COMMON_MAX_SLOTS = 64
         integer, parameter, public :: EQUIV_MAX_MEMBERS = 32
+        ! Highest array rank the direct session lowers for fixed-size and dummy
+        ! arrays. Per-dimension lower bounds and extents are stored inline in
+        ! symbol_t, so this caps those fixed arrays (Fortran 2003 max rank).
+        integer, parameter, public :: ARRAY_MAX_RANK = 7
         type, public :: common_slot_t
             character(len=:), allocatable :: block_name
             character(len=:), allocatable :: var_name
@@ -172,8 +176,8 @@ module session_program_lowering_types
             integer :: array_rank = 0
             integer :: array_size = 0
             integer :: array_lower_bound = 1
-            integer, dimension(2) :: array_dim_sizes = 0
-            integer, dimension(2) :: array_dim_lowers = 0
+            integer, dimension(ARRAY_MAX_RANK) :: array_dim_sizes = 0
+            integer, dimension(ARRAY_MAX_RANK) :: array_dim_lowers = 0
             logical :: is_derived = .false.
             integer :: derived_type_index = 0
             type(lr_operand_desc_t) :: element_address
