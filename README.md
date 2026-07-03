@@ -23,7 +23,9 @@ supported construct, its ABI, and every tracked gap with issue links.
 Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
 `F`, and `A` descriptors on stdout, including a bare array among other print
-items; fixed-size arrays of rank 1 through 7 with
+items and an inline array constructor as a print item
+(`print *, [e1, e2, ...]`, each explicit numeric element printed like a scalar);
+fixed-size arrays of rank 1 through 7 with
 `integer`, `real`, `real(8)`, and `logical` elements (rank 3 and above cover
 declaration, `a(i, j, k, ...)` element read/write, scalar broadcast,
 whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,

@@ -532,6 +532,49 @@
         call set_empty(error_msg)
     end subroutine emit_whole_array_print_items
 
+    subroutine emit_array_literal_print_items(arena, expr_index, context, &
+                                              handled, error_msg)
+        !! List-directed print of an inline array constructor [e1, e2, ...].
+        !! Each explicit element is printed like a scalar item (leading
+        !! separator space, then the value in its own kind), so a constructor of
+        !! literals, variables, or function calls prints byte-for-byte like
+        !! gfortran. An implied-do constructor is left unhandled (xfail).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: flatten_error
+        integer :: i
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, expr_index)) return
+        select type (ctor => arena%entries(expr_index)%node)
+        type is (array_literal_node)
+            if (allocated(ctor%syntax_style)) then
+                if (ctor%syntax_style == 'implied_do') return
+            end if
+            if (.not. allocated(ctor%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                              flatten_error)
+            if (len_trim(flatten_error) > 0) return
+            if (size(flat) == 0) return
+            ! Character constructors print adjacent values with no separator
+            ! space; that spacing rule is not handled here, so leave them xfail.
+            if (char_print_item(arena, flat(1), context)) return
+            handled = .true.
+            do i = 1, size(flat)
+                if (.not. emit_liric_print_space(context%session, error_msg)) return
+                call lower_print_expression_value(arena, flat(i), context, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end select
+    end subroutine emit_array_literal_print_items
+
     subroutine emit_allocatable_print_items(context, sym, vk, handled, error_msg)
         !! Whole-array print of a rank-1 allocatable whose extent is known at
         !! compile time (allocatable_static_size). Loads the descriptor data

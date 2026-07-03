@@ -36,6 +36,15 @@
             end select
             block
                 logical :: handled
+                call emit_array_literal_print_items(arena, &
+                    node%expression_indices(1), context, handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (handled) then
+                    if (.not. emit_liric_print_newline(context%session, error_msg)) &
+                        return
+                    call set_empty(error_msg)
+                    return
+                end if
                 call lower_whole_array_print(arena, node%expression_indices(1), &
                                              context, handled, error_msg)
                 if (handled .or. len_trim(error_msg) > 0) return
@@ -53,6 +62,10 @@
                 type is (array_slice_node)
                     call emit_array_section_print_items(arena, item, context, &
                                                         array_handled, error_msg)
+                type is (array_literal_node)
+                    call emit_array_literal_print_items(arena, &
+                        node%expression_indices(i), context, array_handled, &
+                        error_msg)
                 class default
                     call emit_whole_array_print_items(arena, &
                         node%expression_indices(i), context, array_handled, &
