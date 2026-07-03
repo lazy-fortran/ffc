@@ -1298,6 +1298,14 @@
         index = find_symbol(context, name)
         is_dummy = .false.
         if (index > 0) then
+            if (context%symbols(index)%is_common_bound) then
+                ! COMMON was reached before this declaration in source order
+                ! (session_program_lowering_common.inc); rebind_common_symbol
+                ! already set shape and element_address from this same
+                ! declaration node, so this occurrence is a benign redeclare.
+                call set_empty(error_msg)
+                return
+            end if
             if (context%symbols(index)%is_parameter .and. &
                 .not. context%symbols(index)%is_array) then
                 is_dummy = .true.

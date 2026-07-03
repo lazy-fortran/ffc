@@ -175,6 +175,10 @@ module session_program_lowering_types
             logical :: is_parameter = .false.
             logical :: is_reference = .false.
             logical :: has_address = .false.
+            ! Bound to a COMMON slot global (session_program_lowering_common.inc):
+            ! its own program-unit declaration, reached before or after the
+            ! COMMON statement in source order, must not reallocate storage.
+            logical :: is_common_bound = .false.
             integer :: character_length = 0
             logical :: has_character_value = .false.
             logical :: is_array = .false.

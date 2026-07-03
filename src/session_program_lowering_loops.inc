@@ -160,6 +160,18 @@
         context%current_loop_latch_block = latch_block
         context%in_counted_do = .true.
         context%current_block_exited_loop = .false.
+        ! The induction variable lives in the phi-carried %value register for
+        ! the whole scaffold (condition/increment never touch memory). A
+        ! memory-backed loop variable (COMMON, SAVE, ...) is read by address
+        ! everywhere else, so publish this iteration's value there before the
+        ! body runs or a body read would see stale storage (#1578).
+        if (context%symbols(loop_symbol_index)%has_address .and. &
+            context%symbols(loop_symbol_index)%is_reference) then
+            if (.not. emit_i32_store(context%session, &
+                                     context%symbols(loop_symbol_index)%value, &
+                                     context%symbols(loop_symbol_index)%address, &
+                                     error_msg)) return
+        end if
         call body_emit(context, body_terminated, error_msg)
         if (len_trim(error_msg) > 0) return
         body_exited = context%current_block_exited_loop
@@ -218,6 +230,17 @@
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
+        ! A normal (F2018 11.1.7.4.3) loop exit leaves the induction variable
+        ! one step past the last executed value; publish that final %value to
+        ! memory for a memory-backed loop variable, matching the per-iteration
+        ! store above.
+        if (context%symbols(loop_symbol_index)%has_address .and. &
+            context%symbols(loop_symbol_index)%is_reference) then
+            if (.not. emit_i32_store(context%session, &
+                                     context%symbols(loop_symbol_index)%value, &
+                                     context%symbols(loop_symbol_index)%address, &
+                                     error_msg)) return
+        end if
         value = i32_immediate(context%session, 0_c_int64_t)
         if (carried_count > 0) then
             deallocate(entry_values)

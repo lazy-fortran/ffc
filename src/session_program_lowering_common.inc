@@ -609,15 +609,18 @@
 
     subroutine apply_block_data_statement(arena, idx, slots, slot_count, error_msg)
         ! A BLOCK DATA body statement is a structured node. Only data_statement
-        ! nodes carry initialisers; map each (object, value) pair onto the slot
-        ! for the matching variable by name.
+        ! nodes carry initialisers; map each object onto one or more values by
+        ! name. A bare array name (no subscript) consumes one value per
+        ! element in declaration order (DATA x /v1, v2, .../), so the object
+        ! and value lists need not be the same length; anything else pairs
+        ! one object with one value.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: idx
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(in) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, value_text
-        integer :: i, s
+        integer :: i, s, k, value_cursor
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, idx)) return
@@ -625,22 +628,52 @@
         type is (data_statement_node)
             if (.not. allocated(data%object_indices) .or. &
                 .not. allocated(data%value_indices)) return
-            if (size(data%object_indices) /= size(data%value_indices)) then
-                error_msg = 'BLOCK DATA value count does not match variable count'
-                return
-            end if
+            value_cursor = 0
             do i = 1, size(data%object_indices)
                 call data_object_name_and_index(arena, data%object_indices(i), &
-                                               name, error_msg)
+                                                name, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (len(name) == 0) cycle
-                call data_value_literal_text(arena, data%value_indices(i), &
-                                             value_text, error_msg)
-                if (len_trim(error_msg) > 0) return
-                call store_data_initialization(slots, slot_count, name, &
-                                              value_text, error_msg)
-                if (len_trim(error_msg) > 0) return
+                if (len(name) == 0) then
+                    value_cursor = value_cursor + 1
+                    cycle
+                end if
+                s = 0
+                if (index(name, '(') == 0) then
+                    s = find_common_slot(slots, slot_count, name)
+                end if
+                if (s > 0 .and. slots(s)%is_array) then
+                    do k = 1, slots(s)%array_size
+                        value_cursor = value_cursor + 1
+                        if (value_cursor > size(data%value_indices)) then
+                            error_msg = 'BLOCK DATA value count does not '// &
+                                        'match variable count'
+                            return
+                        end if
+                        call data_value_literal_text(arena, &
+                                data%value_indices(value_cursor), value_text, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call add_array_element_init(slots(s), k, value_text, &
+                                                    error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
+                else
+                    value_cursor = value_cursor + 1
+                    if (value_cursor > size(data%value_indices)) then
+                        error_msg = 'BLOCK DATA value count does not '// &
+                                    'match variable count'
+                        return
+                    end if
+                    call data_value_literal_text(arena, &
+                                data%value_indices(value_cursor), value_text, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call store_data_initialization(slots, slot_count, name, &
+                                                   value_text, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
             end do
+            if (value_cursor /= size(data%value_indices)) then
+                error_msg = 'BLOCK DATA value count does not match variable count'
+            end if
         end select
     end subroutine apply_block_data_statement
 
@@ -857,7 +890,7 @@
                                                c_loc, c_size_t, c_ptr, &
                                                c_double, c_float, c_int64_t
         use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
-                                          lr_type_f64_s, lr_type_array_s
+                                          lr_type_f64_s
         type(common_slot_t), intent(in) :: slot
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
@@ -866,10 +899,7 @@
         integer(c_int32_t), target :: init_i32
         real(c_float), target :: init_f32
         real(c_double), target :: init_f64
-        integer(c_int32_t), target, allocatable :: array_i32(:)
-        real(c_float), target, allocatable :: array_f32(:)
-        real(c_double), target, allocatable :: array_f64(:)
-        type(c_ptr) :: gtype, elem_type, init_ptr
+        type(c_ptr) :: gtype, init_ptr
         integer(c_size_t) :: init_size
         integer(c_int32_t) :: global_id
         logical(c_bool) :: c_false_local
@@ -884,31 +914,30 @@
         call to_c_chars(gname, c_name)
 
         if (slot%is_array) then
-            call emit_array_common_global(slot, context, c_name, gtype, &
-                                         init_ptr, init_size, error_msg)
-            if (len_trim(error_msg) > 0) return
-        else
-            call fold_common_initializer(slot, init_i32, init_f32, init_f64, &
-                                        error_msg)
-            if (len_trim(error_msg) > 0) return
-            select case (slot%value_kind)
-            case (VALUE_I32, VALUE_LOGICAL)
-                gtype = lr_type_i32_s(context%session%handle)
-                init_ptr = c_loc(init_i32)
-                init_size = 4_c_size_t
-            case (VALUE_F32)
-                gtype = lr_type_f32_s(context%session%handle)
-                init_ptr = c_loc(init_f32)
-                init_size = 4_c_size_t
-            case (VALUE_F64)
-                gtype = lr_type_f64_s(context%session%handle)
-                init_ptr = c_loc(init_f64)
-                init_size = 8_c_size_t
-            case default
-                error_msg = 'unsupported COMMON variable kind for global emission'
-                return
-            end select
+            call emit_array_common_global(slot, context, c_name, error_msg)
+            return
         end if
+
+        call fold_common_initializer(slot, init_i32, init_f32, init_f64, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (slot%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            gtype = lr_type_i32_s(context%session%handle)
+            init_ptr = c_loc(init_i32)
+            init_size = 4_c_size_t
+        case (VALUE_F32)
+            gtype = lr_type_f32_s(context%session%handle)
+            init_ptr = c_loc(init_f32)
+            init_size = 4_c_size_t
+        case (VALUE_F64)
+            gtype = lr_type_f64_s(context%session%handle)
+            init_ptr = c_loc(init_f64)
+            init_size = 8_c_size_t
+        case default
+            error_msg = 'unsupported COMMON variable kind for global emission'
+            return
+        end select
 
         global_id = lr_session_global(context%session%handle, c_name, gtype, &
                                       c_false_local, init_ptr, init_size)
@@ -1018,25 +1047,31 @@
         init_f64_im = im_val
     end subroutine fold_complex_common_initializer
 
-    subroutine emit_array_common_global(slot, context, c_name, gtype, &
-                                       init_ptr, init_size, error_msg)
-        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float, &
-                                               c_double, c_loc, c_size_t, c_ptr
+    subroutine emit_array_common_global(slot, context, c_name, error_msg)
+        ! Builds and interns the array global in one call: the init buffer
+        ! is a local allocatable, so lr_session_global (which copies the
+        ! bytes immediately) must run before this subroutine returns and the
+        ! buffer goes out of scope (a caller-held c_ptr into it would dangle).
+        use, intrinsic :: iso_c_binding, only: c_bool, c_int32_t, c_int64_t, &
+                                               c_float, c_double, c_loc, &
+                                               c_size_t, c_ptr
         use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
                                           lr_type_f64_s, lr_type_array_s
         type(common_slot_t), intent(in) :: slot
         type(lowering_context_t), intent(in) :: context
         character(kind=c_char), intent(in) :: c_name(:)
-        type(c_ptr), intent(out) :: gtype, init_ptr
-        integer(c_size_t), intent(out) :: init_size
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t), target, allocatable :: array_i32(:)
         real(c_float), target, allocatable :: array_f32(:)
         real(c_double), target, allocatable :: array_f64(:)
-        type(c_ptr) :: elem_type
+        type(c_ptr) :: elem_type, gtype, init_ptr
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
         integer :: i, io_stat
 
         call set_empty(error_msg)
+        c_false_local = .false.
         select case (slot%value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
             allocate (array_i32(slot%array_size))
@@ -1100,6 +1135,12 @@
         case default
             error_msg = 'unsupported array COMMON variable kind'
         end select
+        if (len_trim(error_msg) > 0) return
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+                                      c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create COMMON global'
+        end if
     end subroutine emit_array_common_global
 
     subroutine fold_array_element_i32(init_text, init_value, error_msg)
@@ -1160,7 +1201,12 @@
         ! (rather than a whole-arena name search) keeps binding unambiguous
         ! when another unit reuses the same block name with different member
         ! spellings (#1578, F2018 8.10.3); binding is idempotent, so reaching
-        ! any COMMON statement is enough.
+        ! any COMMON statement is enough. A member's own type declaration may
+        ! come before or after the COMMON statement in source order; when it
+        ! has not been reached yet, a bare symbol slot is grown here so the
+        ! later declaration finds an existing same-kind (scalar) or
+        ! is_common_bound (array) entry and treats itself as a benign
+        ! redeclare instead of allocating fresh storage over the binding.
         type(ast_arena_t), intent(in) :: arena
         type(common_block_node), intent(in) :: node
         integer, intent(in) :: node_index
@@ -1176,11 +1222,28 @@
         if (len_trim(error_msg) > 0) return
         do i = 1, slot_count
             sym = find_symbol(context, slots(i)%var_name)
-            if (sym <= 0) cycle
+            if (sym <= 0) then
+                call declare_pending_common_symbol(context, slots(i)%var_name, &
+                                                   sym)
+            end if
             call rebind_common_symbol(slots(i), sym, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine bind_common_block_symbols
+
+    subroutine declare_pending_common_symbol(context, name, sym)
+        ! Grow a bare symbol slot for a COMMON member whose type declaration
+        ! has not been body-walked yet; rebind_common_symbol fills in every
+        ! field that matters (kind, address, shape) right after this returns.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(out) :: sym
+
+        call grow_symbols(context)
+        sym = context%symbol_count + 1
+        context%symbols(sym)%name = trim(name)
+        context%symbol_count = sym
+    end subroutine declare_pending_common_symbol
 
     subroutine rebind_common_symbol(slot, sym, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
@@ -1207,6 +1270,7 @@
         context%symbols(sym)%value_kind = slot%value_kind
         context%symbols(sym)%has_address = .true.
         context%symbols(sym)%is_reference = .true.
+        context%symbols(sym)%is_common_bound = .true.
         context%symbols(sym)%address%kind = LR_OP_KIND_GLOBAL
         context%symbols(sym)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym)%address%typ = lr_type_ptr_s(context%session%handle)
@@ -1217,6 +1281,12 @@
             context%symbols(sym)%array_size = slot%array_size
             context%symbols(sym)%array_dim_sizes(1) = slot%array_size
             context%symbols(sym)%array_dim_lowers(1) = 1
+            ! Element GEP addresses off element_address (session_program_
+            ! lowering_array_elements.inc), the same field a local array's
+            ! alloca fills; without this a COMMON array keeps reading/writing
+            ! whatever storage its own declaration allocated instead of the
+            ! shared global (#1578).
+            context%symbols(sym)%element_address = context%symbols(sym)%address
         end if
         call set_empty(error_msg)
     end subroutine rebind_common_symbol
@@ -1253,6 +1323,7 @@
         context%symbols(sym)%value_kind = slot%value_kind
         context%symbols(sym)%has_address = .true.
         context%symbols(sym)%is_reference = .true.
+        context%symbols(sym)%is_common_bound = .true.
         context%symbols(sym)%address%kind = LR_OP_KIND_GLOBAL
         context%symbols(sym)%address%payload = int(global_id_re, c_int64_t)
         context%symbols(sym)%address%typ = lr_type_ptr_s(context%session%handle)
