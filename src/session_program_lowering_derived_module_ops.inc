@@ -610,7 +610,7 @@
             if (len_trim(name_err) > 0) cycle
             if (.not. same_name(var_name, remote_name)) cycle
             call module_variable_kind(arena, var_idx, value_kind, status, &
-                                      error_msg)
+                                      context, error_msg)
             if (status /= MODVAR_OK) then
                 call set_empty(error_msg)
                 return
@@ -626,6 +626,13 @@
             global_id = lr_session_intern(context%session%handle, c_name)
             if (global_id < 0_c_int32_t) then
                 error_msg = 'module variable global not found: '//trim(mangled)
+                return
+            end if
+            if (value_kind == VALUE_DERIVED) then
+                call bind_one_derived_module_variable(arena, var_idx, local_name, &
+                                                      global_id, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                found = .true.
                 return
             end if
             call grow_symbols(context)
@@ -992,7 +999,7 @@
             if (len_trim(name_err) > 0) cycle
             if (.not. use_only_wants(use_node, trim(var_name))) cycle
             call module_variable_kind(arena, var_idx, value_kind, status, &
-                                      error_msg)
+                                      context, error_msg)
             ! An unsupported module variable already failed in
             ! lower_module_variables; the using unit just skips it here.
             if (status /= MODVAR_OK) then

@@ -234,7 +234,8 @@
                                        accumulated, ok)
     end subroutine fold_char_constant_expr
 
-    subroutine type_name_value_kind(type_name, line, column, value_kind, error_msg)
+    recursive subroutine type_name_value_kind(type_name, line, column, &
+                                              value_kind, error_msg)
         character(len=*), intent(in) :: type_name
         integer, intent(in) :: line, column
         integer, intent(out) :: value_kind
@@ -292,6 +293,12 @@
             ! c_f_pointer operate on it (#139).
             if (trim(kind_spec) == 'c_ptr') then
                 value_kind = VALUE_C_PTR
+            else if (is_intrinsic_type_spec(kind_spec)) then
+                ! F2008 TYPE(intrinsic-type-spec): type(real), type(integer),
+                ! type(character(len=4)) name the intrinsic type itself, not a
+                ! derived type, so lower them exactly like the bare intrinsic.
+                call type_name_value_kind(kind_spec, line, column, value_kind, &
+                                          error_msg)
             else
                 call unsupported_feature_error('scalar type', line, column, &
                     'direct LIRIC session only supports integer, real, '// &
@@ -314,6 +321,30 @@
                                            'scalars', error_msg)
         end select
     end subroutine type_name_value_kind
+
+    ! True when text is an intrinsic type-spec (with an optional kind/len
+    ! selector), e.g. real, integer, real(kind=4), character(len=4),
+    ! double precision. Used to recognise the F2008 TYPE(intrinsic-type-spec)
+    ! spelling, which names the intrinsic type rather than a derived type.
+    logical function is_intrinsic_type_spec(text)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: base
+        integer :: paren
+
+        paren = index(text, '(')
+        if (paren > 0) then
+            base = lowercase_text(trim(adjustl(text(1:paren - 1))))
+        else
+            base = lowercase_text(trim(adjustl(text)))
+        end if
+        select case (base)
+        case ('integer', 'real', 'logical', 'complex', 'character', &
+              'double precision', 'doubleprecision')
+            is_intrinsic_type_spec = .true.
+        case default
+            is_intrinsic_type_spec = .false.
+        end select
+    end function is_intrinsic_type_spec
 
     subroutine integer_kind_to_value_kind(kind_spec, line, column, &
                                           value_kind, error_msg)

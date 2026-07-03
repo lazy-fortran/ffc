@@ -102,17 +102,37 @@
                                            error_msg)
             return
         end if
-        if (node%has_initializer) then
-            call unsupported_feature_error('derived type constructor', &
+        if (node%has_initializer .and. node%is_array) then
+            call unsupported_feature_error('derived type array initializer', &
                                            node%line, node%column, &
                                            'direct LIRIC session does not '// &
-                                           'support derived type constructors', &
+                                           'support derived array initializers', &
                                            error_msg)
             return
         end if
         if (node%is_array) then
             call lower_derived_array_declaration(node, context, &
                                                  derived_type_index, error_msg)
+            return
+        end if
+        ! A scalar derived initializer (v = t(...) or v = other) reuses the
+        ! runtime whole-derived assignment path: define the instance (alloca +
+        ! component defaults) then store the initial value into its slots.
+        if (node%has_initializer .and. allocated(node%var_name) .and. &
+            .not. node%is_multi_declaration) then
+            call define_derived_symbol(context, node, node%var_name, &
+                                       derived_type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_derived_scalar_initializer(node, context, &
+                derived_type_index, error_msg)
+            return
+        end if
+        if (node%has_initializer) then
+            call unsupported_feature_error('derived type constructor', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support derived type constructors', &
+                                           error_msg)
             return
         end if
 
@@ -129,6 +149,53 @@
             error_msg = 'derived type declaration did not expose a variable name'
         end if
     end subroutine lower_derived_type_declaration
+
+    subroutine lower_derived_scalar_initializer(node, context, type_index, &
+                                                error_msg)
+        ! Store a scalar derived variable's declared initial value. A valid
+        ! derived initializer is a constant structure constructor t(...); the
+        ! runtime whole-derived constructor lowering materialises it into the
+        ! freshly declared slots. Any other form surfaces the unsupported
+        ! diagnostic and keeps the unit xfail.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index, init_index
+        logical :: handled
+
+        call set_empty(error_msg)
+        init_index = node%initializer_index
+        if (.not. node_exists(context%arena, init_index)) then
+            call unsupported_feature_error('derived type initializer', &
+                node%line, node%column, 'derived initializer did not expose a '// &
+                'value expression', error_msg)
+            return
+        end if
+        symbol_index = find_symbol(context, node%var_name)
+        if (symbol_index <= 0) then
+            error_msg = 'derived initializer target not defined: '//trim(node%var_name)
+            return
+        end if
+        handled = .false.
+        if (is_derived_constructor_call(context%arena, init_index, context, &
+                                        type_index)) then
+            if (.not. constructor_uses_user_routine(context, &
+                    context%derived_types(type_index)%name)) then
+                call lower_derived_constructor_assignment(context%arena, &
+                    init_index, context, symbol_index, type_index, handled, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end if
+        if (.not. handled) then
+            call unsupported_feature_error('derived type constructor', &
+                                           node%line, node%column, &
+                                           'direct LIRIC session does not '// &
+                                           'support derived type constructors', &
+                                           error_msg)
+        end if
+    end subroutine lower_derived_scalar_initializer
 
     subroutine lower_derived_array_declaration(node, context, derived_type_index, &
                                                error_msg)

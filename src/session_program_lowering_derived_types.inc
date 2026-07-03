@@ -617,6 +617,62 @@
         context%derived_types(type_index)%binding_count = pc
     end subroutine inherit_parent_bindings
 
+    subroutine fold_component_default(context, init_index, value_kind, &
+                                      default_value, error_msg)
+        ! Fold a scalar component's default initializer to the raw i32 bits that
+        ! occupy its slot: an integer value, a logical (0/1), or the f32 bit
+        ! pattern of a default-real literal. f64/character/other defaults stay
+        ! unsupported so the type keeps its clean xfail.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: init_index
+        integer, intent(in) :: value_kind
+        integer(c_int64_t), intent(out) :: default_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
+        real(c_float) :: rval
+        integer :: io_stat
+
+        default_value = 0_c_int64_t
+        call set_empty(error_msg)
+        select case (value_kind)
+        case (VALUE_I32)
+            call parse_i32_constant(context%arena, init_index, default_value, &
+                                    'component default', error_msg)
+        case (VALUE_LOGICAL)
+            if (.not. is_literal(context%arena, init_index)) then
+                error_msg = 'non-literal logical component default'
+                return
+            end if
+            call get_literal_info(context%arena, init_index, lit_value, &
+                                  lit_type, lit_err)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            default_value = int(logical_literal_to_i32(lit_value), c_int64_t)
+        case (VALUE_F32)
+            if (.not. is_literal(context%arena, init_index)) then
+                error_msg = 'non-literal real component default'
+                return
+            end if
+            call get_literal_info(context%arena, init_index, lit_value, &
+                                  lit_type, lit_err)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            read (lit_value, *, iostat=io_stat) rval
+            if (io_stat /= 0) then
+                error_msg = 'malformed real component default: '//lit_value
+                return
+            end if
+            default_value = int(transfer(rval, 0_c_int32_t), c_int64_t)
+        case default
+            error_msg = 'unsupported component default kind'
+        end select
+    end subroutine fold_component_default
+
 subroutine collect_component_declaration(component_index, parent_line, &
                                               parent_column, context, &
                                               type_index, error_msg)
@@ -686,14 +742,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
                         'cannot carry a default initialiser', error_msg)
                     return
                 end if
-                call parse_i32_constant(context%arena, component%initializer_index, &
-                                        default_value, 'component default', &
-                                        error_msg)
+                call fold_component_default(context, component%initializer_index, &
+                                            value_kind, default_value, error_msg)
                 if (len_trim(error_msg) > 0) then
                     call unsupported_feature_error( &
                         'derived type component initializer', component%line, &
-                        component%column, 'only a compile-time integer default '// &
-                        'is supported', error_msg)
+                        component%column, 'only a compile-time integer, real, '// &
+                        'or logical default is supported', error_msg)
                     return
                 end if
                 has_default = .true.

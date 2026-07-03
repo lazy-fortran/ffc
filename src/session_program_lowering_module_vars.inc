@@ -7,7 +7,8 @@
     ! and logical. Arrays, multi-declarations, and other kinds stay xfail with
     ! a clean diagnostic.
 
-    subroutine module_variable_kind(arena, var_idx, value_kind, status, error_msg)
+    subroutine module_variable_kind(arena, var_idx, value_kind, status, context, &
+                                    error_msg)
         ! Classify a module-level declaration. status is MODVAR_OK for a scalar
         ! variable we can lower (value_kind set), otherwise MODVAR_UNSUPPORTED
         ! with a diagnostic so the unit stays xfail rather than miscompiling.
@@ -15,6 +16,7 @@
         integer, intent(in) :: var_idx
         integer, intent(out) :: value_kind
         integer, intent(out) :: status
+        type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: type_name, var_name, kind_err
         integer :: line, column
@@ -33,6 +35,20 @@
             call unsupported_feature_error('module variable', line, column, &
                 'direct LIRIC session stores only scalar single-name module '// &
                 'variables', error_msg)
+            return
+        end if
+        ! A scalar derived-type module variable stores as a flat slot global,
+        ! provided its type is a registered non-parameterised derived type and
+        ! it carries no runtime initializer (component defaults fold statically).
+        if (module_var_derived_type_index(arena, var_idx, context) > 0) then
+            if (module_declaration_has_initializer(arena, var_idx)) then
+                call unsupported_feature_error('module variable', line, column, &
+                    'derived module variables with an explicit initializer are '// &
+                    'not supported', error_msg)
+                return
+            end if
+            value_kind = VALUE_DERIVED
+            status = MODVAR_OK
             return
         end if
         ! PROTECTED restricts write access from using units; the frontend
@@ -84,6 +100,32 @@
         end select
     end function module_declaration_is_multi
 
+    logical function module_declaration_has_initializer(arena, node_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        module_declaration_has_initializer = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            module_declaration_has_initializer = decl%has_initializer
+        end select
+    end function module_declaration_has_initializer
+
+    integer function module_var_derived_type_index(arena, node_index, context)
+        ! Registered derived-type index for a module-variable declaration, or 0
+        ! when the declaration does not name a known derived type.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        module_var_derived_type_index = 0
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            module_var_derived_type_index = &
+                declaration_derived_type_index(context, decl)
+        end select
+    end function module_var_derived_type_index
+
     subroutine lower_module_variables(arena, root_index, context, error_msg)
         ! Emit a global with its declared initializer for each scalar module
         ! variable. An unsupported module variable leaves error_msg set so the
@@ -100,7 +142,7 @@
                 var_idx = context%module_exports(m)%variable_indices(i)
                 if (.not. node_exists(arena, var_idx)) cycle
                 call module_variable_kind(arena, var_idx, value_kind, status, &
-                                          error_msg)
+                                          context, error_msg)
                 if (status /= MODVAR_OK) return
                 call emit_module_variable_global(arena, var_idx, value_kind, &
                     trim(context%module_exports(m)%module_name), context, error_msg)
@@ -133,6 +175,11 @@
         logical(c_bool) :: c_false_local
 
         c_false_local = .false.
+        if (value_kind == VALUE_DERIVED) then
+            call emit_derived_module_variable_global(arena, var_idx, module_name, &
+                                                     context, error_msg)
+            return
+        end if
         call get_declaration_var_name(arena, var_idx, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
         mangled = module_procedure_mangled(module_name, trim(var_name))
@@ -166,6 +213,67 @@
         end if
         call set_empty(error_msg)
     end subroutine emit_module_variable_global
+
+    subroutine emit_derived_module_variable_global(arena, var_idx, module_name, &
+                                                   context, error_msg)
+        ! Emit a scalar derived-type module variable as a flat [slots x i32]
+        ! global whose static bytes carry the type's compile-time component
+        ! defaults (zero where a component has none). Component access in using
+        ! units GEPs into this global, exactly as for a local derived instance.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_int64_t, c_loc, c_size_t, c_ptr
+        use liric_session_bindings, only: lr_type_i32_s, lr_type_array_s
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        character(len=*), intent(in) :: module_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name, mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), allocatable, target :: init_slots(:)
+        type(c_ptr) :: gtype
+        integer(c_int32_t) :: global_id
+        integer :: di, slots, c, start_slot
+        logical(c_bool) :: c_false_local
+
+        c_false_local = .false.
+        di = module_var_derived_type_index(arena, var_idx, context)
+        if (di <= 0) then
+            error_msg = 'derived module variable lost its type index'
+            return
+        end if
+        call get_declaration_var_name(arena, var_idx, var_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        slots = total_component_slots(context, di)
+        if (slots <= 0) then
+            error_msg = 'derived module variable has no storage: '//trim(var_name)
+            return
+        end if
+        allocate (init_slots(slots))
+        init_slots = 0_c_int32_t
+        if (allocated(context%derived_types(di)%component_has_default)) then
+            do c = 1, context%derived_types(di)%component_count
+                if (.not. context%derived_types(di)%component_has_default(c)) cycle
+                start_slot = component_start_slot(context, di, c)
+                init_slots(start_slot + 1) = int( &
+                    context%derived_types(di)%component_default_value(c), c_int32_t)
+            end do
+        end if
+        mangled = module_procedure_mangled(module_name, trim(var_name))
+        call to_c_chars(mangled, c_name)
+        gtype = lr_type_array_s(context%session%handle, &
+                                lr_type_i32_s(context%session%handle), &
+                                int(slots, c_int64_t))
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+                                      c_false_local, c_loc(init_slots), &
+                                      int(slots * 4, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create derived module variable global: '// &
+                        trim(mangled)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_derived_module_variable_global
 
     subroutine fold_module_variable_initializer(arena, var_idx, value_kind, &
                                                 init_i32, init_f32, init_f64, &
@@ -250,7 +358,7 @@
                 var_idx = context%module_exports(m)%variable_indices(i)
                 if (.not. node_exists(arena, var_idx)) cycle
                 call module_variable_kind(arena, var_idx, value_kind, status, &
-                                          error_msg)
+                                          context, error_msg)
                 if (status /= MODVAR_OK) then
                     ! A module that also declares an unsupported variable already
                     ! failed in lower_module_variables; do not re-diagnose here.
@@ -288,6 +396,11 @@
             error_msg = 'module variable global not found: '//trim(mangled)
             return
         end if
+        if (value_kind == VALUE_DERIVED) then
+            call bind_one_derived_module_variable(arena, var_idx, trim(var_name), &
+                                                  global_id, context, error_msg)
+            return
+        end if
         call grow_symbols(context)
         sym_idx = context%symbol_count + 1
         context%symbols(sym_idx)%name = trim(var_name)
@@ -301,6 +414,43 @@
         context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_one_module_variable
+
+    subroutine bind_one_derived_module_variable(arena, var_idx, sym_name, &
+                                                global_id, context, error_msg)
+        ! Bind a derived-type module variable as a derived reference symbol whose
+        ! flat slot storage is the interned global. Component access GEPs from
+        ! element_address, so it points at the global's base pointer. sym_name is
+        ! the local binding name (a USE rename may differ from the module name).
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        character(len=*), intent(in) :: sym_name
+        integer(c_int32_t), intent(in) :: global_id
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: di, sym_idx
+
+        di = module_var_derived_type_index(arena, var_idx, context)
+        if (di <= 0) then
+            error_msg = 'derived module variable lost its type index: '// &
+                        trim(sym_name)
+            return
+        end if
+        call grow_symbols(context)
+        sym_idx = context%symbol_count + 1
+        context%symbols(sym_idx)%name = trim(sym_name)
+        context%symbols(sym_idx)%value_kind = VALUE_DERIVED
+        context%symbols(sym_idx)%is_derived = .true.
+        context%symbols(sym_idx)%derived_type_index = di
+        context%symbols(sym_idx)%array_size = total_component_slots(context, di)
+        context%symbols(sym_idx)%element_address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(sym_idx)%element_address%payload = int(global_id, c_int64_t)
+        context%symbols(sym_idx)%element_address%typ = &
+            lr_type_ptr_s(context%session%handle)
+        context%symbols(sym_idx)%element_address%global_offset = 0_c_int64_t
+        context%symbol_count = sym_idx
+        call set_empty(error_msg)
+    end subroutine bind_one_derived_module_variable
 
     subroutine bind_module_constants_in_context(context, error_msg)
         ! Host-associate module-scope named constants into a fresh procedure

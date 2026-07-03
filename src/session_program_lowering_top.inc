@@ -558,7 +558,7 @@
                 return
             end if
             call lower_module_unit(arena, mod_name, mod_declaration_indices, &
-                                   mod_procedure_indices, error_msg)
+                                   mod_procedure_indices, context, error_msg)
         else if (get_node_type_at(arena, root_index) == 'block_data_node' .or. &
                  get_node_type_at(arena, root_index) == 'block_data') then
             ! A standalone BLOCK DATA unit emits no executable code; its COMMON
@@ -571,11 +571,12 @@
     end subroutine lower_program_return
 
     subroutine lower_module_unit(arena, mod_name, declaration_indices, &
-                                 procedure_indices, error_msg)
+                                 procedure_indices, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: mod_name
         integer, intent(in) :: declaration_indices(:)
         integer, intent(in) :: procedure_indices(:)
+        type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
         integer :: i, value_kind, status
@@ -599,7 +600,7 @@
                 if (module_declaration_is_parameter(arena, &
                                                     declaration_indices(i))) cycle
                 call module_variable_kind(arena, declaration_indices(i), &
-                                          value_kind, status, error_msg)
+                                          value_kind, status, context, error_msg)
                 if (status /= MODVAR_OK) return
             end if
         end do

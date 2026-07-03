@@ -84,7 +84,10 @@ as `x%c%field` to any depth), and support single inheritance
 whole-derived scalar assignment (`y = x`) copies one instance into another,
 and a scalar structure constructor over integer/real/logical components
 (`x = t(1, 2.5, .true.)`, omitted components keeping their defaults) stores
-its positional arguments into the target. A
+its positional arguments into the target, whether written as an executable
+assignment or as a scalar variable initializer (`type(t) :: v = t(1, 2.5)`).
+Integer, default-real (f32), and logical component default initialisers
+materialise on default-initialised instances. A
 contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
@@ -98,7 +101,10 @@ across `use`, in the same file or across separate compilation. A module
 subroutine or integer function with integer, real, or logical scalar arguments
 is callable from a separately compiled program: its signature round-trips
 through the `.fmod` and the two objects link, each keeping its own string and
-format literals (#284). A single-file
+format literals (#284). A module-scope
+scalar variable of a registered derived type is likewise a flat slot global, its
+compile-time component defaults folded into the static bytes and read through
+`use` (including a `use ..., alias => var` rename). A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a
