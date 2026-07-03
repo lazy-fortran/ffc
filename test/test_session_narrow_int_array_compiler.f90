@@ -121,7 +121,7 @@ contains
             'end program main'
 
         test_i16_array_element_rw = expect_output( &
-            source, ' 3000'//new_line('a'), &
+            source, '   3000'//new_line('a'), &
             '/tmp/ffc_session_i16_array_rw_test')
     end function test_i16_array_element_rw
 

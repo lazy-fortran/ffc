@@ -374,7 +374,8 @@ contains
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
                 value_kind /= VALUE_I64 .and. value_kind /= VALUE_I8 .and. &
-                value_kind /= VALUE_I16) then
+                value_kind /= VALUE_I16 .and. value_kind /= VALUE_C4 .and. &
+                value_kind /= VALUE_C8) then
                 call unsupported_feature_error('array declaration', node%line, &
                     node%column, &
                     'ffc direct-session lowering only '// &
@@ -385,6 +386,20 @@ contains
             end if
             if (node%is_allocatable) then
                 call lower_allocatable_declaration(node, context, error_msg)
+                return
+            end if
+            ! Complex arrays store real and imaginary parts in two parallel
+            ! fixed-size arrays (define_declared_array_symbol); that layout has
+            ! no defined ABI for a caller-supplied actual, so dummies, assumed-
+            ! shape, and assumed-rank complex arrays stay unsupported here.
+            if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. &
+                (declaration_is_assumed_rank(node, context) .or. &
+                 declaration_is_assumed_shape(node, context))) then
+                call unsupported_feature_error('complex array declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports complex arrays as '// &
+                    'fixed-size local declarations only, not assumed-shape '// &
+                    'or assumed-rank dummies', error_msg)
                 return
             end if
             ! Assumed-rank dummy arr(..): no static rank, so bind it to the
@@ -1414,6 +1429,7 @@ contains
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_complex.inc'
+    include 'session_program_lowering_complex_arrays.inc'
     include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'

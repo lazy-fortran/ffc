@@ -69,9 +69,13 @@ in array-bound and `parameter` initializer positions also covers `kind`,
 (`c_bool`, `c_int`, `c_long`, ...). Non-default integer kinds
 `integer(1)`/`(2)`/`(8)` (and their `iso_c_binding` C-interop kind names, incl.
 `c_size_t`/`c_intptr_t`/`c_ptrdiff_t`/`c_intmax_t`) support arithmetic,
-comparison, and `print`; `real(8)` recognizes the `dp`/`wp` kind alias
+comparison, and `print`, and fixed-size rank-1/rank-2 arrays of these kinds
+support element assignment, element reads, scalar broadcast, and whole-array
+`print`; `real(8)` recognizes the `dp`/`wp` kind alias
 convention. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
-including a mixed real/complex operand. An `if` condition accepts any
+including a mixed real/complex operand, and fixed-size rank-1/rank-2 complex
+arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
+between array elements, and single-element `print`. An `if` condition accepts any
 scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a
 logical array element, a derived-type logical component, `allocated(a)`, and
 a contained logical function's result, including the one-line

@@ -4,6 +4,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: re_val, im_val
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
@@ -65,6 +66,22 @@
             ! the // operands case is handled here (intrinsic agent, bug 2).
             if (is_character_concat(arena, node_index, context)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
+            if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
+                call eval_c8_rhs(arena, node_index, context, re_val, im_val, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex8_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
+                return
+            end if
+            if (is_complex_valued(arena, node_index, context, VALUE_C4)) then
+                call eval_c4_rhs(arena, node_index, context, re_val, im_val, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex4_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
                 return
             end if
             if (is_f32_expression(arena, node_index, context)) then
@@ -168,12 +185,25 @@
                                                    value, error_msg)) return
                     return
                 end if
-                if (context%symbols(symbol_index)%value_kind == VALUE_C4) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_C4 .and. &
+                    .not. context%symbols(symbol_index)%is_array) then
                     call lower_print_complex4(symbol_index, context, error_msg)
                     return
                 end if
-                if (context%symbols(symbol_index)%value_kind == VALUE_C8) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_C8 .and. &
+                    .not. context%symbols(symbol_index)%is_array) then
                     call lower_print_complex8(symbol_index, context, error_msg)
+                    return
+                end if
+                if ((context%symbols(symbol_index)%value_kind == VALUE_C4 .or. &
+                     context%symbols(symbol_index)%value_kind == VALUE_C8) &
+                    .and. context%symbols(symbol_index)%is_array) then
+                    call unsupported_feature_error('complex array print', &
+                        get_node_line(arena, node_index), &
+                        get_node_column(arena, node_index), &
+                        'direct LIRIC session supports printing individual '// &
+                        'complex array elements, not a whole complex array', &
+                        error_msg)
                     return
                 end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
@@ -271,6 +301,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: re_val, im_val
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
@@ -330,6 +361,22 @@
             ! the // operands case is handled here (intrinsic agent, bug 2).
             if (is_character_concat(arena, node_index, context)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
+            if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
+                call eval_c8_rhs(arena, node_index, context, re_val, im_val, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex8_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
+                return
+            end if
+            if (is_complex_valued(arena, node_index, context, VALUE_C4)) then
+                call eval_c4_rhs(arena, node_index, context, re_val, im_val, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex4_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
                 return
             end if
             if (is_f32_expression(arena, node_index, context)) then
@@ -433,12 +480,25 @@
                                                          value, error_msg)) return
                     return
                 end if
-                if (context%symbols(symbol_index)%value_kind == VALUE_C4) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_C4 .and. &
+                    .not. context%symbols(symbol_index)%is_array) then
                     call lower_print_complex4(symbol_index, context, error_msg)
                     return
                 end if
-                if (context%symbols(symbol_index)%value_kind == VALUE_C8) then
+                if (context%symbols(symbol_index)%value_kind == VALUE_C8 .and. &
+                    .not. context%symbols(symbol_index)%is_array) then
                     call lower_print_complex8(symbol_index, context, error_msg)
+                    return
+                end if
+                if ((context%symbols(symbol_index)%value_kind == VALUE_C4 .or. &
+                     context%symbols(symbol_index)%value_kind == VALUE_C8) &
+                    .and. context%symbols(symbol_index)%is_array) then
+                    call unsupported_feature_error('complex array print', &
+                        get_node_line(arena, node_index), &
+                        get_node_column(arena, node_index), &
+                        'direct LIRIC session supports printing individual '// &
+                        'complex array elements, not a whole complex array', &
+                        error_msg)
                     return
                 end if
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
@@ -556,6 +616,26 @@
                 if (.not. emit_liric_print_i16_value(context%session, &
                                                      context%i16_print_format_id, &
                                                      value, error_msg)) return
+                return
+            end if
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_C4) then
+                call load_complex_array_element(arena, node, context, VALUE_C4, &
+                    re_val, im_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex4_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
+                return
+            end if
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_C8) then
+                call load_complex_array_element(arena, node, context, VALUE_C8, &
+                    re_val, im_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_complex8_print_call(context%session, re_val, &
+                                                   im_val, error_msg)) return
                 return
             end if
             if (.not. node%is_array_access .and. allocated(node%name)) then

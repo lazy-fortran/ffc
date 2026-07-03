@@ -1082,9 +1082,28 @@
             end if
         end if
 
+        if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. is_dummy) &
+                then
+            call unsupported_feature_error('complex array declaration', &
+                node%line, node%column, &
+                'direct LIRIC session supports complex arrays as '// &
+                'fixed-size local declarations only, not dummy arguments '// &
+                'or function results', error_msg)
+            return
+        end if
+
         dim_count = 0
         if (allocated(node%dimension_indices)) then
             dim_count = size(node%dimension_indices)
+        end if
+
+        if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. &
+                (dim_count < 1 .or. dim_count > 2)) then
+            call unsupported_feature_error('complex array declaration', &
+                node%line, node%column, &
+                'direct LIRIC session supports rank-1 and rank-2 complex '// &
+                'arrays only', error_msg)
+            return
         end if
 
         if (.not. is_dummy) then
@@ -1194,6 +1213,31 @@
                 error_msg = 'decl_i16_array['//trim(name)//']: '//error_msg
                 return
             end if
+        case (VALUE_C4)
+            ! Complex arrays store re/im components in two parallel f32 arrays:
+            ! element_address is the re array base, address the im array base
+            ! (mirrors the scalar complex(4) re/im slot convention).
+            if (.not. emit_f32_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_c4_array_re['//trim(name)//']: '//error_msg
+                return
+            end if
+            if (.not. emit_f32_array_alloca(context%session, array_size, &
+                    context%symbols(index)%address, error_msg)) then
+                error_msg = 'decl_c4_array_im['//trim(name)//']: '//error_msg
+                return
+            end if
+        case (VALUE_C8)
+            if (.not. emit_f64_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_c8_array_re['//trim(name)//']: '//error_msg
+                return
+            end if
+            if (.not. emit_f64_array_alloca(context%session, array_size, &
+                    context%symbols(index)%address, error_msg)) then
+                error_msg = 'decl_c8_array_im['//trim(name)//']: '//error_msg
+                return
+            end if
         case default
             if (.not. emit_i32_array_alloca(context%session, array_size, &
                     context%symbols(index)%element_address, error_msg)) then
@@ -1255,6 +1299,9 @@
         case (VALUE_I16)
             call lower_i16_expression(context%arena, value_index, context, &
                                       value, error_msg)
+        case (VALUE_C4, VALUE_C8)
+            error_msg = 'complex array scalar initializer is not supported'
+            return
         case default
             call lower_i32_expression(context%arena, value_index, context, &
                                       value, error_msg)
@@ -1345,6 +1392,10 @@
                 call lower_i8_expression(arena, flat(i), context, value, error_msg)
             else if (vk == VALUE_I16) then
                 call lower_i16_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+                error_msg = 'complex array constructor initializer is not '// &
+                            'supported'
+                return
             else
                 call lower_constructor_i32_element(arena, flat(i), context, &
                                                    value, error_msg)

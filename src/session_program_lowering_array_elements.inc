@@ -1430,6 +1430,13 @@
             return
         end if
 
+        if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+            call lower_complex_array_element_assignment(arena, node, target, &
+                                                        context, sym_idx, vk, &
+                                                        error_msg)
+            return
+        end if
+
         if (vk == VALUE_F32) then
             call lower_f32_expression(arena, node%value_index, context, value, &
                                       error_msg)

@@ -81,6 +81,14 @@
         select type (node => arena%entries(node_index)%node)
         type is (complex_literal_node)
             is_c = .true.
+        type is (call_or_subscript_node)
+            ! A complex array element reference (a(i)): recognized by the
+            ! declared array symbol's element kind, same as the identifier case.
+            if (.not. allocated(node%name)) return
+            sym = find_symbol(context, node%name)
+            if (sym <= 0) return
+            if (.not. context%symbols(sym)%is_array) return
+            is_c = context%symbols(sym)%value_kind == want_kind
         class default
             if (.not. is_identifier(arena, node_index)) return
             call get_identifier_name(arena, node_index, name, err)
@@ -172,6 +180,20 @@
             if (len_trim(error_msg) > 0) return
             call lower_f32_expression(arena, rhs%imag_index, context, im_val, &
                                       error_msg)
+        type is (call_or_subscript_node)
+            sym = 0
+            if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
+            if (sym > 0) then
+                if (context%symbols(sym)%is_array .and. &
+                    context%symbols(sym)%value_kind == VALUE_C4) then
+                    call load_complex_array_element(arena, rhs, context, &
+                        VALUE_C4, re_val, im_val, error_msg)
+                    return
+                end if
+            end if
+            call lower_f32_expression(arena, rhs_index, context, re_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            im_val = liric_f32_immediate(context%session, 0.0_c_float)
         class default
             sym = 0
             if (is_identifier(arena, rhs_index)) then
@@ -227,6 +249,20 @@
             if (len_trim(error_msg) > 0) return
             call lower_f64_expression(arena, rhs%imag_index, context, im_val, &
                                       error_msg)
+        type is (call_or_subscript_node)
+            sym = 0
+            if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
+            if (sym > 0) then
+                if (context%symbols(sym)%is_array .and. &
+                    context%symbols(sym)%value_kind == VALUE_C8) then
+                    call load_complex_array_element(arena, rhs, context, &
+                        VALUE_C8, re_val, im_val, error_msg)
+                    return
+                end if
+            end if
+            call lower_f64_expression(arena, rhs_index, context, re_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            im_val = liric_f64_immediate(context%session, 0.0_c_double)
         class default
             sym = 0
             if (is_identifier(arena, rhs_index)) then
