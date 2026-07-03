@@ -10,6 +10,7 @@ program test_session_submodule_compiler
     if (.not. test_restated_module_function()) all_passed = .false.
     if (.not. test_separate_module_subroutine()) all_passed = .false.
     if (.not. test_separate_module_function()) all_passed = .false.
+    if (.not. test_generic_interface_body_specific()) all_passed = .false.
     if (.not. test_parent_module_not_found()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -100,6 +101,36 @@ contains
         test_separate_module_function = expect_exit_status( &
             source, 12, '/tmp/ffc_session_submod_sep_fn_test')
     end function test_separate_module_function
+
+    logical function test_generic_interface_body_specific()
+        ! #292: a named generic interface whose specific is a module-procedure
+        ! interface body (`module subroutine impl(...)`) implemented in the
+        ! submodule; a call through the generic name resolves to that specific.
+        character(len=*), parameter :: source = &
+            'module mg'//new_line('a')// &
+            '  interface gen'//new_line('a')// &
+            '    module subroutine impl_sub(n)'//new_line('a')// &
+            '      integer, intent(inout) :: n'//new_line('a')// &
+            '    end subroutine'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'end module'//new_line('a')// &
+            'submodule (mg) mgs'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  module procedure impl_sub'//new_line('a')// &
+            '    n = 3'//new_line('a')// &
+            '  end procedure'//new_line('a')// &
+            'end submodule'//new_line('a')// &
+            'program pg'//new_line('a')// &
+            '  use mg'//new_line('a')// &
+            '  integer :: n'//new_line('a')// &
+            '  n = 2'//new_line('a')// &
+            '  call gen(n)'//new_line('a')// &
+            '  stop n'//new_line('a')// &
+            'end program'
+
+        test_generic_interface_body_specific = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_submod_generic_body_test')
+    end function test_generic_interface_body_specific
 
     logical function test_parent_module_not_found()
         ! #292: a submodule whose parent module is absent from the compilation

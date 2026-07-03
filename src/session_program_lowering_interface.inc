@@ -52,14 +52,17 @@
     subroutine register_generic_interface(arena, node, context, error_msg)
         ! Collect the specific procedure names listed in a named generic
         ! interface block and record them in context%generics so call sites
-        ! can resolve the generic name to the right specific (#249 B7c).
+        ! can resolve the generic name to the right specific (#249 B7c). A
+        ! specific may be named either by a `module procedure P` statement or,
+        ! in the submodule idiom, by a module-procedure interface body
+        ! (`module subroutine P(...)`); both forms register P as a specific.
         type(ast_arena_t), intent(in) :: arena
         type(interface_block_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, j, next
         type(module_procedure_node), pointer :: mp_node
-        character(len=:), allocatable :: node_type
+        character(len=:), allocatable :: node_type, body_name
 
         call set_empty(error_msg)
         call grow_generics(context)
@@ -70,39 +73,84 @@
         do i = 1, size(node%procedure_indices)
             if (.not. node_exists(arena, node%procedure_indices(i))) cycle
             node_type = get_node_type_at(arena, node%procedure_indices(i))
-            if (node_type /= 'module_procedure_node' .and. &
-                node_type /= 'module_procedure') cycle
-            select type (n => arena%entries(node%procedure_indices(i))%node)
-            type is (module_procedure_node)
-                mp_node => n
-            class default
-                cycle
-            end select
-            if (.not. allocated(mp_node%procedure_names)) cycle
-            do j = 1, size(mp_node%procedure_names)
-                if (context%generics(next)%specific_count >= &
-                    MAX_GENERIC_SPECIFICS) then
-                    error_msg = 'generic interface '//trim(node%name)// &
-                                ' has too many specific procedures'
-                    return
-                end if
-                context%generics(next)%specific_count = &
-                    context%generics(next)%specific_count + 1
-                associate (sc => context%generics(next)%specific_count)
-                    context%generics(next)%specific_names(sc) = &
-                        trim(mp_node%procedure_names(j)%s)
-                    ! Look up the specific's return kind and first-arg kind
-                    ! from the function table (populated during
-                    ! collect_internal_function_names / register_module_procedures).
-                    call query_specific_kinds(context, &
-                        trim(mp_node%procedure_names(j)%s), &
-                        context%generics(next)%return_kinds(sc), &
-                        context%generics(next)%first_arg_kinds(sc))
-                end associate
-            end do
+            if (node_type == 'module_procedure_node' .or. &
+                node_type == 'module_procedure') then
+                select type (n => arena%entries(node%procedure_indices(i))%node)
+                type is (module_procedure_node)
+                    mp_node => n
+                class default
+                    cycle
+                end select
+                if (.not. allocated(mp_node%procedure_names)) cycle
+                do j = 1, size(mp_node%procedure_names)
+                    call add_generic_specific(context, next, &
+                        trim(mp_node%procedure_names(j)%s), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def' .or. &
+                     node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                call interface_body_procedure_name(arena, &
+                    node%procedure_indices(i), body_name)
+                if (len_trim(body_name) == 0) cycle
+                call add_generic_specific(context, next, body_name, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         end do
         context%generic_count = next
     end subroutine register_generic_interface
+
+    subroutine add_generic_specific(context, generic_idx, specific_name, error_msg)
+        ! Append one specific procedure name to a generic interface entry and
+        ! record its return/first-argument kinds from the function table.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: generic_idx
+        character(len=*), intent(in) :: specific_name
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (context%generics(generic_idx)%specific_count >= &
+            MAX_GENERIC_SPECIFICS) then
+            error_msg = 'generic interface '// &
+                trim(context%generics(generic_idx)%generic_name)// &
+                ' has too many specific procedures'
+            return
+        end if
+        context%generics(generic_idx)%specific_count = &
+            context%generics(generic_idx)%specific_count + 1
+        associate (sc => context%generics(generic_idx)%specific_count)
+            context%generics(generic_idx)%specific_names(sc) = trim(specific_name)
+            call query_specific_kinds(context, trim(specific_name), &
+                context%generics(generic_idx)%return_kinds(sc), &
+                context%generics(generic_idx)%first_arg_kinds(sc))
+        end associate
+    end subroutine add_generic_specific
+
+    subroutine interface_body_procedure_name(arena, node_index, name)
+        ! The declared name of a module-procedure interface body (a
+        ! function_def/subroutine_def stored inside a generic interface block).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        name = ''
+        if (.not. node_exists(arena, node_index)) return
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (allocated(fn_node%name)) name = trim(fn_node%name)
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%name)) name = trim(sb_node%name)
+        end if
+    end subroutine interface_body_procedure_name
 
     subroutine register_operator_interface(arena, node, context, is_assignment, &
                                            error_msg)

@@ -100,7 +100,10 @@ format literals (#284). A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a
-`use m` call resolves regardless of which submodule holds the body. The `associate` construct binds scalar selectors. The
+`use m` call resolves regardless of which submodule holds the body. A parent
+generic interface whose specific is a module-procedure interface body dispatches
+a call through the generic name to the submodule body implementing that specific.
+The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real
 arrays, including a final `elsewhere`. The `forall` construct, single-statement
 and block form, lowers to a sequential loop nest over its index set, with an
