@@ -1180,6 +1180,11 @@
         else if (same_name(node%name, 'dot_product')) then
             call eval_dot_product_constant(arena, node, context, constant_value, &
                                            error_msg)
+        else if (same_name(node%name, 'sum') .or. same_name(node%name, 'maxval') &
+                 .or. same_name(node%name, 'minval')) then
+            call eval_array_reduction_constant(arena, node, context, &
+                                               lowercase_text(node%name), &
+                                               constant_value, error_msg)
         else if (same_name(node%name, 'abs') .or. same_name(node%name, 'not')) then
             call eval_one_arg_i32_intrinsic(arena, node, context, &
                                             lowercase_text(node%name), &

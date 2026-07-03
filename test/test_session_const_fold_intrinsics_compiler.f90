@@ -15,11 +15,12 @@ program test_session_const_fold_intrinsics
     if (.not. test_kind_inquiry_folds()) all_passed = .false.
     if (.not. test_param_array_index_bound()) all_passed = .false.
     if (.not. test_product_dot_product_folds()) all_passed = .false.
+    if (.not. test_array_reduction_folds()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: compile-time integer expressions fold mod/modulo/abs/'// &
         'sign/dim, bit intrinsics, merge, kind inquiries, parameter-array '// &
-        'indexing, and product/dot_product'
+        'indexing, product/dot_product, and sum/maxval/minval'
 
 contains
 
@@ -156,5 +157,24 @@ contains
         test_product_dot_product_folds = expect_output(source, expected, &
             '/tmp/ffc_session_const_fold_product')
     end function test_product_dot_product_folds
+
+    logical function test_array_reduction_folds()
+        ! sum(), maxval(), and minval() over a compile-time integer array
+        ! constructor or named integer PARAMETER array fold as array-bound
+        ! expressions.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer, parameter :: v(3) = [5, 1, 3]'//new_line('a')// &
+            'integer :: a(sum(v))'//new_line('a')// &
+            'integer :: b(maxval(v))'//new_line('a')// &
+            'integer :: c(minval([4, 9, 2]))'//new_line('a')// &
+            'print *, size(a), size(b), size(c)'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           9           5           2'//new_line('a')
+
+        test_array_reduction_folds = expect_output(source, expected, &
+            '/tmp/ffc_session_const_fold_reduction')
+    end function test_array_reduction_folds
 
 end program test_session_const_fold_intrinsics

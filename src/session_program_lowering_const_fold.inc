@@ -814,6 +814,54 @@
         call set_empty(error_msg)
     end subroutine eval_product_constant
 
+    ! Constant-fold sum(array)/maxval(array)/minval(array) (no mask, no dim)
+    ! over a compile-time integer array constructor or named integer
+    ! PARAMETER array.
+    subroutine eval_array_reduction_constant(arena, node, context, name, &
+                                             constant_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t), allocatable :: values(:)
+        integer :: i
+
+        constant_value = 0_c_int64_t
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = trim(name)//' requires one array argument (no mask, '// &
+                        'no dim, in a compile-time context)'
+            return
+        end if
+        call fold_i32_array_literal(arena, context, node%arg_indices(1), values, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (size(values) < 1) then
+            error_msg = trim(name)//' array argument is empty'
+            return
+        end if
+        constant_value = values(1)
+        select case (name)
+        case ('sum')
+            do i = 2, size(values)
+                constant_value = constant_value + values(i)
+            end do
+        case ('maxval')
+            do i = 2, size(values)
+                if (values(i) > constant_value) constant_value = values(i)
+            end do
+        case ('minval')
+            do i = 2, size(values)
+                if (values(i) < constant_value) constant_value = values(i)
+            end do
+        case default
+            error_msg = 'unsupported compile-time array reduction: '//trim(name)
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine eval_array_reduction_constant
+
     ! Constant-fold dot_product(a, b): sum of elementwise products of two
     ! same-length compile-time integer arrays.
     subroutine eval_dot_product_constant(arena, node, context, constant_value, &
