@@ -145,7 +145,6 @@ allocate_zerosize_1.f90
 allocate_zerosize_2.f90
 allocated_1.f90
 allocated_4.f90
-ambiguous_reference_2.f90
 ambiguous_specific_2.f90
 and_or_xor.f90
 anint_1.f90
@@ -339,9 +338,7 @@ bind_c_usage_21.f90
 bind_c_usage_29.f90
 bind_c_usage_30.f90
 binding_label_tests_23.f90
-binding_label_tests_24.f90
 binding_label_tests_26a.f90
-binding_label_tests_31.f90
 binding_label_tests_32.f90
 binding_label_tests_33.f90
 block_14.f90
@@ -363,7 +360,6 @@ boz_12.f90
 boz_13.f90
 boz_5.f90
 boz_bge.f90
-boz_dble.f90
 boz_dshift_2.f90
 boz_iand_2.f90
 boz_int.f90
@@ -464,7 +460,6 @@ class_35.f90
 class_47.f90
 class_48.f90
 class_49.f90
-class_54.f90
 class_63.f90
 class_65.f90
 class_66.f90
@@ -515,7 +510,6 @@ complex_write.f90
 constructor_1.f90
 constructor_2.f90
 constructor_3.f90
-constructor_5.f90
 constructor_6.f90
 contained_1.f90
 contained_3.f90
@@ -554,9 +548,7 @@ deallocate_stat_2.f90
 default_format_1.f90
 default_initialization_2.f90
 default_initialization_3.f90
-default_initialization_4.f90
 default_initialization_6.f90
-default_initialization_7.f90
 deferred_character_1.f90
 deferred_character_10.f90
 deferred_character_11.f90
@@ -672,7 +664,6 @@ derived_pointer_recursion_2.f90
 derived_result_3.f90
 derived_result_4.f90
 derived_result_5.f90
-derived_sub.f90
 direct_io_1.f90
 direct_io_11.f90
 direct_io_12.f90
@@ -740,12 +731,10 @@ elemental_scalar_args_2.f90
 elemental_subroutine_1.f90
 elemental_subroutine_10.f90
 elemental_subroutine_11.f90
-elemental_subroutine_2.f90
 elemental_subroutine_3.f90
 elemental_subroutine_6.f90
 elemental_subroutine_7.f90
 elemental_subroutine_9.f90
-empty_function_1.f90
 empty_type.f90
 endfile.f90
 endfile_2.f90
@@ -903,14 +892,11 @@ function_optimize_10.f90
 function_types_2.f90
 gamma_1.f90
 gamma_5.f90
-generic_1.f90
 generic_10.f90
 generic_12.f90
 generic_13.f90
 generic_15.f90
-generic_17.f90
 generic_19.f90
-generic_2.f90
 generic_20.f90
 generic_21.f90
 generic_24.f90
@@ -930,7 +916,6 @@ getenv_1.f90
 goto_4.f90
 hollerith_9.f90
 host_assoc_blockdata_1.f90
-host_assoc_call_1.f90
 host_assoc_call_4.f90
 host_assoc_call_5.f90
 host_assoc_function_1.f90
@@ -954,7 +939,6 @@ impl_do_var_data.f90
 implicit_10.f90
 implicit_12.f90
 implicit_2.f90
-implicit_3.f90
 implicit_derived_type_1.f90
 implied_do_1.f90
 implied_do_3.f90
@@ -965,7 +949,6 @@ implied_do_io_8.f90
 implied_do_io_9.f90
 implied_shape_4.f90
 import.f90
-import10.f90
 import11.f90
 import4.f90
 import6.f90
@@ -993,8 +976,6 @@ inline_sum_4.f90
 inline_sum_5.f90
 inquire-complex.f90
 inquire_10.f90
-inquire_11.f90
-inquire_14.f90
 inquire_15.f90
 inquire_16.f90
 inquire_17.f90
@@ -1026,12 +1007,10 @@ intent_out_5.f90
 intent_out_6.f90
 intent_used_1.f90
 interface_10.f90
-interface_11.f90
 interface_12.f90
 interface_13.f90
 interface_16.f90
 interface_19.f90
-interface_2.f90
 interface_25.f90
 interface_29.f90
 interface_31.f90
@@ -1051,7 +1030,6 @@ interface_assignment_1.f90
 interface_assignment_2.f90
 interface_assignment_3.f90
 interface_assignment_4.f90
-interface_assignment_5.f90
 interface_assignment_6.f90
 interface_assignment_7.f90
 interface_proc_end.f90
@@ -1103,7 +1081,6 @@ is_iostat_end_eor_1.f90
 ishft_1.f90
 ishft_2.f90
 ishftc_optional_size_1.f90
-iso_c_binding_only_2.f90
 iso_c_binding_rename_3.f90
 iso_fortran_env_1.f90
 iso_fortran_env_2.f90
@@ -1373,7 +1350,6 @@ optional_absent_5.f90
 optional_absent_6.f90
 optional_absent_8.f90
 optional_absent_9.f90
-optional_assumed_charlen_1.f90
 optional_assumed_charlen_2.f90
 optional_class_1.f90
 optional_deferred_char_1.f90
@@ -1532,7 +1508,6 @@ pr122949.f90
 pr123868.f90
 pr123947_1.f90
 pr123949.f90
-pr123952.f90
 pr124161.f90
 pr124208.f90
 pr124235.f90
@@ -1608,7 +1583,6 @@ pr65450.f90
 pr65504.f90
 pr65996.f90
 pr66311.f90
-pr66465.f90
 pr67140.f90
 pr67219.f90
 pr67496.f90
@@ -1646,7 +1620,6 @@ pr81849.f90
 pr81978.f90
 pr82314.f90
 pr82774.f90
-pr83113.f90
 pr83149.f90
 pr83149_a.f90
 pr83864.f90
@@ -1672,7 +1645,6 @@ pr85975.f90
 pr85996.f90
 pr86322_3.f90
 pr86328.f90
-pr86587.f90
 pr86760.f90
 pr87045.f90
 pr87946.f90
@@ -1684,18 +1656,14 @@ pr87994_3.f90
 pr88052.f90
 pr88116_2.f90
 pr88169_2.f90
-pr88206.f90
 pr88688.f90
 pr89077.f90
 pr89084.f90
 pr89266.f90
-pr89574.f90
 pr89646.f90
 pr89647.f90
-pr89943_1.f90
 pr89943_2.f90
 pr90344.f90
-pr91485.f90
 pr91552.f90
 pr91553.f90
 pr91566.f90
@@ -1709,8 +1677,6 @@ pr92277.f90
 pr92586.f90
 pr93263_2.f90
 pr93365.f90
-pr93461.f90
-pr93486.f90
 pr93600_2.f90
 pr93678.f90
 pr93685_1.f90
@@ -1731,7 +1697,6 @@ pr95880.f90
 pr95882_1.f90
 pr95882_2.f90
 pr95882_3.f90
-pr96038.f90
 pr96486.f90
 pr96859.f90
 pr97272.f90
@@ -1765,7 +1730,6 @@ proc_decl_24.f90
 proc_decl_25.f90
 proc_decl_27.f90
 proc_decl_28.f90
-proc_decl_5.f90
 proc_decl_9.f90
 proc_ptr_1.f90
 proc_ptr_10.f90
@@ -2068,7 +2032,6 @@ substring_equivalence.f90
 substring_integer_index.f90
 sum_zero_array_1.f90
 temporary_1.f90
-temporary_2.f90
 test_com_block.f90
 tiny_1.f90
 tiny_2.f90
@@ -2118,7 +2081,6 @@ typebound_operator_17.f90
 typebound_operator_18.f90
 typebound_operator_19.f90
 typebound_operator_20.f90
-typebound_override_3.f90
 typebound_proc_20.f90
 typebound_proc_21.f90
 typebound_proc_23.f90
@@ -2160,12 +2122,9 @@ unsigned_write_2.f90
 use_10.f90
 use_11.f90
 use_13.f90
-use_14.f90
 use_17.f90
 use_18.f90
 use_2.f90
-use_20.f90
-use_22.f90
 use_24.f90
 use_25.f90
 use_27.f90
@@ -2178,7 +2137,6 @@ use_only_3.f90
 use_only_5.f90
 use_only_6.f90
 use_rename_1.f90
-use_rename_10.f90
 use_rename_12.f90
 use_rename_13.f90
 use_rename_3.f90
@@ -2201,7 +2159,6 @@ used_types_14.f90
 used_types_15.f90
 used_types_16.f90
 used_types_17.f90
-used_types_19.f90
 used_types_2.f90
 used_types_20.f90
 used_types_21.f90
@@ -2210,8 +2167,6 @@ used_types_3.f90
 used_types_4.f90
 used_types_5.f90
 used_types_6.f90
-used_types_7.f90
-used_types_8.f90
 used_types_9.f90
 userdef_operator_1.f90
 value_9.f90
@@ -2229,7 +2184,6 @@ vector_subscript_9.f90
 vector_subscript_bound_1.f90
 verify_2.f90
 verify_3.f90
-volatile9.f90
 warn_unused_dummy_argument_5.f90
 where_1.f90
 where_2.f90

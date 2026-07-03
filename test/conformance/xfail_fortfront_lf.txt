@@ -23,7 +23,6 @@ issue_1330_missing_declarations.lf
 issue_1410_pointer_null.lf
 issue_1414_implied_do.lf
 issue_1534_multi_dimension_allocatable.lf
-issue_1576_common_subroutine.lf
 issue_1775_intent_in_preserved.lf
 issue_1784_subroutine_wrapping.lf
 issue_1814_nested_lazy_function.lf
@@ -64,7 +63,6 @@ issue_playtest5_function_no_return_type.lf
 issue_playtest5_nested_function_chaos.lf
 issue_playtest5_reshape_allocatable_never_allocated.lf
 issue_playtest5_subroutine_name_collision.lf
-module_contains_suite.lf
 monomorphization_add_three_types.lf
 test_209_mixed.lf
 test_209_none.lf
