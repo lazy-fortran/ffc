@@ -156,7 +156,11 @@ global (honouring `use, only:`). A file whose
 top-level units are one or more modules with no main program is a valid
 translation unit: it lowers to a no-op main, so it compiles to an object with
 `-c` (each module's procedures under their mangled symbols) and links to an
-empty executable, matching gfortran's own module-only object. A single-file A single-file
+empty executable, matching gfortran's own module-only object. When such a file
+also holds a main program after its modules, the program's own contained
+procedures are registered and lowered from inside the multi-unit container, so
+a call to a program-contained scalar function resolves as contained instead of
+raising the unsupported-call diagnostic. A single-file A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a
