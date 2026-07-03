@@ -39,8 +39,11 @@ whole-array assignment right-hand sides, plain (`[a, b, c]`), typed
 promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element
 access, array
 sections, whole-array copy, elemental arithmetic (`+`, `-`, `*`, `/`, `**`,
-unary minus, an array constructor as an rvalue operand, and general scalar
-expressions broadcasting to every element), and the array intrinsics
+unary minus, an array constructor as an rvalue operand, general scalar
+expressions broadcasting to every element, elemental `max`/`min` of two
+conforming arrays, and a relational comparison between two conforming
+arrays assigned to a logical array, e.g. `mask = a > b`), and the array
+intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, `all`,
 and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar

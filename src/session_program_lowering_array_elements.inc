@@ -702,6 +702,13 @@
             end if
         end select
 
+        if (is_elemental_minmax_call(arena, node_index)) then
+            call lower_elementwise_minmax_call(arena, node_index, &
+                                               target_symbol_index, linear_index, &
+                                               context, value, error_msg)
+            return
+        end if
+
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -755,6 +762,13 @@
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (context%symbols(target_symbol_index)%value_kind == &
+                    VALUE_LOGICAL .and. is_comparison_operator(bin_op)) then
+                call lower_array_compare_element(arena, node_index, &
+                                                 linear_index, context, value, &
+                                                 error_msg)
+                return
+            end if
             call lower_array_elementwise_value(arena, bin_left, &
                                                target_symbol_index, linear_index, &
                                                context, lhs, error_msg)
@@ -857,6 +871,47 @@
                                               target_symbol_index, context, &
                                               value, error_msg)
     end subroutine lower_array_constructor_operand_element
+
+    logical function is_comparison_operator(source_op) result(is_compare)
+        ! True for a relational operator whose whole-array elementwise use
+        ! produces a logical array (mask = a > b).
+        character(len=*), intent(in) :: source_op
+
+        select case (trim(source_op))
+        case ('>', '.gt.', '>=', '.ge.', '<', '.lt.', '<=', '.le.', &
+              '==', '=', '.eq.', '/=', '!=', '.ne.')
+            is_compare = .true.
+        case default
+            is_compare = .false.
+        end select
+    end function is_comparison_operator
+
+    subroutine lower_array_compare_element(arena, node_index, linear_index, &
+                                           context, value, error_msg)
+        ! Evaluate a whole-array comparison at one element, producing the
+        ! logical result for a mask assignment (mask = a > b). The i1
+        ! condition is materialized through select_value's branch-and-phi
+        ! (as WHERE already does for its masked stores) rather than stored
+        ! directly: this backend mis-compiles a raw icmp result written
+        ! straight to memory (verified empirically to misorder both "/="
+        ! and strict </> at exact operand ties), while a branch-selected
+        ! 0/1 literal stores correctly.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cond, true_val, false_val
+
+        call set_empty(error_msg)
+        call lower_where_mask_element(arena, node_index, linear_index, context, &
+                                      cond, error_msg)
+        if (len_trim(error_msg) > 0) return
+        true_val = i32_immediate(context%session, 1_c_int64_t)
+        false_val = i32_immediate(context%session, 0_c_int64_t)
+        call select_value(context, cond, true_val, false_val, value, error_msg)
+    end subroutine lower_array_compare_element
 
     logical function is_elementwise_array_operand(context, symbol_index) &
         result(is_operand)

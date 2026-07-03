@@ -623,6 +623,91 @@
         end select
     end subroutine lower_elementwise_user_call
 
+    logical function is_elemental_minmax_call(arena, node_index) result(is_call)
+        ! True for a two-array-operand MAX/MIN call usable as a whole-array
+        ! elementwise RHS operand (a = max(b, c)).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(n%name)) return
+            if (.not. allocated(n%arg_indices)) return
+            if (size(n%arg_indices) /= 2) return
+            is_call = same_name(n%name, 'max') .or. same_name(n%name, 'min')
+        end select
+    end function is_elemental_minmax_call
+
+    subroutine lower_elementwise_minmax_call(arena, node_index, &
+                                             target_symbol_index, linear_index, &
+                                             context, value, error_msg)
+        ! Apply whole-array MAX/MIN elementwise: max(a, b) = (a > b) ? a : b.
+        ! The comparison is consumed only as a select_value branch condition
+        ! (as WHERE already does), never stored directly: this backend
+        ! mis-compiles a raw comparison result written straight to memory.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs, rhs, cond
+        logical :: want_max
+        integer :: vk
+
+        call set_empty(error_msg)
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            want_max = same_name(n%name, 'max')
+            vk = context%symbols(target_symbol_index)%value_kind
+            if (vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. vk /= VALUE_I32) then
+                call unsupported_feature_error('whole-array max/min', n%line, &
+                    n%column, 'direct LIRIC session supports max/min for '// &
+                    'default-kind integer and real arrays only', error_msg)
+                return
+            end if
+            call lower_array_elementwise_value(arena, n%arg_indices(1), &
+                                               target_symbol_index, linear_index, &
+                                               context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_array_elementwise_value(arena, n%arg_indices(2), &
+                                               target_symbol_index, linear_index, &
+                                               context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk == VALUE_F32) then
+                if (want_max) then
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGT, &
+                            lhs, rhs, cond, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OLT, &
+                            lhs, rhs, cond, error_msg)) return
+                end if
+            else if (vk == VALUE_F64) then
+                if (want_max) then
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGT, &
+                            lhs, rhs, cond, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OLT, &
+                            lhs, rhs, cond, error_msg)) return
+                end if
+            else
+                if (want_max) then
+                    if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, &
+                            lhs, rhs, cond, error_msg)) return
+                else
+                    if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, &
+                            lhs, rhs, cond, error_msg)) return
+                end if
+            end if
+            call select_value(context, cond, lhs, rhs, value, error_msg)
+        class default
+            error_msg = 'max/min call node lost its type'
+        end select
+    end subroutine lower_elementwise_minmax_call
+
     subroutine elemental_real_libm_names(name, libm32, libm64)
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: libm32
