@@ -70,10 +70,13 @@
             ! passed where the callee declares an array dummy is a rank mismatch
             ! (F2018 15.5.2.4). callee_dummy_is_array only resolves against a
             ! procedure defined or interfaced in this unit, so external calls
-            ! without an explicit interface never trip this.
+            ! without an explicit interface never trip this. An assumed-rank
+            ! arr(..) dummy binds to any rank, scalar included, so it is excluded.
             if (callee_dummy_is_array(arena, callee_name, &
                                       call_arg_param_pos(i, sp)) .and. &
-                actual_is_definite_scalar(arena, arg_indices(i), context)) then
+                actual_is_definite_scalar(arena, arg_indices(i), context) .and. &
+                .not. callee_dummy_is_assumed_rank(arena, callee_name, &
+                                                   call_arg_param_pos(i, sp))) then
                 error_msg = 'Rank mismatch in argument to '//trim(callee_name)// &
                     ': scalar actual passed to array dummy argument'
                 return

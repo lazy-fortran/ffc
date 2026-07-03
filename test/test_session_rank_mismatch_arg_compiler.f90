@@ -11,6 +11,7 @@ program test_session_rank_mismatch_arg_compiler
     if (.not. test_literal_to_array_dummy_rejected()) all_passed = .false.
     if (.not. test_array_to_array_dummy_accepted()) all_passed = .false.
     if (.not. test_scalar_to_scalar_dummy_accepted()) all_passed = .false.
+    if (.not. test_scalar_to_assumed_rank_accepted()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: scalar-to-array-dummy rank mismatch rejected, valid calls run'
@@ -92,5 +93,23 @@ contains
         test_scalar_to_scalar_dummy_accepted = expect_exit_status( &
             source, 0, '/tmp/ffc_session_rank_scalar_ok')
     end function test_scalar_to_scalar_dummy_accepted
+
+    logical function test_scalar_to_assumed_rank_accepted()
+        ! An assumed-rank dummy arr(..) binds to an actual of any rank, scalar
+        ! included, so a scalar actual must not be flagged as a rank mismatch.
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: x = 1'//new_line('a')// &
+            '  call sub(x)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine sub(inp)'//new_line('a')// &
+            '    integer, dimension(..) :: inp'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_scalar_to_assumed_rank_accepted = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_rank_assumed')
+    end function test_scalar_to_assumed_rank_accepted
 
 end program test_session_rank_mismatch_arg_compiler

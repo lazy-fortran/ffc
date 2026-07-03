@@ -339,6 +339,42 @@
         end do
     end function dummy_is_array
 
+    logical function dummy_is_assumed_rank(arena, body_indices, param_name)
+        ! Whether the body declaration of param_name is an assumed-rank dummy
+        ! arr(..). Such a dummy binds to an actual of any rank, including a
+        ! scalar (rank 0), so it must be excluded from the scalar-to-array
+        ! rank-mismatch rejection.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i, dim_index
+        logical :: named
+
+        dummy_is_assumed_rank = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                named = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) named = .true.
+                end if
+                if (.not. named) cycle
+                if (.not. allocated(decl%dimension_indices)) cycle
+                if (size(decl%dimension_indices) /= 1) cycle
+                dim_index = decl%dimension_indices(1)
+                if (.not. node_exists(arena, dim_index)) cycle
+                select type (dim_node => arena%entries(dim_index)%node)
+                type is (array_bounds_node)
+                    dummy_is_assumed_rank = dim_node%is_assumed_rank
+                end select
+                return
+            end select
+        end do
+    end function dummy_is_assumed_rank
+
     logical function dummy_is_allocatable_array(arena, body_indices, param_name)
         ! A dummy is an allocatable array when a body declaration names it
         ! with both an array spec and the allocatable attribute. Selects the
@@ -421,6 +457,55 @@
             end if
         end do
     end function callee_dummy_is_array
+
+    logical function callee_dummy_is_assumed_rank(arena, callee_name, param_pos)
+        ! Whether callee_name's param_pos-th dummy is an assumed-rank arr(..)
+        ! dummy, which accepts an actual of any rank (including scalar) and so
+        ! must not trip the scalar-to-array rank-mismatch check.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: name, name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        callee_dummy_is_assumed_rank = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(sb_node%param_indices)) return
+                call parameter_name(arena, sb_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                callee_dummy_is_assumed_rank = dummy_is_assumed_rank(arena, &
+                    sb_node%body_indices, name)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(fn_node%param_indices)) return
+                call parameter_name(arena, fn_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                callee_dummy_is_assumed_rank = dummy_is_assumed_rank(arena, &
+                    fn_node%body_indices, name)
+                return
+            end if
+        end do
+    end function callee_dummy_is_assumed_rank
 
     logical function callee_dummy_is_allocatable_array(arena, callee_name, &
                                                         param_pos)
