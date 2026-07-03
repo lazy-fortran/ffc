@@ -558,6 +558,28 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr, length
+
+        call char_result_call_operands(arena, node%value_index, context, &
+                                       data_ptr, length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(dest_symbol_index)%value = data_ptr
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_fixed_char_result_call
+
+    subroutine char_result_call_operands(arena, node_index, context, data_ptr, &
+                                         length, error_msg)
+        ! Emit a call to a character-returning contained function through the
+        ! deferred-character descriptor ABI (hidden first descriptor argument),
+        ! then load the returned {data, len} as a scalar character expression.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
         type(call_or_subscript_node) :: call_node
         type(lr_operand_desc_t), allocatable :: user_args(:)
         type(lr_operand_desc_t), allocatable :: all_args(:)
@@ -569,11 +591,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
         character(len=:), allocatable :: func_name
 
         call set_empty(error_msg)
-        if (.not. node_exists(arena, node%value_index)) then
-            error_msg = 'character call assignment value does not reference an AST node'
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'character call does not reference an AST node'
             return
         end if
-        select type (value_node => arena%entries(node%value_index)%node)
+        select type (value_node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call_node = value_node
         class default
@@ -607,11 +629,12 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                       error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_ptr_load(context%session, data_addr, &
-            context%symbols(dest_symbol_index)%value, error_msg)) return
-        context%symbols(dest_symbol_index)%has_character_value = .true.
+        if (.not. emit_ptr_load(context%session, data_addr, data_ptr, &
+                                error_msg)) return
+        if (.not. emit_i32_load(context%session, len_addr, length, &
+                                error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_fixed_char_result_call
+    end subroutine char_result_call_operands
 
     subroutine lower_print_deferred_char_call(arena, node, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_int64_t

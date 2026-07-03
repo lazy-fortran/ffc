@@ -895,6 +895,11 @@
             end select
             return
         end if
+        if (is_contained_char_result_call(arena, node_index, context)) then
+            call char_result_call_operands(arena, node_index, context, data_ptr, &
+                                           length, error_msg)
+            return
+        end if
         if (is_literal(arena, node_index)) then
             if (.not. is_character_literal(arena, node_index)) then
                 call unsupported_feature_error('character expression', 0, 0, &
@@ -972,6 +977,23 @@
         call set_empty(error_msg)
     end subroutine char_array_element_operands
 
+    logical function is_contained_char_result_call(arena, node_index, context) &
+            result(is_call)
+        ! True when node is a plain call to a character-returning contained
+        ! function (descriptor-ABI result), not an array subscript.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. n%is_array_access .and. allocated(n%name)) &
+                is_call = is_contained_deferred_char_function(context, n%name)
+        end select
+    end function is_contained_char_result_call
+
     logical function is_char_expr_call(arena, node_index)
         ! A call that produces a character value usable in print/assign/len.
         type(ast_arena_t), intent(in) :: arena
@@ -1030,6 +1052,10 @@
             return
         end if
         if (is_character_array_element(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_contained_char_result_call(arena, node_index, context)) then
             is_char = .true.
             return
         end if
