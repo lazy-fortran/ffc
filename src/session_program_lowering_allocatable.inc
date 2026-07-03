@@ -88,12 +88,20 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: size_index1, size_index2, symbol_index
+        logical :: handled
 
         if (.not. allocated(node%var_indices) .or. size(node%var_indices) /= 1) then
             call unsupported_feature_error('allocate statement', node%line, &
                 node%column, 'direct LIRIC session supports allocating exactly '// &
                 'one variable per allocate', error_msg)
             return
+        end if
+
+        if (node%mold_expr_index <= 0 .and. node%source_expr_index <= 0) then
+            call lower_allocate_scalar_component(arena, node%var_indices(1), &
+                                                 context, handled, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (handled) return
         end if
 
         if (node%mold_expr_index > 0 .or. node%source_expr_index > 0) then
@@ -915,6 +923,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: symbol_index
+        logical :: handled
 
         if (.not. allocated(node%var_indices) .or. size(node%var_indices) /= 1) then
             call unsupported_feature_error('deallocate statement', node%line, &
@@ -926,6 +935,10 @@
             error_msg = 'deallocate target is not an AST node'
             return
         end if
+        call lower_deallocate_scalar_component(arena, node%var_indices(1), &
+                                               context, handled, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (handled) return
         if (is_identifier(arena, node%var_indices(1))) then
             call get_identifier_name(arena, node%var_indices(1), name, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1485,6 +1498,7 @@
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: data_ptr
         integer :: symbol_index
+        logical :: handled
 
         if (.not. allocated(arg_indices)) then
             error_msg = 'allocated requires exactly one argument'
@@ -1494,6 +1508,10 @@
             error_msg = 'allocated requires exactly one argument'
             return
         end if
+        call lower_allocated_scalar_component(arena, arg_indices(1), context, &
+                                              value, handled, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (handled) return
         if (.not. is_identifier(arena, arg_indices(1))) then
             error_msg = 'allocated argument must be an allocatable variable'
             return
@@ -1534,3 +1552,62 @@
                 null_ptr_operand(context), value, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocated
+
+    subroutine lower_allocated_scalar_component(arena, arg_index, context, value, &
+                                                handled, error_msg)
+        ! allocated(x%c) for a scalar allocatable component: true when its inline
+        ! data pointer is non-null. Leaves handled .false. for any other argument.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_address, data_ptr
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, arg_index)) return
+        select type (arg => arena%entries(arg_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_allocatable(arena, arg, context)) return
+            call lower_derived_component_address(arena, arg, context, &
+                slot_address, error_msg, 'allocated component argument')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                    error_msg)) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, data_ptr, &
+                    null_ptr_operand(context), value, error_msg)) return
+            handled = .true.
+        end select
+    end subroutine lower_allocated_scalar_component
+
+    subroutine lower_deallocate_scalar_component(arena, target_index, context, &
+                                                 handled, error_msg)
+        ! deallocate(x%c) for a scalar allocatable component: free the current
+        ! data slot and null the inline descriptor. Leaves handled .false. for
+        ! any other target.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_address, data_ptr
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, target_index)) return
+        select type (target => arena%entries(target_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_allocatable(arena, target, context)) return
+            call lower_derived_component_address(arena, target, context, &
+                slot_address, error_msg, 'deallocate component target')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                    error_msg)) return
+            if (.not. emit_free(context%session, data_ptr, error_msg)) return
+            if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                     slot_address, error_msg)) return
+            handled = .true.
+        end select
+    end subroutine lower_deallocate_scalar_component

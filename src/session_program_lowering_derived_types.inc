@@ -713,6 +713,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer :: array_size
         integer :: value_kind
         integer :: nested_type_index
+        logical :: comp_allocatable
 
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
@@ -733,6 +734,19 @@ subroutine collect_component_declaration(component_index, parent_line, &
             end if
             call declaration_value_kind(component, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
+            ! A scalar allocatable component of intrinsic numeric/logical type
+            ! stores an inline data pointer (descriptor-in-struct). Array,
+            ! character, pointer, and c_ptr allocatables stay unsupported.
+            comp_allocatable = component%is_allocatable .and. &
+                               .not. component%is_array .and. &
+                               .not. component%is_pointer
+            if (comp_allocatable) then
+                select case (value_kind)
+                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+                case default
+                    comp_allocatable = .false.
+                end select
+            end if
             ! A component default initialiser must be a compile-time integer.
             has_default = .false.
             default_value = 0_c_int64_t
@@ -785,14 +799,16 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                component%var_names(i), &
                                                component%line, component%column, &
                                                has_default, default_value, &
-                                               array_size, value_kind, error_msg)
+                                               array_size, value_kind, error_msg, &
+                                               is_allocatable=comp_allocatable)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
                 call add_derived_component(context, type_index, component%var_name, &
                                            component%line, component%column, &
                                            has_default, default_value, array_size, &
-                                           value_kind, error_msg)
+                                           value_kind, error_msg, &
+                                           is_allocatable=comp_allocatable)
             else
                 error_msg = 'derived type component declaration did not expose a name'
                 return
@@ -1012,7 +1028,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
 
     subroutine add_derived_component(context, type_index, name, line, column, &
                                      has_default, default_value, array_size, &
-                                     value_kind, error_msg, comp_type_index)
+                                     value_kind, error_msg, comp_type_index, &
+                                     is_allocatable)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -1025,6 +1042,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
         ! Derived type index of a nested derived component; 0 (or absent) for
         ! scalar and intrinsic-array components.
         integer, intent(in), optional :: comp_type_index
+        ! True for a scalar allocatable component (descriptor-in-struct pointer).
+        logical, intent(in), optional :: is_allocatable
         integer :: component_index
 
         if (find_derived_component(context, type_index, name) > 0) then
@@ -1049,6 +1068,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(comp_type_index)) &
             context%derived_types(type_index)%component_type_index(component_index) = &
                 comp_type_index
+        context%derived_types(type_index)%component_is_allocatable(component_index) = &
+            .false.
+        if (present(is_allocatable)) &
+            context%derived_types(type_index)%component_is_allocatable( &
+                component_index) = is_allocatable
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
@@ -1069,11 +1093,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_array_size(8))
             allocate(context%derived_types(type_index)%component_value_kind(8))
             allocate(context%derived_types(type_index)%component_type_index(8))
+            allocate(context%derived_types(type_index)%component_is_allocatable(8))
             context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_array_size = 1
             context%derived_types(type_index)%component_value_kind = VALUE_I32
             context%derived_types(type_index)%component_type_index = 0
+            context%derived_types(type_index)%component_is_allocatable = .false.
             context%derived_types(type_index)%component_count = 0
             return
         end if
@@ -1090,32 +1116,38 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer, allocatable :: old_as(:)
             integer, allocatable :: old_vk(:)
             integer, allocatable :: old_ti(:)
+            logical, allocatable :: old_ia(:)
             associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
                 old_dv = dt%component_default_value
                 old_as = dt%component_array_size
                 old_vk = dt%component_value_kind
                 old_ti = dt%component_type_index
+                old_ia = dt%component_is_allocatable
                 deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
                 deallocate(dt%component_array_size)
                 deallocate(dt%component_value_kind)
                 deallocate(dt%component_type_index)
+                deallocate(dt%component_is_allocatable)
                 allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
                 allocate(dt%component_array_size(new_size))
                 allocate(dt%component_value_kind(new_size))
                 allocate(dt%component_type_index(new_size))
+                allocate(dt%component_is_allocatable(new_size))
                 dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
                 dt%component_array_size = 1
                 dt%component_value_kind = VALUE_I32
                 dt%component_type_index = 0
+                dt%component_is_allocatable = .false.
                 dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
                 dt%component_array_size(1:old_size) = old_as
                 dt%component_value_kind(1:old_size) = old_vk
                 dt%component_type_index(1:old_size) = old_ti
+                dt%component_is_allocatable(1:old_size) = old_ia
             end associate
         end block
     end subroutine grow_derived_type_components

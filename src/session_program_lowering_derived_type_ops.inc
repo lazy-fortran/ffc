@@ -1,16 +1,34 @@
     integer function component_slot_width(context, type_index, comp_index)
-        ! i32 slots one element of a component occupies: f64 spans two 4-byte
-        ! slots, every other supported scalar kind fits in one.
+        ! i32 slots one element of a component occupies: an allocatable component
+        ! holds an 8-byte data pointer (two slots); f64 spans two 4-byte slots;
+        ! every other supported scalar kind fits in one.
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
 
         component_slot_width = 1
+        if (component_is_allocatable(context, type_index, comp_index)) then
+            component_slot_width = 2
+            return
+        end if
         if (.not. allocated(context%derived_types(type_index)% &
                             component_value_kind)) return
         if (context%derived_types(type_index)%component_value_kind(comp_index) == &
             VALUE_F64) component_slot_width = 2
     end function component_slot_width
+
+    logical function component_is_allocatable(context, type_index, comp_index)
+        ! True for a scalar allocatable component (descriptor-in-struct pointer).
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_allocatable = .false.
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_is_allocatable)) return
+        component_is_allocatable = &
+            context%derived_types(type_index)%component_is_allocatable(comp_index)
+    end function component_is_allocatable
 
     integer function component_kind(context, type_index, comp_index)
         ! Scalar value kind of a component; VALUE_I32 when not yet recorded.
@@ -98,6 +116,12 @@
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
+            if (component_is_allocatable(context, type_index, c)) then
+                call null_allocatable_component_slots(context, symbol_index, &
+                                                      outer_slots, abs_slot, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             if (.not. allocated(context%derived_types(type_index)% &
                                 component_has_default)) cycle
             if (.not. context%derived_types(type_index)%component_has_default(c)) &
@@ -112,6 +136,30 @@
                     addr, error_msg)) return
         end do
     end subroutine store_type_default_slots
+
+    subroutine null_allocatable_component_slots(context, symbol_index, outer_slots, &
+                                                base_slot, error_msg)
+        ! Zero the two i32 slots that hold an allocatable component's inline data
+        ! pointer, marking it unallocated in a freshly declared instance.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: outer_slots
+        integer, intent(in) :: base_slot
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        integer :: k
+
+        do k = 0, 1
+            if (.not. emit_i32_array_element_addr(context%session, outer_slots, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, int(base_slot + k, c_int64_t)), &
+                    addr, error_msg)) return
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, 0_c_int64_t), addr, error_msg)) &
+                return
+        end do
+        call set_empty(error_msg)
+    end subroutine null_allocatable_component_slots
 
     recursive subroutine fill_type_default_slots(context, type_index, base_slot, &
                                                  slots)
@@ -805,9 +853,66 @@
                                              'derived type component assignment target')
         if (len_trim(error_msg) > 0) return
 
+        if (component_access_is_allocatable(arena, target, context)) then
+            call store_allocatable_component_value(context, component_address, &
+                                                   comp_kind, value, error_msg)
+            return
+        end if
+
         call emit_typed_component_store(context, comp_kind, value, &
                                         component_address, error_msg)
     end subroutine lower_derived_component_assignment
+
+    subroutine store_allocatable_component_value(context, slot_address, comp_kind, &
+                                                 value, error_msg)
+        ! Write a scalar allocatable component: load the inline data pointer from
+        ! its slot, then store the value through that pointer. The component must
+        ! already be allocated.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: slot_address
+        integer, intent(in) :: comp_kind
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+
+        if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                error_msg)) return
+        call emit_typed_component_store(context, comp_kind, value, data_ptr, &
+                                        error_msg)
+    end subroutine store_allocatable_component_value
+
+    subroutine lower_allocate_scalar_component(arena, target_index, context, &
+                                               handled, error_msg)
+        ! allocate(x%c) for a scalar allocatable component: malloc a typed slot
+        ! and store its pointer into the component's inline descriptor. Leaves
+        ! handled .false. for any other target so the caller keeps its own paths.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_address, data_ptr
+        integer :: comp_kind
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, target_index)) return
+        select type (target => arena%entries(target_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_allocatable(arena, target, context)) return
+            comp_kind = derived_component_access_kind(arena, target, context)
+            call lower_derived_component_address(arena, target, context, &
+                slot_address, error_msg, 'allocate component target')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_malloc(context%session, &
+                    i64_immediate(context%session, &
+                        allocatable_elem_size(comp_kind)), data_ptr, error_msg)) &
+                return
+            if (.not. emit_ptr_store(context%session, data_ptr, slot_address, &
+                                     error_msg)) return
+            handled = .true.
+        end select
+    end subroutine lower_allocate_scalar_component
 
     subroutine lower_component_rhs_value(arena, value_index, comp_kind, context, &
                                          value, error_msg)
@@ -859,9 +964,49 @@
                                              'derived type component expression')
         if (len_trim(error_msg) > 0) return
 
+        if (component_access_is_allocatable(arena, node, context)) then
+            call load_allocatable_component_value(context, component_address, &
+                                                  comp_kind, value, error_msg)
+            return
+        end if
+
         call emit_typed_component_load(context, comp_kind, component_address, &
                                        value, error_msg)
     end subroutine lower_derived_component_load
+
+    logical function component_access_is_allocatable(arena, node, context) &
+            result(is_alloc)
+        ! True when a component_access node names a scalar allocatable component.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: type_index, component_index
+
+        is_alloc = .false.
+        type_index = component_base_type_index(arena, node%base_expr_index, context)
+        if (type_index <= 0) return
+        component_index = find_derived_component(context, type_index, &
+                                                 node%component_name)
+        if (component_index <= 0) return
+        is_alloc = component_is_allocatable(context, type_index, component_index)
+    end function component_access_is_allocatable
+
+    subroutine load_allocatable_component_value(context, slot_address, comp_kind, &
+                                                value, error_msg)
+        ! Read a scalar allocatable component: load the inline data pointer from
+        ! its slot, then load the value through that pointer.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: slot_address
+        integer, intent(in) :: comp_kind
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+
+        if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                error_msg)) return
+        call emit_typed_component_load(context, comp_kind, data_ptr, value, &
+                                       error_msg)
+    end subroutine load_allocatable_component_value
 
     logical function is_derived_result_call(arena, value_index, context)
         type(ast_arena_t), intent(in) :: arena

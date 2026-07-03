@@ -281,6 +281,11 @@ module session_program_lowering_types
             ! intrinsic arrays). A nested component occupies the inner type's slots
             ! inline; component_array_size holds that slot count.
             integer, allocatable :: component_type_index(:)
+            ! True for a scalar allocatable component (integer/real/logical). Such
+            ! a component stores an 8-byte data pointer (two i32 slots) inline;
+            ! its value lives in a separately malloc'd slot reached by loading the
+            ! pointer. Null pointer marks it unallocated.
+            logical, allocatable :: component_is_allocatable(:)
             integer :: binding_count = 0
             character(len=64), allocatable :: binding_method_names(:)
             character(len=64), allocatable :: binding_target_names(:)
