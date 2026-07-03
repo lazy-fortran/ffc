@@ -2050,4 +2050,5 @@ contains
 
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
+    include 'session_program_lowering_reject_checks.inc'
 end module session_program_lowering

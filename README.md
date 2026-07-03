@@ -198,9 +198,11 @@ integer-literal CASE labels; a character-valued I/O specifier
 (`STATUS=`, `ACCESS=`, `ADVANCE=`, `IOMSG=`, ...) handed a numeric or
 logical literal (`status=1`, `advance=5.`); a relational comparison whose
 operands have incompatible intrinsic type classes (`b == i` for logical
-`b` and integer `i`, or `c == i` for character `c`); and a fixed-size
+`b` and integer `i`, or `c == i` for character `c`); a fixed-size
 array assigned an array constructor of the wrong length (`a = [1, 2, 3]`
-for `integer :: a(4)`), each fail with a diagnostic.
+for `integer :: a(4)`); and a named generic interface whose two specific
+procedures share an indistinguishable scalar dummy signature (`ambiguous
+interfaces`, F2018 C1514), each fail with a diagnostic.
 
 ## Build
 

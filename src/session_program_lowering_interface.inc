@@ -99,6 +99,8 @@
             end if
         end do
         context%generic_count = next
+        call check_generic_ambiguity(arena, context, next, error_msg)
+        if (len_trim(error_msg) > 0) return
     end subroutine register_generic_interface
 
     subroutine add_generic_specific(context, generic_idx, specific_name, error_msg)
