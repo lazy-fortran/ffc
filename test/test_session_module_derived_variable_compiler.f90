@@ -10,6 +10,8 @@ program test_session_module_derived_variable_compiler
     if (.not. test_module_derived_integer_defaults()) all_passed = .false.
     if (.not. test_module_derived_use_rename()) all_passed = .false.
     if (.not. test_module_derived_real_logical_defaults()) all_passed = .false.
+    if (.not. test_module_derived_constructor_init()) all_passed = .false.
+    if (.not. test_module_derived_parameter()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: module derived variables lower through direct LIRIC'
@@ -75,5 +77,47 @@ contains
             source, '   2.50000000     F'//new_line('a'), &
             '/tmp/ffc_session_mod_derived_real_test')
     end function test_module_derived_real_logical_defaults
+
+    logical function test_module_derived_constructor_init()
+        ! An explicit structure constructor on a module derived variable folds
+        ! its integer arguments into the global's static slots, overriding the
+        ! component defaults; an omitted component keeps its default.
+        character(len=*), parameter :: source = &
+            'module m_d'//new_line('a')// &
+            '  type :: t_d'//new_line('a')// &
+            '    integer :: x = 1'//new_line('a')// &
+            '    integer :: y = 9'//new_line('a')// &
+            '  end type t_d'//new_line('a')// &
+            '  type(t_d) :: gd = t_d(2, 3)'//new_line('a')// &
+            'end module m_d'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m_d'//new_line('a')// &
+            '  stop gd%x + gd%y'//new_line('a')// &
+            'end program main'
+
+        test_module_derived_constructor_init = expect_exit_status( &
+            source, 5, '/tmp/ffc_session_mod_derived_ctor_test')
+    end function test_module_derived_constructor_init
+
+    logical function test_module_derived_parameter()
+        ! A scalar derived PARAMETER exports like a derived module variable: it
+        ! gets a slot global with its constructor folded in, and reads through a
+        ! use, only: alias resolve to the folded component values.
+        character(len=*), parameter :: source = &
+            'module m_e'//new_line('a')// &
+            '  type :: t_e'//new_line('a')// &
+            '    integer :: a = 0'//new_line('a')// &
+            '    integer :: b = 0'//new_line('a')// &
+            '  end type t_e'//new_line('a')// &
+            '  type(t_e), parameter :: pe = t_e(4, 7)'//new_line('a')// &
+            'end module m_e'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m_e, only: pe'//new_line('a')// &
+            '  stop pe%a * 10 + pe%b'//new_line('a')// &
+            'end program main'
+
+        test_module_derived_parameter = expect_exit_status( &
+            source, 47, '/tmp/ffc_session_mod_derived_param_test')
+    end function test_module_derived_parameter
 
 end program test_session_module_derived_variable_compiler

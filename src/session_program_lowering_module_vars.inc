@@ -37,16 +37,11 @@
                 'variables', error_msg)
             return
         end if
-        ! A scalar derived-type module variable stores as a flat slot global,
-        ! provided its type is a registered non-parameterised derived type and
-        ! it carries no runtime initializer (component defaults fold statically).
+        ! A scalar derived-type module variable stores as a flat slot global.
+        ! Component defaults fold statically; an explicit structure-constructor
+        ! initialiser folds too when its provided arguments are compile-time
+        ! integer constants for integer components (checked at emit time).
         if (module_var_derived_type_index(arena, var_idx, context) > 0) then
-            if (module_declaration_has_initializer(arena, var_idx)) then
-                call unsupported_feature_error('module variable', line, column, &
-                    'derived module variables with an explicit initializer are '// &
-                    'not supported', error_msg)
-                return
-            end if
             value_kind = VALUE_DERIVED
             status = MODVAR_OK
             return
@@ -259,6 +254,9 @@
                     context%derived_types(di)%component_default_value(c), c_int32_t)
             end do
         end if
+        call fold_module_derived_constructor_slots(arena, var_idx, di, context, &
+                                                   init_slots, error_msg)
+        if (len_trim(error_msg) > 0) return
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
         gtype = lr_type_array_s(context%session%handle, &
@@ -274,6 +272,64 @@
         end if
         call set_empty(error_msg)
     end subroutine emit_derived_module_variable_global
+
+    subroutine fold_module_derived_constructor_slots(arena, var_idx, di, context, &
+                                                     init_slots, error_msg)
+        ! Fold an explicit structure-constructor initialiser (t(a1, a2, ...))
+        ! on a derived module variable into the static slot bytes. Provided
+        ! arguments must be compile-time integer constants targeting integer
+        ! components; components omitted from the constructor keep the default
+        ! already staged in init_slots. Any other form (real/logical/nested
+        ! argument, overloaded constructor, non-constant value) raises a clean
+        ! unsupported diagnostic instead of mis-initialising.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(in) :: di
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int32_t), intent(inout) :: init_slots(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: init_index, n_comp, c, start_slot, line, column
+        integer, allocatable :: comp_value_index(:)
+        integer(c_int64_t) :: cval
+
+        call set_empty(error_msg)
+        init_index = get_declaration_initializer_index(arena, var_idx)
+        if (init_index <= 0) return
+        line = get_node_line(arena, var_idx)
+        column = get_node_column(arena, var_idx)
+        if (.not. is_derived_constructor_call(arena, init_index, context, di) &
+            .or. constructor_uses_user_routine(context, &
+                context%derived_types(di)%name)) then
+            call unsupported_feature_error('module variable', line, column, &
+                'a derived module variable initialiser must be a plain '// &
+                'structure constructor', error_msg)
+            return
+        end if
+        call map_constructor_args(arena, init_index, context, di, comp_value_index)
+        if (.not. allocated(comp_value_index)) then
+            call unsupported_feature_error('module variable', line, column, &
+                'derived module variable constructor arguments do not map to '// &
+                'components', error_msg)
+            return
+        end if
+        n_comp = context%derived_types(di)%component_count
+        do c = 1, n_comp
+            if (comp_value_index(c) <= 0) cycle
+            if (.not. constructor_component_storeable(context, di, c) .or. &
+                component_kind(context, di, c) /= VALUE_I32) then
+                call unsupported_feature_error('module variable', line, column, &
+                    'derived module variable constructor folds only integer '// &
+                    'component values statically', error_msg)
+                return
+            end if
+            call eval_i32_constant(arena, comp_value_index(c), context, cval, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            start_slot = component_start_slot(context, di, c)
+            init_slots(start_slot + 1) = int(cval, c_int32_t)
+        end do
+    end subroutine fold_module_derived_constructor_slots
 
     subroutine fold_module_variable_initializer(arena, var_idx, value_kind, &
                                                 init_i32, init_f32, init_f64, &

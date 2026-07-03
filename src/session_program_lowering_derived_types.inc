@@ -264,7 +264,21 @@
                     context%module_exports(export_idx)%derived_type_count + 1
             type is (declaration_node)
                 if (.not. allocated(decl%var_name)) cycle
-                if (decl%is_parameter) then
+                ! A scalar derived-type PARAMETER exports like a derived module
+                ! variable: it gets a flat slot global (with its constructor
+                ! folded into the static bytes) and binds as a derived reference
+                ! in using units, which the integer-only constant path cannot do.
+                if (decl%is_parameter .and. .not. decl%is_array .and. &
+                    declaration_derived_type_index(context, decl) > 0) then
+                    if (module_symbol_is_private(arena, mod_node, &
+                            trim(decl%var_name))) cycle
+                    call grow_module_export_variable_indices(context, export_idx)
+                    context%module_exports(export_idx)%variable_indices( &
+                        context%module_exports(export_idx)%variable_count + 1) = &
+                        mod_node%declaration_indices(j)
+                    context%module_exports(export_idx)%variable_count = &
+                        context%module_exports(export_idx)%variable_count + 1
+                else if (decl%is_parameter) then
                     if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
                         cycle
                     call grow_module_export_parameter_indices(context, export_idx)

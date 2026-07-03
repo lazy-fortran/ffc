@@ -94,13 +94,19 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
+        ! A scalar derived PARAMETER must carry a constructor initialiser
+        ! (t(...)); it lowers exactly like an initialised scalar derived local,
+        ! materialising the constant instance into read-only-in-practice slots.
+        ! Array or uninitialised derived parameters stay unsupported.
         if (node%is_parameter) then
-            call unsupported_feature_error('derived type parameter declaration', &
-                                           node%line, node%column, &
-                                           'derived type parameters are not '// &
-                                           'supported by direct LIRIC session', &
-                                           error_msg)
-            return
+            if (node%is_array .or. .not. node%has_initializer) then
+                call unsupported_feature_error( &
+                    'derived type parameter declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports only a scalar derived '// &
+                    'parameter with a constructor initialiser', error_msg)
+                return
+            end if
         end if
         if (node%has_initializer .and. node%is_array) then
             call unsupported_feature_error('derived type array initializer', &

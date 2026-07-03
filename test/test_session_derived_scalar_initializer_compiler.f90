@@ -10,6 +10,7 @@ program test_session_derived_scalar_initializer_compiler
     if (.not. test_constructor_initializer()) all_passed = .false.
     if (.not. test_constructor_initializer_with_default()) all_passed = .false.
     if (.not. test_local_real_logical_defaults()) all_passed = .false.
+    if (.not. test_program_derived_parameter()) all_passed = .false.
     if (.not. test_variable_initializer_still_unsupported()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -89,5 +90,23 @@ contains
             source, 'derived type constructor', &
             '/tmp/ffc_session_derived_init_unsupported_test')
     end function test_variable_initializer_still_unsupported
+
+    logical function test_program_derived_parameter()
+        ! A program-scope scalar derived parameter with a constructor
+        ! initialiser lowers like an initialised local; its components read back.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type t'//new_line('a')// &
+            '    integer :: x = 1'//new_line('a')// &
+            '    integer :: y = 1'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t), parameter :: p = t(2, 3)'//new_line('a')// &
+            '  print *, p%x, p%y'//new_line('a')// &
+            'end program main'
+
+        test_program_derived_parameter = expect_output( &
+            source, '           2           3'//new_line('a'), &
+            '/tmp/ffc_session_derived_prog_param_test')
+    end function test_program_derived_parameter
 
 end program test_session_derived_scalar_initializer_compiler
