@@ -160,6 +160,10 @@ module session_program_lowering_types
             integer :: value_kind = VALUE_I32
             logical :: has_init = .false.
             character(len=:), allocatable :: init_text
+            logical :: is_array = .false.
+            integer :: array_size = 0
+            integer, allocatable :: array_init_indices(:)
+            character(len=:), allocatable :: array_init_values(:)
         end type common_slot_t
 
         type, public :: symbol_t

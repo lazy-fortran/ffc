@@ -137,7 +137,7 @@
         end if
         do i = 1, member_count
             call program_declaration_kind(arena, trim(names(i)), kinds(i), &
-                                          error_msg)
+                                         error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine collect_equivalence_members
