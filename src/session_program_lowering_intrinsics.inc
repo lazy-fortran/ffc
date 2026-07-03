@@ -538,10 +538,15 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        logical :: handled
 
         ! real(x) and real(x, 4)/real(x, kind=sp) convert x to f32. The optional
         ! second argument is the result kind; ignore it here.
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+
+        call lower_boz_real_bits(arena, node%arg_indices(1), context, .false., &
+                                 value, handled, error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
 
         call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, value, &
                                      error_msg)
@@ -566,7 +571,7 @@
                 call get_literal_info(arena, node_index, lit_value, lit_type, &
                                       error_msg)
                 if (len_trim(error_msg) > 0) return
-                call parse_f64_literal(lit_value, lit_f64, error_msg)
+                call parse_f64_literal(lit_value, context, lit_f64, error_msg)
                 if (len_trim(error_msg) > 0) return
                 value = liric_f32_immediate(context%session, real(lit_f64, c_float))
                 return
@@ -995,11 +1000,16 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        logical :: handled
 
         ! real(x) and real(x, kind=dp)/real(x, 8): the optional second argument
         ! is the result kind, already resolved to f64 by the dispatch. Lower the
         ! value argument and ignore the kind selector.
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+
+        call lower_boz_real_bits(arena, node%arg_indices(1), context, .true., &
+                                 value, handled, error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
 
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, value, &
                                      error_msg)

@@ -875,7 +875,7 @@
         end if
 
         if (is_literal(arena, arg_index)) then
-            call kind_of_literal(arena, arg_index, k, error_msg)
+            call kind_of_literal(arena, arg_index, context, k, error_msg)
             if (len_trim(error_msg) > 0) return
             constant_value = k
             call set_empty(error_msg)
@@ -905,9 +905,10 @@
     end subroutine eval_kind_of_arg
 
     ! Determine the Fortran kind of a literal node from its type and suffix.
-    subroutine kind_of_literal(arena, node_index, k, error_msg)
+    subroutine kind_of_literal(arena, node_index, context, k, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
         integer(c_int64_t), intent(out) :: k
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: lit_value, lit_type
@@ -921,7 +922,7 @@
         else if (is_real_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (literal_is_f64(lit_value)) then
+            if (literal_is_f64(lit_value, context)) then
                 k = 8_c_int64_t
             else
                 k = 4_c_int64_t
@@ -1439,7 +1440,7 @@
             if (index(lit_value, '.') > 0 .or. index(lit_value, 'e') > 0 .or. &
                 index(lit_value, 'E') > 0 .or. index(lit_value, 'd') > 0 .or. &
                 index(lit_value, 'D') > 0) then
-                call parse_f64_literal(lit_value, rval, error_msg)
+                call parse_f64_literal(lit_value, context, rval, error_msg)
                 if (len_trim(error_msg) > 0) return
                 value = i32_immediate(context%session, int(rval, c_int64_t))
                 call set_empty(error_msg)

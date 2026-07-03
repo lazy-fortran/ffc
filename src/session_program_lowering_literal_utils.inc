@@ -176,6 +176,61 @@
         is_boz_designator = c == 'b' .or. c == 'o' .or. c == 'z' .or. c == 'x'
     end function is_boz_designator
 
+    integer(c_int32_t) function boz_bits_i32(v) result(bits)
+        !! Two's-complement-safe narrowing of an i64 bit pattern to its low
+        !! 32 bits, for reinterpreting a BOZ literal's magnitude as the raw
+        !! bits of an f32 value (REAL()'s BOZ-argument bit-transfer rule).
+        integer(c_int64_t), intent(in) :: v
+        integer(c_int64_t) :: masked
+        integer(c_int64_t), parameter :: mask32 = int(z'00000000FFFFFFFF', c_int64_t)
+        integer(c_int64_t), parameter :: sign_bit = int(z'0000000080000000', c_int64_t)
+        integer(c_int64_t), parameter :: wrap = int(z'0000000100000000', c_int64_t)
+
+        masked = iand(v, mask32)
+        if (masked >= sign_bit) masked = masked - wrap
+        bits = int(masked, c_int32_t)
+    end function boz_bits_i32
+
+    subroutine lower_boz_real_bits(arena, node_index, context, want_f64, &
+                                   value, handled, error_msg)
+        !! REAL()/DBLE() reinterpret a BOZ-literal-constant argument's bit
+        !! pattern directly as the result kind's representation (F2008
+        !! 13.7.128-129), unlike an ordinary integer argument which converts
+        !! numerically. handled is false (with no error) for any other
+        !! argument form, so the caller falls back to normal lowering.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(in) :: want_f64
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type
+        integer(c_int64_t) :: raw_bits
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. is_literal(arena, node_index)) return
+        call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. is_boz_literal_text(lit_value)) then
+            call set_empty(error_msg)
+            return
+        end if
+
+        call parse_i32_literal(lit_value, raw_bits, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (want_f64) then
+            value = liric_f64_immediate(context%session, &
+                transfer(raw_bits, 1.0_c_double))
+        else
+            value = liric_f32_immediate(context%session, &
+                transfer(boz_bits_i32(raw_bits), 1.0_c_float))
+        end if
+        handled = .true.
+    end subroutine lower_boz_real_bits
+
     logical function is_character_literal(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -233,16 +288,18 @@
         end if
     end function logical_i32_value
 
-    logical function literal_is_f64(text)
+    logical function literal_is_f64(text, context)
         ! Returns true when a real literal is explicitly f64 — i.e. its numeric
         ! part carries a 'd'/'D' exponent, or it carries a _8 / _real64 /
-        ! _c_double / _c_long_double / _dp / _wp kind suffix (the same names
-        ! real_kind_is_f64 accepts for real(kind_spec) declarations).  A bare
-        ! literal such as "2.5" or "3.0e0" is default real (f32).  The exponent
+        ! _c_double / _c_long_double kind suffix, or a suffix naming a
+        ! compile-time integer PARAMETER whose folded value is 8 (e.g.
+        ! `1.0_dp` with `integer, parameter :: dp = kind(1.0d0)`). A bare
+        ! literal such as "2.5" or "3.0e0" is default real (f32). The exponent
         ! check is scoped to the numeric part so a suffix that merely contains
         ! the letter 'd' (e.g. a BOZ digit string reaching this function by
         ! mistake) cannot misfire.
         character(len=*), intent(in) :: text
+        type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable :: lo, numeric_part, suffix
         integer :: uscore
 
@@ -263,15 +320,52 @@
         end if
 
         select case (trim(suffix))
-        case ('8', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
+        case ('8', 'real64', 'c_double', 'c_long_double')
             literal_is_f64 = .true.
-        case default
+        case ('')
             literal_is_f64 = .false.
+        case default
+            literal_is_f64 = named_kind_suffix_is_f64(suffix, context)
         end select
     end function literal_is_f64
 
-    subroutine parse_f64_literal(text, value, error_msg)
+    logical function named_kind_suffix_is_f64(suffix, context) result(is_f64)
+        !! Resolve a real-literal kind suffix that names a PARAMETER (e.g. the
+        !! `dp` in `1.0_dp`) to its folded compile-time integer value and
+        !! report whether that value is the f64 kind number (8). Falls back to
+        !! the conventional dp/wp double-precision names when the parameter
+        !! cannot be folded (declared in an unreachable scope, etc.), matching
+        !! real_kind_is_f64's declaration-side convention.
+        character(len=*), intent(in) :: suffix
+        type(lowering_context_t), intent(in) :: context
+        integer :: sym
+        integer(c_int64_t) :: folded
+        character(len=:), allocatable :: fold_error
+
+        sym = find_symbol(context, suffix)
+        if (sym > 0) then
+            if (context%symbols(sym)%has_i32_constant) then
+                is_f64 = context%symbols(sym)%i32_constant == 8_c_int64_t
+                return
+            end if
+        end if
+        call fold_named_constant_from_arena(context%arena, context, suffix, &
+                                            folded, fold_error)
+        if (len_trim(fold_error) == 0) then
+            is_f64 = folded == 8_c_int64_t
+            return
+        end if
+        select case (trim(suffix))
+        case ('dp', 'wp')
+            is_f64 = .true.
+        case default
+            is_f64 = .false.
+        end select
+    end function named_kind_suffix_is_f64
+
+    subroutine parse_f64_literal(text, context, value, error_msg)
         character(len=*), intent(in) :: text
+        type(lowering_context_t), intent(in) :: context
         real(c_double), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: clean
@@ -295,7 +389,7 @@
         ! rounds to single precision first, and only that rounded value widens
         ! to f64, matching gfortran (e.g. 1.05 -> 1.0499999523162842d0, not the
         ! double-precision-accurate 1.05d0).
-        if (literal_is_f64(text)) then
+        if (literal_is_f64(text, context)) then
             read (clean, *, iostat=io_stat) value
         else
             read (clean, *, iostat=io_stat) single_value

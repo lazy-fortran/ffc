@@ -76,7 +76,10 @@ in array-bound and `parameter` initializer positions also covers `kind`,
 comparison, and `print`, and fixed-size rank-1/rank-2 arrays of these kinds
 support element assignment, element reads, scalar broadcast, and whole-array
 `print`; `real(8)` recognizes the `dp`/`wp` kind alias
-convention. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
+convention and resolves a literal kind suffix naming any other declared
+`integer, parameter` kind constant to its folded value. `real()`/`dble()`
+applied to a BOZ-literal-constant argument reinterpret its bit pattern as
+the result kind rather than converting the magnitude. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
 including a mixed real/complex operand, and fixed-size rank-1/rank-2 complex
 arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
 between array elements, and single-element `print`. An `if` condition accepts any

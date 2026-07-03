@@ -133,7 +133,7 @@
 
         k = 0_c_int64_t
         if (is_literal(arena, arg_index)) then
-            call kind_of_literal(arena, arg_index, k, error_msg)
+            call kind_of_literal(arena, arg_index, context, k, error_msg)
             return
         end if
         if (is_identifier(arena, arg_index)) then
@@ -269,7 +269,7 @@
 
         if (is_literal(arena, arg_index)) then
             arg_is_real = is_real_literal(arena, arg_index)
-            call kind_of_literal(arena, arg_index, k, error_msg)
+            call kind_of_literal(arena, arg_index, context, k, error_msg)
             if (len_trim(error_msg) > 0) return
         else if (is_identifier(arena, arg_index)) then
             call get_identifier_name(arena, arg_index, id_name, error_msg)

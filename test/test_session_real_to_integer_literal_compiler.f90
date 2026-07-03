@@ -94,16 +94,19 @@ contains
     end function test_boz_integer
 
     logical function test_boz_real()
-        ! BOZ literals in real (floating-point) context.
+        ! REAL() applied to a BOZ literal reinterprets its bit pattern as the
+        ! target kind's representation (F2008 13.7.128) rather than converting
+        ! the magnitude numerically: real(b'01101') is the f32 bit pattern of
+        ! integer 13, a tiny denormal (gfortran-verified: 1.82168800E-44), not
+        ! the numeric conversion 13.0.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  real :: r'//new_line('a')// &
             '  r = real(b''01101'')'//new_line('a')// &
-            '  if (int(r) /= 13) error stop'//new_line('a')// &
-            '  print *, int(r)'//new_line('a')// &
+            '  print *, r'//new_line('a')// &
             'end program main'
 
-        test_boz_real = expect_exit_status(source, 0, &
+        test_boz_real = expect_output(source, '   1.82168800E-44'//new_line('a'), &
             '/tmp/ffc_boz_real_test')
     end function test_boz_real
 
