@@ -50,7 +50,10 @@ whole-array assignment from a general elementwise expression to a 1-D
 allocatable already allocated to a compile-time-constant extent
 (`a = b + c`, `a = a * 3`); and whole-array `print` of a 1-D allocatable whose
 extent is a compile-time constant, including `T`/`F` formatting for a logical
-allocatable element or whole array; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
+allocatable element or whole array; a fixed-length rank-1
+`character(len=N), allocatable :: a(:)` with `allocate(a(N))`
+blank-filling every slot, element write/read (`a(i) = "text"`), and
+whole-array `print`; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
 base address, with their extent taken from a whole-array actual of
 compile-time size (including a `dimension(n)` bound naming a caller-scope
 `parameter`), so element read/write, `size(a)`, `size(a, dim)`,

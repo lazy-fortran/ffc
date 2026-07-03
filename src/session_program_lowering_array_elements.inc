@@ -500,6 +500,11 @@
                 suppress_leading_space, handled, error_msg)
             return
         end if
+        if (vk == VALUE_CHARACTER .and. context%symbols(sym)%is_allocatable) then
+            call emit_allocatable_character_print_items(context, sym, handled, &
+                error_msg)
+            return
+        end if
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
             vk /= VALUE_LOGICAL .and. vk /= VALUE_I64 .and. vk /= VALUE_I8 .and. &
             vk /= VALUE_I16) return
@@ -1425,6 +1430,13 @@
         end if
 
         if (vk == VALUE_CHARACTER) then
+            if (sym_idx > 0) then
+                if (context%symbols(sym_idx)%is_allocatable) then
+                    call lower_allocatable_character_element_assignment(arena, &
+                        node, target, context, error_msg)
+                    return
+                end if
+            end if
             call lower_character_array_element_assignment(arena, node, target, &
                                                           context, error_msg)
             return

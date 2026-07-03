@@ -1,19 +1,36 @@
     subroutine lower_allocatable_declaration(node, context, error_msg)
-        ! integer/real/logical, allocatable :: a(:) or a(:,:)
+        ! integer/real/logical/character, allocatable :: a(:) or a(:,:)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, rank, value_kind
+        integer :: i, rank, value_kind, character_length, symbol_index
 
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
+            value_kind /= VALUE_CHARACTER) then
             call unsupported_feature_error('allocatable declaration', &
                 node%line, node%column, &
-                'direct LIRIC session supports integer, real, and logical '// &
-                'allocatable arrays only', error_msg)
+                'direct LIRIC session supports integer, real, logical, and '// &
+                'fixed-length character allocatable arrays only', error_msg)
             return
+        end if
+
+        character_length = 0
+        if (value_kind == VALUE_CHARACTER) then
+            call declaration_character_length(context, node, character_length, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (character_length <= 0) then
+                call unsupported_feature_error('allocatable declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports a fixed-length '// &
+                    'character(len=N), allocatable array; a deferred-length '// &
+                    'character(len=:) array element type is not supported', &
+                    error_msg)
+                return
+            end if
         end if
 
         rank = 1
@@ -26,6 +43,13 @@
                     'allocatables', error_msg)
                 return
             end if
+            if (rank == 2 .and. value_kind == VALUE_CHARACTER) then
+                call unsupported_feature_error('allocatable declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports rank-1 character '// &
+                    'allocatable arrays only', error_msg)
+                return
+            end if
         end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
@@ -33,10 +57,22 @@
                 call declare_allocatable(context, node%var_names(i), rank, &
                                          value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
+                if (value_kind == VALUE_CHARACTER) then
+                    symbol_index = find_symbol(context, node%var_names(i))
+                    if (symbol_index > 0) &
+                        context%symbols(symbol_index)%character_length = &
+                            character_length
+                end if
             end do
         else if (allocated(node%var_name)) then
             call declare_allocatable(context, node%var_name, rank, value_kind, &
                                      error_msg)
+            if (len_trim(error_msg) == 0 .and. value_kind == VALUE_CHARACTER) then
+                symbol_index = find_symbol(context, node%var_name)
+                if (symbol_index > 0) &
+                    context%symbols(symbol_index)%character_length = &
+                        character_length
+            end if
         else
             error_msg = 'allocatable declaration did not expose a variable name'
         end if
@@ -122,6 +158,10 @@
             if (len_trim(error_msg) == 0) &
                 call record_allocatable_static_size(arena, size_index1, &
                                                     symbol_index, context)
+            if (len_trim(error_msg) == 0 .and. &
+                context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) &
+                call init_allocatable_character_blanks(context, symbol_index, &
+                                                       error_msg)
         end if
     end subroutine lower_allocate_statement
 
@@ -641,6 +681,11 @@
         integer(c_int64_t) :: stride
         integer, allocatable :: flat(:)
 
+        if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            error_msg = 'array constructor assignment to a character '// &
+                        'allocatable is not supported'
+            return
+        end if
         if (.not. allocated(ctor%element_indices)) then
             error_msg = 'array constructor has no elements'
             return
@@ -703,6 +748,11 @@
             error_msg = 'allocatable scalar broadcast supports only rank-1 arrays'
             return
         end if
+        if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            error_msg = 'scalar broadcast assignment to a character '// &
+                        'allocatable is not supported'
+            return
+        end if
         n = context%symbols(symbol_index)%allocatable_static_size
         if (n <= 0) then
             error_msg = 'allocatable scalar broadcast requires a constant extent'
@@ -746,6 +796,11 @@
         if (context%symbols(symbol_index)%array_rank /= 1) then
             error_msg = 'allocatable whole-array assignment from an expression '// &
                         'supports only rank-1 arrays'
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            error_msg = 'whole-array assignment from an expression to a '// &
+                        'character allocatable is not supported'
             return
         end if
         array_size = context%symbols(symbol_index)%allocatable_static_size
@@ -1152,12 +1207,192 @@
         call set_empty(error_msg)
     end subroutine lower_allocatable_element_address
 
+    subroutine init_allocatable_character_blanks(context, symbol_index, error_msg)
+        ! Blank-fill every slot of a freshly allocated 1-D fixed-length
+        ! character allocatable array, mirroring init_character_array_blanks
+        ! for the fixed-size sibling. Requires a compile-time constant extent
+        ! (set by record_allocatable_static_size); a runtime-only extent
+        ! leaves slots as raw malloc bytes (null pointers are not guaranteed).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: string_name
+        character(len=:), allocatable :: blanks
+        type(lr_operand_desc_t) :: blank_ptr, descriptor, data_ptr, slot_addr
+        integer :: n, character_length, i
+
+        call set_empty(error_msg)
+        n = context%symbols(symbol_index)%allocatable_static_size
+        if (n <= 0) return
+        character_length = context%symbols(symbol_index)%character_length
+
+        allocate (character(len=character_length) :: blanks)
+        blanks = repeat(' ', character_length)
+        context%string_literal_count = context%string_literal_count + 1
+        string_name = ffc_unit_global_name( &
+            context, 'char.', context%string_literal_count)
+        call materialize_liric_string(context%session, trim(string_name), blanks, &
+                                      blank_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        do i = 0, n - 1
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(i, c_int64_t) * allocatable_elem_size(VALUE_CHARACTER), &
+                    slot_addr, error_msg)) return
+            if (.not. emit_ptr_store(context%session, blank_ptr, slot_addr, &
+                                     error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine init_allocatable_character_blanks
+
+    subroutine lower_allocatable_character_element_assignment(arena, node, &
+                                                              target, context, &
+                                                              error_msg)
+        ! a(i) = "text" for a 1-D fixed-length character allocatable array:
+        ! materialize the normalized literal and store its pointer in the
+        ! runtime-addressed slot. Mirrors
+        ! lower_character_array_element_assignment for the fixed-size sibling.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: slot_addr, string_ptr
+        character(len=:), allocatable :: literal_text
+        character(len=64) :: string_name
+        logical :: fold_ok
+
+        if (.not. node_exists(arena, node%value_index)) then
+            error_msg = 'character allocatable assignment value does not exist'
+            return
+        end if
+        call concat_character_literals(arena, node%value_index, literal_text, &
+                                       fold_ok)
+        if (.not. fold_ok) then
+            call unsupported_feature_error('character allocatable assignment', &
+                node%line, node%column, 'direct LIRIC session supports only '// &
+                'character-literal assignment into a character allocatable '// &
+                'element', error_msg)
+            return
+        end if
+
+        if (.not. allocated(target%name)) then
+            error_msg = 'character allocatable assignment target has no name'
+            return
+        end if
+        symbol_index = find_symbol(context, target%name)
+        if (symbol_index <= 0) then
+            error_msg = 'character allocatable array was not declared: '// &
+                        trim(target%name)
+            return
+        end if
+        call lower_allocatable_element_address(arena, target, symbol_index, &
+                                               context, slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call normalize_character_literal(literal_text, &
+            context%symbols(symbol_index)%character_length)
+        context%string_literal_count = context%string_literal_count + 1
+        string_name = ffc_unit_global_name( &
+            context, 'char.', context%string_literal_count)
+        call materialize_liric_string(context%session, trim(string_name), &
+                                      literal_text, string_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, string_ptr, slot_addr, &
+                                 error_msg)) then
+            error_msg = 'char_alloc_assign_store: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_character_element_assignment
+
+    subroutine lower_allocatable_character_element_print(arena, node, context, &
+                                                          use_value, error_msg)
+        ! print *, a(i) for a 1-D fixed-length character allocatable array:
+        ! load the slot pointer and reuse the scalar string print path.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: use_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: slot_addr, string_ptr
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'character allocatable print target has no name'
+            return
+        end if
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'character allocatable array was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        call lower_allocatable_element_address(arena, node, symbol_index, &
+                                               context, slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, slot_addr, string_ptr, &
+                                error_msg)) then
+            error_msg = 'char_alloc_print_load: '//error_msg
+            return
+        end if
+        if (use_value) then
+            if (.not. emit_liric_print_string_operand_value(context%session, &
+                    context%str_print_format_id, string_ptr, error_msg)) return
+        else
+            if (.not. emit_liric_print_string_operand(context%session, &
+                    context%str_print_format_id, string_ptr, error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_character_element_print
+
+    subroutine emit_allocatable_character_print_items(context, sym, handled, &
+                                                       error_msg)
+        ! Whole-array print of a rank-1 fixed-length character allocatable
+        ! whose extent is known at compile time: one leading list-directed
+        ! space, then every element with no inter-element separator (matching
+        ! gfortran's character list output).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, slot_addr, string_ptr
+        integer(c_int64_t) :: stride, k, n
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%symbols(sym)%array_rank == 2) return
+        n = int(context%symbols(sym)%allocatable_static_size, c_int64_t)
+        if (n <= 0_c_int64_t) return
+
+        handled = .true.
+        stride = allocatable_elem_size(VALUE_CHARACTER)
+        descriptor = context%symbols(sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_liric_print_space(context%session, error_msg)) return
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            if (.not. emit_ptr_offset(context%session, data_ptr, k * stride, &
+                                      slot_addr, error_msg)) return
+            if (.not. emit_ptr_load(context%session, slot_addr, string_ptr, &
+                                    error_msg)) return
+            if (.not. emit_liric_print_string_operand_value(context%session, &
+                    context%str_print_format_id, string_ptr, error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_allocatable_character_print_items
+
     pure integer(c_int64_t) function allocatable_elem_size(value_kind) result(sz)
         ! Byte stride of one allocatable element. i32/f32/logical occupy 4 bytes;
-        ! i64/f64 occupy 8. Logical uses an i32 slot, matching the array path.
+        ! i64/f64/a character slot pointer occupy 8. Logical uses an i32 slot,
+        ! matching the array path.
         integer, intent(in) :: value_kind
         select case (value_kind)
-        case (VALUE_F64, VALUE_I64)
+        case (VALUE_F64, VALUE_I64, VALUE_CHARACTER)
             sz = 8_c_int64_t
         case default
             sz = 4_c_int64_t
