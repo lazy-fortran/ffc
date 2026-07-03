@@ -1113,3 +1113,55 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine declare_allocatable
+
+    subroutine lower_allocated(arena, arg_indices, context, value, error_msg)
+        ! allocated(a): true when a's data pointer is non-null. Works for a
+        ! rank-1/2 allocatable array (data ptr in allocatable_descriptor_address
+        ! offset 0) and a deferred-length character allocatable (data ptr in
+        ! deferred_data).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        type(lr_operand_desc_t) :: data_ptr
+        integer :: symbol_index
+
+        if (.not. allocated(arg_indices)) then
+            error_msg = 'allocated requires exactly one argument'
+            return
+        end if
+        if (size(arg_indices) /= 1) then
+            error_msg = 'allocated requires exactly one argument'
+            return
+        end if
+        if (.not. is_identifier(arena, arg_indices(1))) then
+            error_msg = 'allocated argument must be an allocatable variable'
+            return
+        end if
+        call identifier_name(arena, arg_indices(1), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) then
+            error_msg = 'allocated argument was not declared: '//trim(name)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            if (.not. emit_ptr_load(context%session, &
+                    context%symbols(symbol_index)%deferred_data, data_ptr, &
+                    error_msg)) return
+        else if (context%symbols(symbol_index)%is_allocatable) then
+            if (.not. emit_ptr_load(context%session, &
+                    context%symbols(symbol_index)%allocatable_descriptor_address, &
+                    data_ptr, error_msg)) return
+        else
+            error_msg = 'allocated argument is not an allocatable variable: '// &
+                        trim(name)
+            return
+        end if
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, data_ptr, &
+                null_ptr_operand(context), value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_allocated

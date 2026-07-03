@@ -1719,17 +1719,24 @@ contains
             else if (is_present_call(arena, node_index)) then
                 call lower_present_condition(arena, node_index, context, value, &
                     error_msg)
+            else if ((node%is_array_access .and. &
+                     array_access_value_kind(node, context) == VALUE_LOGICAL) &
+                     .or. is_allocatable_element_ref(node, context)) then
+                ! Logical array element used directly as a condition: flags(i).
+                call lower_i32_array_element(arena, node, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                rhs = i32_immediate(context%session, 0_c_int64_t)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
+                    rhs, value, error_msg)) return
             else if (allocated(node%name)) then
-                if (same_name(node%name, 'c_associated')) then
-                    call lower_c_associated(arena, node%arg_indices, context, &
-                        value, error_msg)
-                else if (same_name(node%name, 'associated')) then
-                    call lower_associated(arena, node%arg_indices, context, &
-                        value, error_msg)
-                else
-                    error_msg = 'direct LIRIC session IF condition supports '// &
-                        'comparisons, logicals, and present()'
-                end if
+                ! present() aside, every other named call (allocated(), the
+                ! ISO_C_BINDING associated forms, and a contained logical
+                ! function) shares lower_logical_call's dispatch.
+                call lower_logical_call(arena, node, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                rhs = i32_immediate(context%session, 0_c_int64_t)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, lhs, &
+                    rhs, value, error_msg)) return
             else
                 error_msg = 'direct LIRIC session IF condition supports '// &
                     'comparisons, logicals, and present()'

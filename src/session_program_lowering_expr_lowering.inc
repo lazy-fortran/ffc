@@ -183,6 +183,12 @@
                                   error_msg)
             return
         end if
+        if (same_name(call_name, 'allocated') .and. .not. &
+            is_contained_logical_function(context, call_name)) then
+            call lower_allocated(arena, node%arg_indices, context, value, &
+                                 error_msg)
+            return
+        end if
         if (.not. is_contained_logical_function(context, call_name)) then
             call unsupported_feature_error('scalar logical function call', &
                                            node%line, node%column, &

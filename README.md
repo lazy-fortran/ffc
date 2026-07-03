@@ -58,7 +58,11 @@ in array-bound and `parameter` initializer positions also covers `kind`,
 `c_size_t`/`c_intptr_t`/`c_ptrdiff_t`/`c_intmax_t`) support arithmetic,
 comparison, and `print`; `real(8)` recognizes the `dp`/`wp` kind alias
 convention. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
-including a mixed real/complex operand. Derived types take scalar
+including a mixed real/complex operand. An `if` condition accepts any
+scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a
+logical array element, a derived-type logical component, `allocated(a)`, and
+a contained logical function's result, including the one-line
+`if (cond) stmt` form without `then`. Derived types take scalar
 integer, real, logical, and `c_ptr` components, fixed-size rank-1 integer,
 real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
 and scalar nested derived components (`type(inner) :: c`, accessed
