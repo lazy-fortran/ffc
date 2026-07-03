@@ -816,10 +816,18 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer :: i, inner_slots
 
         if (component%has_initializer) then
-            call unsupported_feature_error('nested derived type component', &
-                component%line, component%column, 'derived components cannot '// &
-                'carry a default initialiser', error_msg)
-            return
+            ! A bare inner-type default constructor (`type(inner) :: c =
+            ! inner()`) equals plain default initialisation, which nested
+            ! default propagation already materialises, so accept and ignore it.
+            ! Any argument-bearing or non-constructor initialiser stays
+            ! unsupported rather than silently dropping its value.
+            if (.not. nested_default_constructor_initializer(component, context, &
+                                                             nested_type_index)) then
+                call unsupported_feature_error('nested derived type component', &
+                    component%line, component%column, 'derived components can '// &
+                    'only carry a bare default-constructor initialiser', error_msg)
+                return
+            end if
         end if
         inner_slots = total_component_slots(context, nested_type_index)
         if (component%is_multi_declaration .and. allocated(component%var_names)) then
@@ -839,6 +847,31 @@ subroutine collect_component_declaration(component_index, parent_line, &
             return
         end if
     end subroutine collect_nested_derived_component
+
+    logical function nested_default_constructor_initializer(component, context, &
+                                                             nested_type_index)
+        ! True when a nested derived component's initialiser is a bare
+        ! zero-argument constructor of its own type (`inner()`), which is
+        ! equivalent to default initialisation.
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: nested_type_index
+        integer :: init_index
+
+        nested_default_constructor_initializer = .false.
+        init_index = component%initializer_index
+        if (.not. node_exists(context%arena, init_index)) return
+        if (.not. is_derived_constructor_call(context%arena, init_index, context, &
+                                              nested_type_index)) return
+        select type (node => context%arena%entries(init_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) then
+                nested_default_constructor_initializer = .true.
+            else if (size(node%arg_indices) == 0) then
+                nested_default_constructor_initializer = .true.
+            end if
+        end select
+    end function nested_default_constructor_initializer
 
     subroutine validate_component_declaration(component, parent_line, &
                                               parent_column, context, &

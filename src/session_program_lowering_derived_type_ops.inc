@@ -58,33 +58,90 @@
     subroutine init_derived_component_defaults(context, symbol_index, &
                                                type_index, error_msg)
         ! Store each scalar component's default initialiser into a freshly
-        ! declared derived instance, at the component's starting slot.
+        ! declared derived instance, recursing through nested derived components
+        ! so an inner type's own component defaults materialise inline.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: c
-        integer :: slots
+        integer :: outer_slots
+
+        outer_slots = total_component_slots(context, type_index)
+        call store_type_default_slots(context, symbol_index, outer_slots, &
+                                      type_index, 0, error_msg)
+    end subroutine init_derived_component_defaults
+
+    recursive subroutine store_type_default_slots(context, symbol_index, &
+                                                  outer_slots, type_index, &
+                                                  base_slot, error_msg)
+        ! Emit i32 stores for every defaulted scalar leaf of type_index into the
+        ! outer instance's slot storage, base_slot offsetting a nested type into
+        ! its inline span.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: outer_slots
+        integer, intent(in) :: type_index
+        integer, intent(in) :: base_slot
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: c, nested, abs_slot
         type(lr_operand_desc_t) :: addr
 
         call set_empty(error_msg)
-        slots = total_component_slots(context, type_index)
         if (.not. allocated(context%derived_types(type_index)% &
-                            component_has_default)) return
+                            component_type_index)) return
         do c = 1, context%derived_types(type_index)%component_count
+            abs_slot = base_slot + component_start_slot(context, type_index, c)
+            nested = context%derived_types(type_index)%component_type_index(c)
+            if (nested /= 0) then
+                call store_type_default_slots(context, symbol_index, outer_slots, &
+                                              nested, abs_slot, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
+            if (.not. allocated(context%derived_types(type_index)% &
+                                component_has_default)) cycle
             if (.not. context%derived_types(type_index)%component_has_default(c)) &
                 cycle
-            if (.not. emit_i32_array_element_addr(context%session, slots, &
+            if (.not. emit_i32_array_element_addr(context%session, outer_slots, &
                     context%symbols(symbol_index)%element_address, &
-                    i32_immediate(context%session, &
-                        int(component_start_slot(context, type_index, c), &
-                            c_int64_t)), addr, error_msg)) return
+                    i32_immediate(context%session, int(abs_slot, c_int64_t)), &
+                    addr, error_msg)) return
             if (.not. emit_i32_store(context%session, &
                     i32_immediate(context%session, &
                         context%derived_types(type_index)%component_default_value(c)), &
                     addr, error_msg)) return
         end do
-    end subroutine init_derived_component_defaults
+    end subroutine store_type_default_slots
+
+    recursive subroutine fill_type_default_slots(context, type_index, base_slot, &
+                                                 slots)
+        ! Write type_index's defaulted scalar leaves into a static slot array
+        ! (1-based), recursing through nested derived components. Slots without a
+        ! default keep their existing (zero) value.
+        use, intrinsic :: iso_c_binding, only: c_int32_t
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: base_slot
+        integer(c_int32_t), intent(inout) :: slots(:)
+        integer :: c, nested, abs_slot
+
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_type_index)) return
+        do c = 1, context%derived_types(type_index)%component_count
+            abs_slot = base_slot + component_start_slot(context, type_index, c)
+            nested = context%derived_types(type_index)%component_type_index(c)
+            if (nested /= 0) then
+                call fill_type_default_slots(context, nested, abs_slot, slots)
+                cycle
+            end if
+            if (.not. allocated(context%derived_types(type_index)% &
+                                component_has_default)) cycle
+            if (.not. context%derived_types(type_index)%component_has_default(c)) &
+                cycle
+            slots(abs_slot + 1) = int(context%derived_types(type_index)% &
+                                      component_default_value(c), c_int32_t)
+        end do
+    end subroutine fill_type_default_slots
 
     subroutine lower_derived_type_declaration(node, context, derived_type_index, &
                                               error_msg)
@@ -188,10 +245,18 @@
                                         type_index)) then
             if (.not. constructor_uses_user_routine(context, &
                     context%derived_types(type_index)%name)) then
-                call lower_derived_constructor_assignment(context%arena, &
-                    init_index, context, symbol_index, type_index, handled, &
-                    error_msg)
-                if (len_trim(error_msg) > 0) return
+                ! A bare `t()` equals default initialisation, already applied by
+                ! define_derived_symbol; this also covers types with nested
+                ! components the argument-storing path cannot construct.
+                if (constructor_call_is_argumentless(context%arena, init_index)) &
+                    then
+                    handled = .true.
+                else
+                    call lower_derived_constructor_assignment(context%arena, &
+                        init_index, context, symbol_index, type_index, handled, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
             end if
         end if
         if (.not. handled) then
@@ -202,6 +267,23 @@
                                            error_msg)
         end if
     end subroutine lower_derived_scalar_initializer
+
+    logical function constructor_call_is_argumentless(arena, call_index)
+        ! True when a structure-constructor node t() carries no arguments.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: call_index
+
+        constructor_call_is_argumentless = .false.
+        if (.not. node_exists(arena, call_index)) return
+        select type (node => arena%entries(call_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) then
+                constructor_call_is_argumentless = .true.
+            else if (size(node%arg_indices) == 0) then
+                constructor_call_is_argumentless = .true.
+            end if
+        end select
+    end function constructor_call_is_argumentless
 
     subroutine lower_derived_array_declaration(node, context, derived_type_index, &
                                                error_msg)

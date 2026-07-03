@@ -228,7 +228,7 @@
         integer(c_int32_t), allocatable, target :: init_slots(:)
         type(c_ptr) :: gtype
         integer(c_int32_t) :: global_id
-        integer :: di, slots, c, start_slot
+        integer :: di, slots
         logical(c_bool) :: c_false_local
 
         c_false_local = .false.
@@ -246,14 +246,7 @@
         end if
         allocate (init_slots(slots))
         init_slots = 0_c_int32_t
-        if (allocated(context%derived_types(di)%component_has_default)) then
-            do c = 1, context%derived_types(di)%component_count
-                if (.not. context%derived_types(di)%component_has_default(c)) cycle
-                start_slot = component_start_slot(context, di, c)
-                init_slots(start_slot + 1) = int( &
-                    context%derived_types(di)%component_default_value(c), c_int32_t)
-            end do
-        end if
+        call fill_type_default_slots(context, di, 0, init_slots)
         call fold_module_derived_constructor_slots(arena, var_idx, di, context, &
                                                    init_slots, error_msg)
         if (len_trim(error_msg) > 0) return

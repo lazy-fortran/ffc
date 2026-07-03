@@ -18,6 +18,8 @@ program test_session_derived_type_compiler
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
     if (.not. test_final_binding_ignored()) all_passed = .false.
+    if (.not. test_nested_component_default_propagates()) all_passed = .false.
+    if (.not. test_nested_component_default_constructor()) all_passed = .false.
     if (.not. test_component_default_initialiser()) all_passed = .false.
     if (.not. test_component_default_overridden()) all_passed = .false.
     if (.not. test_array_component_assignment_and_read()) all_passed = .false.
@@ -451,5 +453,44 @@ contains
         test_final_binding_ignored = expect_exit_status( &
             source, 42, '/tmp/ffc_session_final_binding_test')
     end function test_final_binding_ignored
+
+    logical function test_nested_component_default_propagates()
+        ! A nested derived component inherits the inner type's own component
+        ! default: term%black%m must read the inner default 44, not zero.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: ansi'//new_line('a')// &
+            '    integer :: m = 44'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            '  type :: term'//new_line('a')// &
+            '    type(ansi) :: black'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            '  type(term) :: t'//new_line('a')// &
+            '  stop t%black%m'//new_line('a')// &
+            'end program main'
+
+        test_nested_component_default_propagates = expect_exit_status( &
+            source, 44, '/tmp/ffc_session_nested_default_test')
+    end function test_nested_component_default_propagates
+
+    logical function test_nested_component_default_constructor()
+        ! A bare inner() default-constructor initialiser on a nested component
+        ! is accepted and equals default initialisation.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: inside'//new_line('a')// &
+            '    integer :: m = 7'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            '  type :: wrapper'//new_line('a')// &
+            '    type(inside) :: i = inside()'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            '  type(wrapper) :: w'//new_line('a')// &
+            '  w = wrapper()'//new_line('a')// &
+            '  stop w%i%m'//new_line('a')// &
+            'end program main'
+
+        test_nested_component_default_constructor = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_nested_ctor_default_test')
+    end function test_nested_component_default_constructor
 
 end program test_session_derived_type_compiler

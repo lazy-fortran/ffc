@@ -24,6 +24,15 @@
                                         type_index)) then
             if (constructor_uses_user_routine(context, &
                     context%derived_types(type_index)%name)) return
+            ! y = t() re-applies the type's default initialisation, covering
+            ! types with nested components the argument path cannot construct.
+            if (constructor_call_is_argumentless(arena, node%value_index)) then
+                call store_type_default_slots(context, symbol_index, &
+                    total_component_slots(context, type_index), type_index, 0, &
+                    error_msg)
+                if (len_trim(error_msg) == 0) handled = .true.
+                return
+            end if
             call lower_derived_constructor_assignment(arena, node%value_index, &
                 context, symbol_index, type_index, handled, error_msg)
             return
