@@ -74,7 +74,10 @@ with any source expression; a rank-1/rank-2 allocatable array dummy argument
 aliases the caller's own descriptor, so `allocate`/`deallocate`/element writes
 inside the callee are visible to the caller. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
-`associated(p)`, and `nullify(p)` is supported, as are constant-folded
+`associated(p)`, and `nullify(p)` is supported. Rank-1 and rank-2 fixed-size
+integer, real, logical, and complex `pointer`/`target` arrays support whole-
+array `p => t` aliasing, so element read/write, `lbound`/`ubound`, and
+`print` through `p` reach `t`'s storage, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Compile-time integer folding
 in array-bound and `parameter` initializer positions also covers `kind`,
 `size`, `len`, `min`, `max`, `int`, `huge`, `bit_size`, `precision`, `range`,
@@ -154,7 +157,11 @@ separate `module procedure` form lower under the parent's mangled symbol, so a
 `use m` call resolves regardless of which submodule holds the body. A parent
 generic interface whose specific is a module-procedure interface body dispatches
 a call through the generic name to the submodule body implementing that specific.
-The `associate` construct binds scalar selectors. The
+The `associate` construct binds scalar selectors, a rank-1 unit-stride
+array-section selector (`associate (x => a(lo:hi))`, reindexed to lower
+bound 1), and a derived-type component selector (`associate (s => a%comp)`);
+in all forms a write through the associate name flows back to the selector's
+own storage. The
 `where` construct masks elementwise assignment over rank-1 integer and real
 arrays, including a final `elsewhere`. The `forall` construct, single-statement
 and block form, lowers to a sequential loop nest over its index set, with an

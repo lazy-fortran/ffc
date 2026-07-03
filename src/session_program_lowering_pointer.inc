@@ -23,12 +23,13 @@
     end subroutine lower_scalar_pointer_target
 
     subroutine lower_pointer_target_array(node, context, error_msg)
-        ! Rank-1 fixed-size integer/real/logical POINTER/TARGET arrays (#245 B3a).
-        ! A target array gets ordinary explicit-shape storage; a deferred-shape
-        ! pointer array (p(:)) starts unassociated and adopts a target array's
-        ! base, shape, and element kind at `p => t`. Anything outside this subset
-        ! (rank-2, allocatable, derived, character, bounds-remapped pointers)
-        ! keeps the prior unsupported diagnostic.
+        ! Rank-1/rank-2 fixed-size integer/real/logical/complex POINTER/TARGET
+        ! arrays (#245 B3a). A target array gets ordinary explicit-shape
+        ! storage; a deferred-shape pointer array (p(:) or p(:,:)) starts
+        ! unassociated and adopts a target array's base, shape, and element
+        ! kind at `p => t`. Anything outside this subset (rank>2, allocatable,
+        ! derived, character, bounds-remapped pointers) keeps the prior
+        ! unsupported diagnostic.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
@@ -41,31 +42,33 @@
         dim_count = 0
         if (allocated(node%dimension_indices)) &
             dim_count = size(node%dimension_indices)
-        if (dim_count /= 1) then
+        if (dim_count < 1 .or. dim_count > 2) then
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
+            value_kind /= VALUE_C4 .and. value_kind /= VALUE_C8) then
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
 
-        ! A pointer array is deferred-shape p(:): no compile-time storage, just a
-        ! stub symbol that `p => t` fills in. A target array is explicit-shape and
-        ! is laid out exactly like an ordinary fixed-size array.
+        ! A pointer array is deferred-shape p(:) [,(:)]: no compile-time
+        ! storage, just a stub symbol that `p => t` fills in. A target array
+        ! is explicit-shape and is laid out exactly like an ordinary
+        ! fixed-size array.
         if (node%is_pointer .and. declaration_is_assumed_shape(node, context)) then
             if (node%is_multi_declaration .and. allocated(node%var_names)) then
                 do i = 1, size(node%var_names)
                     call define_pointer_array_stub(context, node%var_names(i), &
-                                                   value_kind, error_msg)
+                                                   value_kind, dim_count, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(node%var_name)) then
                 call define_pointer_array_stub(context, node%var_name, &
-                                               value_kind, error_msg)
+                                               value_kind, dim_count, error_msg)
             else
                 error_msg = 'pointer array declaration did not expose a name'
             end if
@@ -104,8 +107,9 @@
 
         call unsupported_feature_error('pointer/target array declaration', &
             node%line, node%column, &
-            'direct LIRIC session supports rank-1 fixed-size integer, real, '// &
-            'and logical pointer/target arrays only (#245 slice B3a)', error_msg)
+            'direct LIRIC session supports rank-1 and rank-2 fixed-size '// &
+            'integer, real, logical, and complex pointer/target arrays '// &
+            'only (#245 slice B3a)', error_msg)
     end subroutine unsupported_pointer_target_array
 
     subroutine define_target_array_symbol(context, node, name, array_lower_bound, &
@@ -135,17 +139,23 @@
             context%symbols(index)%is_associated = .true.
         end if
         ! element_address is the array base; expose it as the alias address so
-        ! the shared `p => t` path can adopt it.
-        context%symbols(index)%address = context%symbols(index)%element_address
+        ! the shared `p => t` path can adopt it. A complex array already keeps
+        ! its imaginary-part array base in `address` (define_declared_array_
+        ! symbol), so leave that field alone there instead of overwriting it.
+        if (value_kind /= VALUE_C4 .and. value_kind /= VALUE_C8) then
+            context%symbols(index)%address = context%symbols(index)%element_address
+        end if
         context%symbols(index)%has_address = .true.
     end subroutine define_target_array_symbol
 
-    subroutine define_pointer_array_stub(context, name, value_kind, error_msg)
-        ! A deferred-shape pointer array p(:): no storage and no shape until a
-        ! `p => t` association supplies the target's base and extent.
+    subroutine define_pointer_array_stub(context, name, value_kind, array_rank, &
+                                         error_msg)
+        ! A deferred-shape pointer array p(:) [,(:)]: no storage and no shape
+        ! until a `p => t` association supplies the target's base and extent.
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
+        integer, intent(in) :: array_rank
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
@@ -163,7 +173,7 @@
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = value_kind
         context%symbols(index)%is_array = .true.
-        context%symbols(index)%array_rank = 1
+        context%symbols(index)%array_rank = array_rank
         context%symbols(index)%array_size = 0
         context%symbols(index)%is_pointer = .true.
         context%symbols(index)%is_associated = .false.
