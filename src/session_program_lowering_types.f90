@@ -286,6 +286,10 @@ module session_program_lowering_types
             ! its value lives in a separately malloc'd slot reached by loading the
             ! pointer. Null pointer marks it unallocated.
             logical, allocatable :: component_is_allocatable(:)
+            ! Declared character length of a VALUE_CHARACTER component (0 for
+            ! every other kind); component_array_size holds the derived slot
+            ! count, not the length itself.
+            integer, allocatable :: component_char_length(:)
             integer :: binding_count = 0
             character(len=64), allocatable :: binding_method_names(:)
             character(len=64), allocatable :: binding_target_names(:)

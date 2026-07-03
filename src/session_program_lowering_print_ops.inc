@@ -1007,5 +1007,8 @@
                 end if
             end if
             is_char = is_char_expr_call(arena, node_index)
+        type is (component_access_node)
+            is_char = derived_component_access_kind(arena, node, context) == &
+                      VALUE_CHARACTER
         end select
     end function char_print_item

@@ -133,8 +133,8 @@
     logical function constructor_component_storeable(context, type_index, &
             comp_index)
         ! A component the structure-constructor path can store: a scalar
-        ! integer, real, or logical living in its own slots (no nested derived,
-        ! array, character, or c_ptr components).
+        ! integer, real, logical, or fixed-length character living in its own
+        ! slots (no nested derived, array, or c_ptr components).
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
@@ -142,11 +142,13 @@
         constructor_component_storeable = .false.
         if (context%derived_types(type_index)%component_type_index(comp_index) /= 0) &
             return
-        if (context%derived_types(type_index)%component_array_size(comp_index) /= 1) &
-            return
         select case (component_kind(context, type_index, comp_index))
         case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
-            constructor_component_storeable = .true.
+            if (context%derived_types(type_index)%component_array_size(comp_index) &
+                == 1) constructor_component_storeable = .true.
+        case (VALUE_CHARACTER)
+            if (derived_component_char_length(context, type_index, comp_index) &
+                > 0) constructor_component_storeable = .true.
         end select
     end function constructor_component_storeable
 
@@ -272,11 +274,24 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr, val
         integer :: comp_kind
+        integer :: dest_len
 
         comp_kind = component_kind(context, type_index, comp_index)
         call emit_component_slot_address(context, symbol_index, type_index, &
                                          comp_index, addr, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (comp_kind == VALUE_CHARACTER) then
+            dest_len = derived_component_char_length(context, type_index, &
+                                                      comp_index)
+            if (dest_len <= 0) then
+                error_msg = 'derived type character component constructor '// &
+                            'argument has no fixed length'
+                return
+            end if
+            call store_char_component_value(arena, value_index, addr, dest_len, &
+                                            context, error_msg)
+            return
+        end if
         call lower_component_rhs_value(arena, value_index, comp_kind, context, &
                                        val, error_msg)
         if (len_trim(error_msg) > 0) return

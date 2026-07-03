@@ -901,6 +901,17 @@
                                            length, error_msg)
             return
         end if
+        if (node_exists(arena, node_index)) then
+            select type (n => arena%entries(node_index)%node)
+            type is (component_access_node)
+                if (derived_component_access_kind(arena, n, context) == &
+                    VALUE_CHARACTER) then
+                    call char_component_operands(arena, n, context, data_ptr, &
+                                                 length, error_msg)
+                    return
+                end if
+            end select
+        end if
         if (is_literal(arena, node_index)) then
             if (.not. is_character_literal(arena, node_index)) then
                 call unsupported_feature_error('character expression', 0, 0, &
@@ -1061,6 +1072,12 @@
             is_char = .true.
             return
         end if
+        select type (n => arena%entries(node_index)%node)
+        type is (component_access_node)
+            is_char = derived_component_access_kind(arena, n, context) == &
+                      VALUE_CHARACTER
+            return
+        end select
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return

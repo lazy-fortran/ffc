@@ -712,6 +712,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: data_ptr, length
         integer :: comp_kind
 
         comp_kind = derived_component_access_kind(arena, node, context)
@@ -731,6 +732,12 @@
                                           error_msg)
             if (len_trim(error_msg) > 0) return
             call lower_print_logical_value(context, value, error_msg)
+        case (VALUE_CHARACTER)
+            call char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                    error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_string_operand_value(context%session, &
+                context%str_print_format_id, data_ptr, error_msg)) return
         case default
             call lower_i32_expression(arena, node_index, context, value, error_msg)
             if (len_trim(error_msg) > 0) return

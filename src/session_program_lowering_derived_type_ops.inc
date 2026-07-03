@@ -836,12 +836,32 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
         integer :: comp_kind
+        integer :: type_index, comp_index, dest_len
 
         comp_kind = derived_component_access_kind(arena, target, context)
         if (comp_kind == VALUE_CHARACTER) then
-            call unsupported_feature_error('derived type character component '// &
-                'access', target%line, target%column, 'writing a character '// &
-                'component is not supported by direct LIRIC session', error_msg)
+            call lower_derived_component_address(arena, target, context, &
+                component_address, error_msg, &
+                'derived type character component assignment target')
+            if (len_trim(error_msg) > 0) return
+            type_index = component_base_type_index(arena, target%base_expr_index, &
+                                                   context)
+            comp_index = 0
+            if (type_index > 0) comp_index = find_derived_component(context, &
+                type_index, target%component_name)
+            dest_len = 0
+            if (comp_index > 0) dest_len = derived_component_char_length(context, &
+                type_index, comp_index)
+            if (dest_len <= 0) then
+                call unsupported_feature_error('derived type character '// &
+                    'component access', target%line, target%column, &
+                    'writing a character component is not supported by '// &
+                    'direct LIRIC session', error_msg)
+                return
+            end if
+            call store_char_component_value(arena, node%value_index, &
+                component_address, dest_len, context, error_msg)
+            value = i32_immediate(context%session, 0_c_int64_t)
             return
         end if
         call lower_component_rhs_value(arena, node%value_index, comp_kind, &
@@ -1324,6 +1344,93 @@
         if (component_index <= 0) return
         kind = component_kind(context, type_index, component_index)
     end function derived_component_access_kind
+
+    integer function derived_component_char_length(context, type_index, &
+            comp_index) result(n)
+        ! Declared character(len=N) length of a component; 0 when comp_index
+        ! is out of range or the component is not VALUE_CHARACTER.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        n = 0
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_char_length)) return
+        if (comp_index < 1 .or. comp_index > &
+            size(context%derived_types(type_index)%component_char_length)) return
+        n = context%derived_types(type_index)%component_char_length(comp_index)
+    end function derived_component_char_length
+
+    subroutine char_component_operands(arena, node, context, data_ptr, length, &
+                                       error_msg)
+        ! (data pointer, i32 length) for a fixed-length character component
+        ! access, mirroring char_length_operands for a plain character symbol.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: type_index, comp_index, char_len
+
+        type_index = component_base_type_index(arena, node%base_expr_index, context)
+        comp_index = 0
+        if (type_index > 0) comp_index = find_derived_component(context, &
+            type_index, node%component_name)
+        if (type_index <= 0 .or. comp_index <= 0) then
+            error_msg = 'derived type character component expression is not '// &
+                        'declared: '//trim(node%component_name)
+            return
+        end if
+        char_len = derived_component_char_length(context, type_index, comp_index)
+        if (char_len <= 0) then
+            error_msg = 'derived type character component expression has no '// &
+                        'fixed length'
+            return
+        end if
+        call lower_derived_component_address(arena, node, context, data_ptr, &
+            error_msg, 'derived type character component expression')
+        if (len_trim(error_msg) > 0) return
+        length = i32_immediate(context%session, int(char_len, c_int64_t))
+    end subroutine char_component_operands
+
+    subroutine store_char_component_value(arena, value_index, addr, dest_len, &
+                                          context, error_msg)
+        ! Copy a scalar character expression into a fixed-length component's
+        ! inline byte storage: blank-pad to dest_len, truncate on overflow, and
+        ! NUL-terminate the reserved spare byte at addr+dest_len so the stored
+        ! text also prints and concatenates like any other character operand.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lr_operand_desc_t), intent(in) :: addr
+        integer, intent(in) :: dest_len
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: dest_len_i32, src_data, src_len, cmp
+        type(lr_operand_desc_t) :: copy_len, copy_len64, offset
+
+        dest_len_i32 = i32_immediate(context%session, int(dest_len, c_int64_t))
+        call char_expr_operands(arena, value_index, context, src_data, src_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call fill_spaces(context, addr, dest_len_i32, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, src_len, &
+                dest_len_i32, cmp, error_msg)) return
+        call select_value(context, cmp, src_len, dest_len_i32, copy_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_len, copy_len64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, addr, src_data, copy_len64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, addr, &
+                i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
+                error_msg)) return
+        if (.not. emit_i8_store(context%session, &
+                i8_immediate(context%session, 0_c_int64_t), offset, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine store_char_component_value
 
     recursive function component_base_type_index(arena, base_index, context) &
             result(type_index)

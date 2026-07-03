@@ -110,14 +110,19 @@ scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a
 logical array element, a derived-type logical component, `allocated(a)`, and
 a contained logical function's result, including the one-line
 `if (cond) stmt` form without `then`. Derived types take scalar
-integer, real, logical, and `c_ptr` components, fixed-size rank-1 integer,
+integer, real, logical, `c_ptr`, and fixed-length character
+(`character(len=N)`) components, fixed-size rank-1 integer,
 real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
 and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
+fixed-length character component supports reading, writing (blank-padded and
+truncated to its declared length), comparison, concatenation, and `print`
+through `x%name`. A
 whole-derived scalar assignment (`y = x`) copies one instance into another,
-and a scalar structure constructor over integer/real/logical components
-(`x = t(1, 2.5, .true.)`, omitted components keeping their defaults) stores
+and a scalar structure constructor over integer/real/logical/character
+components (`x = t(1, 2.5, .true.)`, `x = person_t("Ada", 7)`, omitted
+components keeping their defaults) stores
 its positional arguments into the target, whether written as an executable
 assignment or as a scalar variable initializer (`type(t) :: v = t(1, 2.5)`).
 Integer, default-real (f32), and logical component default initialisers

@@ -1,10 +1,12 @@
 program test_session_derived_character_component_compiler
     ! Fixed-length character components take a place in the flat slot layout
-    ! (ceil(len/4) byte-storage slots) so a derived type that declares them
-    ! lowers and runs. Reading or writing a character component through obj%comp
-    ! is not yet supported and must report a clear diagnostic rather than emit a
-    ! wrong i32 access (#265).
-    use ffc_test_support, only: expect_no_error, expect_error_contains
+    ! (ceil((len+1)/4) byte-storage slots, the extra byte holding a NUL
+    ! terminator) so a derived type that declares them lowers and runs.
+    ! Reading and writing a character component through obj%comp, printing it,
+    ! and passing a literal to a structure constructor are all supported
+    ! (#265); a character ARRAY component stays unsupported.
+    use ffc_test_support, only: expect_no_error, expect_error_contains, &
+        expect_output
     implicit none
 
     logical :: all_passed
@@ -14,7 +16,9 @@ program test_session_derived_character_component_compiler
     all_passed = .true.
     if (.not. test_character_component_type_lowers()) all_passed = .false.
     if (.not. test_nested_character_component_lowers()) all_passed = .false.
-    if (.not. test_character_component_access_rejected()) all_passed = .false.
+    if (.not. test_character_component_read_write()) all_passed = .false.
+    if (.not. test_character_component_constructor()) all_passed = .false.
+    if (.not. test_character_array_component_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived character components lower into the slot layout'
@@ -61,22 +65,69 @@ contains
             source, '/tmp/ffc_derived_nested_char_component_test')
     end function test_nested_character_component_lowers
 
-    logical function test_character_component_access_rejected()
-        ! Writing a character component must report the unsupported diagnostic,
-        ! not silently store through an i32 width.
+    logical function test_character_component_read_write()
+        ! Writing then reading a fixed-length character component: blank-pad,
+        ! truncate on overflow, compare, and print all agree with gfortran.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: person_t'//new_line('a')// &
+            '    integer :: age'//new_line('a')// &
+            '    character(len=8) :: name'//new_line('a')// &
+            '  end type person_t'//new_line('a')// &
+            '  type(person_t) :: p'//new_line('a')// &
+            '  p%age = 7'//new_line('a')// &
+            '  p%name = "Ada"'//new_line('a')// &
+            '  if (p%name /= "Ada") error stop'//new_line('a')// &
+            '  print *, p%age'//new_line('a')// &
+            '  print *, p%name'//new_line('a')// &
+            '  p%name = "Grace Hopper"'//new_line('a')// &
+            '  print *, p%name'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           7'//new_line('a')// &
+            ' Ada     '//new_line('a')// &
+            ' Grace Ho'//new_line('a')
+
+        test_character_component_read_write = expect_output( &
+            source, expected, '/tmp/ffc_derived_char_component_rw_test')
+    end function test_character_component_read_write
+
+    logical function test_character_component_constructor()
+        ! A structure constructor's character-literal argument stores into
+        ! the component's fixed-length slot, and the field concatenates and
+        ! prints back out like any other character value.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: person_t'//new_line('a')// &
             '    character(len=8) :: name'//new_line('a')// &
+            '    integer :: age'//new_line('a')// &
             '  end type person_t'//new_line('a')// &
             '  type(person_t) :: p'//new_line('a')// &
-            '  p%name = "Ada"'//new_line('a')// &
-            '  print *, p%name'//new_line('a')// &
+            '  p = person_t("Ada", 7)'//new_line('a')// &
+            '  print *, p%name, p%age'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            ' Ada                7'//new_line('a')
+
+        test_character_component_constructor = expect_output( &
+            source, expected, '/tmp/ffc_derived_char_component_ctor_test')
+    end function test_character_component_constructor
+
+    logical function test_character_array_component_rejected()
+        ! A character ARRAY component stays unsupported: the flat scalar slot
+        ! layout only reserves inline byte storage for a scalar character.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: roster_t'//new_line('a')// &
+            '    character(len=4) :: tags(2)'//new_line('a')// &
+            '  end type roster_t'//new_line('a')// &
+            '  type(roster_t) :: r'//new_line('a')// &
+            '  print *, "unused"'//new_line('a')// &
             'end program main'
 
-        test_character_component_access_rejected = expect_error_contains( &
-            source, 'character component access', &
-            '/tmp/ffc_derived_char_component_reject_test')
-    end function test_character_component_access_rejected
+        test_character_array_component_rejected = expect_error_contains( &
+            source, 'character array', &
+            '/tmp/ffc_derived_char_array_component_reject_test')
+    end function test_character_array_component_rejected
 
 end program test_session_derived_character_component_compiler

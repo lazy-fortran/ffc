@@ -714,7 +714,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer :: value_kind
         integer :: nested_type_index
         logical :: comp_allocatable
-
+        integer :: char_length
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
             return
@@ -751,20 +751,19 @@ subroutine collect_component_declaration(component_index, parent_line, &
             has_default = .false.
             default_value = 0_c_int64_t
             array_size = 1
+            char_length = 0
             if (component%is_array) then
                 call component_array_count(component, context, array_size, &
                                            error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (value_kind == VALUE_CHARACTER) then
                 ! Reuse array_size as the component's slot count: a character
-                ! value occupies ceil(len/4) byte-storage slots at width 1.
-                block
-                    integer :: char_length
-                    call declaration_character_length(context, component, &
-                                                      char_length, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    array_size = character_component_slots(char_length)
-                end block
+                ! value occupies ceil((len+1)/4) byte-storage slots at width 1,
+                ! the extra byte holding the load-time NUL terminator.
+                call declaration_character_length(context, component, &
+                                                  char_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+                array_size = character_component_slots(char_length)
             end if
             if (component%has_initializer .and. component%initializer_index > 0) then
                 if (value_kind == VALUE_CHARACTER) then
@@ -801,7 +800,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                has_default, default_value, &
                                                array_size, value_kind, error_msg, &
                                                is_allocatable=comp_allocatable)
-                    if (len_trim(error_msg) > 0) return
+                                               comp_char_length=char_length)                    if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
                 call add_derived_component(context, type_index, component%var_name, &
@@ -809,7 +808,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                            has_default, default_value, array_size, &
                                            value_kind, error_msg, &
                                            is_allocatable=comp_allocatable)
-            else
+                                           comp_char_length=char_length)            else
                 error_msg = 'derived type component declaration did not expose a name'
                 return
             end if
@@ -993,7 +992,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end if
     end subroutine validate_character_component_length
 
-    ! i32 slots a character(len=N) value occupies: one slot per 4 bytes,
+    ! i32 slots a character(len=N) value occupies: N bytes plus one spare byte
+    ! for the load-time NUL terminator (#265 read/write), one slot per 4 bytes
     ! rounded up. len<=0 yields zero slots (rejected before this point).
     integer function character_component_slots(character_length)
         integer, intent(in) :: character_length
@@ -1001,7 +1001,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (character_length <= 0) then
             character_component_slots = 0
         else
-            character_component_slots = (character_length + 3) / 4
+            character_component_slots = (character_length + 4) / 4
         end if
     end function character_component_slots
 
@@ -1030,7 +1030,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                      has_default, default_value, array_size, &
                                      value_kind, error_msg, comp_type_index, &
                                      is_allocatable)
-        type(lowering_context_t), intent(inout) :: context
+                                     comp_char_length)        type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
         integer, intent(in) :: line, column
@@ -1044,7 +1044,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer, intent(in), optional :: comp_type_index
         ! True for a scalar allocatable component (descriptor-in-struct pointer).
         logical, intent(in), optional :: is_allocatable
-        integer :: component_index
+        ! Declared length of a VALUE_CHARACTER component; 0 (or absent) for
+        ! every other kind.
+        integer, intent(in), optional :: comp_char_length        integer :: component_index
 
         if (find_derived_component(context, type_index, name) > 0) then
             error_msg = 'duplicate derived type component: '//trim(name)
@@ -1073,7 +1075,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(is_allocatable)) &
             context%derived_types(type_index)%component_is_allocatable( &
                 component_index) = is_allocatable
-        context%derived_types(type_index)%component_count = component_index
+        context%derived_types(type_index)%component_char_length(component_index) = 0
+        if (present(comp_char_length)) &
+            context%derived_types(type_index)%component_char_length(component_index) = &
+                comp_char_length        context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component
 
@@ -1094,13 +1099,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_value_kind(8))
             allocate(context%derived_types(type_index)%component_type_index(8))
             allocate(context%derived_types(type_index)%component_is_allocatable(8))
-            context%derived_types(type_index)%component_has_default = .false.
+            allocate(context%derived_types(type_index)%component_char_length(8))            context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_array_size = 1
             context%derived_types(type_index)%component_value_kind = VALUE_I32
             context%derived_types(type_index)%component_type_index = 0
             context%derived_types(type_index)%component_is_allocatable = .false.
-            context%derived_types(type_index)%component_count = 0
+            context%derived_types(type_index)%component_char_length = 0            context%derived_types(type_index)%component_count = 0
             return
         end if
 
@@ -1117,38 +1122,38 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer, allocatable :: old_vk(:)
             integer, allocatable :: old_ti(:)
             logical, allocatable :: old_ia(:)
-            associate (dt => context%derived_types(type_index))
+            integer, allocatable :: old_cl(:)            associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
                 old_dv = dt%component_default_value
                 old_as = dt%component_array_size
                 old_vk = dt%component_value_kind
                 old_ti = dt%component_type_index
                 old_ia = dt%component_is_allocatable
-                deallocate(dt%component_has_default)
+                old_cl = dt%component_char_length                deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
                 deallocate(dt%component_array_size)
                 deallocate(dt%component_value_kind)
                 deallocate(dt%component_type_index)
                 deallocate(dt%component_is_allocatable)
-                allocate(dt%component_has_default(new_size))
+                deallocate(dt%component_char_length)                allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
                 allocate(dt%component_array_size(new_size))
                 allocate(dt%component_value_kind(new_size))
                 allocate(dt%component_type_index(new_size))
                 allocate(dt%component_is_allocatable(new_size))
-                dt%component_has_default = .false.
+                allocate(dt%component_char_length(new_size))                dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
                 dt%component_array_size = 1
                 dt%component_value_kind = VALUE_I32
                 dt%component_type_index = 0
                 dt%component_is_allocatable = .false.
-                dt%component_has_default(1:old_size) = old_hd
+                dt%component_char_length = 0                dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
                 dt%component_array_size(1:old_size) = old_as
                 dt%component_value_kind(1:old_size) = old_vk
                 dt%component_type_index(1:old_size) = old_ti
                 dt%component_is_allocatable(1:old_size) = old_ia
-            end associate
+                dt%component_char_length(1:old_size) = old_cl            end associate
         end block
     end subroutine grow_derived_type_components
 

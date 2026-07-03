@@ -185,21 +185,21 @@ contains
     end function test_do_terminating_body_diagnostic
 
     logical function test_derived_type_diagnostic()
-        ! A fixed-length character component takes a place in the slot layout, so
-        ! the type lowers; reading or writing it through obj%comp is not yet
-        ! supported and must report a clear diagnostic.
+        ! A fixed-length scalar character component reads and writes through
+        ! obj%comp (#265); a character ARRAY component stays unsupported since
+        ! the flat slot layout only reserves inline byte storage for a scalar.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: point'//new_line('a')// &
-            '    character(len=4) :: name'//new_line('a')// &
+            '    character(len=4) :: name(2)'//new_line('a')// &
             '  end type point'//new_line('a')// &
             '  type(point) :: p'//new_line('a')// &
-            '  p%name = "abcd"'//new_line('a')// &
+            '  p%name(1) = "abcd"'//new_line('a')// &
             'end program main'
 
         test_derived_type_diagnostic = expect_error_contains( &
             source, &
-            'character component access', &
+            'character array', &
             '/tmp/ffc_session_derived_type_test')
     end function test_derived_type_diagnostic
 
@@ -447,20 +447,21 @@ contains
     end function test_cli_do_terminating_body_diagnostic
 
     logical function test_cli_derived_type_diagnostic()
-        ! A fixed-length character component lowers into the slot layout;
-        ! accessing it through obj%comp is rejected with a clear diagnostic.
+        ! A fixed-length scalar character component reads and writes through
+        ! obj%comp (#265); a character ARRAY component stays unsupported since
+        ! the flat slot layout only reserves inline byte storage for a scalar.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: point'//new_line('a')// &
-            '    character(len=4) :: name'//new_line('a')// &
+            '    character(len=4) :: name(2)'//new_line('a')// &
             '  end type point'//new_line('a')// &
             '  type(point) :: p'//new_line('a')// &
-            '  p%name = "abcd"'//new_line('a')// &
+            '  p%name(1) = "abcd"'//new_line('a')// &
             'end program main'
 
         test_cli_derived_type_diagnostic = expect_cli_error_contains( &
             source, &
-            'character component access', &
+            'character array', &
             '/tmp/ffc_cli_derived_type_test')
     end function test_cli_derived_type_diagnostic
 
