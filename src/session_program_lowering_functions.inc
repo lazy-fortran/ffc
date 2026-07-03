@@ -508,7 +508,11 @@
                         if (trim(decl%var_name) == result_name) then
                             call resolve_result_decl_kind(decl, context, &
                                 value_kind, derived_type_index, is_array, error_msg)
-                            if (.not. is_array) return
+                            if (.not. is_array) then
+                                call remap_scalar_char_result_kind(context, decl, &
+                                                                   value_kind)
+                                return
+                            end if
                         end if
                     end if
                     if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
@@ -517,7 +521,12 @@
                                 call resolve_result_decl_kind(decl, context, &
                                     value_kind, derived_type_index, is_array, &
                                     error_msg)
-                                if (.not. is_array) return
+                                if (.not. is_array) then
+                                    call remap_scalar_char_result_kind(context, &
+                                                                       decl, &
+                                                                       value_kind)
+                                    return
+                                end if
                             end if
                         end do
                     end if
@@ -534,6 +543,28 @@
                                         'derived-type contained functions', &
                                         error_msg)
     end subroutine result_var_scalar_kind
+
+    subroutine remap_scalar_char_result_kind(context, decl, value_kind)
+        ! A scalar character result whose length is deferred (character(len=:))
+        ! or a runtime expression (character(len=len(arg))) returns through the
+        ! deferred descriptor ABI, matching the contained-function path. A fixed
+        ! compile-time length keeps VALUE_CHARACTER: the descriptor return does
+        ! not pad short assignments, so that case stays a clean rejection rather
+        ! than emitting an unpadded (wrong) result.
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: decl
+        integer, intent(inout) :: value_kind
+        integer :: char_len
+        character(len=:), allocatable :: len_err
+
+        if (value_kind /= VALUE_CHARACTER) return
+        call declaration_character_length(context, decl, char_len, len_err)
+        if (len_trim(len_err) > 0) then
+            value_kind = VALUE_DEFERRED_CHARACTER_RESULT
+        else if (char_len <= 0) then
+            value_kind = VALUE_DEFERRED_CHARACTER_RESULT
+        end if
+    end subroutine remap_scalar_char_result_kind
 
     subroutine resolve_result_decl_kind(decl, context, value_kind, &
                                         derived_type_index, is_array, error_msg)

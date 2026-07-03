@@ -80,8 +80,11 @@ contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
 result straight into the destination. A module procedure may `contains` internal procedures, lowered as
-flat functions. Module-level integer variables persist as globals and are
-visible across `use`. The `associate` construct binds scalar selectors. The
+flat functions. A `logical`-valued function call (contained or module) prints
+directly as `T`/`F`, and a module function with a deferred-length
+(`character(len=:)`) or runtime-length (`character(len=len(arg))`) character
+result is callable and printable from a program in the same file. Module-level
+integer variables persist as globals and are visible across `use`. The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real
 arrays, including a final `elsewhere`. The `forall` construct, single-statement
 and block form, lowers to a sequential loop nest over its index set, with an

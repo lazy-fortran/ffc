@@ -715,16 +715,35 @@
     subroutine ensure_function_names_capacity(context, required_index)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: required_index
+        character(len=64), allocatable :: tmp_names(:)
+        integer, allocatable :: tmp_kinds(:)
+        integer, allocatable :: tmp_counts(:)
+        integer, allocatable :: tmp_indices(:)
+        integer :: old_size, new_size
 
         if (required_index <= size(context%function_names)) return
-        call grow_function_names(context)
-        if (required_index <= size(context%function_names)) return
-        allocate(context%function_names(required_index), &
-                 source=context%function_names)
-        allocate(context%function_value_kinds(required_index), &
-                 source=context%function_value_kinds)
-        allocate(context%function_param_counts(required_index), &
-                 source=context%function_param_counts)
+        old_size = size(context%function_names)
+        new_size = max(2 * old_size, required_index)
+        call move_alloc(context%function_names, tmp_names)
+        call move_alloc(context%function_value_kinds, tmp_kinds)
+        call move_alloc(context%function_param_counts, tmp_counts)
+        allocate(context%function_names(new_size))
+        allocate(context%function_value_kinds(new_size))
+        allocate(context%function_param_counts(new_size))
+        context%function_value_kinds = VALUE_I32
+        context%function_param_counts = 0
+        context%function_names(1:old_size) = tmp_names
+        context%function_value_kinds(1:old_size) = tmp_kinds
+        context%function_param_counts(1:old_size) = tmp_counts
+        if (allocated(context%function_node_indices)) then
+            call move_alloc(context%function_node_indices, tmp_indices)
+            allocate(context%function_node_indices(new_size))
+            context%function_node_indices = 0
+            context%function_node_indices(1:size(tmp_indices)) = tmp_indices
+        else
+            allocate(context%function_node_indices(new_size))
+            context%function_node_indices = 0
+        end if
     end subroutine ensure_function_names_capacity
 
     subroutine ensure_derived_types_capacity(context, required_index)

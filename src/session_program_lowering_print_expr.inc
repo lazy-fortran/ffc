@@ -222,6 +222,15 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
+            if (.not. node%is_array_access .and. allocated(node%name)) then
+                if (is_contained_logical_function(context, node%name)) then
+                    call lower_logical_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call lower_print_logical_value(context, value, error_msg)
+                    return
+                end if
+            end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
@@ -483,6 +492,15 @@
                 call lower_print_component_element_value(arena, node, node_index, &
                                                          context, error_msg)
                 return
+            end if
+            if (.not. node%is_array_access .and. allocated(node%name)) then
+                if (is_contained_logical_function(context, node%name)) then
+                    call lower_logical_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call lower_print_logical_value(context, value, error_msg)
+                    return
+                end if
             end if
             if (is_f32_expression(arena, node_index, context)) then
                 call lower_f32_expression(arena, node_index, context, value, &

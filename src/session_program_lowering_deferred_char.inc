@@ -511,7 +511,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
             return
         end select
 
-        func_name = call_node%name
+        func_name = call_emit_name(arena, call_node%name)
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                data_addr, len_addr, error_msg)
@@ -580,7 +580,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
             error_msg = 'expected function call for character result'
             return
         end select
-        func_name = call_node%name
+        func_name = call_emit_name(arena, call_node%name)
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                data_addr, len_addr, error_msg)
@@ -631,7 +631,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         call set_empty(error_msg)
 
-        func_name = node%name
+        func_name = call_emit_name(arena, node%name)
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                data_addr, len_addr, error_msg)
