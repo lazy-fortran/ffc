@@ -1040,10 +1040,8 @@ contains
                     symbol_index, context, error_msg)
                 return
             end if
-            call unsupported_feature_error('allocatable array assignment', &
-                node%line, node%column, 'allocatable whole-array assignment '// &
-                'supports only array constructors; other forms land in later issues', &
-                error_msg)
+            call lower_allocatable_elementwise_assignment(arena, node, &
+                symbol_index, context, error_msg)
             return
         end if
         if (context%symbols(symbol_index)%is_array) then

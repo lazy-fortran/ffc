@@ -35,13 +35,17 @@ whole-array assignment right-hand sides, plain (`[a, b, c]`), typed
 (`[integer :: 1, 2]`, real-to-integer truncation and integer-to-real
 promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element
 access, array
-sections, whole-array copy, elemental arithmetic, and the array intrinsics
+sections, whole-array copy, elemental arithmetic (`+`, `-`, `*`, `/`, `**`,
+unary minus, an array constructor as an rvalue operand, and general scalar
+expressions broadcasting to every element), and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape`, `lbound`, `ubound`, `count`, `any`, `all`,
 and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar
 element read and write on an allocated 1-D integer, real, or
 logical allocatable (`a(i)`); whole-array assignment from an array constructor
-to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`); and
+to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`); whole-array
+assignment from a general elementwise expression to a 1-D allocatable already
+allocated to a compile-time-constant extent (`a = b + c`, `a = a * 3`); and
 whole-array `print` of a 1-D allocatable whose extent is a compile-time
 constant; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
 base address, with their extent taken from a whole-array actual of

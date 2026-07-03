@@ -1688,14 +1688,17 @@
         call set_empty(error_msg)
     end subroutine lower_array_whole_assignment
 
-    logical function is_scalar_broadcast_rhs(arena, node_index, context) result(scalar)
-        !! True when the RHS of a whole-array assignment is a scalar that should
-        !! broadcast: a literal, or an identifier naming a non-array scalar.
+    recursive logical function is_scalar_broadcast_rhs(arena, node_index, &
+                                                        context) result(scalar)
+        !! True when the RHS of a whole-array assignment is a scalar
+        !! expression that should broadcast: a literal, an identifier naming
+        !! a non-array scalar, an array element access, or a call/binary-op
+        !! tree built purely from those (e.g. real(i), a + 1).
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
-        character(len=:), allocatable :: name, err
-        integer :: sym
+        character(len=:), allocatable :: name, err, bin_op
+        integer :: sym, i, bin_left, bin_right, bin_line, bin_col
 
         scalar = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -1703,12 +1706,39 @@
         type is (literal_node)
             scalar = .true.
             return
+        type is (call_or_subscript_node)
+            if (n%is_array_access) then
+                scalar = .true.
+                return
+            end if
+            if (n%base_expr_index > 0) return
+            if (allocated(n%name)) then
+                if (is_contained_array_function(context, n%name)) return
+            end if
+            if (.not. allocated(n%arg_indices)) then
+                scalar = .true.
+                return
+            end if
+            do i = 1, size(n%arg_indices)
+                if (.not. is_scalar_broadcast_rhs(arena, n%arg_indices(i), &
+                                                  context)) return
+            end do
+            scalar = .true.
+            return
         end select
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, err)
+            if (len_trim(err) > 0) return
+            scalar = is_scalar_broadcast_rhs(arena, bin_left, context) .and. &
+                     is_scalar_broadcast_rhs(arena, bin_right, context)
+            return
+        end if
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, name, err)
             if (len_trim(err) > 0) return
             sym = find_symbol(context, name)
-            if (sym > 0) scalar = .not. context%symbols(sym)%is_array
+            if (sym > 0) scalar = .not. is_elementwise_array_operand(context, sym)
         end if
     end function is_scalar_broadcast_rhs
 

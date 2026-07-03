@@ -613,6 +613,15 @@
             return
         end select
 
+        select type (ctor_node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            call lower_array_constructor_operand_element(arena, ctor_node, &
+                                                         target_symbol_index, &
+                                                         linear_index, context, &
+                                                         value, error_msg)
+            return
+        end select
+
         select type (call_node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(call_node%name)) then
@@ -641,7 +650,7 @@
                             trim(id_name)
                 return
             end if
-            if (.not. context%symbols(symbol_index)%is_array) then
+            if (.not. is_elementwise_array_operand(context, symbol_index)) then
                 ! A scalar operand inside whole-array arithmetic broadcasts: its
                 ! single value participates in every element computation.
                 call lower_elementwise_scalar_operand(arena, node_index, &
@@ -689,12 +698,23 @@
                                                target_symbol_index, linear_index, &
                                                context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_array_elementwise_value(arena, bin_right, &
-                                               target_symbol_index, linear_index, &
-                                               context, rhs, error_msg)
-            if (len_trim(error_msg) > 0) return
             select case (context%symbols(target_symbol_index)%value_kind)
             case (VALUE_F32, VALUE_F64)
+                call lower_array_elementwise_value(arena, bin_right, &
+                                                   target_symbol_index, linear_index, &
+                                                   context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (trim(bin_op) == '**') then
+                    if (context%symbols(target_symbol_index)%value_kind == &
+                        VALUE_F32) then
+                        if (.not. emit_liric_f32_call(context%session, 'powf', &
+                                [lhs, rhs], value, error_msg)) return
+                    else
+                        if (.not. emit_liric_f64_call(context%session, 'pow', &
+                                [lhs, rhs], value, error_msg)) return
+                    end if
+                    return
+                end if
                 call real_opcode(bin_op, bin_line, bin_col, opcode, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (context%symbols(target_symbol_index)%value_kind == VALUE_F32) then
@@ -705,21 +725,24 @@
                                                     rhs, value, error_msg)) return
                 end if
             case default
-                select case (trim(bin_op))
-                case ('+')
-                    opcode = LR_OP_ADD
-                case ('-')
-                    opcode = LR_OP_SUB
-                case ('*')
-                    opcode = LR_OP_MUL
-                case default
+                if (trim(bin_op) == '**') then
+                    call lower_i32_pow(arena, bin_right, bin_line, bin_col, &
+                                       context, lhs, value, error_msg)
+                    return
+                end if
+                call lower_array_elementwise_value(arena, bin_right, &
+                                                   target_symbol_index, linear_index, &
+                                                   context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call integer_opcode(bin_op, opcode, error_msg)
+                if (len_trim(error_msg) > 0) then
                     call unsupported_feature_error('whole-array arithmetic', &
                                                    bin_line, bin_col, &
                                                    'direct LIRIC session supports '// &
-                                                   'only +, -, and * for whole-array '// &
-                                                   'arithmetic', error_msg)
+                                                   'only +, -, *, /, and ** for '// &
+                                                   'whole-array arithmetic', error_msg)
                     return
-                end select
+                end if
                 if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, &
                                           value, error_msg)) return
             end select
@@ -733,6 +756,64 @@
                                        'operands and +, -, or *', error_msg)
     end subroutine lower_array_elementwise_value
 
+    subroutine lower_array_constructor_operand_element(arena, ctor, &
+                                                        target_symbol_index, &
+                                                        linear_index, context, &
+                                                        value, error_msg)
+        ! An array constructor used as an rvalue operand inside a whole-array
+        ! expression (a = b + [1, 2, 3]): select its linear_index'th flattened
+        ! element and lower it in the target array's kind.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'array constructor has no elements'
+            return
+        end if
+        allocate (flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (linear_index < 0 .or. linear_index >= size(flat)) then
+            error_msg = 'array constructor operand is shorter than the target array'
+            return
+        end if
+        call lower_elementwise_scalar_operand(arena, flat(linear_index + 1), &
+                                              target_symbol_index, context, &
+                                              value, error_msg)
+    end subroutine lower_array_constructor_operand_element
+
+    logical function is_elementwise_array_operand(context, symbol_index) &
+        result(is_operand)
+        ! An identifier participates as an array operand in whole-array
+        ! elementwise lowering when it is a fixed-size array, or a rank>=1
+        ! allocatable (the allocatable itself is not flagged is_array).
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+
+        is_operand = context%symbols(symbol_index)%is_array .or. &
+            (context%symbols(symbol_index)%is_allocatable .and. &
+             context%symbols(symbol_index)%array_rank >= 1)
+    end function is_elementwise_array_operand
+
+    integer function effective_array_extent(context, symbol_index) result(n)
+        ! Element count of a fixed-size or allocatable array symbol.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+
+        if (context%symbols(symbol_index)%is_allocatable) then
+            n = context%symbols(symbol_index)%allocatable_static_size
+        else
+            n = context%symbols(symbol_index)%array_size
+        end if
+    end function effective_array_extent
+
     subroutine ensure_array_shapes_match(context, target_symbol_index, &
                                          source_symbol_index, error_msg)
         type(lowering_context_t), intent(in) :: context
@@ -743,6 +824,20 @@
         integer :: i
         character(len=:), allocatable :: target_name
         character(len=:), allocatable :: source_name
+
+        if (context%symbols(target_symbol_index)%is_allocatable .or. &
+            context%symbols(source_symbol_index)%is_allocatable) then
+            if (effective_array_extent(context, target_symbol_index) /= &
+                effective_array_extent(context, source_symbol_index)) then
+                target_name = trim(context%symbols(target_symbol_index)%name)
+                source_name = trim(context%symbols(source_symbol_index)%name)
+                error_msg = 'whole-array assignment requires conforming shapes: '// &
+                    trim(target_name)//' and '//trim(source_name)//' differ in extent'
+                return
+            end if
+            call set_empty(error_msg)
+            return
+        end if
 
         rank = context%symbols(target_symbol_index)%array_rank
         if (context%symbols(source_symbol_index)%array_rank /= rank) then
@@ -988,6 +1083,19 @@
         type(lr_operand_desc_t) :: addr
         integer :: vk
 
+        if (context%symbols(symbol_index)%is_allocatable) then
+            if (linear_index < 0_c_int64_t .or. &
+                linear_index >= int( &
+                    context%symbols(symbol_index)%allocatable_static_size, &
+                    c_int64_t)) then
+                error_msg = 'array linear index is out of range'
+                return
+            end if
+            call store_allocatable_linear_element(context, symbol_index, &
+                                                  linear_index, value, error_msg)
+            return
+        end if
+
         vk = context%symbols(symbol_index)%value_kind
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
@@ -1024,6 +1132,31 @@
         end if
         call set_empty(error_msg)
     end subroutine store_array_linear_element
+
+    subroutine store_allocatable_linear_element(context, symbol_index, &
+                                                linear_index, value, error_msg)
+        ! Store element linear_index of a rank-1 allocatable through its
+        ! descriptor data pointer. Mirrors load_allocatable_linear_element.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, addr
+        integer(c_int64_t) :: stride
+        integer :: vk
+
+        vk = context%symbols(symbol_index)%value_kind
+        stride = allocatable_elem_size(vk)
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_ptr_offset(context%session, data_ptr, &
+                linear_index * stride, addr, error_msg)) return
+        if (.not. emit_allocatable_element_store(context, vk, value, addr, &
+                                                 error_msg)) return
+        call set_empty(error_msg)
+    end subroutine store_allocatable_linear_element
 
     subroutine store_array_element_at_operand(context, symbol_index, &
                                               index_value, value, error_msg)

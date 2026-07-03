@@ -710,6 +710,45 @@
         call set_empty(error_msg)
     end subroutine lower_allocatable_scalar_broadcast
 
+    subroutine lower_allocatable_elementwise_assignment(arena, node, &
+                                                         symbol_index, context, &
+                                                         error_msg)
+        ! a = expr where a is a rank-1 allocatable and expr is a general
+        ! elementwise expression (arithmetic over other arrays and/or
+        ! scalars). Requires the current extent to be a compile-time
+        ! constant (allocatable_static_size), set by a preceding allocate.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: i
+        integer :: array_size
+
+        if (context%symbols(symbol_index)%array_rank /= 1) then
+            error_msg = 'allocatable whole-array assignment from an expression '// &
+                        'supports only rank-1 arrays'
+            return
+        end if
+        array_size = context%symbols(symbol_index)%allocatable_static_size
+        if (array_size <= 0) then
+            error_msg = 'allocatable whole-array assignment from an expression '// &
+                        'requires a previously allocated constant extent'
+            return
+        end if
+        do i = 1, array_size
+            call lower_array_elementwise_value(arena, node%value_index, &
+                                               symbol_index, i - 1, context, &
+                                               value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i - 1, c_int64_t), value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_elementwise_assignment
+
     logical function is_scalar_broadcast_to_allocatable(arena, node_index, &
                                                         context) result(scalar)
         ! True when the RHS broadcasts into an allocatable: a literal, or an
