@@ -65,6 +65,25 @@
             end if
         end if
 
+        ! A contiguous rank-1 array-section selector (associate(x => a(lo:hi)))
+        ! aliases a view onto the source array's storage, so element access,
+        ! size, and writes through the associate name flow to the source.
+        if (node_exists(arena, assoc%expr_index)) then
+            select type (sel => arena%entries(assoc%expr_index)%node)
+            type is (array_slice_node)
+                call bind_associate_array_section(arena, sel, assoc%name, &
+                                                  context, error_msg)
+                return
+            type is (component_access_node)
+                ! A derived-type component selector (associate(s => a%comp))
+                ! aliases the component's storage address, so reads and writes
+                ! through the associate name flow to the component.
+                call bind_associate_component(arena, sel, assoc%name, context, &
+                                              error_msg)
+                return
+            end select
+        end if
+
         ! Array-valued expression selectors (e.g. z => x + y) need a temporary
         ! array and shape tracking, which the scalar value path cannot model.
         ! Reject them cleanly instead of silently aliasing only one element.
@@ -149,3 +168,123 @@
             context%symbol_count = idx
         end if
     end function associate_symbol_slot
+
+    subroutine bind_associate_array_section(arena, slice_node, assoc_name, &
+                                            context, error_msg)
+        ! associate(x => a(lo:hi)): bind x to a rank-1, unit-stride view onto
+        ! a(lo:hi)'s own storage (the associate name always starts at lower
+        ! bound 1, Fortran 2018 11.1.3.3). Element access through x GEPs the
+        ! same storage as a, so reads and writes flow through to a. Non-unit
+        ! stride and rank-2 sections keep the prior unsupported diagnostic.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        character(len=*), intent(in) :: assoc_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: start_index, view_address
+        integer :: idx, value_kind, source_array_size
+        integer(c_int64_t) :: extent
+        logical :: ok
+
+        call describe_array_section(arena, slice_node, context, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (info%result_rank /= 1) then
+            call unsupported_feature_error('associate array selector', &
+                slice_node%line, slice_node%column, &
+                'ffc direct-session associate only supports a rank-1 array '// &
+                'section selector', error_msg)
+            return
+        end if
+        if (info%section_strides(info%kept_dims(1)) /= 1_c_int64_t) then
+            call unsupported_feature_error('associate array selector', &
+                slice_node%line, slice_node%column, &
+                'ffc direct-session associate only supports a unit-stride '// &
+                'array section selector', error_msg)
+            return
+        end if
+
+        value_kind = context%symbols(info%source_index)%value_kind
+        source_array_size = context%symbols(info%source_index)%array_size
+        start_index = i32_immediate(context%session, &
+            array_section_source_linear_index(info, 0_c_int64_t))
+        select case (value_kind)
+        case (VALUE_I32)
+            ok = emit_i32_array_element_addr(context%session, source_array_size, &
+                context%symbols(info%source_index)%element_address, start_index, &
+                view_address, error_msg)
+        case (VALUE_F32)
+            ok = emit_f32_array_element_addr(context%session, source_array_size, &
+                context%symbols(info%source_index)%element_address, start_index, &
+                view_address, error_msg)
+        case (VALUE_F64)
+            ok = emit_f64_array_element_addr(context%session, source_array_size, &
+                context%symbols(info%source_index)%element_address, start_index, &
+                view_address, error_msg)
+        case default
+            call unsupported_feature_error('associate array selector', &
+                slice_node%line, slice_node%column, &
+                'ffc direct-session associate array selector supports '// &
+                'integer, real(4), and real(8) arrays only', error_msg)
+            return
+        end select
+        if (.not. ok) return
+
+        extent = array_section_total_elements(info)
+        idx = associate_symbol_slot(context, assoc_name)
+        context%symbols(idx)%name = trim(assoc_name)
+        context%symbols(idx)%value_kind = value_kind
+        context%symbols(idx)%is_array = .true.
+        context%symbols(idx)%array_rank = 1
+        context%symbols(idx)%array_size = int(extent)
+        context%symbols(idx)%array_lower_bound = 1
+        context%symbols(idx)%array_dim_lowers(1) = 1
+        context%symbols(idx)%array_dim_sizes(1) = int(extent)
+        context%symbols(idx)%element_address = view_address
+        context%symbols(idx)%has_address = .true.
+        context%symbols(idx)%is_reference = .true.
+        context%symbols(idx)%is_pointer = .false.
+        context%symbols(idx)%is_parameter = .false.
+        context%symbols(idx)%is_derived = .false.
+        context%symbols(idx)%is_allocatable = .false.
+        call set_empty(error_msg)
+    end subroutine bind_associate_array_section
+
+    subroutine bind_associate_component(arena, comp_node, assoc_name, context, &
+                                        error_msg)
+        ! associate(s => a%comp): bind s to the component's own storage
+        ! address, so reads and writes through s flow to a%comp.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: comp_node
+        character(len=*), intent(in) :: assoc_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: component_address
+        integer :: comp_kind, idx
+
+        comp_kind = derived_component_access_kind(arena, comp_node, context)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('associate component selector', &
+                comp_node%line, comp_node%column, &
+                'ffc direct-session associate does not support a character '// &
+                'component selector', error_msg)
+            return
+        end if
+        call lower_derived_component_address(arena, comp_node, context, &
+            component_address, error_msg, 'associate component selector')
+        if (len_trim(error_msg) > 0) return
+
+        idx = associate_symbol_slot(context, assoc_name)
+        context%symbols(idx)%name = trim(assoc_name)
+        context%symbols(idx)%value_kind = comp_kind
+        context%symbols(idx)%address = component_address
+        context%symbols(idx)%has_address = .true.
+        context%symbols(idx)%is_reference = .true.
+        context%symbols(idx)%is_pointer = .false.
+        context%symbols(idx)%is_parameter = .false.
+        context%symbols(idx)%is_derived = .false.
+        context%symbols(idx)%is_deferred_character = .false.
+        context%symbols(idx)%is_array = .false.
+        context%symbols(idx)%is_allocatable = .false.
+        call set_empty(error_msg)
+    end subroutine bind_associate_component
