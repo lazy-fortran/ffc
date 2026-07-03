@@ -1140,10 +1140,41 @@
                 call lower_i64_array_element(arena, node, context, value, error_msg)
                 return
             end if
+            if (node%base_expr_index <= 0 .and. allocated(node%name)) then
+                if (contained_function_kind(context, node%name) == VALUE_I64) then
+                    call lower_i64_call(arena, node, context, value, error_msg)
+                    return
+                end if
+            end if
         end select
 
         error_msg = 'ffc direct-session lowering only supports integer(8) expressions'
     end subroutine lower_i64_expression
+
+    subroutine lower_i64_call(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_I64, node%name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+
+        if (.not. emit_i64_call(context%session, &
+                                call_emit_name(arena, node%name), &
+                                args, value, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_i64_call
 
     subroutine lower_i64_array_element(arena, node, context, value, error_msg)
         ! Read one element of an integer(8) array through an i64-width GEP.

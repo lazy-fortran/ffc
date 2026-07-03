@@ -104,7 +104,10 @@ through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
 result straight into the destination. A module procedure may `contains` internal procedures, lowered as
 flat functions. A `logical`-valued function call (contained or module) prints
-directly as `T`/`F`, and a module function with a deferred-length
+directly as `T`/`F`. A non-contained `integer(8)` function (module or
+contained) returns through the i64 ABI, so a result wider than 32 bits round
+trips correctly; an `integer(8)` scalar dummy argument is passed by reference at
+its native width. A module function with a deferred-length
 (`character(len=:)`) or runtime-length (`character(len=len(arg))`) character
 result is callable and printable from a program in the same file. Module-level
 integer, real, and logical scalar variables persist as globals and are visible

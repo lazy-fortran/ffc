@@ -48,13 +48,13 @@ module session_program_lowering
         is_declaration_node, is_module_node, is_program_node
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
-        begin_i32_function, begin_void_subroutine, &
+        begin_i32_function, begin_i64_function, begin_void_subroutine, &
         begin_ptr_function, &
         emit_ret_i32_operand, emit_ret_void, &
         finish_function, finish_and_emit_exe, &
         finish_and_emit_exe_objects, emit_object_no_active_function, &
         finish_and_emit_object, emit_void_call, &
-        emit_i32_call, emit_ptr_call, &
+        emit_i32_call, emit_i64_call, emit_ptr_call, &
         emit_i32_indirect_call, &
         emit_void_indirect_call, &
         liric_session_create, &
@@ -819,6 +819,12 @@ contains
                 0.0_c_double)
         else if (value_kind == VALUE_LOGICAL .or. value_kind == VALUE_I32) then
             context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
+        else if (value_kind == VALUE_I64) then
+            context%symbols(index)%value = i64_immediate(context%session, 0_c_int64_t)
+        else if (value_kind == VALUE_I16) then
+            context%symbols(index)%value = i16_immediate(context%session, 0_c_int64_t)
+        else if (value_kind == VALUE_I8) then
+            context%symbols(index)%value = i8_immediate(context%session, 0_c_int64_t)
         else if (value_kind == VALUE_C_PTR) then
             context%symbols(index)%value = null_ptr_operand(context)
         else

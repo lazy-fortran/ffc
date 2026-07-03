@@ -365,7 +365,20 @@
 
         select case (base_type)
         case ('integer')
-            value_kind = VALUE_I32
+            if (len_trim(kind_spec) == 0) then
+                ! FortFront drops an explicit integer(8) header kind to a bare
+                ! "integer"; recover it from the result variable's body
+                ! declaration before defaulting to i32.
+                call result_var_scalar_kind(node, context, value_kind, &
+                                             derived_type_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (value_kind /= VALUE_I64) value_kind = VALUE_I32
+            else
+                call integer_kind_to_value_kind(kind_spec, node%line, &
+                                                node%column, value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (value_kind /= VALUE_I64) value_kind = VALUE_I32
+            end if
         case ('real')
             ! Classify by kind: bare real and real(4) are f32; real(8) is f64.
             if (real_kind_is_f64(kind_spec)) then
@@ -1370,6 +1383,9 @@
             ! pointer: the caller passes the result buffer address as param 0.
             if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
+        else if (value_kind == VALUE_I64) then
+            if (.not. begin_i64_function(context%session, emit_name, param_count, &
+                                                          error_msg)) return
         else
             if (.not. begin_i32_function(context%session, emit_name, param_count, &
                                                           error_msg)) return

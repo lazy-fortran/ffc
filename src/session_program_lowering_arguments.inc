@@ -562,10 +562,17 @@
             else if (is_logical_literal(arena, node_index)) then
                 value_kind = VALUE_LOGICAL
             else
-                ! An integer (or BOZ) literal is i32 regardless of any dummy-kind
-                ! hint: a mismatched hint (e.g. a type-bound call's passed-object
-                ! offset) must not reroute it through a logical/real path.
-                value_kind = VALUE_I32
+                ! An integer (or BOZ) literal is i32 unless the dummy is a wider
+                ! integer kind: widening the literal to an integer(8/1/2) dummy is
+                ! type-safe. A non-integer hint (e.g. a type-bound call's
+                ! passed-object offset) still keeps the literal at i32 so it is
+                ! never rerouted through a logical/real path.
+                if (default_kind == VALUE_I64 .or. default_kind == VALUE_I8 .or. &
+                    default_kind == VALUE_I16) then
+                    value_kind = default_kind
+                else
+                    value_kind = VALUE_I32
+                end if
             end if
             return
         end if
@@ -658,6 +665,18 @@
         case (VALUE_I32, VALUE_LOGICAL)
             if (.not. emit_i32_alloca(context%session, address, error_msg)) return
             if (.not. emit_i32_store(context%session, value, address, error_msg)) &
+                return
+        case (VALUE_I64)
+            if (.not. emit_i64_alloca(context%session, address, error_msg)) return
+            if (.not. emit_i64_store(context%session, value, address, error_msg)) &
+                return
+        case (VALUE_I8)
+            if (.not. emit_i8_alloca(context%session, address, error_msg)) return
+            if (.not. emit_i8_store(context%session, value, address, error_msg)) &
+                return
+        case (VALUE_I16)
+            if (.not. emit_i16_alloca(context%session, address, error_msg)) return
+            if (.not. emit_i16_store(context%session, value, address, error_msg)) &
                 return
         case default
             error_msg = 'direct LIRIC session cannot pass this scalar argument'
