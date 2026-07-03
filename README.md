@@ -163,7 +163,7 @@ scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
 `floor`, `ceiling`, `real`, `dble` are supported, as are the bit intrinsics
 `iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and
 `mvbits`. The character intrinsics `len`, `len_trim`, `trim`, `adjustl`,
-`adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, and `iachar` are
+`adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, `char`, and `iachar` are
 supported. A `//` concatenation of character variables, literals, and these
 intrinsics assigns into a fixed-length scalar, truncating or blank-padding to
 the declared length, and so does assigning a plain character variable or

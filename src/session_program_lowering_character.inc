@@ -855,7 +855,8 @@
             end select
             return
         end if
-        if (is_named_char_call(arena, node_index, 'achar')) then
+        if (is_named_char_call(arena, node_index, 'achar') .or. &
+            is_named_char_call(arena, node_index, 'char')) then
             select type (n => arena%entries(node_index)%node)
             type is (call_or_subscript_node)
                 call lower_achar_deferred(arena, n, context, data_ptr, length, &
@@ -1001,6 +1002,7 @@
 
         is_char_expr_call = is_trim_call(arena, node_index) .or. &
                             is_named_char_call(arena, node_index, 'achar') .or. &
+                            is_named_char_call(arena, node_index, 'char') .or. &
                             is_named_char_call(arena, node_index, 'adjustl') .or. &
                             is_named_char_call(arena, node_index, 'adjustr') .or. &
                             is_named_char_call(arena, node_index, 'repeat')
