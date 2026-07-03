@@ -90,6 +90,12 @@ module session_program_lowering
         emit_f32_array_element_addr, &
         emit_f64_array_alloca, &
         emit_f64_array_element_addr, &
+        emit_i64_array_alloca, &
+        emit_i64_array_element_addr, &
+        emit_i8_array_alloca, &
+        emit_i8_array_element_addr, &
+        emit_i16_array_alloca, &
+        emit_i16_array_element_addr, &
         emit_ptr_offset, emit_ptr_offset_dyn, &
         ptr_param, &
         i8_immediate, emit_i8_alloca, &
@@ -366,7 +372,9 @@ contains
                 return
             end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-                value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+                value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
+                value_kind /= VALUE_I64 .and. value_kind /= VALUE_I8 .and. &
+                value_kind /= VALUE_I16) then
                 call unsupported_feature_error('array declaration', node%line, &
                     node%column, &
                     'ffc direct-session lowering only '// &

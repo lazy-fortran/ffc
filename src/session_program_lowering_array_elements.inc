@@ -501,7 +501,8 @@
             return
         end if
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
-            vk /= VALUE_LOGICAL) return
+            vk /= VALUE_LOGICAL .and. vk /= VALUE_I64 .and. vk /= VALUE_I8 .and. &
+            vk /= VALUE_I16) return
         if (context%symbols(sym)%is_allocatable) then
             call emit_allocatable_print_items(context, sym, vk, handled, error_msg)
             return
@@ -523,6 +524,18 @@
                 ! A logical element occupies an i32 slot (0/1); print it as T/F.
                 call lower_print_logical_value(context, value, error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (vk == VALUE_I64) then
+                if (.not. emit_liric_print_i64_value(context%session, &
+                                                     context%i64_print_format_id, &
+                                                     value, error_msg)) return
+            else if (vk == VALUE_I8) then
+                if (.not. emit_liric_print_i8_value(context%session, &
+                                                    context%i8_print_format_id, &
+                                                    value, error_msg)) return
+            else if (vk == VALUE_I16) then
+                if (.not. emit_liric_print_i16_value(context%session, &
+                                                     context%i16_print_format_id, &
+                                                     value, error_msg)) return
             else
                 if (.not. emit_liric_print_i32_value(context%session, &
                                                      context%i32_print_format_id, &
@@ -767,6 +780,14 @@
                     if (.not. emit_liric_f64_binary(context%session, opcode, lhs, &
                                                     rhs, value, error_msg)) return
                 end if
+            case (VALUE_I64, VALUE_I8, VALUE_I16)
+                call unsupported_feature_error('whole-array arithmetic', &
+                                               bin_line, bin_col, &
+                                               'direct LIRIC session supports '// &
+                                               'whole-array +, -, *, /, and ** '// &
+                                               'for default-kind integer, real, '// &
+                                               'and logical arrays only', error_msg)
+                return
             case default
                 if (trim(bin_op) == '**') then
                     call lower_i32_pow(arena, bin_right, bin_line, bin_col, &
@@ -957,6 +978,36 @@
                 error_msg = 'f64_array_element_load: '//error_msg
                 return
             end if
+        else if (vk == VALUE_I64) then
+            if (.not. emit_i64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i64_load(context%session, addr, value, error_msg)) then
+                error_msg = 'i64_array_element_load: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I8) then
+            if (.not. emit_i8_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i8_load(context%session, addr, value, error_msg)) then
+                error_msg = 'i8_array_element_load: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I16) then
+            if (.not. emit_i16_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i16_load(context%session, addr, value, error_msg)) then
+                error_msg = 'i16_array_element_load: '//error_msg
+                return
+            end if
         else
             if (.not. emit_i32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -1085,6 +1136,12 @@
             call lower_f32_expression(arena, node%value_index, context, value, error_msg)
         case (VALUE_F64)
             call lower_f64_expression(arena, node%value_index, context, value, error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node%value_index, context, value, error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node%value_index, context, value, error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node%value_index, context, value, error_msg)
         case default
             call lower_i32_expression(arena, node%value_index, context, value, error_msg)
         end select
@@ -1160,6 +1217,36 @@
             if (.not. emit_liric_f64_store(context%session, value, addr, &
                                            error_msg)) then
                 error_msg = 'f64_array_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I64) then
+            if (.not. emit_i64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i64_store(context%session, value, addr, error_msg)) then
+                error_msg = 'i64_array_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I8) then
+            if (.not. emit_i8_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i8_store(context%session, value, addr, error_msg)) then
+                error_msg = 'i8_array_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I16) then
+            if (.not. emit_i16_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, linear_index), addr, &
+                    error_msg)) return
+            if (.not. emit_i16_store(context%session, value, addr, error_msg)) then
+                error_msg = 'i16_array_store: '//error_msg
                 return
             end if
         else
@@ -1354,6 +1441,15 @@
             ! .true./.false. literals and relational results become 1/0.
             call lower_logical_expression(arena, node%value_index, context, value, &
                                           error_msg)
+        else if (vk == VALUE_I64) then
+            call lower_i64_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+        else if (vk == VALUE_I8) then
+            call lower_i8_expression(arena, node%value_index, context, value, &
+                                     error_msg)
+        else if (vk == VALUE_I16) then
+            call lower_i16_expression(arena, node%value_index, context, value, &
+                                      error_msg)
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                                       error_msg)
@@ -1381,6 +1477,24 @@
             if (.not. emit_liric_f64_store(context%session, value, &
                                            element_address, error_msg)) then
                 error_msg = 'f64_arr_assign_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I64) then
+            if (.not. emit_i64_store(context%session, value, element_address, &
+                                     error_msg)) then
+                error_msg = 'i64_arr_assign_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I8) then
+            if (.not. emit_i8_store(context%session, value, element_address, &
+                                    error_msg)) then
+                error_msg = 'i8_arr_assign_store: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I16) then
+            if (.not. emit_i16_store(context%session, value, element_address, &
+                                     error_msg)) then
+                error_msg = 'i16_arr_assign_store: '//error_msg
                 return
             end if
         else
@@ -1450,6 +1564,30 @@
                     context%symbols(symbol_index)%element_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_f64: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I64) then
+            if (.not. emit_i64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    linear_index, element_address, error_msg)) then
+                error_msg = 'arr_element_gep_i64: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I8) then
+            if (.not. emit_i8_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    linear_index, element_address, error_msg)) then
+                error_msg = 'arr_element_gep_i8: '//error_msg
+                return
+            end if
+        else if (vk == VALUE_I16) then
+            if (.not. emit_i16_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    linear_index, element_address, error_msg)) then
+                error_msg = 'arr_element_gep_i16: '//error_msg
                 return
             end if
         else

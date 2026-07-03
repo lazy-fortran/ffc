@@ -392,6 +392,22 @@
       type(lr_operand_desc_t), intent(out) :: value
       character(len=:), allocatable, intent(out) :: error_msg
       type(lr_operand_desc_t) :: element_address
+      integer :: symbol_index
+
+      ! An integer(8)/(1)/(2) array element must load through its own width;
+      ! reject here instead of silently misreading through an i32-width GEP.
+      if (allocated(node%name)) then
+          symbol_index = find_symbol(context, node%name)
+          if (symbol_index > 0) then
+              if (context%symbols(symbol_index)%value_kind == VALUE_I64 .or. &
+                  context%symbols(symbol_index)%value_kind == VALUE_I8 .or. &
+                  context%symbols(symbol_index)%value_kind == VALUE_I16) then
+                  error_msg = 'integer expression used a non-default-kind '// &
+                              'array element: '//trim(node%name)
+                  return
+              end if
+          end if
+      end if
 
       call lower_i32_array_element_address(arena, node, context, element_address, &
                                            error_msg)

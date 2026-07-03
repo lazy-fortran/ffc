@@ -1176,6 +1176,24 @@
                 error_msg = 'decl_f64_array['//trim(name)//']: '//error_msg
                 return
             end if
+        case (VALUE_I64)
+            if (.not. emit_i64_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_i64_array['//trim(name)//']: '//error_msg
+                return
+            end if
+        case (VALUE_I8)
+            if (.not. emit_i8_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_i8_array['//trim(name)//']: '//error_msg
+                return
+            end if
+        case (VALUE_I16)
+            if (.not. emit_i16_array_alloca(context%session, array_size, &
+                    context%symbols(index)%element_address, error_msg)) then
+                error_msg = 'decl_i16_array['//trim(name)//']: '//error_msg
+                return
+            end if
         case default
             if (.not. emit_i32_array_alloca(context%session, array_size, &
                     context%symbols(index)%element_address, error_msg)) then
@@ -1228,6 +1246,15 @@
         case (VALUE_LOGICAL)
             call lower_logical_expression(context%arena, value_index, context, &
                                           value, error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(context%arena, value_index, context, &
+                                      value, error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(context%arena, value_index, context, &
+                                     value, error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(context%arena, value_index, context, &
+                                      value, error_msg)
         case default
             call lower_i32_expression(context%arena, value_index, context, &
                                       value, error_msg)
@@ -1312,6 +1339,12 @@
             else if (vk == VALUE_LOGICAL) then
                 call lower_logical_expression(arena, flat(i), context, value, &
                                               error_msg)
+            else if (vk == VALUE_I64) then
+                call lower_i64_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_I8) then
+                call lower_i8_expression(arena, flat(i), context, value, error_msg)
+            else if (vk == VALUE_I16) then
+                call lower_i16_expression(arena, flat(i), context, value, error_msg)
             else
                 call lower_constructor_i32_element(arena, flat(i), context, &
                                                    value, error_msg)
@@ -1594,6 +1627,10 @@
         case (VALUE_LOGICAL)
             call lower_logical_expression(arena, body_index, context, value, &
                                           error_msg)
+        case (VALUE_I64, VALUE_I8, VALUE_I16)
+            error_msg = 'implied-do array constructor does not support '// &
+                        'non-default-kind integer elements'
+            return
         case default
             call eval_i32_constant(arena, body_index, context, cval, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1603,6 +1640,23 @@
         call store_array_linear_element(context, symbol_index, slot, value, &
                                         error_msg)
     end subroutine lower_implied_do_element
+
+    logical function is_whole_array_intrinsic_name(name) result(is_intrinsic)
+        ! True for a whole-array-shaped RHS intrinsic name handled by
+        ! lower_array_whole_assignment's per-intrinsic dispatch below.
+        character(len=*), intent(in) :: name
+
+        is_intrinsic = same_name(name, 'shape') .or. &
+                       same_name(name, 'matmul') .or. &
+                       same_name(name, 'transpose') .or. &
+                       same_name(name, 'reshape') .or. &
+                       same_name(name, 'cshift') .or. &
+                       same_name(name, 'eoshift') .or. &
+                       same_name(name, 'merge') .or. &
+                       same_name(name, 'spread') .or. &
+                       same_name(name, 'pack') .or. &
+                       same_name(name, 'unpack')
+    end function is_whole_array_intrinsic_name
 
     subroutine lower_array_whole_assignment(arena, node, symbol_index, context, &
                                             error_msg)
@@ -1630,6 +1684,24 @@
                                                         context, error_msg)
                 return
             type is (call_or_subscript_node)
+                if (allocated(rhs%name)) then
+                    if (is_whole_array_intrinsic_name(rhs%name)) then
+                        if (context%symbols(symbol_index)%value_kind == &
+                                VALUE_I64 .or. &
+                            context%symbols(symbol_index)%value_kind == &
+                                VALUE_I8 .or. &
+                            context%symbols(symbol_index)%value_kind == &
+                                VALUE_I16) then
+                            call unsupported_feature_error( &
+                                'whole-array intrinsic assignment', &
+                                node%line, node%column, &
+                                'direct LIRIC session supports '// &
+                                trim(rhs%name)//' for default-kind integer, '// &
+                                'real, and logical arrays only', error_msg)
+                            return
+                        end if
+                    end if
+                end if
                 if (allocated(rhs%name)) then
                     if (same_name(rhs%name, 'shape')) then
                         call lower_shape_intrinsic_assignment(arena, node, &
@@ -1699,6 +1771,15 @@
             case (VALUE_LOGICAL)
                 call lower_logical_expression(arena, node%value_index, context, &
                                               value, error_msg)
+            case (VALUE_I64)
+                call lower_i64_expression(arena, node%value_index, context, &
+                                          value, error_msg)
+            case (VALUE_I8)
+                call lower_i8_expression(arena, node%value_index, context, &
+                                         value, error_msg)
+            case (VALUE_I16)
+                call lower_i16_expression(arena, node%value_index, context, &
+                                          value, error_msg)
             case default
                 if (is_f64_expression(arena, node%value_index, context)) then
                     ! Integer array with a real scalar rhs: assignment
@@ -2217,6 +2298,10 @@
                             trim(reduction_name)
                 return
             end select
+        case (VALUE_I64, VALUE_I8, VALUE_I16)
+            error_msg = trim(reduction_name)//' over a non-default-kind '// &
+                        'integer array is not supported'
+            return
         case default
             select case (trim(reduction_name))
             case ('sum')
@@ -2348,6 +2433,11 @@
         integer(c_int) :: predicate
 
         call set_empty(error_msg)
+        if (vk == VALUE_I64 .or. vk == VALUE_I8 .or. vk == VALUE_I16) then
+            error_msg = trim(reduction_name)//' over a non-default-kind '// &
+                        'integer array section is not supported'
+            return
+        end if
         select case (trim(reduction_name))
         case ('sum')
             if (vk == VALUE_F32) then

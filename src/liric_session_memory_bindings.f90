@@ -37,6 +37,9 @@ module liric_session_memory_bindings
     public :: emit_ptr_array_alloca, emit_ptr_array_element_addr
     public :: emit_f32_array_alloca, emit_f32_array_element_addr
     public :: emit_f64_array_alloca, emit_f64_array_element_addr
+    public :: emit_i64_array_alloca, emit_i64_array_element_addr
+    public :: emit_i8_array_alloca, emit_i8_array_element_addr
+    public :: emit_i16_array_alloca, emit_i16_array_element_addr
     public :: emit_i64_binary
     public :: emit_alloca_typed, emit_load_typed, emit_store_typed
     public :: i8_immediate, emit_i8_alloca, emit_i8_load, emit_i8_store, emit_i8_binary
@@ -1191,6 +1194,7 @@ contains
         emit_f64_array_element_addr = .true.
     end function emit_f64_array_element_addr
 
+    include 'liric_session_memory_bindings_narrow_int_arrays.inc'
     include 'liric_session_memory_bindings_i8_i16.inc'
     include 'liric_session_memory_bindings_tail.inc'
 

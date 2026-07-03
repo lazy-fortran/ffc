@@ -528,6 +528,36 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_I64) then
+                call lower_i64_array_element(arena, node, context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i64_value(context%session, &
+                                                     context%i64_print_format_id, &
+                                                     value, error_msg)) return
+                return
+            end if
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_I8) then
+                call lower_i8_array_element(arena, node, context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i8_value(context%session, &
+                                                    context%i8_print_format_id, &
+                                                    value, error_msg)) return
+                return
+            end if
+            if ((node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context)) .and. &
+                array_access_value_kind(node, context) == VALUE_I16) then
+                call lower_i16_array_element(arena, node, context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i16_value(context%session, &
+                                                     context%i16_print_format_id, &
+                                                     value, error_msg)) return
+                return
+            end if
             if (.not. node%is_array_access .and. allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then
                     call lower_print_deferred_char_call(arena, node, context, &

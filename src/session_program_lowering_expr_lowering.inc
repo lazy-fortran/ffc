@@ -981,38 +981,55 @@
         end select
     end function is_f64_expression
 
+    logical function operand_has_value_kind(arena, node_index, context, want_kind)
+        ! True when node_index is a scalar identifier or an array-element
+        ! access whose declared value kind is want_kind. Used to route a
+        ! comparison or arithmetic operand of a non-default integer kind
+        ! (integer(1)/(2)/(8)) through its matching width path even when the
+        ! operand is a subscripted array reference rather than a bare name.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: want_kind
+        character(len=:), allocatable :: id_name, err
+        integer :: sym
+
+        operand_has_value_kind = .false.
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            operand_has_value_kind = sym > 0 .and. &
+                context%symbols(sym)%value_kind == want_kind
+            return
+        end if
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index > 0) return
+            if (.not. (node%is_array_access .or. &
+                       is_declared_array_element_ref(node, context))) return
+            operand_has_value_kind = &
+                array_access_value_kind(node, context) == want_kind
+        end select
+    end function operand_has_value_kind
+
     logical function is_i64_binary_op(arena, node_index, context)
         ! Returns true when node_index is a binary op with at least one i64 operand.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: bin_left, bin_right, bin_line, bin_col
-        character(len=:), allocatable :: bin_op, err, id_name
-        integer :: sym
+        character(len=:), allocatable :: bin_op, err
 
         is_i64_binary_op = .false.
         if (.not. is_binary_op(arena, node_index)) return
         call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
                                 bin_line, bin_col, err)
         if (len_trim(err) > 0) return
-        if (is_identifier(arena, bin_left)) then
-            call get_identifier_name(arena, bin_left, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I64) then
-                is_i64_binary_op = .true.
-                return
-            end if
-        end if
-        if (is_identifier(arena, bin_right)) then
-            call get_identifier_name(arena, bin_right, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I64) then
-                is_i64_binary_op = .true.
-                return
-            end if
-        end if
+        is_i64_binary_op = &
+            operand_has_value_kind(arena, bin_left, context, VALUE_I64) .or. &
+            operand_has_value_kind(arena, bin_right, context, VALUE_I64)
     end function is_i64_binary_op
 
     recursive subroutine lower_i64_expression(arena, node_index, context, &
@@ -1115,8 +1132,54 @@
             return
         end if
 
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index <= 0 .and. &
+                (node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context))) then
+                call lower_i64_array_element(arena, node, context, value, error_msg)
+                return
+            end if
+        end select
+
         error_msg = 'ffc direct-session lowering only supports integer(8) expressions'
     end subroutine lower_i64_expression
+
+    subroutine lower_i64_array_element(arena, node, context, value, error_msg)
+        ! Read one element of an integer(8) array through an i64-width GEP.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_address
+        integer :: symbol_index
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'integer(8) array access requires an array name'
+            return
+        end if
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'integer(8) array identifier was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I64) then
+            error_msg = 'integer(8) expression used a non-i64 array element: '// &
+                        trim(node%name)
+            return
+        end if
+        call lower_i32_array_element_address(arena, node, context, &
+                                             element_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i64_load(context%session, element_address, value, &
+                                error_msg)) then
+            error_msg = 'i64_arr_read_load: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_i64_array_element
 
     logical function is_i8_binary_op(arena, node_index, context)
         ! Returns true when node_index is a binary op with at least one i8 operand.
@@ -1124,32 +1187,16 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: bin_left, bin_right, bin_line, bin_col
-        character(len=:), allocatable :: bin_op, err, id_name
-        integer :: sym
+        character(len=:), allocatable :: bin_op, err
 
         is_i8_binary_op = .false.
         if (.not. is_binary_op(arena, node_index)) return
         call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
                                 bin_line, bin_col, err)
         if (len_trim(err) > 0) return
-        if (is_identifier(arena, bin_left)) then
-            call get_identifier_name(arena, bin_left, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I8) then
-                is_i8_binary_op = .true.
-                return
-            end if
-        end if
-        if (is_identifier(arena, bin_right)) then
-            call get_identifier_name(arena, bin_right, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I8) then
-                is_i8_binary_op = .true.
-                return
-            end if
-        end if
+        is_i8_binary_op = &
+            operand_has_value_kind(arena, bin_left, context, VALUE_I8) .or. &
+            operand_has_value_kind(arena, bin_right, context, VALUE_I8)
     end function is_i8_binary_op
 
     logical function is_i16_binary_op(arena, node_index, context)
@@ -1158,32 +1205,16 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: bin_left, bin_right, bin_line, bin_col
-        character(len=:), allocatable :: bin_op, err, id_name
-        integer :: sym
+        character(len=:), allocatable :: bin_op, err
 
         is_i16_binary_op = .false.
         if (.not. is_binary_op(arena, node_index)) return
         call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
                                 bin_line, bin_col, err)
         if (len_trim(err) > 0) return
-        if (is_identifier(arena, bin_left)) then
-            call get_identifier_name(arena, bin_left, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I16) then
-                is_i16_binary_op = .true.
-                return
-            end if
-        end if
-        if (is_identifier(arena, bin_right)) then
-            call get_identifier_name(arena, bin_right, id_name, err)
-            if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
-            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_I16) then
-                is_i16_binary_op = .true.
-                return
-            end if
-        end if
+        is_i16_binary_op = &
+            operand_has_value_kind(arena, bin_left, context, VALUE_I16) .or. &
+            operand_has_value_kind(arena, bin_right, context, VALUE_I16)
     end function is_i16_binary_op
 
     recursive subroutine lower_i8_expression(arena, node_index, context, &
@@ -1269,8 +1300,54 @@
             return
         end if
 
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index <= 0 .and. &
+                (node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context))) then
+                call lower_i8_array_element(arena, node, context, value, error_msg)
+                return
+            end if
+        end select
+
         error_msg = 'ffc direct-session lowering only supports integer(1) expressions'
     end subroutine lower_i8_expression
+
+    subroutine lower_i8_array_element(arena, node, context, value, error_msg)
+        ! Read one element of an integer(1) array through an i8-width GEP.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_address
+        integer :: symbol_index
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'integer(1) array access requires an array name'
+            return
+        end if
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'integer(1) array identifier was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I8) then
+            error_msg = 'integer(1) expression used a non-i8 array element: '// &
+                        trim(node%name)
+            return
+        end if
+        call lower_i32_array_element_address(arena, node, context, &
+                                             element_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i8_load(context%session, element_address, value, &
+                               error_msg)) then
+            error_msg = 'i8_arr_read_load: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_i8_array_element
 
     recursive subroutine lower_i16_expression(arena, node_index, context, &
                                                value, error_msg)
@@ -1355,5 +1432,51 @@
             return
         end if
 
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index <= 0 .and. &
+                (node%is_array_access .or. &
+                 is_declared_array_element_ref(node, context))) then
+                call lower_i16_array_element(arena, node, context, value, error_msg)
+                return
+            end if
+        end select
+
         error_msg = 'ffc direct-session lowering only supports integer(2) expressions'
     end subroutine lower_i16_expression
+
+    subroutine lower_i16_array_element(arena, node, context, value, error_msg)
+        ! Read one element of an integer(2) array through an i16-width GEP.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_address
+        integer :: symbol_index
+
+        if (.not. allocated(node%name)) then
+            error_msg = 'integer(2) array access requires an array name'
+            return
+        end if
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) then
+            error_msg = 'integer(2) array identifier was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I16) then
+            error_msg = 'integer(2) expression used a non-i16 array element: '// &
+                        trim(node%name)
+            return
+        end if
+        call lower_i32_array_element_address(arena, node, context, &
+                                             element_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i16_load(context%session, element_address, value, &
+                                error_msg)) then
+            error_msg = 'i16_arr_read_load: '//error_msg
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine lower_i16_array_element
