@@ -1336,6 +1336,7 @@
         if (allocated(parent_context%unit_symbol_prefix)) &
             context%unit_symbol_prefix = parent_context%unit_symbol_prefix
         context%arena = arena
+        context%root_index = parent_context%root_index
         allocate(context%symbols(16))
         allocate(context%derived_types(8))
         allocate(context%module_exports(4))

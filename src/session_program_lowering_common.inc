@@ -5,19 +5,23 @@
     ! the layout, data_statement_nodes for the initialisers). This pass reads
     ! both from those structured nodes.
     !
-    ! Each variable in a named or blank COMMON block gets one LIRIC global,
-    ! keyed by block name and position so the program and the BLOCK DATA unit
-    ! share storage independent of local variable spelling. The BLOCK DATA
-    ! unit's DATA values are folded into each global's static initialiser, the
-    ! same once-at-load model SAVE locals and module variables use. A program
-    ! COMMON variable is then bound as an addressed reference into its slot
-    ! global, so ordinary reads and writes go through the shared storage.
+    ! Each named or blank COMMON block gets one LIRIC global per element
+    ! offset, keyed by block name and position-within-block (not variable
+    ! spelling): different program units may list different names at the
+    ! same block, and F2018 8.10.3 associates them by position, so a program
+    ! and a subroutine (or BLOCK DATA unit) sharing a block name alias the
+    ! same storage even when their member names differ. Each unit's own
+    ! COMMON statement is re-resolved against this canonical layout when the
+    ! body walk reaches it, so binding never depends on which other unit's
+    ! node happens to share a member name. The BLOCK DATA unit's DATA values
+    ! are folded into the matching offset's static initialiser, the same
+    ! once-at-load model SAVE locals and module variables use.
     !
-    ! Scope: scalar integer(4), real(4), real(8), and logical slots whose
-    ! initialisers are plain literals. Anything else (arrays, EQUIVALENCE,
-    ! character, multiple distinct blocks sharing a name) leaves the symbol a
-    ! plain local and surfaces the usual diagnostics, keeping the unit honest
-    ! rather than miscompiling.
+    ! Scope: scalar integer(4), real(4), real(8), logical, complex(4), and
+    ! complex(8) slots whose initialisers are plain literals, plus 1D arrays
+    ! of the numeric/logical kinds. Character members and EQUIVALENCE-linked
+    ! members leave the symbol a plain local and surface the usual
+    ! diagnostics, keeping the unit honest rather than miscompiling.
 
     subroutine emit_common_block_globals(arena, context, error_msg)
         ! Pre-pass: build the COMMON layout from program declarations and the
@@ -29,28 +33,95 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(common_slot_t) :: slots(COMMON_MAX_SLOTS)
-        integer :: slot_count, i
+        type(common_slot_t) :: canon(COMMON_MAX_SLOTS)
+        integer :: slot_count, canon_count, i
 
         call set_empty(error_msg)
         slot_count = 0
-        call collect_common_slots(arena, slots, slot_count, error_msg)
+        call collect_common_slots(arena, context%root_index, slots, slot_count, &
+                                  error_msg)
         if (len_trim(error_msg) > 0) return
         if (slot_count == 0) return
         call apply_block_data_initializers(arena, slots, slot_count, error_msg)
         if (len_trim(error_msg) > 0) return
-        do i = 1, slot_count
-            call emit_one_common_global(slots(i), i, context, error_msg)
+        call canonicalize_common_slots(slots, slot_count, canon, canon_count)
+        do i = 1, canon_count
+            call emit_one_common_global(canon(i), context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine emit_common_block_globals
 
-    subroutine collect_common_slots(arena, slots, slot_count, error_msg)
+    subroutine canonicalize_common_slots(slots, slot_count, canon, canon_count)
+        ! Collapse the raw per-unit member list down to one entry per
+        ! distinct (block_name, pos_in_block): every unit sharing a block
+        ! name and offset shares one global, so only the first occurrence's
+        ! kind/array shape is emitted, with any DATA initialiser found on a
+        ! later duplicate merged in (a BLOCK DATA unit may spell a member
+        ! differently than the first unit collected).
+        type(common_slot_t), intent(in) :: slots(:)
+        integer, intent(in) :: slot_count
+        type(common_slot_t), intent(out) :: canon(:)
+        integer, intent(out) :: canon_count
+        integer :: i, j
+        logical :: found
+
+        canon_count = 0
+        do i = 1, slot_count
+            found = .false.
+            do j = 1, canon_count
+                if (canon(j)%block_name == slots(i)%block_name .and. &
+                    canon(j)%pos_in_block == slots(i)%pos_in_block) then
+                    call merge_common_slot_init(canon(j), slots(i))
+                    found = .true.
+                    exit
+                end if
+            end do
+            if (.not. found) then
+                canon_count = canon_count + 1
+                canon(canon_count) = slots(i)
+            end if
+        end do
+    end subroutine canonicalize_common_slots
+
+    subroutine merge_common_slot_init(dest, src)
+        ! Fold src's DATA initialiser into dest when dest has none of its own,
+        ! so whichever unit's member name a BLOCK DATA statement addressed
+        ! still reaches the canonical global for that block offset.
+        type(common_slot_t), intent(inout) :: dest
+        type(common_slot_t), intent(in) :: src
+        integer :: idx
+
+        if (src%has_init .and. .not. dest%has_init) then
+            dest%has_init = .true.
+            dest%init_text = src%init_text
+        end if
+        if (.not. allocated(src%array_init_indices)) return
+        if (.not. allocated(dest%array_init_indices)) then
+            allocate (dest%array_init_indices(max(dest%array_size, 1)))
+            allocate (character(len=256) :: &
+                      dest%array_init_values(max(dest%array_size, 1)))
+            dest%array_init_indices = 0
+            dest%array_init_values = ''
+        end if
+        do idx = 1, min(size(src%array_init_indices), &
+                        size(dest%array_init_indices))
+            if (src%array_init_indices(idx) /= 0 .and. &
+                dest%array_init_indices(idx) == 0) then
+                dest%array_init_indices(idx) = src%array_init_indices(idx)
+                dest%array_init_values(idx) = src%array_init_values(idx)
+            end if
+        end do
+    end subroutine merge_common_slot_init
+
+    subroutine collect_common_slots(arena, root_index, slots, slot_count, &
+                                    error_msg)
         ! Walk the arena for program-level common_block_nodes and resolve each
         ! member's kind from a matching program declaration. BLOCK DATA units
         ! carry their own common_block_node inside statement_indices; those
         ! repeat the same layout, so they are skipped here to keep one slot per
         ! variable.
         type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(inout) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
@@ -62,8 +133,8 @@
             if (is_block_data_member(arena, n)) cycle
             select type (node => arena%entries(n)%node)
             type is (common_block_node)
-                call add_common_node_slots(arena, node, slots, slot_count, &
-                                           error_msg)
+                call add_common_node_slots(arena, root_index, n, node, slots, &
+                                           slot_count, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
         end do
@@ -93,22 +164,35 @@
         end do
     end function is_block_data_member
 
-    subroutine add_common_node_slots(arena, node, slots, slot_count, error_msg)
+    subroutine add_common_node_slots(arena, root_index, node_index, node, &
+                                     slots, slot_count, error_msg)
         ! Append one slot per member of a common_block_node. The owning block
         ! name comes from block_names(member_block(i)); a blank name uses the
-        ! sentinel "__blnk__". The member kind comes from the program
-        ! declaration of the same name.
+        ! sentinel "__blnk__". The member kind comes from the declaration in
+        ! the program unit that owns this COMMON statement when that scope
+        ! can be resolved (root_index/node_index), so a name collision with
+        ! an unrelated local in another unit cannot pick the wrong kind.
+        ! pos_in_block is this node's own running element offset within its
+        ! block (scalars consume one slot, arrays consume array_size),
+        ! independent of any other unit's member names, so two units sharing
+        ! a block name alias by position rather than by spelling (#1578,
+        ! F2018 8.10.3).
         type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index, node_index
         type(common_block_node), intent(in) :: node
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(inout) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: block_name, var_name
+        character(len=64) :: block_names_seen(COMMON_MAX_SLOTS)
+        integer :: block_offsets(COMMON_MAX_SLOTS)
+        integer :: n_blocks_seen, b
         integer :: i, vk, arr_size
         logical :: arr_flag
 
         call set_empty(error_msg)
         if (.not. allocated(node%member_names)) return
+        n_blocks_seen = 0
         do i = 1, size(node%member_names)
             if (slot_count >= size(slots)) then
                 error_msg = 'too many COMMON variables for direct lowering'
@@ -116,8 +200,11 @@
             end if
             var_name = trim(node%member_names(i)%s)
             block_name = common_member_block_name(node, i)
-            call program_declaration_kind_full(arena, var_name, vk, arr_flag, &
-                                              arr_size, error_msg)
+            call program_declaration_kind_for_common(arena, root_index, &
+                node_index, var_name, vk, arr_flag, arr_size, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call find_or_add_block_offset(block_names_seen, block_offsets, &
+                                         n_blocks_seen, block_name, b, error_msg)
             if (len_trim(error_msg) > 0) return
             slot_count = slot_count + 1
             slots(slot_count)%block_name = block_name
@@ -125,9 +212,44 @@
             slots(slot_count)%value_kind = vk
             slots(slot_count)%is_array = arr_flag
             slots(slot_count)%array_size = arr_size
+            slots(slot_count)%pos_in_block = block_offsets(b)
             slots(slot_count)%has_init = .false.
+            if (arr_flag) then
+                block_offsets(b) = block_offsets(b) + max(arr_size, 1)
+            else
+                block_offsets(b) = block_offsets(b) + 1
+            end if
         end do
     end subroutine add_common_node_slots
+
+    subroutine find_or_add_block_offset(block_names_seen, block_offsets, &
+                                        n_blocks_seen, block_name, b, error_msg)
+        ! Look up block_name's running-offset slot within a single node's own
+        ! scratch tables, appending a fresh zero-offset entry on first sight.
+        character(len=*), intent(inout) :: block_names_seen(:)
+        integer, intent(inout) :: block_offsets(:)
+        integer, intent(inout) :: n_blocks_seen
+        character(len=*), intent(in) :: block_name
+        integer, intent(out) :: b
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: j
+
+        call set_empty(error_msg)
+        do j = 1, n_blocks_seen
+            if (trim(block_names_seen(j)) == block_name) then
+                b = j
+                return
+            end if
+        end do
+        if (n_blocks_seen >= size(block_names_seen)) then
+            error_msg = 'too many COMMON blocks for direct lowering'
+            return
+        end if
+        n_blocks_seen = n_blocks_seen + 1
+        b = n_blocks_seen
+        block_names_seen(b) = block_name
+        block_offsets(b) = 0
+    end subroutine find_or_add_block_offset
 
     function common_member_block_name(node, member) result(block_name)
         ! Resolve member i's owning block name; blank common uses "__blnk__".
@@ -144,6 +266,194 @@
         if (len_trim(node%block_names(b)%s) > 0) &
             block_name = trim(node%block_names(b)%s)
     end function common_member_block_name
+
+    subroutine program_declaration_kind_for_common(arena, root_index, &
+                                                   node_index, var_name, &
+                                                   value_kind, is_array, &
+                                                   array_size, error_msg)
+        ! Resolve a COMMON member's declared kind, scoped to the program unit
+        ! that owns the COMMON statement at node_index when that scope can be
+        ! determined: two units may each declare their own unrelated local
+        ! under the same name (e.g. both scalar and array "dummy"), and an
+        ! arena-wide search would silently pick whichever declaration happens
+        ! to come first. Falls back to the arena-wide search when the owning
+        ! unit cannot be resolved or does not declare the name locally (a
+        ! host-associated or otherwise indirect reference).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index, node_index
+        character(len=*), intent(in) :: var_name
+        integer, intent(out) :: value_kind
+        logical, intent(out) :: is_array
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: scope_indices(:)
+        logical :: scope_found
+
+        call find_owning_unit_body_indices(arena, root_index, node_index, &
+                                           scope_indices, scope_found)
+        if (scope_found) then
+            call program_declaration_kind_in_scope(arena, scope_indices, &
+                var_name, value_kind, is_array, array_size, error_msg)
+            if (len_trim(error_msg) == 0) return
+        end if
+        call program_declaration_kind_full(arena, var_name, value_kind, &
+                                          is_array, array_size, error_msg)
+    end subroutine program_declaration_kind_for_common
+
+    subroutine program_declaration_kind_in_scope(arena, scope_indices, &
+                                                 var_name, value_kind, &
+                                                 is_array, array_size, &
+                                                 error_msg)
+        ! Same resolution as program_declaration_kind_full, restricted to a
+        ! single unit's own statement list.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: scope_indices(:)
+        character(len=*), intent(in) :: var_name
+        integer, intent(out) :: value_kind
+        logical, intent(out) :: is_array
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k
+        logical :: found
+
+        value_kind = VALUE_I32
+        is_array = .false.
+        array_size = 0
+        found = .false.
+        call set_empty(error_msg)
+        do k = 1, size(scope_indices)
+            if (.not. node_exists(arena, scope_indices(k))) cycle
+            select type (decl => arena%entries(scope_indices(k))%node)
+            type is (declaration_node)
+                if (decl%is_pointer .or. decl%is_target .or. &
+                    decl%is_allocatable .or. decl%is_parameter) cycle
+                if (declaration_names_var(decl, var_name)) then
+                    call declaration_value_kind(decl, value_kind, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    is_array = decl%is_array
+                    if (is_array) then
+                        call extract_array_size(arena, decl, array_size, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
+                    found = .true.
+                    exit
+                end if
+            end select
+        end do
+        if (.not. found) then
+            error_msg = 'COMMON variable not declared in scope: '//var_name
+            return
+        end if
+        call validate_common_member_kind(var_name, value_kind, is_array, &
+                                         error_msg)
+    end subroutine program_declaration_kind_in_scope
+
+    subroutine validate_common_member_kind(var_name, value_kind, is_array, &
+                                           error_msg)
+        character(len=*), intent(in) :: var_name
+        integer, intent(in) :: value_kind
+        logical, intent(in) :: is_array
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+        case (VALUE_C4, VALUE_C8)
+            if (is_array) then
+                error_msg = 'COMMON array has an unsupported kind: '//var_name
+            end if
+        case default
+            error_msg = 'COMMON variable has an unsupported kind: '//var_name
+        end select
+    end subroutine validate_common_member_kind
+
+    subroutine find_owning_unit_body_indices(arena, root_index, target_index, &
+                                             body_indices, found)
+        ! Locate the top-level (or one-level-CONTAINS-nested) program unit
+        ! whose own statement list holds target_index, and return that unit's
+        ! statement indices as the declaration search scope.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index, target_index
+        integer, allocatable, intent(out) :: body_indices(:)
+        logical, intent(out) :: found
+        integer, allocatable :: top_units(:), inner_body(:)
+        character(len=:), allocatable :: node_type, inner_type, ff_error
+        integer :: i, j
+
+        found = .false.
+        call get_unit_body_indices(arena, root_index, top_units, ff_error)
+        if (.not. allocated(top_units)) return
+        do i = 1, size(top_units)
+            node_type = get_node_type_at(arena, top_units(i))
+            call unit_body_indices_for(arena, top_units(i), node_type, &
+                                       body_indices, ff_error)
+            if (.not. allocated(body_indices)) cycle
+            if (index_in_int_list(body_indices, target_index)) then
+                found = .true.
+                return
+            end if
+            do j = 1, size(body_indices)
+                inner_type = get_node_type_at(arena, body_indices(j))
+                if (inner_type == 'subroutine_def_node' .or. &
+                    inner_type == 'subroutine_def' .or. &
+                    inner_type == 'function_def_node' .or. &
+                    inner_type == 'function_def') then
+                    call unit_body_indices_for(arena, body_indices(j), &
+                        inner_type, inner_body, ff_error)
+                    if (allocated(inner_body)) then
+                        if (index_in_int_list(inner_body, target_index)) then
+                            body_indices = inner_body
+                            found = .true.
+                            return
+                        end if
+                    end if
+                end if
+            end do
+        end do
+    end subroutine find_owning_unit_body_indices
+
+    subroutine unit_body_indices_for(arena, unit_index, node_type, &
+                                     body_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: unit_index
+        character(len=*), intent(in) :: node_type
+        integer, allocatable, intent(out) :: body_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, result_name
+        integer, allocatable :: param_indices(:)
+
+        if (allocated(body_indices)) deallocate (body_indices)
+        call set_empty(error_msg)
+        if (node_type == 'program_node' .or. node_type == 'program') then
+            call get_program_body_info(arena, unit_index, name, body_indices, &
+                                       error_msg)
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            call get_subroutine_body_info(arena, unit_index, name, &
+                                          param_indices, body_indices, error_msg)
+        else if (node_type == 'function_def_node' .or. &
+                 node_type == 'function_def') then
+            call get_function_body_info(arena, unit_index, name, &
+                                        param_indices, body_indices, &
+                                        result_name, error_msg)
+        else
+            allocate (body_indices(0))
+        end if
+    end subroutine unit_body_indices_for
+
+    logical function index_in_int_list(list, target) result(found)
+        integer, intent(in) :: list(:)
+        integer, intent(in) :: target
+        integer :: k
+
+        found = .false.
+        do k = 1, size(list)
+            if (list(k) == target) then
+                found = .true.
+                return
+            end if
+        end do
+    end function index_in_int_list
 
     subroutine program_declaration_kind(arena, var_name, value_kind, error_msg)
         ! Legacy wrapper: resolve a scalar COMMON variable's kind from a program
@@ -201,11 +511,8 @@
             error_msg = 'COMMON variable not declared: '//var_name
             return
         end if
-        select case (value_kind)
-        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
-        case default
-            error_msg = 'COMMON variable has an unsupported kind: '//var_name
-        end select
+        call validate_common_member_kind(var_name, value_kind, is_array, &
+                                         error_msg)
     end subroutine program_declaration_kind_full
 
     logical function declaration_names_var(decl, var_name)
@@ -485,10 +792,51 @@
         select type (val => arena%entries(idx)%node)
         type is (literal_node)
             value_text = trim(val%value)
+        type is (complex_literal_node)
+            call complex_literal_text(arena, val, value_text, error_msg)
         class default
             error_msg = 'unsupported BLOCK DATA value expression'
         end select
     end subroutine data_value_literal_text
+
+    subroutine complex_literal_text(arena, node, value_text, error_msg)
+        ! Encode a (re, im) DATA literal as "re,im" text; the comma cannot
+        ! appear inside either component (both are plain numeric literals),
+        ! so fold_complex_common_initializer can split on the first one.
+        type(ast_arena_t), intent(in) :: arena
+        type(complex_literal_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: value_text
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: re_text, im_text
+
+        call set_empty(error_msg)
+        value_text = ''
+        call literal_text_at(arena, node%real_index, re_text, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call literal_text_at(arena, node%imag_index, im_text, error_msg)
+        if (len_trim(error_msg) > 0) return
+        value_text = re_text//','//im_text
+    end subroutine complex_literal_text
+
+    subroutine literal_text_at(arena, idx, text, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: text
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        text = ''
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, idx)) then
+            error_msg = 'complex literal component not found in arena'
+            return
+        end if
+        select type (n => arena%entries(idx)%node)
+        type is (literal_node)
+            text = trim(n%value)
+        class default
+            error_msg = 'unsupported complex literal component'
+        end select
+    end subroutine literal_text_at
 
     integer function find_common_slot(slots, slot_count, var_name) result(s)
         type(common_slot_t), intent(in) :: slots(:)
@@ -504,14 +852,13 @@
         end do
     end function find_common_slot
 
-    subroutine emit_one_common_global(slot, slot_index, context, error_msg)
+    subroutine emit_one_common_global(slot, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
                                                c_loc, c_size_t, c_ptr, &
                                                c_double, c_float, c_int64_t
         use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
                                           lr_type_f64_s, lr_type_array_s
         type(common_slot_t), intent(in) :: slot
-        integer, intent(in) :: slot_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: gname
@@ -527,8 +874,13 @@
         integer(c_int32_t) :: global_id
         logical(c_bool) :: c_false_local
 
+        if (slot%value_kind == VALUE_C4 .or. slot%value_kind == VALUE_C8) then
+            call emit_complex_common_global(slot, context, error_msg)
+            return
+        end if
+
         c_false_local = .false.
-        gname = common_global_name(slot%block_name, slot_index)
+        gname = common_global_name(slot%block_name, slot%pos_in_block)
         call to_c_chars(gname, c_name)
 
         if (slot%is_array) then
@@ -566,6 +918,105 @@
         end if
         call set_empty(error_msg)
     end subroutine emit_one_common_global
+
+    subroutine emit_complex_common_global(slot, context, error_msg)
+        ! A COMMON complex scalar stores its real and imaginary parts as two
+        ! separate globals (matching the local-variable complex storage model
+        ! in session_program_lowering_complex.inc: address=re, element_address
+        ! =im), named by appending .re/.im to the block-offset global name.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_loc, &
+                                               c_size_t, c_ptr, c_double, &
+                                               c_float, c_int32_t
+        use liric_session_bindings, only: lr_type_f32_s, lr_type_f64_s
+        type(common_slot_t), intent(in) :: slot
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base_name, gname_re, gname_im
+        character(kind=c_char), allocatable :: c_name_re(:), c_name_im(:)
+        real(c_float), target :: init_f32_re, init_f32_im
+        real(c_double), target :: init_f64_re, init_f64_im
+        type(c_ptr) :: gtype, init_ptr_re, init_ptr_im
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
+
+        c_false_local = .false.
+        call fold_complex_common_initializer(slot, init_f32_re, init_f32_im, &
+                                            init_f64_re, init_f64_im, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        base_name = common_global_name(slot%block_name, slot%pos_in_block)
+        gname_re = base_name//'.re'
+        gname_im = base_name//'.im'
+        call to_c_chars(gname_re, c_name_re)
+        call to_c_chars(gname_im, c_name_im)
+
+        if (slot%value_kind == VALUE_C8) then
+            gtype = lr_type_f64_s(context%session%handle)
+            init_ptr_re = c_loc(init_f64_re)
+            init_ptr_im = c_loc(init_f64_im)
+            init_size = 8_c_size_t
+        else
+            gtype = lr_type_f32_s(context%session%handle)
+            init_ptr_re = c_loc(init_f32_re)
+            init_ptr_im = c_loc(init_f32_im)
+            init_size = 4_c_size_t
+        end if
+
+        global_id = lr_session_global(context%session%handle, c_name_re, &
+                                      gtype, c_false_local, init_ptr_re, &
+                                      init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create COMMON global: '//gname_re
+            return
+        end if
+        global_id = lr_session_global(context%session%handle, c_name_im, &
+                                      gtype, c_false_local, init_ptr_im, &
+                                      init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create COMMON global: '//gname_im
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_complex_common_global
+
+    subroutine fold_complex_common_initializer(slot, init_f32_re, init_f32_im, &
+                                               init_f64_re, init_f64_im, &
+                                               error_msg)
+        use, intrinsic :: iso_c_binding, only: c_double, c_float
+        type(common_slot_t), intent(in) :: slot
+        real(c_float), intent(out) :: init_f32_re, init_f32_im
+        real(c_double), intent(out) :: init_f64_re, init_f64_im
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: comma_pos, io_stat
+        real(c_double) :: re_val, im_val
+
+        init_f32_re = 0.0_c_float
+        init_f32_im = 0.0_c_float
+        init_f64_re = 0.0_c_double
+        init_f64_im = 0.0_c_double
+        call set_empty(error_msg)
+        if (.not. slot%has_init) return
+        comma_pos = index(slot%init_text, ',')
+        if (comma_pos <= 0) then
+            error_msg = 'malformed COMMON complex initializer: '//slot%init_text
+            return
+        end if
+        read (slot%init_text(1:comma_pos - 1), *, iostat=io_stat) re_val
+        if (io_stat /= 0) then
+            error_msg = 'malformed COMMON complex initializer: '//slot%init_text
+            return
+        end if
+        read (slot%init_text(comma_pos + 1:), *, iostat=io_stat) im_val
+        if (io_stat /= 0) then
+            error_msg = 'malformed COMMON complex initializer: '//slot%init_text
+            return
+        end if
+        init_f32_re = real(re_val, c_float)
+        init_f32_im = real(im_val, c_float)
+        init_f64_re = re_val
+        init_f64_im = im_val
+    end subroutine fold_complex_common_initializer
 
     subroutine emit_array_common_global(slot, context, c_name, gtype, &
                                        init_ptr, init_size, error_msg)
@@ -701,12 +1152,18 @@
         end select
     end subroutine fold_common_initializer
 
-    subroutine bind_common_block_symbols(arena, context, error_msg)
-        ! Body-side binding: rebind each program COMMON variable as an addressed
-        ! reference into its slot global. Re-derives the whole layout so the slot
-        ! index matches the global naming the pre-pass established over the same
-        ! arena; binding is idempotent, so reaching any COMMON comment is enough.
+    subroutine bind_common_block_symbols(arena, node, node_index, context, &
+                                         error_msg)
+        ! Body-side binding: rebind this occurrence's own COMMON member names
+        ! as addressed references into their canonical (block_name,
+        ! pos_in_block) slot globals. Resolving only this node's own layout
+        ! (rather than a whole-arena name search) keeps binding unambiguous
+        ! when another unit reuses the same block name with different member
+        ! spellings (#1578, F2018 8.10.3); binding is idempotent, so reaching
+        ! any COMMON statement is enough.
         type(ast_arena_t), intent(in) :: arena
+        type(common_block_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(common_slot_t) :: slots(COMMON_MAX_SLOTS)
@@ -714,27 +1171,33 @@
 
         call set_empty(error_msg)
         slot_count = 0
-        call collect_common_slots(arena, slots, slot_count, error_msg)
+        call add_common_node_slots(arena, context%root_index, node_index, &
+                                   node, slots, slot_count, error_msg)
         if (len_trim(error_msg) > 0) return
         do i = 1, slot_count
             sym = find_symbol(context, slots(i)%var_name)
             if (sym <= 0) cycle
-            call rebind_common_symbol(slots(i), i, sym, context, error_msg)
+            call rebind_common_symbol(slots(i), sym, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine bind_common_block_symbols
 
-    subroutine rebind_common_symbol(slot, slot_index, sym, context, error_msg)
+    subroutine rebind_common_symbol(slot, sym, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(common_slot_t), intent(in) :: slot
-        integer, intent(in) :: slot_index, sym
+        integer, intent(in) :: sym
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: gname
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
 
-        gname = common_global_name(slot%block_name, slot_index)
+        if (slot%value_kind == VALUE_C4 .or. slot%value_kind == VALUE_C8) then
+            call rebind_complex_common_symbol(slot, sym, context, error_msg)
+            return
+        end if
+
+        gname = common_global_name(slot%block_name, slot%pos_in_block)
         call to_c_chars(gname, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
         if (global_id < 0_c_int32_t) then
@@ -758,12 +1221,56 @@
         call set_empty(error_msg)
     end subroutine rebind_common_symbol
 
-    function common_global_name(block_name, slot_index) result(gname)
+    subroutine rebind_complex_common_symbol(slot, sym, context, error_msg)
+        ! Bind a COMMON complex scalar's re/im parts to the .re/.im globals,
+        ! matching the local-variable complex storage model (address=re,
+        ! element_address=im) so the existing complex load/store paths work
+        ! unchanged (session_program_lowering_complex.inc).
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        type(common_slot_t), intent(in) :: slot
+        integer, intent(in) :: sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base_name, gname_re, gname_im
+        character(kind=c_char), allocatable :: c_name_re(:), c_name_im(:)
+        integer(c_int32_t) :: global_id_re, global_id_im
+
+        base_name = common_global_name(slot%block_name, slot%pos_in_block)
+        gname_re = base_name//'.re'
+        gname_im = base_name//'.im'
+        call to_c_chars(gname_re, c_name_re)
+        call to_c_chars(gname_im, c_name_im)
+        global_id_re = lr_session_intern(context%session%handle, c_name_re)
+        if (global_id_re < 0_c_int32_t) then
+            error_msg = 'COMMON global not found: '//gname_re
+            return
+        end if
+        global_id_im = lr_session_intern(context%session%handle, c_name_im)
+        if (global_id_im < 0_c_int32_t) then
+            error_msg = 'COMMON global not found: '//gname_im
+            return
+        end if
+        context%symbols(sym)%value_kind = slot%value_kind
+        context%symbols(sym)%has_address = .true.
+        context%symbols(sym)%is_reference = .true.
+        context%symbols(sym)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(sym)%address%payload = int(global_id_re, c_int64_t)
+        context%symbols(sym)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(sym)%address%global_offset = 0_c_int64_t
+        context%symbols(sym)%element_address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(sym)%element_address%payload = int(global_id_im, c_int64_t)
+        context%symbols(sym)%element_address%typ = &
+            lr_type_ptr_s(context%session%handle)
+        context%symbols(sym)%element_address%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+    end subroutine rebind_complex_common_symbol
+
+    function common_global_name(block_name, pos_in_block) result(gname)
         character(len=*), intent(in) :: block_name
-        integer, intent(in) :: slot_index
+        integer, intent(in) :: pos_in_block
         character(len=:), allocatable :: gname
         character(len=32) :: idx_text
-        write (idx_text, '(I0)') slot_index
+        write (idx_text, '(I0)') pos_in_block
         gname = '.ffc.common.'//block_name//'.'//trim(idx_text)
     end function common_global_name
 

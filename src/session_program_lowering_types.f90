@@ -158,6 +158,7 @@ module session_program_lowering_types
             character(len=:), allocatable :: block_name
             character(len=:), allocatable :: var_name
             integer :: value_kind = VALUE_I32
+            integer :: pos_in_block = 0
             logical :: has_init = .false.
             character(len=:), allocatable :: init_text
             logical :: is_array = .false.
@@ -355,6 +356,7 @@ module session_program_lowering_types
         type, public :: lowering_context_t
             type(liric_session_t) :: session
             type(ast_arena_t) :: arena
+            integer :: root_index = 0
             type(symbol_t), allocatable :: symbols(:)
             integer :: symbol_count = 0
             ! Symbols at index <= block_scope_floor belong to an enclosing scope. A

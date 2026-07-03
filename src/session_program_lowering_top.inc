@@ -55,6 +55,7 @@
             .not. unit_defines_main(arena, root_index)) then
             context%unit_symbol_prefix = unit_prefix_from_path(output_path)
         end if
+        context%root_index = root_index
         if (present(include_paths)) then
             context%include_paths = include_paths
             context%include_path_count = size(include_paths)
@@ -847,7 +848,8 @@
         type is (common_block_node)
             ! Reaching the COMMON statement during the body walk rebinds its
             ! variables to their shared slot globals (#1578, #2809).
-            call bind_common_block_symbols(arena, context, error_msg)
+            call bind_common_block_symbols(arena, node, node_index, context, &
+                                           error_msg)
         type is (comment_node)
             ! An EQUIVALENCE statement still survives as a comment; reaching it
             ! rebinds its members onto the shared group global (#280). Any other
