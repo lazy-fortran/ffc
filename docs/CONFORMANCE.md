@@ -143,7 +143,7 @@ Current xfail manifests:
 The `gfortran-dg` suite reads `$FFC_GFORTRAN_DG_DIR/*.f90` from a local
 GCC checkout. The runner evaluates each file with `ffc -c` (compile) or
 checks rejection of negative tests (`dg-error`/`dg-warning`). Files that
-use `dg-do run` are not yet supported.
+use `dg-do run` build, execute, and compare output against `gfortran -w`.
 
 ### Local checkout
 
@@ -157,7 +157,7 @@ sparse checkout to minimize disk usage. The directory must contain the
 The runner models these gfortran.dg directives:
 
 - `dg-do compile` (default): compile with `ffc -c`
-- `dg-do run`: not yet supported (treated as compile)
+- `dg-do run`: build, execute, and compare stdout and exit status against `gfortran -w`
 - `dg-error` / `dg-warning`: negative tests; ffc must reject compilation
 - `dg-additional-sources`: multifile tests (skipped)
 - `dg-options` / `dg-add-options`: compiler flag tests (skipped)
