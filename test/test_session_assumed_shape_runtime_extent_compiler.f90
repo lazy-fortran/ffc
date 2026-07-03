@@ -9,6 +9,7 @@ program test_session_assumed_shape_runtime_extent
     all_passed = .true.
     if (.not. test_allocatable_integer_actual()) all_passed = .false.
     if (.not. test_allocatable_real_actual()) all_passed = .false.
+    if (.not. test_type_bound_call_actual()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: assumed-shape dummies read a runtime allocatable extent'
@@ -81,5 +82,48 @@ contains
         test_allocatable_real_actual = expect_output(source, expected, &
             '/tmp/ffc_session_assumed_shape_runtime_r1f')
     end function test_allocatable_real_actual
+
+    logical function test_type_bound_call_actual()
+        ! A type-bound subroutine call `call me%worker(x, res)` inserts the
+        ! passed-object receiver ("me") ahead of the explicit call arguments
+        ! at the callee's dummy position, so an explicit argument's call-site
+        ! position does not equal its callee dummy position. The hidden
+        ! runtime-extent argument lookup must use the dummy position, not the
+        ! call-site position, or it mistakes a later scalar argument for the
+        ! assumed-shape actual.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: holder'//new_line('a')// &
+            '    integer :: base'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: worker => holder_worker'//new_line('a')// &
+            '  end type holder'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine holder_worker(this, x, res)'//new_line('a')// &
+            '    class(holder), intent(in) :: this'//new_line('a')// &
+            '    real, intent(in) :: x(:)'//new_line('a')// &
+            '    real, intent(out) :: res'//new_line('a')// &
+            '    res = x(1) + real(this%base)'//new_line('a')// &
+            '  end subroutine holder_worker'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type(holder) :: h'//new_line('a')// &
+            '  real, allocatable :: x(:)'//new_line('a')// &
+            '  real :: res'//new_line('a')// &
+            '  h%base = 5'//new_line('a')// &
+            '  allocate(x(3))'//new_line('a')// &
+            '  x = [1.0, 2.0, 3.0]'//new_line('a')// &
+            '  call h%worker(x, res)'//new_line('a')// &
+            '  print *, res'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '   6.00000000    '//new_line('a')
+
+        test_type_bound_call_actual = expect_output(source, expected, &
+            '/tmp/ffc_session_assumed_shape_runtime_typebound')
+    end function test_type_bound_call_actual
 
 end program test_session_assumed_shape_runtime_extent

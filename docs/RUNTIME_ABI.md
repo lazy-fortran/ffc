@@ -242,6 +242,16 @@ array-section and array-constructor actuals, and `sum`/`product`/`maxval`/
 keep the pre-existing "assumed-shape dummy extent must come from a
 whole-array actual of compile-time size" diagnostic.
 
+`call obj%method(args)` (a type-bound subroutine call) inserts the passed-object
+receiver ahead of the explicit `args` at the callee's passed-object dummy
+position, so an explicit argument's call-site position is not its callee dummy
+position whenever the callee has more than one dummy before that argument. The
+hidden-extent lookup accounts for this: `prepare_reference_args` takes an
+optional `self_position` (the receiver's 1-based dummy position) and maps each
+call-site argument to its true dummy position before checking whether that
+dummy needs a hidden extent, so an assumed-shape runtime-extent dummy reached
+through a type-bound call resolves the correct actual.
+
 ## Runtime Calls
 
 - Scalar `print` lowers to external C `printf`/`snprintf` calls.

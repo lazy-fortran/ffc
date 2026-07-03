@@ -109,6 +109,24 @@
         end do
     end subroutine callee_param_name_at
 
+    integer function call_arg_param_pos(arg_pos, self_position) result(param_pos)
+        ! Map a 1-based call-site argument position to the callee's 1-based
+        ! dummy position. self_position <= 0 means the call has no implicit
+        ! passed-object receiver (the common case: identity mapping). A
+        ! positive self_position is the dummy slot a type-bound subroutine
+        ! call's receiver occupies (lower_method_subroutine_call): explicit
+        ! arguments before that slot map 1:1, explicit arguments at or after
+        ! it are shifted right by the one slot the receiver consumes.
+        integer, intent(in) :: arg_pos
+        integer, intent(in) :: self_position
+
+        if (self_position <= 0 .or. arg_pos < self_position) then
+            param_pos = arg_pos
+        else
+            param_pos = arg_pos + 1
+        end if
+    end function call_arg_param_pos
+
     logical function param_needs_runtime_extent(context, callee_name, param_pos) &
             result(needs_runtime)
         ! Whether callee_name's param_pos-th dummy is a rank-1 assumed-shape
@@ -271,7 +289,7 @@
 
     subroutine append_hidden_extent_args(arena, arg_indices, context, &
                                          callee_name, visible_count, args, &
-                                         error_msg)
+                                         error_msg, self_position)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -279,13 +297,17 @@
         integer, intent(in) :: visible_count
         type(lr_operand_desc_t), intent(inout) :: args(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, hidden_pos
+        integer, intent(in), optional :: self_position
+        integer :: i, hidden_pos, sp
         type(lr_operand_desc_t) :: extent_i64, slot
 
         call set_empty(error_msg)
+        sp = 0
+        if (present(self_position)) sp = self_position
         hidden_pos = visible_count
         do i = 1, size(arg_indices)
-            if (.not. param_needs_runtime_extent(context, callee_name, i)) cycle
+            if (.not. param_needs_runtime_extent(context, callee_name, &
+                    call_arg_param_pos(i, sp))) cycle
             hidden_pos = hidden_pos + 1
             call actual_extent_i64(arena, arg_indices(i), context, extent_i64, &
                                    error_msg)

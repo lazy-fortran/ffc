@@ -611,10 +611,11 @@
             return
         end if
 
+        position = impl_pass_position(arena, impl_name, pass_name)
         if (allocated(arg_indices)) then
             call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                         impl_name, method_args, copyback_indices, &
-                                        error_msg)
+                                        error_msg, self_position=position)
             if (len_trim(error_msg) > 0) return
         else
             allocate (method_args(0))
@@ -622,7 +623,6 @@
         end if
         n = size(method_args)
         allocate (all_args(n + 1))
-        position = impl_pass_position(arena, impl_name, pass_name)
         if (position < 1 .or. position > n + 1) position = 1
         all_args(position) = context%symbols(symbol_index)%element_address
         k = 0

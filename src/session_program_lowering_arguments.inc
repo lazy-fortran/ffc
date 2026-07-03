@@ -25,7 +25,7 @@
 
     subroutine prepare_reference_args(arena, arg_indices, context, default_kind, &
                                       callee_name, args, copyback_indices, &
-                                      error_msg)
+                                      error_msg, self_position)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -34,10 +34,14 @@
         type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
         integer, allocatable, intent(out) :: copyback_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: self_position
         integer :: i
         integer :: visible_count
         integer :: hidden_count
+        integer :: sp
 
+        sp = 0
+        if (present(self_position)) sp = self_position
         visible_count = size(arg_indices)
         hidden_count = callee_hidden_extent_count(context, callee_name)
         allocate (args(visible_count + hidden_count))
@@ -93,7 +97,7 @@
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
                      .and. callee_dummy_assumed_shape_rank1(arena, callee_name, &
-                                                            i)) then
+                                            call_arg_param_pos(i, sp))) then
                 ! Allocatable array actual to a rank-1 assumed-shape dummy: pass
                 ! the descriptor's runtime data pointer (the W2 runtime-extent
                 ! ABI); its element count travels separately as a hidden i64
@@ -113,7 +117,7 @@
         if (hidden_count > 0) then
             call append_hidden_extent_args(arena, arg_indices, context, &
                                            callee_name, visible_count, args, &
-                                           error_msg)
+                                           error_msg, self_position=sp)
             if (len_trim(error_msg) > 0) return
         end if
 
