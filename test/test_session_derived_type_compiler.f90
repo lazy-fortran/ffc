@@ -13,7 +13,7 @@ program test_session_derived_type_compiler
     if (.not. test_component_stop_code()) all_passed = .false.
     if (.not. test_real_component_diagnostic()) all_passed = .false.
     if (.not. test_nested_component_access()) all_passed = .false.
-    if (.not. test_constructor_diagnostic()) all_passed = .false.
+    if (.not. test_scalar_constructor()) all_passed = .false.
     if (.not. test_inheritance_parent_component()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
@@ -206,7 +206,9 @@ contains
             '/tmp/ffc_session_derived_nested_test')
     end function test_nested_component_access
 
-    logical function test_constructor_diagnostic()
+    logical function test_scalar_constructor()
+        ! item = item_t(4): a scalar integer structure constructor stores its
+        ! positional argument into the single component.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: item_t'//new_line('a')// &
@@ -214,12 +216,12 @@ contains
             '  end type item_t'//new_line('a')// &
             '  type(item_t) :: item'//new_line('a')// &
             '  item = item_t(4)'//new_line('a')// &
+            '  stop item%count'//new_line('a')// &
             'end program main'
 
-        test_constructor_diagnostic = expect_error_contains( &
-            source, 'unsupported derived type constructor', &
-            '/tmp/ffc_session_derived_constructor_test')
-    end function test_constructor_diagnostic
+        test_scalar_constructor = expect_exit_status( &
+            source, 4, '/tmp/ffc_session_derived_constructor_test')
+    end function test_scalar_constructor
 
     logical function test_inheritance_parent_component()
         ! A child that extends a parent inherits the parent's component; the

@@ -51,6 +51,10 @@ real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
 and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
+whole-derived scalar assignment (`y = x`) copies one instance into another,
+and a scalar structure constructor over integer/real/logical components
+(`x = t(1, 2.5, .true.)`, omitted components keeping their defaults) stores
+its positional arguments into the target. A
 contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the

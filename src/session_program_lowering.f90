@@ -1077,6 +1077,9 @@ contains
                     symbol_index, context, error_msg)
                 return
             end if
+            call lower_derived_whole_assignment(arena, node, context, &
+                symbol_index, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
             call lower_derived_whole_assignment_diagnostic(arena, node, &
                 context, symbol_index, &
                 error_msg)
