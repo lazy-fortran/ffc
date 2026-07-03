@@ -403,7 +403,11 @@
     subroutine find_call_actual_expr(arena, proc_name, param_pos, actual_index)
         ! Like find_call_actual_identifier, but returns the raw AST node index
         ! of the param_pos-th actual argument at a call to proc_name, whatever
-        ! expression it is (literal, size() call, or bare identifier).
+        ! expression it is (literal, size() call, or bare identifier). A call
+        ! site nested inside proc_name's own body (a recursive self-call) is
+        ! never a caller-supplied value, so it is skipped: including it would
+        ! fold a dummy's bound to an expression built from that same dummy
+        ! (e.g. `n` from `factorial(n - 1)`), recursing without termination.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: proc_name
         integer, intent(in) :: param_pos
@@ -417,12 +421,57 @@
             if (.not. node_exists(arena, n)) cycle
             if (.not. call_targets_proc(arena, n, proc_name, call_name, &
                                         arg_indices)) cycle
+            if (call_is_within_proc(arena, n, proc_name)) cycle
             if (.not. allocated(arg_indices)) cycle
             if (param_pos < 1 .or. param_pos > size(arg_indices)) cycle
             actual_index = arg_indices(param_pos)
             return
         end do
     end subroutine find_call_actual_expr
+
+    logical function call_is_within_proc(arena, node_index, proc_name) &
+            result(within)
+        ! True when node_index's enclosing procedure definition is proc_name
+        ! itself, i.e. node_index is a recursive self-call rather than a call
+        ! from an external caller.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: proc_name
+        integer :: cur
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        within = .false.
+        cur = get_parent(arena, node_index)
+        do while (cur > 0)
+            node_type = get_node_type_at(arena, cur)
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, cur)
+                if (associated(fn_node)) then
+                    if (allocated(fn_node%name)) then
+                        if (same_name(fn_node%name, proc_name)) then
+                            within = .true.
+                            return
+                        end if
+                    end if
+                end if
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, cur)
+                if (associated(sb_node)) then
+                    if (allocated(sb_node%name)) then
+                        if (same_name(sb_node%name, proc_name)) then
+                            within = .true.
+                            return
+                        end if
+                    end if
+                end if
+            end if
+            cur = get_parent(arena, cur)
+        end do
+    end function call_is_within_proc
 
     logical function call_targets_proc(arena, node_index, proc_name, call_name, &
                                        arg_indices) result(matches)

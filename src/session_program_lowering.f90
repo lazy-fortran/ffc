@@ -206,7 +206,8 @@ module session_program_lowering
         get_goto_selector_index
     use fortfront_utils, only: get_node_as_function_def, &
         get_node_as_program, &
-        get_node_as_subroutine_def
+        get_node_as_subroutine_def, &
+        get_parent
     use ast_nodes_data, only: mixed_construct_container_node, &
         multi_unit_container_node, submodule_node
     use fortfront, only: get_node_line, get_node_column
