@@ -159,7 +159,6 @@ argument_checking_8.f90
 array_1.f90
 array_2.f90
 array_3.f90
-array_4.f90
 array_5.f90
 array_alloc_1.f90
 array_alloc_2.f90
@@ -243,7 +242,6 @@ associate_28.f90
 associate_29.f90
 associate_34.f90
 associate_35.f90
-associate_36.f90
 associate_38.f90
 associate_41.f90
 associate_42.f90
@@ -513,7 +511,6 @@ constructor_3.f90
 constructor_6.f90
 contained_1.f90
 contained_3.f90
-contained_equivalence_1.f90
 contained_module_proc_1.f90
 contiguous_13.f90
 contiguous_14.f90
@@ -555,7 +552,6 @@ deferred_character_11.f90
 deferred_character_12.f90
 deferred_character_13.f90
 deferred_character_14.f90
-deferred_character_15.f90
 deferred_character_16.f90
 deferred_character_17.f90
 deferred_character_19.f90
@@ -757,7 +753,6 @@ entry_9.f90
 entry_array_specs_3.f90
 entry_dummy_ref_3.f90
 eof_1.f90
-eof_2.f90
 eof_3.f90
 eof_4.f90
 eof_5.f90
@@ -781,7 +776,6 @@ execute_command_line_1.f90
 execute_command_line_2.f90
 execute_command_line_3.f90
 exponent_1.f90
-extends_16.f90
 external_procedures_2.f90
 external_procedures_3.f90
 external_procedures_4.f90
@@ -881,7 +875,6 @@ func_derived_3.f90
 func_derived_4.f90
 func_derived_5.f90
 func_result_1.f90
-func_result_2.f90
 func_result_5.f90
 func_result_6.f90
 function_charlen_1.f90
@@ -896,7 +889,6 @@ generic_10.f90
 generic_12.f90
 generic_13.f90
 generic_15.f90
-generic_19.f90
 generic_20.f90
 generic_21.f90
 generic_24.f90
@@ -1474,7 +1466,6 @@ pr114021.f90
 pr114304-2.f90
 pr114304.f90
 pr114535d.f90
-pr114535iv.f90
 pr114618.f90
 pr114739.f90
 pr114874_1.f90
@@ -1737,7 +1728,6 @@ proc_ptr_12.f90
 proc_ptr_18.f90
 proc_ptr_19.f90
 proc_ptr_20.f90
-proc_ptr_21.f90
 proc_ptr_22.f90
 proc_ptr_23.f90
 proc_ptr_25.f90
@@ -1972,7 +1962,6 @@ spec_expr_2.f90
 spec_expr_3.f90
 spec_expr_4.f90
 spec_expr_5.f90
-spec_expr_7.f90
 spec_expr_8.f90
 spec_expr_9.f90
 specification_type_resolution_1.f90
@@ -2001,7 +1990,6 @@ streamio_5.f90
 streamio_6.f90
 streamio_7.f90
 streamio_8.f90
-string_0xfe_0xff_1.f90
 string_5.f90
 string_array_constructor_1.f90
 string_array_constructor_2.f90
@@ -2032,7 +2020,6 @@ substring_equivalence.f90
 substring_integer_index.f90
 sum_zero_array_1.f90
 temporary_1.f90
-test_com_block.f90
 tiny_1.f90
 tiny_2.f90
 transfer_array_intrinsic_1.f90
@@ -2095,7 +2082,6 @@ ubound_1.f90
 unf_read_corrupted_1.f90
 unf_read_corrupted_2.f90
 unf_short_record_1.f90
-unformatted_recl_1.f90
 unit_1.f90
 unlimited_polymorphic_12.f90
 unlimited_polymorphic_13.f90
@@ -2120,7 +2106,6 @@ unpack_zerosize_1.f90
 unreferenced_use_assoc_1.f90
 unsigned_write_2.f90
 use_10.f90
-use_11.f90
 use_13.f90
 use_17.f90
 use_18.f90
@@ -2212,7 +2197,6 @@ write_0_pe_format.f90
 write_check3.f90
 write_direct_eor.f90
 write_fmt_trim.f90
-write_padding.f90
 write_recursive.f90
 write_zero_array.f90
 zero_array_components_1.f90

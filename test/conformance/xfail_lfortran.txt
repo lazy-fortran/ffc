@@ -94,7 +94,6 @@ allocate_69.f90
 allocate_70.f90
 allocate_72.f90
 allocate_73.f90
-allocate_array_descriptor_01.f90
 allocated_01.f90
 allocated_04.f90
 allocated_05.f90
@@ -118,7 +117,6 @@ array_06_transfer.f90
 array_07_transfer.f90
 array_08_transfer.f90
 array_bound_3.f90
-array_bound_5.f90
 array_bound_6.f90
 array_bound_7.f90
 array_concat.f90
@@ -140,7 +138,6 @@ array_init.f90
 arrayitem_01.f90
 arrayitem_02.f90
 array_neg_extent_01.f90
-array_of_strings_01.f90
 array_op_03.f90
 array_op_04.f90
 array_op_05.f90
@@ -164,8 +161,6 @@ arrays_04_size.f90
 arrays_05_size.f90
 arrays_06.f90
 arrays_07.f90
-arrays_08_func.f90
-arrays_08_func_pass_arr_dims.f90
 arrays_08_size.f90
 arrays_09.f90
 arrays_09_size.f90
@@ -225,7 +220,6 @@ arrays_42.f90
 arrays_43.f90
 arrays_44.f90
 arrays_49.f90
-arrays_50.f90
 arrays_51.f90
 arrays_52.f90
 arrays_53.f90
@@ -284,7 +278,6 @@ array_section_05.f90
 array_section_06.f90
 array_section_07.f90
 array_section_08.f90
-array_section_09.f90
 array_section_10.f90
 array_section_11.f90
 array_section_12.f90
@@ -300,7 +293,6 @@ array_section_20.f90
 array_section_21.f90
 array_section_22.f90
 array_section_23.f90
-array_section_24.f90
 array_section_25.f90
 array_section_26.f90
 array_section_27.f90
@@ -312,7 +304,6 @@ array_section_is_non_allocatable.f90
 arrays_elemental_15.f90
 arrays_func_result_elemental_01.f90
 array_shape_func_call.f90
-arrays_inputs_15.f90
 arrays_intrin_02.f90
 arrays_intrin_03.f90
 arrays_intrin_05.f90
@@ -393,11 +384,9 @@ associate_02.f90
 associate_04.f90
 associate_05.f90
 associate_06_module.f90
-associate_07.f90
 associate_08.f90
 associate_09.f90
 associate_10.f90
-associate_11.f90
 associate_12.f90
 associate_13.f90
 associate_14.f90
@@ -421,7 +410,6 @@ associate_31.f90
 associate_32.f90
 associate_33.f90
 associate_34.f90
-associate_35.f90
 associate_36.f90
 associate_37.f90
 associate_38.f90
@@ -553,7 +541,6 @@ call_subroutine_without_type.f90
 case_01.f90
 case_05.f90
 case_06.f90
-case_07.f90
 case_08.f90
 case_09.f90
 c_f_proc_ptr_01.f90
@@ -816,7 +803,6 @@ complex_36.f90
 complex_array_member_access.f90
 complex_cloc_01.f90
 complex_div_test.f90
-complex_dp_param.f90
 complex_implicit_cast.f90
 complex_pow_test.f90
 complex_solutions.f90
@@ -960,7 +946,6 @@ derived_types_11.f90
 derived_types_120.f90
 derived_types_121.f90
 derived_types_122.f90
-derived_types_123.f90
 derived_types_124.f90
 derived_types_125.f90
 derived_types_126.f90
@@ -971,7 +956,6 @@ derived_types_12.f90
 derived_types_130.f90
 derived_types_131.f90
 derived_types_132.f90
-derived_types_133.f90
 derived_types_134.f90
 derived_types_134_module.f90
 derived_types_135.f90
@@ -1020,8 +1004,6 @@ derived_types_42.f90
 derived_types_43.f90
 derived_types_44.f90
 derived_types_46.f90
-derived_types_47.f90
-derived_types_48.f90
 derived_types_50.f90
 derived_types_51.f90
 derived_types_52.f90
@@ -1029,9 +1011,6 @@ derived_types_53.f90
 derived_types_54.f90
 derived_types_55.f90
 derived_types_56.f90
-derived_types_57.f90
-derived_types_58.f90
-derived_types_59.f90
 derived_types_60.f90
 derived_types_61.f90
 derived_types_62.f90
@@ -1078,7 +1057,6 @@ derived_type_shape_pointer_02.f90
 derived_type_shape_pointer_03.f90
 derived_type_target_arg_01.f90
 derived_type_target_arg_02.f90
-derived_type_with_default_init_01.f90
 derived_type_with_default_init.f90
 dfloat_01.f90
 dict_test_01.f90
@@ -1222,9 +1200,7 @@ exponent_inf_01.f90
 expr_01.f90
 expr_05.f90
 expr_09.f90
-expr_12.f90
 expr_13.f90
-expr_16.f90
 expr_17.f90
 expr_18.f90
 expr_19.f90
@@ -1331,8 +1307,6 @@ finalization_05.f90
 finalization_06.f90
 finalization_07.f90
 finalization_pointer_scope_01.f90
-fixed_form_blank_line_01.f90
-fixed_form_comment_01.f90
 fixed_form_do_name_01.f90
 fixed_form_goto.f90
 fixed_form_io_keyword_02.f90
@@ -1723,7 +1697,6 @@ implicit_interface_16b.f90
 implicit_interface_16.f90
 implicit_interface_17.f90
 implicit_interface_19.f90
-implicit_interface_20.f90
 implicit_interface_21.f90
 implicit_interface_22.f90
 implicit_interface_23.f90
@@ -1822,7 +1795,6 @@ inquire_unit_exist.f90
 insertion_sort_01.f90
 int_02.f90
 int_03.f90
-int_dp_param.f90
 integer_bin_op_dim_external_module.f90
 integer_boz_01.f90
 intent_02.f90
@@ -1963,7 +1935,6 @@ intrinsics_182.f90
 intrinsics_183.f90
 intrinsics_184.f90
 intrinsics_185.f90
-intrinsics_186.f90
 intrinsics_187.f90
 intrinsics_188.f90
 intrinsics_189.f90
@@ -2097,7 +2068,6 @@ intrinsics_307.f90
 intrinsics_308.f90
 intrinsics_309.f90
 intrinsics_30.f90
-intrinsics_310.f90
 intrinsics_311.f90
 intrinsics_312.f90
 intrinsics_313.f90
@@ -2310,7 +2280,6 @@ intrinsics_97.f90
 intrinsics_98.f90
 intrinsics_99.f90
 intrinsics_open_close_read_write.f90
-intrinsics_product_nodes_01.f90
 io_direct_slash.f90
 ip_01.f90
 iso_c_binding_01.f90
@@ -2331,15 +2300,12 @@ label_01.f90
 la_constants.f90
 lapack_01.f90
 lapack_02.f90
-lapack_04.f90
-lapack_05.f90
 lapack_06.f90
 lapack_07.f90
 lapack_08.f90
 lapack_10.f90
 lbound_01.f90
 lbound_02.f90
-legacy_array_sections_01.f90
 legacy_array_sections_02.f90
 legacy_array_sections_03.f90
 legacy_array_sections_04b.f90
@@ -2350,17 +2316,12 @@ legacy_array_sections_07.f90
 legacy_array_sections_08.f90
 legacy_array_sections_09.f90
 legacy_array_sections_10.f90
-legacy_array_sections_10_foo.f90
 legacy_array_sections_11.f90
 legacy_array_sections_12.f90
 legacy_array_sections_14.f90
-legacy_array_sections_14_foo.f90
 legacy_array_sections_15.f90
-legacy_array_sections_16.f90
-legacy_array_sections_17.f90
 legacy_array_sections_18.f90
 legacy_array_sections_19.f90
-legacy_array_sections_20.f90
 legacy_array_sections_21.f90
 legacy_array_sections_24.f90
 lfortran_intrinsic_sin.f90
@@ -2422,16 +2383,13 @@ modules_08.f90
 modules_09_a.f90
 modules_09.f90
 modules_12.f90
-modules_14.f90
 modules_15b.f90
 modules_15.f90
-modules_16.f90
 modules_18b.f90
 modules_18.f90
 modules_19b.f90
 modules_19.f90
 modules_20.f90
-modules_21.f90
 modules_22.f90
 modules_22_module.f90
 modules_23.f90
@@ -2722,7 +2680,6 @@ optional_12.f90
 optional_13.f90
 parameter_01.f90
 parameter_02.f90
-parameter_04.f90
 parameter_05.f90
 parameter_06.f90
 parameter_08.f90
@@ -2778,7 +2735,6 @@ pointer_04.f90
 pointer_05.f90
 pointer_06.f90
 pointer_07.f90
-pointer_08.f90
 pointer_09.f90
 pointer_10.f90
 pointer_11.f90
@@ -2899,7 +2855,6 @@ product_01.f90
 product_02.f90
 program_01.f90
 program_03.f90
-program_cmake_02.f90
 pure_side_effects_02.f90
 pure_side_effects_03.f90
 random_init_01.f90
@@ -3010,8 +2965,6 @@ real128_arith_10.f90
 real128_intrinsic_inquiry_01.f90
 real128_int_to_real_01.f90
 real128_literal_01.f90
-real_dp_02.f90
-real_dp_param.f90
 realloc_lhs_16.f90
 realloc_lhs_18.f90
 realloc_lhs_19.f90
@@ -3026,9 +2979,6 @@ recursion_03.f90
 reserved_01.f90
 reserved_02.f90
 reserved_03.f90
-return_01.f90
-return_02.f90
-return_03.f90
 return_05.f90
 return_06.f90
 rewind_01.f90
@@ -3279,7 +3229,6 @@ string_108.f90
 string_109.f90
 string_10.f90
 string_110.f90
-string_111.f90
 string_112.f90
 string_113.f90
 string_114.f90
@@ -3311,7 +3260,6 @@ string_37.f90
 string_38.f90
 string_39.f90
 string_40.f90
-string_41.f90
 string_42.f90
 string_43.f90
 string_45.f90
@@ -3320,7 +3268,6 @@ string_47.f90
 string_48.f90
 string_49.f90
 string_50.f90
-string_51.f90
 string_52.f90
 string_53.f90
 string_54.f90
@@ -3632,7 +3579,6 @@ where_16.f90
 where_17.f90
 while_02.f90
 while_03.f90
-while_04.f90
 while_05.f90
 while_06.f90
 while_07.f90
