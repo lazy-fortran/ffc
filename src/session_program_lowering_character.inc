@@ -887,6 +887,14 @@
             end select
             return
         end if
+        if (is_character_array_element(arena, node_index, context)) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call char_array_element_operands(arena, n, context, data_ptr, &
+                                                 length, error_msg)
+            end select
+            return
+        end if
         if (is_literal(arena, node_index)) then
             if (.not. is_character_literal(arena, node_index)) then
                 call unsupported_feature_error('character expression', 0, 0, &
@@ -923,6 +931,46 @@
             'direct LIRIC session only supports a character variable or '// &
             'trim() here', error_msg)
     end subroutine char_expr_operands
+
+    logical function is_character_array_element(arena, node_index, context) &
+            result(is_elem)
+        ! True when node is a subscripted reference into a declared character
+        ! array (arr(i)), producing a scalar character element.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_elem = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (n%is_array_access) &
+                is_elem = array_access_value_kind(n, context) == VALUE_CHARACTER
+        end select
+    end function is_character_array_element
+
+    subroutine char_array_element_operands(arena, node, context, data_ptr, &
+                                           length, error_msg)
+        ! Load the materialised, blank-padded string pointer for a character
+        ! array element and return it with the array's declared element length.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr
+        integer :: symbol_index
+
+        call lower_character_array_element_slot(arena, node, context, &
+                                                symbol_index, slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, slot_addr, data_ptr, &
+                                error_msg)) return
+        length = i32_immediate(context%session, &
+            int(context%symbols(symbol_index)%character_length, c_int64_t))
+        call set_empty(error_msg)
+    end subroutine char_array_element_operands
 
     logical function is_char_expr_call(arena, node_index)
         ! A call that produces a character value usable in print/assign/len.
@@ -978,6 +1026,10 @@
             return
         end if
         if (is_character_concat(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_character_array_element(arena, node_index, context)) then
             is_char = .true.
             return
         end if
