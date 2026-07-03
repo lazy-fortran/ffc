@@ -538,7 +538,42 @@
             end do
         end if
 
-        ! Either no matching declaration or an array-valued result.
+        ! No explicit result declaration and no result type in the header:
+        ! FortFront leaves return_type empty for an implicitly-typed result (and
+        ! for some explicitly-typed headers it drops the type too). Recover the
+        ! kind from the Fortran default letter rule: i-n integer, else real
+        ! (#249 cluster C). Array results are excluded above. An in-scope IMPLICIT
+        ! statement that overrides the default is not visible here (FortFront
+        ! consumes it), so a result whose implicit kind differs from the default
+        ! keeps the later output-mismatch diagnosis rather than a wrong guess.
+        call implicit_result_kind(node, result_name, value_kind, error_msg)
+    end subroutine result_var_scalar_kind
+
+    subroutine implicit_result_kind(node, result_name, value_kind, error_msg)
+        type(function_def_node), intent(in) :: node
+        character(len=*), intent(in) :: result_name
+        integer, intent(out) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=1) :: first
+
+        value_kind = VALUE_I32
+        call set_empty(error_msg)
+        if (len_trim(result_name) == 0) then
+            call unsupported_result_type(node, error_msg)
+            return
+        end if
+        first = lowercase_text(result_name(1:1))
+        if (first >= 'i' .and. first <= 'n') then
+            value_kind = VALUE_I32
+        else
+            value_kind = VALUE_F32
+        end if
+    end subroutine implicit_result_kind
+
+    subroutine unsupported_result_type(node, error_msg)
+        type(function_def_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+
         call unsupported_feature_error('function result type', &
                                         node%line, node%column, &
                                         'direct LIRIC session supports '// &
@@ -546,7 +581,7 @@
                                         'deferred-length character, and '// &
                                         'derived-type contained functions', &
                                         error_msg)
-    end subroutine result_var_scalar_kind
+    end subroutine unsupported_result_type
 
     subroutine remap_scalar_char_result_kind(context, decl, value_kind)
         ! A scalar character result whose length is deferred (character(len=:))
