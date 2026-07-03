@@ -121,6 +121,10 @@
                 call register_module_procedures(arena, body_indices(i), context, &
                                                 error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (is_submodule_unit(node_type)) then
+                call register_one_submodule_procedures(arena, body_indices(i), &
+                                                       context, error_msg)
+                if (len_trim(error_msg) > 0) return
             end if
         end do
     end subroutine collect_internal_function_names
@@ -975,6 +979,12 @@
         if (size(body_indices) == 0) return
         do i = 1, size(body_indices)
             node_type = get_node_type_at(arena, body_indices(i))
+            if (is_submodule_unit(node_type)) then
+                call lower_one_submodule_procedures(arena, body_indices(i), &
+                                                    context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             if (node_type /= 'module_node' .and. node_type /= 'module') cycle
             call lower_one_module_unit_procedures(arena, body_indices(i), &
                                                   context, error_msg)
@@ -1104,11 +1114,8 @@
         integer, intent(in) :: module_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: mod_name, ff_error, node_type
+        character(len=:), allocatable :: mod_name, ff_error
         integer, allocatable :: declaration_indices(:), procedure_indices(:)
-        integer :: p
-        type(function_def_node), pointer :: fn_node
-        type(subroutine_def_node), pointer :: sb_node
 
         call set_empty(error_msg)
         call get_module_body_info(arena, module_index, mod_name, &
@@ -1118,6 +1125,28 @@
             error_msg = ff_error
             return
         end if
+        call register_procedures_from_indices(arena, declaration_indices, &
+                                              procedure_indices, context, error_msg)
+    end subroutine register_module_procedures
+
+    subroutine register_procedures_from_indices(arena, declaration_indices, &
+                                                procedure_indices, context, &
+                                                error_msg)
+        ! Register a module or submodule unit's procedures by Fortran name and
+        ! its named/operator generic interfaces. Shared by module and submodule
+        ! registration; mangling is resolved later at the call site.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: declaration_indices(:)
+        integer, allocatable, intent(in) :: procedure_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type
+        integer :: p
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        call set_empty(error_msg)
+        if (.not. allocated(procedure_indices)) return
         do p = 1, size(procedure_indices)
             if (.not. node_exists(arena, procedure_indices(p))) cycle
             node_type = get_node_type_at(arena, procedure_indices(p))
@@ -1176,7 +1205,7 @@
                 if (len_trim(error_msg) > 0) return
             end select
         end do
-    end subroutine register_module_procedures
+    end subroutine register_procedures_from_indices
 
     subroutine register_nested_internal_names(arena, body_indices, context, &
                                               error_msg)

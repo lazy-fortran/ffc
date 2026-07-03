@@ -742,13 +742,50 @@
             type is (module_node)
                 if (.not. allocated(node%name)) cycle
                 if (lowercase_text(node%name) /= module_lowered) cycle
-                if (.not. allocated(node%procedure_indices)) return
-                if (module_procedure_named(arena, node, name)) &
+                if (allocated(node%procedure_indices)) then
+                    if (module_procedure_named(arena, node, name)) then
+                        module_exports_procedure = .true.
+                        return
+                    end if
+                end if
+                ! A module procedure declared only by its interface body
+                ! (module function/subroutine) is a public export; its body is
+                ! defined in a submodule (#292).
+                if (module_declares_interface_procedure(arena, node, name)) &
                     module_exports_procedure = .true.
                 return
             end select
         end do
     end function module_exports_procedure
+
+    logical function module_declares_interface_procedure(arena, mod_node, name)
+        ! Whether the module declares `name` as a module procedure through an
+        ! interface body (module function/subroutine), regardless of where the
+        ! implementation lives.
+        type(ast_arena_t), intent(in) :: arena
+        type(module_node), intent(in) :: mod_node
+        character(len=*), intent(in) :: name
+        integer :: d, p
+
+        module_declares_interface_procedure = .false.
+        if (.not. allocated(mod_node%declaration_indices)) return
+        do d = 1, size(mod_node%declaration_indices)
+            if (.not. node_exists(arena, mod_node%declaration_indices(d))) cycle
+            select type (iblock => &
+                arena%entries(mod_node%declaration_indices(d))%node)
+            type is (interface_block_node)
+                if (iblock%is_abstract) cycle
+                if (.not. allocated(iblock%procedure_indices)) cycle
+                do p = 1, size(iblock%procedure_indices)
+                    if (procedure_node_named(arena, iblock%procedure_indices(p), &
+                                             name)) then
+                        module_declares_interface_procedure = .true.
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function module_declares_interface_procedure
 
     logical function module_procedure_named(arena, mod_node, name)
         ! Whether `mod_node` holds a non-private function/subroutine `name`.

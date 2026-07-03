@@ -296,6 +296,11 @@
             data_flushed = .false.
             do i = 1, size(body_indices)
                 if (is_internal_procedure_entry(arena, body_indices(i))) cycle
+                if (is_submodule_unit(get_node_type_at(arena, body_indices(i)))) then
+                    ! A submodule's procedures are emitted upstream against the
+                    ! parent module (#292); the unit itself carries no body code.
+                    cycle
+                end if
                 if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
                     get_node_type_at(arena, body_indices(i)) == 'module') then
                     ! Skip module nodes only if there's a nested program
@@ -423,7 +428,8 @@
             return
         end if
         node_type = get_node_type_at(arena, node_index)
-        if (node_type == 'module_node' .or. node_type == 'module') then
+        if (node_type == 'module_node' .or. node_type == 'module' .or. &
+            is_submodule_unit(node_type)) then
             call set_empty(error_msg)
             return
         end if
@@ -732,6 +738,7 @@
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_derived_ctor.inc'
     include 'session_program_lowering_module_vars.inc'
+    include 'session_program_lowering_submodules.inc'
     include 'session_program_lowering_save.inc'
     include 'session_program_lowering_common.inc'
     include 'session_program_lowering_equivalence.inc'

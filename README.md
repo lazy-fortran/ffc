@@ -91,7 +91,11 @@ flat functions. A `logical`-valued function call (contained or module) prints
 directly as `T`/`F`, and a module function with a deferred-length
 (`character(len=:)`) or runtime-length (`character(len=len(arg))`) character
 result is callable and printable from a program in the same file. Module-level
-integer variables persist as globals and are visible across `use`. The `associate` construct binds scalar selectors. The
+integer variables persist as globals and are visible across `use`. A single-file
+`submodule (m) s` implements the module procedures its parent module `m`
+declares through interface bodies; both the restated signature form and the
+separate `module procedure` form lower under the parent's mangled symbol, so a
+`use m` call resolves regardless of which submodule holds the body. The `associate` construct binds scalar selectors. The
 `where` construct masks elementwise assignment over rank-1 integer and real
 arrays, including a final `elsewhere`. The `forall` construct, single-statement
 and block form, lowers to a sequential loop nest over its index set, with an

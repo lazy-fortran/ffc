@@ -613,28 +613,43 @@
     end function procedure_emit_name
 
     function procedure_module(arena, fortran_name) result(module_name)
-        ! The module that defines a procedure, or empty if not module-defined.
+        ! The module a procedure belongs to for mangling, or empty if not
+        ! module-defined. A submodule's module procedure is owned by the
+        ! ancestor module named in its parent reference (#292), so the call site
+        ! mangles to __<parent>_MOD_<name> just like the interface it implements.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
         character(len=:), allocatable :: module_name
-        character(len=:), allocatable :: node_type, mod_name, ff_error
+        character(len=:), allocatable :: node_type, mod_name, parent_module, &
+                                         ff_error
         integer, allocatable :: declaration_indices(:), procedure_indices(:)
         integer :: n, p
-        type(function_def_node), pointer :: fn_node
-        type(subroutine_def_node), pointer :: sb_node
 
         call set_empty(module_name)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
-            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
-            call get_module_body_info(arena, n, mod_name, declaration_indices, &
-                                      procedure_indices, ff_error)
+            if (node_type == 'module_node' .or. node_type == 'module') then
+                call get_module_body_info(arena, n, mod_name, declaration_indices, &
+                                          procedure_indices, ff_error)
+            else if (node_type == 'submodule_node' .or. &
+                     node_type == 'submodule') then
+                call get_submodule_body_info(arena, n, mod_name, parent_module, &
+                                             declaration_indices, &
+                                             procedure_indices, ff_error)
+            else
+                cycle
+            end if
             if (len_trim(ff_error) > 0) cycle
             if (size(procedure_indices) == 0) cycle
             do p = 1, size(procedure_indices)
                 if (procedure_node_named(arena, procedure_indices(p), fortran_name)) then
-                    module_name = trim(mod_name)
+                    if (node_type == 'submodule_node' .or. &
+                        node_type == 'submodule') then
+                        module_name = trim(parent_module)
+                    else
+                        module_name = trim(mod_name)
+                    end if
                     return
                 end if
             end do
