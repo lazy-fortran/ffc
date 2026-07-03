@@ -208,9 +208,12 @@ logical literal (`status=1`, `advance=5.`); a relational comparison whose
 operands have incompatible intrinsic type classes (`b == i` for logical
 `b` and integer `i`, or `c == i` for character `c`); a fixed-size
 array assigned an array constructor of the wrong length (`a = [1, 2, 3]`
-for `integer :: a(4)`); and a named generic interface whose two specific
+for `integer :: a(4)`); a named generic interface whose two specific
 procedures share an indistinguishable scalar dummy signature (`ambiguous
-interfaces`, F2018 C1514), each fail with a diagnostic.
+interfaces`, F2018 C1514); and a scalar actual (literal or scalar variable)
+passed where a procedure with an explicit interface in the same unit declares
+an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4), each fail with a
+diagnostic.
 
 ## Build
 

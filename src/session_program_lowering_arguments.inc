@@ -49,6 +49,18 @@
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
+            ! A scalar actual (literal or scalar variable, not an array element)
+            ! passed where the callee declares an array dummy is a rank mismatch
+            ! (F2018 15.5.2.4). callee_dummy_is_array only resolves against a
+            ! procedure defined or interfaced in this unit, so external calls
+            ! without an explicit interface never trip this.
+            if (callee_dummy_is_array(arena, callee_name, &
+                                      call_arg_param_pos(i, sp)) .and. &
+                actual_is_definite_scalar(arena, arg_indices(i), context)) then
+                error_msg = 'Rank mismatch in argument to '//trim(callee_name)// &
+                    ': scalar actual passed to array dummy argument'
+                return
+            end if
             ! A character actual passed to a character(len=*) dummy is a single
             ! reference parameter pointing at a {data, length} descriptor. Use
             ! that ABI only when the callee actually declares the dummy as
@@ -231,6 +243,33 @@
         actual_is_whole_array = context%symbols(symbol_index)%is_array .and. &
                                 .not. context%symbols(symbol_index)%is_allocatable
     end function actual_is_whole_array
+
+    logical function actual_is_definite_scalar(arena, node_index, context)
+        ! Whether an actual argument is statically certain to be scalar (rank 0):
+        ! a plain scalar literal, or an identifier bound to a non-array symbol.
+        ! Array elements and sections are call_or_subscript nodes, not
+        ! identifiers, so sequence-associated scalars (e.g. b(3)) never match.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_definite_scalar = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (get_node_type_at(arena, node_index) == 'literal') then
+            actual_is_definite_scalar = .true.
+            return
+        end if
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) return
+        if (context%symbols(symbol_index)%is_array) return
+        if (context%symbols(symbol_index)%array_rank > 0) return
+        actual_is_definite_scalar = .true.
+    end function actual_is_definite_scalar
 
     subroutine whole_array_actual_address(arena, node_index, context, address, &
                                           error_msg)
