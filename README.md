@@ -62,7 +62,11 @@ program-contained and module procedures. A rank-1 assumed-shape dummy of a
 subroutine also accepts a rank-1 allocatable actual of runtime-only extent:
 the extent travels as a hidden argument, so `size(a)`, `ubound(a, 1)`,
 element read/write, a `do` loop bound by `size(a)`, and integer `sum(a)`
-all work against the caller's runtime allocation. A scalar
+all work against the caller's runtime allocation. An assumed-size dummy
+(`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
+at compile time and binds to the actual's base address, so element read/write
+and `lbound(a, dim)` work; the trailing dimension carries no extent, so
+`ubound`/`size` on it and whole-array operations are not supported. A scalar
 `integer`/`real`/`logical, allocatable` variable
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
 with any source expression; a rank-1/rank-2 allocatable array dummy argument

@@ -111,6 +111,142 @@
         end select
     end function declaration_is_assumed_rank
 
+    logical function dim_is_assumed_size(arena, dim_index) result(is_assumed)
+        ! A bare asterisk dimension a(*) parses to an array_bounds_node
+        ! flagged is_assumed_size.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: dim_index
+
+        is_assumed = .false.
+        if (.not. node_exists(arena, dim_index)) return
+        select type (dim_node => arena%entries(dim_index)%node)
+        type is (array_bounds_node)
+            is_assumed = dim_node%is_assumed_size
+        end select
+    end function dim_is_assumed_size
+
+    logical function declaration_is_assumed_size(node, context) result(is_assumed)
+        ! An assumed-size dummy a(*) or a(n1, ..., *): the last dimension is
+        ! a bare asterisk and every leading dimension is an explicit extent
+        ! (never a colon or another asterisk).
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: dim_count, i
+
+        is_assumed = .false.
+        if (.not. allocated(node%dimension_indices)) return
+        dim_count = size(node%dimension_indices)
+        if (dim_count < 1) return
+        if (.not. dim_is_assumed_size(context%arena, &
+                                      node%dimension_indices(dim_count))) return
+        do i = 1, dim_count - 1
+            if (dim_is_assumed_size(context%arena, node%dimension_indices(i))) &
+                return
+            if (dim_is_assumed_shape(context%arena, node%dimension_indices(i))) &
+                return
+        end do
+        is_assumed = .true.
+    end function declaration_is_assumed_size
+
+    subroutine lower_assumed_size_declaration(node, context, value_kind, &
+                                              error_msg)
+        ! Bind an assumed-size dummy a(n1, ..., *) to its parameter base: fold
+        ! the explicit leading dimensions at compile time for element-address
+        ! strides. The trailing asterisk dimension stays unbounded; element
+        ! addressing never needs its extent (lower_array_element_linear_index
+        ! computes the last dimension's stride but never uses it).
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_count, array_lower_bound, i
+
+        dim_count = size(node%dimension_indices)
+        if (dim_count > ARRAY_MAX_RANK) then
+            call unsupported_feature_error('array declaration', node%line, &
+                node%column, 'direct LIRIC session supports at most rank-7 '// &
+                'arrays', error_msg)
+            return
+        end if
+        call get_assumed_size_leading_bounds(node, context, dim_count, &
+                                             array_lower_bound, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call define_declared_array_symbol(context, node, &
+                    node%var_names(i), array_lower_bound, 0, value_kind, &
+                    error_msg, is_assumed_size=.true.)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call define_declared_array_symbol(context, node, node%var_name, &
+                array_lower_bound, 0, value_kind, error_msg, &
+                is_assumed_size=.true.)
+        else
+            error_msg = 'assumed-size declaration did not expose a variable name'
+        end if
+    end subroutine lower_assumed_size_declaration
+
+    subroutine get_assumed_size_leading_bounds(node, context, dim_count, &
+                                               array_lower_bound, error_msg)
+        ! Fold the leading (non-asterisk) dimensions of an assumed-size dummy
+        ! to recover dim1's lower bound, matching get_array_bounds for the
+        ! explicit dimensions and leaving the trailing asterisk untouched.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: array_lower_bound
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, dim_index
+        integer(c_int64_t) :: lower_value, upper_value, extent
+
+        array_lower_bound = 1
+        call set_empty(error_msg)
+        do i = 1, dim_count - 1
+            dim_index = node%dimension_indices(i)
+            if (.not. node_exists(context%arena, dim_index)) then
+                error_msg = 'array dimension index does not reference an AST node'
+                return
+            end if
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                if (dim_node%stride_index > 0) then
+                    call unsupported_feature_error('array declaration', &
+                        node%line, node%column, 'array declaration bounds '// &
+                        'do not support strides', error_msg)
+                    return
+                end if
+                if (dim_node%start_index <= 0 .or. dim_node%end_index <= 0) then
+                    call unsupported_feature_error('array declaration', &
+                        node%line, node%column, 'array declaration requires '// &
+                        'explicit lower and upper bounds', error_msg)
+                    return
+                end if
+                call eval_i32_constant(context%arena, dim_node%start_index, &
+                                       context, lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(context%arena, dim_node%end_index, &
+                                       context, upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value - lower_value + 1_c_int64_t
+            class default
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                lower_value = 1_c_int64_t
+                extent = upper_value
+            end select
+            if (extent <= 0_c_int64_t) then
+                call unsupported_feature_error('array declaration', node%line, &
+                    node%column, 'array bounds produce a non-positive extent', &
+                    error_msg)
+                return
+            end if
+            if (i == 1) array_lower_bound = int(lower_value)
+        end do
+    end subroutine get_assumed_size_leading_bounds
+
     subroutine lower_assumed_rank_declaration(node, context, value_kind, &
                                               error_msg)
         ! Bind an assumed-rank dummy arr(..) to its parameter base and to the
@@ -1268,7 +1404,7 @@
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
                                             array_size, value_kind, error_msg, &
-                                            assumed_extents)
+                                            assumed_extents, is_assumed_size)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
@@ -1279,6 +1415,9 @@
         ! For an assumed-shape dummy a(:), the caller-derived extent per
         ! dimension (lower bound 1). Present and positive only for assumed-shape.
         integer, intent(in), optional :: assumed_extents(:)
+        ! True for an assumed-size dummy a(n1, ..., *): the trailing dimension
+        ! carries no compile-time extent, so its fold below is skipped.
+        logical, intent(in), optional :: is_assumed_size
         integer :: index
         integer :: dim_count
         integer :: i
@@ -1391,6 +1530,13 @@
 
         if (dim_count >= 1 .and. allocated(node%dimension_indices)) then
             do i = 1, dim_count
+                if (present(is_assumed_size)) then
+                    if (is_assumed_size .and. i == dim_count) then
+                        context%symbols(index)%array_dim_lowers(i) = 1
+                        context%symbols(index)%array_dim_sizes(i) = 0
+                        cycle
+                    end if
+                end if
                 dim_index = node%dimension_indices(i)
                 if (.not. node_exists(context%arena, dim_index)) cycle
                 select type (dim_node => context%arena%entries(dim_index)%node)

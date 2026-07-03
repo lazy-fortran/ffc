@@ -422,6 +422,14 @@ contains
                     error_msg)
                 return
             end if
+            ! Assumed-size dummy a(n1, ..., *): the trailing asterisk carries
+            ! no compile-time extent, so fold only the leading dimensions and
+            ! bind the parameter base without a whole-array size.
+            if (declaration_is_assumed_size(node, context)) then
+                call lower_assumed_size_declaration(node, context, value_kind, &
+                    error_msg)
+                return
+            end if
             ! A runtime-sized array function result (dimension(n) with dummy n):
             ! its extent does not fold at compile time. The result symbol is
             ! pre-bound to the sret buffer, so skip bound folding and let
