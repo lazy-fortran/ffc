@@ -39,11 +39,28 @@
         integer :: visible_count
         integer :: hidden_count
         integer :: sp
+        integer :: param_count
 
         sp = 0
         if (present(self_position)) sp = self_position
         visible_count = size(arg_indices)
         hidden_count = callee_hidden_extent_count(context, callee_name)
+
+        ! More actual arguments than the callee (defined or interfaced in this
+        ! unit) declares is always invalid, whatever the argument keywords or
+        ! optionality. A missing trailing dummy is left to the optional-padding
+        ! path, which cannot tell optional from required, so only the excess is
+        ! diagnosed here. Type-bound calls (sp > 0) carry a hidden receiver and
+        ! are skipped to keep the count comparison exact.
+        if (sp <= 0) then
+            param_count = arena_proc_param_count(arena, callee_name)
+            if (param_count >= 0 .and. visible_count > param_count) then
+                error_msg = 'More actual than formal arguments in call to '// &
+                    trim(callee_name)
+                return
+            end if
+        end if
+
         allocate (args(visible_count + hidden_count))
         allocate (copyback_indices(visible_count + hidden_count))
         copyback_indices = 0

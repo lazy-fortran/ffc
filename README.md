@@ -210,10 +210,11 @@ operands have incompatible intrinsic type classes (`b == i` for logical
 array assigned an array constructor of the wrong length (`a = [1, 2, 3]`
 for `integer :: a(4)`); a named generic interface whose two specific
 procedures share an indistinguishable scalar dummy signature (`ambiguous
-interfaces`, F2018 C1514); and a scalar actual (literal or scalar variable)
+interfaces`, F2018 C1514); a scalar actual (literal or scalar variable)
 passed where a procedure with an explicit interface in the same unit declares
-an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4), each fail with a
-diagnostic.
+an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4); and a call passing
+more actual arguments than that in-unit callee declares dummies (`More actual
+than formal arguments`), each fail with a diagnostic.
 
 ## Build
 
