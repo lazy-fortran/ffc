@@ -104,7 +104,11 @@ through the `.fmod` and the two objects link, each keeping its own string and
 format literals (#284). A module-scope
 scalar variable of a registered derived type is likewise a flat slot global, its
 compile-time component defaults folded into the static bytes and read through
-`use` (including a `use ..., alias => var` rename). A single-file
+`use` (including a `use ..., alias => var` rename). A file whose
+top-level units are one or more modules with no main program is a valid
+translation unit: it lowers to a no-op main, so it compiles to an object with
+`-c` (each module's procedures under their mangled symbols) and links to an
+empty executable, matching gfortran's own module-only object. A single-file A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a

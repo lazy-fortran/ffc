@@ -508,20 +508,12 @@
                 end if
                 if (get_node_type_at(arena, body_indices(i)) == 'module_node' .or. &
                     get_node_type_at(arena, body_indices(i)) == 'module') then
-                    ! A module node carries no executable body for a main; its
-                    ! procedures are lowered separately. Skip it when a nested
-                    ! program owns the main, or when the whole unit is module-only
-                    ! and compiled to an object (#284). Only an executable build
-                    ! with no program to run rejects here.
-                    if (.not. has_nested_program .and. &
-                        .not. context%unit_is_module_only) then
-                        call unsupported_feature_error('module definition', &
-                            arena%entries(body_indices(i))%node%line, &
-                            arena%entries(body_indices(i))%node%column, &
-                            'direct LIRIC session only supports modules as USE '// &
-                            'targets, not as top-level program units', error_msg)
-                        return
-                    end if
+                    ! A module unit contributes no in-body statement: its
+                    ! procedures and variables are emitted upstream by
+                    ! lower_module_procedures / lower_module_variables. A file of
+                    ! one or more top-level modules with no main program then
+                    ! lowers to a no-op main, matching gfortran's own empty-object
+                    ! result for a module-only unit (#275, #284).
                     cycle
                 end if
                 ! FortFront expands each DATA statement into the data_statement
