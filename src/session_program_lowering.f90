@@ -1633,6 +1633,43 @@ contains
                     value, error_msg)) return
                 return
             end if
+            ! A comparison with a non-default-width integer operand
+            ! (integer(1)/(2)/(8)) lowers each side through its matching
+            ! iN path so the icmp compares same-width operands; emit_liric_i32_icmp
+            ! is width-agnostic (the LIRIC IR infers width from the operands).
+            if (is_i64_binary_op(arena, node_index, context)) then
+                call lower_i64_expression(arena, bin_left, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_i64_expression(arena, bin_right, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call integer_compare_predicate(bin_op, pred, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
+                    value, error_msg)) return
+                return
+            end if
+            if (is_i16_binary_op(arena, node_index, context)) then
+                call lower_i16_expression(arena, bin_left, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_i16_expression(arena, bin_right, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call integer_compare_predicate(bin_op, pred, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
+                    value, error_msg)) return
+                return
+            end if
+            if (is_i8_binary_op(arena, node_index, context)) then
+                call lower_i8_expression(arena, bin_left, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_i8_expression(arena, bin_right, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call integer_compare_predicate(bin_op, pred, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, pred, lhs, rhs, &
+                    value, error_msg)) return
+                return
+            end if
             call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
             if (len_trim(error_msg) > 0) return
             call lower_i32_expression(arena, bin_right, context, rhs, error_msg)

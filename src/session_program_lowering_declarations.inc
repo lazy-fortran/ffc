@@ -323,13 +323,20 @@
 
         call set_empty(error_msg)
         select case (trim(kind_spec))
-        case ('1', 'int8', 'c_int8_t', 'c_signed_char')
+        case ('1', 'int8', 'c_int8_t', 'c_signed_char', &
+              'c_int_least8_t', 'c_int_fast8_t')
             value_kind = VALUE_I8
-        case ('2', 'int16', 'c_int16_t', 'c_short')
+        case ('2', 'int16', 'c_int16_t', 'c_short', &
+              'c_int_least16_t', 'c_int_fast16_t')
             value_kind = VALUE_I16
-        case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char', 'int32')
+        case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char', 'int32', &
+              'c_int_least32_t', 'c_int_fast32_t')
             value_kind = VALUE_I32
-        case ('8', 'int64', 'c_int64_t', 'c_long', 'c_long_long')
+        case ('8', 'int64', 'c_int64_t', 'c_long', 'c_long_long', &
+              'c_int_least64_t', 'c_int_fast64_t', &
+              'c_size_t', 'c_intptr_t', 'c_ptrdiff_t', 'c_intmax_t')
+            ! LP64 Linux: size_t/intptr_t/ptrdiff_t/intmax_t are 8 bytes,
+            ! matching the liric session's native 64-bit target.
             value_kind = VALUE_I64
         case default
             value_kind = VALUE_I32
@@ -347,9 +354,9 @@
         character(len=*), intent(in) :: kind_spec
 
         select case (trim(kind_spec))
-        case ('8', 'real64', 'c_double', 'c_long_double', 'dp')
-            ! dp is the conventional double-precision kind parameter
-            ! (dp => real64); sp/default stay f32.
+        case ('8', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
+            ! dp/wp are the conventional double-precision kind parameters
+            ! (dp/wp => real64 or selected_real_kind(15)); sp/default stay f32.
             real_kind_is_f64 = .true.
         case default
             real_kind_is_f64 = .false.

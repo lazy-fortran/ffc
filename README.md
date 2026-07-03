@@ -53,7 +53,12 @@ integer `pointer`/`target` with `p => t`, read/write through `p`,
 in array-bound and `parameter` initializer positions also covers `kind`,
 `size`, `len`, `min`, `max`, `int`, `huge`, `bit_size`, `precision`, `range`,
 `selected_char_kind`, and a bare `iso_c_binding` kind name used as a value
-(`c_bool`, `c_int`, `c_long`, ...). Derived types take scalar
+(`c_bool`, `c_int`, `c_long`, ...). Non-default integer kinds
+`integer(1)`/`(2)`/`(8)` (and their `iso_c_binding` C-interop kind names, incl.
+`c_size_t`/`c_intptr_t`/`c_ptrdiff_t`/`c_intmax_t`) support arithmetic,
+comparison, and `print`; `real(8)` recognizes the `dp`/`wp` kind alias
+convention. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
+including a mixed real/complex operand. Derived types take scalar
 integer, real, logical, and `c_ptr` components, fixed-size rank-1 integer,
 real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
 and scalar nested derived components (`type(inner) :: c`, accessed
