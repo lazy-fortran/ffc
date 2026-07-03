@@ -98,7 +98,14 @@ and a scalar structure constructor over integer/real/logical components
 its positional arguments into the target, whether written as an executable
 assignment or as a scalar variable initializer (`type(t) :: v = t(1, 2.5)`).
 Integer, default-real (f32), and logical component default initialisers
-materialise on default-initialised instances. A
+materialise on default-initialised instances, propagating through nested
+components so an inner type's own defaults show up inline (`x%c%field`). A
+nested component may carry a bare `inner()` default-constructor initialiser, and
+a bare `t()` constructor default-initialises an instance, including for a type
+with nested components. A scalar derived `parameter` initialised by a
+constructor (`type(t), parameter :: p = t(2, 3)`) is supported at program and
+module scope. A type carrying a `final` binding is usable (finalisation is not
+modelled, so the finaliser never runs). A
 contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
@@ -118,7 +125,10 @@ through the `.fmod` and the two objects link, each keeping its own string and
 format literals (#284). A module-scope
 scalar variable of a registered derived type is likewise a flat slot global, its
 compile-time component defaults folded into the static bytes and read through
-`use` (including a `use ..., alias => var` rename). A file whose
+`use` (including a `use ..., alias => var` rename); an explicit
+structure-constructor initialiser with constant integer arguments folds into
+those bytes, and a scalar derived `parameter` exports through the same slot
+global (honouring `use, only:`). A file whose
 top-level units are one or more modules with no main program is a valid
 translation unit: it lowers to a no-op main, so it compiles to an object with
 `-c` (each module's procedures under their mangled symbols) and links to an
