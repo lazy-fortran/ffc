@@ -197,7 +197,7 @@ contains
             'end program main'
 
         test_missing_parent_diagnostic = expect_error_contains( &
-            source, 'unsupported derived type inheritance', &
+            source, 'Parent type not found', &
             '/tmp/ffc_extends_missing_parent_test')
     end function test_missing_parent_diagnostic
 

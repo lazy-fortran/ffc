@@ -209,6 +209,11 @@
             if (len_trim(error_msg) > 0) return
             context%symbols(symbol_index)%has_address = .true.
             context%symbols(symbol_index)%is_reference = .true.
+            if (node%has_initializer .and. node%initializer_index > 0) then
+                call lower_scalar_initializer(context, name, value_kind, &
+                                              node%initializer_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         else
             ! A pointer starts unassociated; `p => t` fills in the slot address.
             context%symbols(symbol_index)%is_pointer = .true.

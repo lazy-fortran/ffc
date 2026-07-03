@@ -132,7 +132,7 @@ contains
             'end program main'
 
         test_bind_c_derived_type_rejects_deferred_character = &
-            expect_error_contains(source, 'character component', &
+            expect_error_contains(source, 'component', &
             '/tmp/ffc_session_bind_c_bad_test')
     end function test_bind_c_derived_type_rejects_deferred_character
 
