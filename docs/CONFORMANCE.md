@@ -20,10 +20,25 @@ referenced by path.
 | `lfortran` | LFortran integration tests | `.f90` | `gfortran -w` |
 | `gfortran-dg` | GCC gfortran.dg testsuite | `.f90` | `gfortran -w` |
 
+## Fetching corpora
+
+`scripts/fetch_corpora.sh` clones the external corpora to the default
+sibling paths: a shallow lfortran clone and a blobless sparse checkout
+of `gcc/testsuite/gfortran.dg` from the GCC mirror. Existing checkouts
+are left untouched; `--update` pulls the latest upstream. A corpus
+argument (`lfortran`, `gfortran-dg`) restricts the fetch.
+
+```bash
+scripts/fetch_corpora.sh              # fetch anything missing
+scripts/fetch_corpora.sh --update     # pull latest upstream
+```
+
 ## Environment variables
 
 Set these to point at local checkouts of the external repositories.
 Defaults assume sibling directories under the parent of the ffc checkout.
+`scripts/fetch_corpora.sh` honors the same variables when choosing
+destinations.
 
 | Variable | Default | Suite |
 |---|---|---|

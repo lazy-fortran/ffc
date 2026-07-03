@@ -1894,9 +1894,6 @@ include_02.f90
 include_03.f90
 include_04.f90
 infer_walrus_01.f90
-infer_walrus_02.f90
-infer_walrus_03.f90
-infer_walrus_array_01.f90
 infer_walrus_shadow_01.f90
 infer_walrus_shadow_02.f90
 infer_walrus_shadow_03.f90

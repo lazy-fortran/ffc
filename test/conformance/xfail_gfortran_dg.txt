@@ -36,7 +36,6 @@ actual_array_constructor_1.f90
 actual_array_constructor_2.f90
 actual_array_constructor_3.f90
 actual_array_interface_1.f90
-actual_array_interface_2.f90
 actual_array_offset_1.f90
 actual_array_result_1.f90
 actual_array_subref.f90
@@ -46,7 +45,6 @@ actual_pointer_function_1.f90
 actual_procedure_1.f90
 adjustl_1.f90
 advance_1.f90
-advance_2.f90
 advance_4.f90
 advance_5.f90
 advance_6.f90
@@ -54,7 +52,6 @@ aint_anint_1.f90
 aliasing_array_result_1.f90
 aliasing_complex_pointer.f90
 aliasing_dummy_2.f90
-aliasing_dummy_3.f90
 aliasing_dummy_4.f90
 aliasing_dummy_5.f90
 alloc_alloc_expr_2.f90
@@ -145,7 +142,6 @@ allocate_with_source_31.f90
 allocate_with_source_32.f90
 allocate_with_source_5.f90
 allocate_with_typespec_1.f90
-allocate_with_typespec_6.f90
 allocate_zerosize_1.f90
 allocate_zerosize_2.f90
 allocated_1.f90
@@ -170,13 +166,11 @@ array_5.f90
 array_alloc_1.f90
 array_alloc_2.f90
 array_alloc_3.f90
-array_constructor_1.f90
 array_constructor_10.f90
 array_constructor_12.f90
 array_constructor_16.f90
 array_constructor_17.f90
 array_constructor_19.f90
-array_constructor_20.f90
 array_constructor_21.f90
 array_constructor_3.f90
 array_constructor_31.f90
@@ -200,7 +194,6 @@ array_constructor_6.f90
 array_constructor_7.f90
 array_constructor_8.f90
 array_constructor_9.f90
-array_constructor_type_23.f90
 array_constructor_typespec_1.f90
 array_function_1.f90
 array_function_3.f90
@@ -237,7 +230,6 @@ assign_12.f90
 assign_13.f90
 assign_9.f90
 assignment_3.f90
-associate_10.f90
 associate_12.f90
 associate_13.f90
 associate_14.f90
@@ -275,7 +267,6 @@ associate_65.f90
 associate_67.f90
 associate_68.f90
 associate_71.f90
-associate_73.f90
 associate_74.f90
 associate_75.f90
 associate_77.f90
@@ -345,31 +336,20 @@ bind_c_optional-1.f90
 bind_c_optional-2.f90
 bind_c_procs_2.f90
 bind_c_procs_3.f90
-bind_c_usage_15.f90
 bind_c_usage_19.f90
 bind_c_usage_21.f90
 bind_c_usage_29.f90
 bind_c_usage_30.f90
-binding_label_tests_19.f90
 binding_label_tests_23.f90
 binding_label_tests_24.f90
-binding_label_tests_25.f90
 binding_label_tests_26a.f90
 binding_label_tests_31.f90
 binding_label_tests_32.f90
 binding_label_tests_33.f90
-block_10.f90
 block_14.f90
-block_17.f90
 block_name_1.f90
 blockdata_11.f90
-blockdata_2.f90
 blockdata_7.f90
-bom_UTF-32.f90
-bom_UTF-8.f90
-bom_UTF16-BE.f90
-bom_UTF16-LE.f90
-bom_include.f90
 bound_1.f90
 bound_10.f90
 bound_11.f90
@@ -550,15 +530,12 @@ contiguous_6.f90
 contiguous_8.f90
 continuation_12.f90
 continuation_8.f90
-convert_1.f90
 count_mask_1.f90
 coverage.f90
 cray_pointers_13.f90
 cshift_1.f90
 cshift_2.f90
 cshift_nan_1.f90
-cshift_shift_real_2.f90
-ctrl-z.f90
 data_array_1.f90
 data_array_4.f90
 data_array_7.f90
@@ -715,14 +692,7 @@ do_check_7.f90
 do_concurrent_13.f90
 do_concurrent_14.f90
 do_concurrent_2.f90
-do_concurrent_basic.f90
-do_concurrent_multiple_reduce.f90
-do_concurrent_nested.f90
-do_concurrent_reduce_max.f90
-do_concurrent_reduce_sum.f90
-do_concurrent_shared.f90
 do_pointer_1.f90
-do_subscript_4.f90
 do_while_1.f90
 dot_product_4.f90
 dtio_1.f90
@@ -763,7 +733,6 @@ elemental_dependency_6.f90
 elemental_function_1.f90
 elemental_function_2.f90
 elemental_function_3.f90
-elemental_function_5.f90
 elemental_initializer_1.f90
 elemental_optional_args_2.f90
 elemental_optional_args_3.f90
@@ -781,8 +750,6 @@ elemental_subroutine_7.f90
 elemental_subroutine_9.f90
 empty_function_1.f90
 empty_type.f90
-end_associate_label_1.f90
-end_block_label_1.f90
 endfile.f90
 endfile_2.f90
 endfile_5.f90
@@ -803,7 +770,6 @@ entry_8.f90
 entry_9.f90
 entry_array_specs_3.f90
 entry_dummy_ref_3.f90
-enum_1.f90
 eof_1.f90
 eof_2.f90
 eof_3.f90
@@ -829,9 +795,7 @@ execute_command_line_1.f90
 execute_command_line_2.f90
 execute_command_line_3.f90
 exponent_1.f90
-extends_15.f90
 extends_16.f90
-external_procedure_4.f90
 external_procedures_2.f90
 external_procedures_3.f90
 external_procedures_4.f90
@@ -882,7 +846,6 @@ findloc_3.f90
 findloc_4.f90
 findloc_5.f90
 findloc_6.f90
-findloc_7.f90
 findloc_8.f90
 flush_1.f90
 fmt_cache_3.f90
@@ -963,7 +926,6 @@ generic_31.f90
 generic_33.f90
 generic_36-1.f90
 generic_4.f90
-generic_6.f90
 generic_8.f90
 generic_stmt_1.f90
 generic_stmt_4.f90
@@ -972,10 +934,8 @@ goto_4.f90
 hollerith_9.f90
 host_assoc_blockdata_1.f90
 host_assoc_call_1.f90
-host_assoc_call_3.f90
 host_assoc_call_4.f90
 host_assoc_call_5.f90
-host_assoc_call_6.f90
 host_assoc_function_1.f90
 host_assoc_function_2.f90
 host_assoc_function_3.f90
@@ -1011,12 +971,10 @@ import.f90
 import10.f90
 import11.f90
 import4.f90
-import5.f90
 import6.f90
 import7.f90
 import9.f90
 in_pack_rank7.f90
-include_16.f90
 include_4.f90
 index.f90
 index_3.f90
@@ -1024,8 +982,6 @@ index_5.f90
 initialization_11.f90
 initialization_12.f90
 initialization_14.f90
-initialization_15.f90
-initialization_19.f90
 initialization_2.f90
 initialization_20.f90
 initialization_22.f90
@@ -1035,7 +991,6 @@ initialization_29.f90
 inline_matmul_20.f90
 inline_matmul_21.f90
 inline_matmul_22.f90
-inline_sum_2.f90
 inline_sum_3.f90
 inline_sum_4.f90
 inline_sum_5.f90
@@ -1060,7 +1015,6 @@ int_2.f90
 int_3.f90
 integer_plus.f90
 intent_decl_1.f90
-intent_out_10.f90
 intent_out_12.f90
 intent_out_13.f90
 intent_out_14.f90
@@ -1080,9 +1034,7 @@ interface_10.f90
 interface_11.f90
 interface_12.f90
 interface_13.f90
-interface_14.f90
 interface_16.f90
-interface_17.f90
 interface_19.f90
 interface_2.f90
 interface_25.f90
@@ -1091,7 +1043,6 @@ interface_31.f90
 interface_32.f90
 interface_4.f90
 interface_41.f90
-interface_43.f90
 interface_49.f90
 interface_53.f90
 interface_54.f90
@@ -1121,7 +1072,6 @@ internal_readwrite_1.f90
 internal_readwrite_2.f90
 internal_readwrite_3.f90
 internal_readwrite_4.f90
-internal_references_2.f90
 intrinsic_1.f90
 intrinsic_7.f90
 intrinsic_8.f90
@@ -1182,7 +1132,6 @@ list_read_7.f90
 list_read_8.f90
 list_read_9.f90
 loc_1.f90
-logical_data_1.f90
 logical_dot_product.f90
 logical_temp_io.f90
 longnames.f90
@@ -1282,9 +1231,7 @@ module_equivalence_2.f90
 module_equivalence_3.f90
 module_equivalence_4.f90
 module_equivalence_5.f90
-module_equivalence_6.f90
 module_error_1.f90
-module_function_type_1.f90
 module_interface_1.f90
 module_interface_2.f90
 module_parameter_array_refs_1.f90
@@ -1294,7 +1241,6 @@ module_procedure_1.f90
 module_procedure_3.f90
 module_procedure_5.f90
 module_procedure_6.f90
-module_procedure_double_colon_1.f90
 module_read_2.f90
 module_write_1.f90
 move_alloc.f90
@@ -1306,7 +1252,6 @@ move_alloc_16.f90
 move_alloc_18.f90
 move_alloc_19.f90
 move_alloc_2.f90
-move_alloc_3.f90
 move_alloc_5.f90
 move_alloc_6.f90
 move_alloc_7.f90
@@ -1372,7 +1317,6 @@ namelist_83_2.f90
 namelist_84.f90
 namelist_88.f90
 namelist_89.f90
-namelist_91.f90
 namelist_95.f90
 namelist_96.f90
 namelist_97.f90
@@ -1399,7 +1343,6 @@ nesting_3.f90
 new_line.f90
 newunit_1.f90
 newunit_3.f90
-newunit_4.f90
 newunit_5.f90
 nint_1.f90
 nint_2.f90
@@ -1411,11 +1354,9 @@ noreturn-3.f90
 norm2_1.f90
 norm2_5.f90
 nosigned_zero_1.f90
-null1.f90
 null_10.f90
 null_11.f90
 null_4.f90
-null_8.f90
 null_9.f90
 null_actual_2.f90
 null_actual_5.f90
@@ -1425,12 +1366,8 @@ open_errors.f90
 open_negative_unit_1.f90
 open_new.f90
 open_readonly_1.f90
-open_status_1.f90
-open_status_2.f90
-open_status_3.f90
 operator_1.f90
 operator_7.f90
-operator_c1202.f90
 optional_absent_10.f90
 optional_absent_11.f90
 optional_absent_12.f90
@@ -1461,7 +1398,6 @@ parameter_array_dummy.f90
 parameter_array_element_2.f90
 parameter_array_format.f90
 parameter_array_init_1.f90
-parameter_array_init_3.f90
 parameter_array_init_4.f90
 parameter_array_init_5.f90
 parameter_array_init_6.f90
@@ -1478,7 +1414,6 @@ parent_result_ref_4.f90
 parity_1.f90
 past_eor.f90
 pdt_generic_1.f90
-pointer_1.f90
 pointer_array_1.f90
 pointer_array_10.f90
 pointer_array_11.f90
@@ -1486,9 +1421,7 @@ pointer_array_2.f90
 pointer_array_3.f90
 pointer_array_4.f90
 pointer_array_5.f90
-pointer_array_6.f90
 pointer_array_7.f90
-pointer_array_8.f90
 pointer_array_9.f90
 pointer_array_component_1.f90
 pointer_array_component_2.f90
@@ -1498,7 +1431,6 @@ pointer_assign_11.f90
 pointer_assign_14.f90
 pointer_assign_15.f90
 pointer_assign_16.f90
-pointer_assign_2.f90
 pointer_assign_3.f90
 pointer_assign_4.f90
 pointer_assign_8.f90
@@ -1524,13 +1456,11 @@ power2.f90
 pr100155.f90
 pr100194.f90
 pr100273.f90
-pr100551.f90
 pr100949.f90
 pr102109.f90
 pr102112.f90
 pr102190.f90
 pr102333.f90
-pr102459.f90
 pr102596.f90
 pr102619.f90
 pr102817.f90
@@ -1623,7 +1553,6 @@ pr15324.f90
 pr15957.f90
 pr15959.f90
 pr16861.f90
-pr16935.f90
 pr16938.f90
 pr17090.f90
 pr17285.f90
@@ -1637,13 +1566,10 @@ pr19467.f90
 pr19926.f90
 pr19928-1.f90
 pr19928-2.f90
-pr20257.f90
 pr20480.f90
 pr21177.f90
-pr28971.f90
 pr32222.f90
 pr32238.f90
-pr32738.f90
 pr33646.f90
 pr35944-1.f90
 pr35983.f90
@@ -1676,7 +1602,6 @@ pr55086_2.f90
 pr57910.f90
 pr59700.f90
 pr59706.f90
-pr59910.f90
 pr60126.f90
 pr61454.f90
 pr61765.f90
@@ -1702,7 +1627,6 @@ pr67524.f90
 pr67616.f90
 pr67805_2.f90
 pr67885.f90
-pr67900.f90
 pr67987.f90
 pr68053.f90
 pr68154.f90
@@ -1784,7 +1708,6 @@ pr89647.f90
 pr89943_1.f90
 pr89943_2.f90
 pr90344.f90
-pr91471.f90
 pr91485.f90
 pr91552.f90
 pr91553.f90
@@ -1797,7 +1720,6 @@ pr91862.f90
 pr92208.f90
 pr92277.f90
 pr92586.f90
-pr92781.f90
 pr93263_2.f90
 pr93365.f90
 pr93461.f90
@@ -1805,21 +1727,16 @@ pr93486.f90
 pr93600_2.f90
 pr93678.f90
 pr93685_1.f90
-pr93714_1.f90
-pr93714_2.f90
 pr93814.f90
 pr94377.f90
 pr94380.f90
 pr95053_2.f90
 pr95104.f90
-pr95338.f90
 pr95342.f90
 pr95500.f90
-pr95585.f90
 pr95611.f90
 pr95614_1.f90
 pr95614_2.f90
-pr95614_3.f90
 pr95614_4.f90
 pr95710.f90
 pr95829.f90
@@ -1843,7 +1760,6 @@ print_c_kinds.f90
 print_fmt_1.f90
 private_type_13.f90
 private_type_14.f90
-private_type_5.f90
 private_type_7.f90
 private_type_8.f90
 proc_decl_12.f90
@@ -1867,7 +1783,6 @@ proc_decl_9.f90
 proc_ptr_1.f90
 proc_ptr_10.f90
 proc_ptr_12.f90
-proc_ptr_16.f90
 proc_ptr_18.f90
 proc_ptr_19.f90
 proc_ptr_20.f90
@@ -1879,7 +1794,6 @@ proc_ptr_26.f90
 proc_ptr_27.f90
 proc_ptr_28.f90
 proc_ptr_29.f90
-proc_ptr_31.f90
 proc_ptr_34.f90
 proc_ptr_36.f90
 proc_ptr_41.f90
@@ -1945,18 +1859,14 @@ proc_ptr_result_4.f90
 proc_ptr_result_6.f90
 proc_ptr_result_7.f90
 proc_target_1.f90
-program_name_1.f90
 ptr-func-3.f90
 ptr-func-5.f90
 public_private_module_10.f90
 public_private_module_4.f90
 pure_byref_1.f90
-pure_byref_2.f90
 pure_byref_3.f90
-pure_formal_proc_1.f90
 pure_formal_proc_2.f90
 pure_formal_proc_4.f90
-pure_initializer_1.f90
 pure_initializer_3.f90
 quad_3.f90
 random_4.f90
@@ -2038,10 +1948,8 @@ reshape_2.f90
 reshape_6.f90
 reshape_pad_1.f90
 reshape_rank7.f90
-reshape_shape_2.f90
 reshape_transpose_1.f90
 reshape_zerosize_1.f90
-reshape_zerosize_2.f90
 reshape_zerosize_3.f90
 reshape_zerosize_4.f90
 result_in_spec_1.f90
@@ -2051,7 +1959,6 @@ ret_array_1.f90
 ret_pointer_1.f90
 ret_pointer_2.f90
 rrspacing_1.f90
-save_3.f90
 save_8.f90
 save_alloc_character_1.f90
 save_parameter.f90
@@ -2060,7 +1967,6 @@ scalar_mask_2.f90
 scalarize_parameter_array_1.f90
 scalarize_parameter_array_2.f90
 scale_1.f90
-scan_1.f90
 scan_3.f90
 scratch_1.f90
 select_1.f90
@@ -2070,7 +1976,6 @@ select_char_1.f90
 select_rank_1.f90
 select_rank_5.f90
 select_type_4.f90
-select_type_40.f90
 select_type_42.f90
 select_type_43.f90
 select_type_44.f90
@@ -2085,7 +1990,6 @@ selected_char_kind_4.f90
 selected_logical_kind_1.f90
 selected_logical_kind_4.f90
 set_exponent_1.f90
-shape_10.f90
 shape_12.f90
 shape_2.f90
 shape_3.f90
@@ -2097,8 +2001,6 @@ shift-alloc.f90
 shift-kind.f90
 shift-kind_2.f90
 shiftalr_3.f90
-sibling_dummy_procedure_1.f90
-sibling_dummy_procedure_2.f90
 sibling_dummy_procedure_3.f90
 simpleif_1.f90
 simplify_argN_1.f90
@@ -2239,7 +2141,6 @@ typebound_proc_30.f90
 typebound_proc_31.f90
 typebound_proc_32.f90
 typebound_proc_33.f90
-typebound_proc_34.f90
 typebound_proc_35.f90
 typebound_proc_36.f90
 ubound_1.f90
@@ -2269,8 +2170,6 @@ unlimited_polymorphic_7.f90
 unpack_mask_1.f90
 unpack_zerosize_1.f90
 unreferenced_use_assoc_1.f90
-unresolved_fixup_1.f90
-unresolved_fixup_2.f90
 unsigned_write_2.f90
 use_10.f90
 use_11.f90
@@ -2281,10 +2180,8 @@ use_18.f90
 use_2.f90
 use_20.f90
 use_22.f90
-use_23.f90
 use_24.f90
 use_25.f90
-use_26.f90
 use_27.f90
 use_28.f90
 use_5.f90
@@ -2292,7 +2189,6 @@ use_8.f90
 use_allocated_1.f90
 use_only_2.f90
 use_only_3.f90
-use_only_4.f90
 use_only_5.f90
 use_only_6.f90
 use_rename_1.f90
@@ -2332,14 +2228,12 @@ used_types_7.f90
 used_types_8.f90
 used_types_9.f90
 userdef_operator_1.f90
-userdef_operator_2.f90
 value_9.f90
 value_optional_1.f90
 value_optional_2.f90
 value_optional_3.f90
 value_test.f90
 value_tests_f03.f90
-variable_parameter.f90
 vector_subscript_1.f90
 vector_subscript_2.f90
 vector_subscript_3.f90
@@ -2349,7 +2243,6 @@ vector_subscript_9.f90
 vector_subscript_bound_1.f90
 verify_2.f90
 verify_3.f90
-volatile13.f90
 volatile9.f90
 warn_unused_dummy_argument_5.f90
 where_1.f90
@@ -2364,10 +2257,8 @@ whole_file_11.f90
 whole_file_12.f90
 whole_file_13.f90
 whole_file_15.f90
-whole_file_19.f90
 whole_file_23.f90
 whole_file_27.f90
-whole_file_33.f90
 whole_file_35.f90
 whole_file_8.f90
 whole_file_9.f90
@@ -2398,3 +2289,21 @@ zero_sized_4.f90
 zero_sized_5.f90
 zero_sized_7.f90
 zero_sized_9.f90
+associate_80.f90 # new corpus file since 2026-06 seed
+associate_81.f90 # new corpus file since 2026-06 seed
+associate_82.f90 # new corpus file since 2026-06 seed
+contiguous_17.f90 # new corpus file since 2026-06 seed
+do_concurrent_assoc_iter_1.f90 # new corpus file since 2026-06 seed
+fmt_t_10.f90 # new corpus file since 2026-06 seed
+fmt_t_11.f90 # new corpus file since 2026-06 seed
+implied_do_alloc_comp_1.f90 # new corpus file since 2026-06 seed
+loc_3.f90 # new corpus file since 2026-06 seed
+namelist_103.f90 # new corpus file since 2026-06 seed
+pdt_array_alloc_1.f90 # new corpus file since 2026-06 seed
+select_type_53.f90 # new corpus file since 2026-06 seed
+stop_function_code_1.f90 # new corpus file since 2026-06 seed
+submodule_38.f90 # new corpus file since 2026-06 seed
+warn_unused_but_set_variable_2.f90 # new corpus file since 2026-06 seed
+warn_unused_but_set_variable_3.f90 # new corpus file since 2026-06 seed
+warn_unused_intent_out_1.f90 # new corpus file since 2026-06 seed
+warn_unused_read_1.f90 # new corpus file since 2026-06 seed
