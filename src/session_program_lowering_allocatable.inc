@@ -1418,6 +1418,18 @@
 
         index = find_symbol(context, name)
         if (index > 0) then
+            ! The allocatable array function result was pre-registered onto the
+            ! caller's descriptor (param 0). Its body declaration re-states the
+            ! type; adopt it rather than flagging a duplicate.
+            if (index == context%current_function_result_index) then
+                if (context%symbols(index)%is_allocatable .and. &
+                    context%symbols(index)%is_array) then
+                    context%symbols(index)%value_kind = value_kind
+                    context%symbols(index)%array_rank = rank
+                    call set_empty(error_msg)
+                    return
+                end if
+            end if
             ! An allocatable dummy argument: the parameter symbol was already
             ! registered generically at call-entry binding. The incoming
             ! parameter pointer IS the caller's own descriptor address

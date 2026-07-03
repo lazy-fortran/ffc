@@ -42,6 +42,12 @@ module session_program_lowering_types
         ! callee binds the result symbol's element storage onto that pointer. The
         ! element scalar kind comes from the result variable's body declaration.
         integer, parameter, public :: VALUE_ARRAY_RESULT = 17
+        ! VALUE_ALLOC_ARRAY_RESULT is an allocatable rank-1/2 array function
+        ! result. It returns via a leading sret pointer to a 40-byte allocatable
+        ! descriptor (data ptr + bounds): the caller passes a zeroed temporary
+        ! descriptor as param 0, the callee allocates into it, and the caller then
+        ! moves that descriptor into the destination allocatable.
+        integer, parameter, public :: VALUE_ALLOC_ARRAY_RESULT = 18
         ! Runtime type ids carried in a class(*) descriptor's type slot. Intrinsic
         ! ids are fixed and disjoint from derived-type ids (a derived type's id is
         ! its 1-based table index, always small).

@@ -238,6 +238,7 @@ module session_program_lowering
         VALUE_SUBROUTINE, VALUE_C_PTR, &
         VALUE_CLASS_STAR, VALUE_PROC_PTR, &
         VALUE_ARRAY_RESULT, &
+        VALUE_ALLOC_ARRAY_RESULT, &
         TYPE_ID_INTEGER, TYPE_ID_REAL, &
         TYPE_ID_LOGICAL, &
         CMP_CLASS_UNKNOWN, CMP_CLASS_NUMERIC, &
@@ -753,6 +754,7 @@ contains
     include 'session_program_lowering_array_elements.inc'
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
+    include 'session_program_lowering_alloc_array_result.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
     include 'session_program_lowering_internal_read.inc'
@@ -1087,6 +1089,11 @@ contains
         end if
         if (context%symbols(symbol_index)%is_allocatable .and. &
             context%symbols(symbol_index)%array_rank > 0) then
+            if (is_alloc_array_result_call(arena, node%value_index, context)) then
+                call lower_alloc_array_result_assignment(arena, node%value_index, &
+                    symbol_index, context, error_msg)
+                return
+            end if
             if (node_exists(arena, node%value_index)) then
                 select type (rhs => arena%entries(node%value_index)%node)
                     type is (array_literal_node)

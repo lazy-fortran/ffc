@@ -132,7 +132,14 @@ modelled, so the finaliser never runs). A
 contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the
-result straight into the destination. A module procedure may `contains` internal procedures, lowered as
+result straight into the destination. A contained or module function may also
+return an allocatable rank-1/2 array of an intrinsic element kind: the caller
+passes a zeroed temporary descriptor as the hidden result pointer, the callee
+allocates into it, and `lhs = vec_fn(...)` moves that descriptor into the
+allocatable destination. When the result extent is a compile-time constant
+(an array constructor or a constant-extent `allocate`), it propagates to the
+destination so `size`, indexing, and whole-array print of `lhs` work.
+A module procedure may `contains` internal procedures, lowered as
 flat functions. A `logical`-valued function call (contained or module) prints
 directly as `T`/`F`. A non-contained `integer(8)` function (module or
 contained) returns through the i64 ABI, so a result wider than 32 bits round

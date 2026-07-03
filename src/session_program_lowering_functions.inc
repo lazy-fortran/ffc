@@ -414,6 +414,13 @@
             return
         end if
 
+        ! An allocatable rank-1/2 array result returns via the allocatable
+        ! descriptor sret ABI; the callee allocates the data at run time.
+        if (result_var_is_alloc_array(node, context)) then
+            value_kind = VALUE_ALLOC_ARRAY_RESULT
+            return
+        end if
+
         if (.not. allocated(node%return_type)) return
 
         ! When the result type is declared in the body (result(r) with
@@ -769,6 +776,100 @@
         if (size(decl%dimension_indices) /= 1) return
         is_fixed = .true.
     end function declaration_is_fixed_rank1
+
+    logical function result_var_is_alloc_array(node, context) result(is_alloc)
+        ! True when the function result variable is declared as an allocatable
+        ! rank-1 or rank-2 array of an intrinsic element kind in the body.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: elem_kind, rank
+
+        call alloc_array_result_info(node, context, is_alloc, elem_kind, rank)
+    end function result_var_is_alloc_array
+
+    subroutine alloc_array_result_info(node, context, is_alloc, elem_kind, rank)
+        ! Element scalar kind and rank of an allocatable array function result,
+        ! read from the result variable's body declaration. is_alloc is false for
+        ! non-allocatable, derived-element, or higher-rank results (out of scope).
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: is_alloc
+        integer, intent(out) :: elem_kind
+        integer, intent(out) :: rank
+        character(len=:), allocatable :: result_name, decl_err
+        integer :: i, k
+
+        is_alloc = .false.
+        elem_kind = VALUE_I32
+        rank = 0
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        call classify_alloc_array_decl(decl, context, is_alloc, &
+                                                       elem_kind, rank, decl_err)
+                        if (is_alloc) return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            call classify_alloc_array_decl(decl, context, is_alloc, &
+                                                           elem_kind, rank, decl_err)
+                            if (is_alloc) return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end subroutine alloc_array_result_info
+
+    subroutine classify_alloc_array_decl(decl, context, is_alloc, elem_kind, rank, &
+                                         decl_err)
+        ! An allocatable rank-1/2 declaration of an intrinsic element kind.
+        type(declaration_node), intent(in) :: decl
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: is_alloc
+        integer, intent(out) :: elem_kind
+        integer, intent(out) :: rank
+        character(len=:), allocatable, intent(out) :: decl_err
+
+        is_alloc = .false.
+        elem_kind = VALUE_I32
+        rank = 0
+        call set_empty(decl_err)
+        if (.not. decl%is_array) return
+        if (.not. decl%is_allocatable) return
+        if (declaration_derived_type_index(context, decl) > 0) return
+        if (allocated(decl%dimension_indices)) then
+            rank = size(decl%dimension_indices)
+        else
+            rank = 1
+        end if
+        if (rank < 1 .or. rank > 2) then
+            rank = 0
+            return
+        end if
+        call declaration_value_kind(decl, elem_kind, decl_err, context)
+        if (len_trim(decl_err) > 0) then
+            rank = 0
+            return
+        end if
+        select case (elem_kind)
+        case (VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+            is_alloc = .true.
+        case default
+            rank = 0
+        end select
+    end subroutine classify_alloc_array_decl
 
     integer function result_var_derived_type(node, context) result(type_index)
         ! Find the derived type of the function result variable from its body
@@ -1408,7 +1509,10 @@
         integer :: result_index
         integer :: value_kind
         integer :: result_derived_index
+        integer :: alloc_elem_kind
+        integer :: alloc_rank
         logical :: terminated
+        logical :: result_is_alloc_array
         character(len=:), allocatable :: result_name
         character(len=:), allocatable :: emit_name
 
@@ -1462,6 +1566,7 @@
         else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                  value_kind == VALUE_DERIVED .or. &
                  value_kind == VALUE_ARRAY_RESULT .or. &
+                 value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
                  value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             ! Aggregate / complex / array results return via a leading sret
             ! pointer: the caller passes the result buffer address as param 0.
@@ -1546,6 +1651,23 @@
                 rsym%element_address = ptr_param(context%session, 0)
             end associate
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_ALLOC_ARRAY_RESULT) then
+            ! Bind the result onto the caller's descriptor (param 0). The body's
+            ! allocate/assignment machinery writes through allocatable_descriptor_
+            ! address, so the callee allocates straight into the caller's slot.
+            call alloc_array_result_info(node, context, result_is_alloc_array, &
+                                         alloc_elem_kind, alloc_rank)
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = alloc_elem_kind
+                rsym%is_array = .true.
+                rsym%is_allocatable = .true.
+                rsym%array_rank = alloc_rank
+                rsym%allocatable_descriptor_address = ptr_param(context%session, 0)
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1555,6 +1677,7 @@
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
             value_kind == VALUE_DERIVED .or. &
             value_kind == VALUE_ARRAY_RESULT .or. &
+            value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
             value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg, 1)
@@ -1587,6 +1710,7 @@
             if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                 value_kind == VALUE_DERIVED .or. &
                 value_kind == VALUE_ARRAY_RESULT .or. &
+                value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
             else
