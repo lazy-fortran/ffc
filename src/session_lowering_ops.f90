@@ -1,5 +1,5 @@
 module session_lowering_ops
-    use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_double
+    use, intrinsic :: iso_c_binding, only: c_int, c_int64_t
     use ffc_strings, only: set_empty
     use liric_session_bindings, only: LR_OP_ADD, LR_OP_MUL, LR_OP_SDIV, &
         LR_OP_SUB
@@ -177,20 +177,26 @@ contains
         character(len=*), intent(in) :: source_op
         integer(c_int), intent(out) :: predicate
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op
+        integer :: k
 
         call set_empty(error_msg)
-        select case (trim(source_op))
-        case ('==', '=')
+        op = trim(adjustl(source_op))
+        do k = 1, len(op)
+            op(k:k) = to_lower(op(k:k))
+        end do
+        select case (op)
+        case ('==', '=', '.eq.')
             predicate = LR_CMP_EQ
-        case ('/=', '!=')
+        case ('/=', '!=', '.ne.')
             predicate = LR_CMP_NE
-        case ('>')
+        case ('>', '.gt.')
             predicate = LR_CMP_SGT
-        case ('>=')
+        case ('>=', '.ge.')
             predicate = LR_CMP_SGE
-        case ('<')
+        case ('<', '.lt.')
             predicate = LR_CMP_SLT
-        case ('<=')
+        case ('<=', '.le.')
             predicate = LR_CMP_SLE
         case default
             error_msg = 'ffc direct-session lowering does not support comparison: '// &

@@ -224,18 +224,18 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         call set_empty(error_msg)
-        select case (trim(source_op))
-        case ('==', '=')
+        select case (lowercase_text(trim(adjustl(source_op))))
+        case ('==', '=', '.eq.')
             predicate = LR_FCMP_OEQ
-        case ('/=', '!=')
+        case ('/=', '!=', '.ne.')
             predicate = LR_FCMP_ONE
-        case ('>')
+        case ('>', '.gt.')
             predicate = LR_FCMP_OGT
-        case ('>=')
+        case ('>=', '.ge.')
             predicate = LR_FCMP_OGE
-        case ('<')
+        case ('<', '.lt.')
             predicate = LR_FCMP_OLT
-        case ('<=')
+        case ('<=', '.le.')
             predicate = LR_FCMP_OLE
         case default
             error_msg = 'unsupported real comparison: '//trim(source_op)
