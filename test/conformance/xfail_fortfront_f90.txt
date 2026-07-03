@@ -4,7 +4,6 @@
 #
 # Promote entries by removing them from this file when ffc starts passing.
 ast_coverage_control_flow.f90
-ast_coverage_io_statements.f90
 ast_coverage_literals_calls.f90
 ast_forall_pointer.f90
 call_graph_internal_procedures.f90

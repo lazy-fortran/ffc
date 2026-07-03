@@ -105,7 +105,6 @@ allocatable_function_6.f90
 allocatable_function_7.f90
 allocatable_function_9.f90
 allocatable_length_2.f90
-allocatable_scalar_1.f90
 allocatable_scalar_10.f90
 allocatable_scalar_12.f90
 allocatable_scalar_14.f90
@@ -332,7 +331,6 @@ bind_c_char_11.f90
 bind_c_char_2.f90
 bind_c_char_3.f90
 bind_c_dts_5.f90
-bind_c_optional-1.f90
 bind_c_optional-2.f90
 bind_c_procs_2.f90
 bind_c_procs_3.f90
@@ -583,7 +581,6 @@ deferred_character_3.f90
 deferred_character_30.f90
 deferred_character_31.f90
 deferred_character_32.f90
-deferred_character_33a.f90
 deferred_character_34.f90
 deferred_character_35.f90
 deferred_character_36.f90
@@ -997,12 +994,10 @@ inline_sum_5.f90
 inquire-complex.f90
 inquire_10.f90
 inquire_11.f90
-inquire_12.f90
 inquire_14.f90
 inquire_15.f90
 inquire_16.f90
 inquire_17.f90
-inquire_18.f90
 inquire_19.f90
 inquire_5.f90
 inquire_7.f90
@@ -1352,7 +1347,6 @@ no_range_check_3.f90
 noadv_size.f90
 noreturn-3.f90
 norm2_1.f90
-norm2_5.f90
 nosigned_zero_1.f90
 null_10.f90
 null_11.f90
@@ -1389,7 +1383,6 @@ optional_mask.f90
 out_of_range_1.f90
 out_of_range_2.f90
 overload_1.f90
-overload_2.f90
 overload_4.f90
 overload_5.f90
 pack_mask_1.f90
@@ -1461,7 +1454,6 @@ pr102109.f90
 pr102112.f90
 pr102190.f90
 pr102333.f90
-pr102596.f90
 pr102619.f90
 pr102817.f90
 pr103139.f90
@@ -1546,7 +1538,6 @@ pr124208.f90
 pr124235.f90
 pr124450.f90
 pr124567.f90
-pr124739.f90
 pr124780.f90
 pr15164.f90
 pr15324.f90
@@ -1591,10 +1582,8 @@ pr49213.f90
 pr49540-1.f90
 pr49698.f90
 pr50069_1.f90
-pr50069_2.f90
 pr51434.f90
 pr51993.f90
-pr52608.f90
 pr53298.f90
 pr54967.f90
 pr55086_1.f90
@@ -1626,7 +1615,6 @@ pr67496.f90
 pr67524.f90
 pr67616.f90
 pr67805_2.f90
-pr67885.f90
 pr67987.f90
 pr68053.f90
 pr68154.f90
@@ -1677,7 +1665,6 @@ pr85352.f90
 pr85520.f90
 pr85521_1.f90
 pr85521_2.f90
-pr85542.f90
 pr85786.f90
 pr85816.f90
 pr85938.f90
@@ -1890,7 +1877,6 @@ read_eof_7.f90
 read_eof_8.f90
 read_eof_all.f90
 read_float_3.f90
-read_float_4.f90
 read_list_eof_1.f90
 read_no_eor.f90
 read_noadvance.f90
@@ -2304,6 +2290,5 @@ select_type_53.f90 # new corpus file since 2026-06 seed
 stop_function_code_1.f90 # new corpus file since 2026-06 seed
 submodule_38.f90 # new corpus file since 2026-06 seed
 warn_unused_but_set_variable_2.f90 # new corpus file since 2026-06 seed
-warn_unused_but_set_variable_3.f90 # new corpus file since 2026-06 seed
 warn_unused_intent_out_1.f90 # new corpus file since 2026-06 seed
 warn_unused_read_1.f90 # new corpus file since 2026-06 seed

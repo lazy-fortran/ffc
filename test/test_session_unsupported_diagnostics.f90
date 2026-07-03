@@ -556,14 +556,16 @@ contains
     end function test_cli_integer_exponent_operator_diagnostic
 
     logical function test_cli_allocate_statement_diagnostic()
+        ! The CLI retries an undeclared allocate target under lazy inference,
+        ! which now declares values as an allocatable rank-1 integer and
+        ! lowers the allocate, so the source compiles.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  allocate(values(3))'//new_line('a')// &
             'end program main'
 
-        test_cli_allocate_statement_diagnostic = expect_cli_error_contains( &
+        test_cli_allocate_statement_diagnostic = expect_cli_no_error( &
             source, &
-            'unsupported allocate statement', &
             '/tmp/ffc_cli_allocate_test')
     end function test_cli_allocate_statement_diagnostic
 

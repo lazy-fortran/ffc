@@ -34,7 +34,6 @@ allocate_05.f90
 allocate_06.f90
 allocate_07.f90
 allocate_08.f90
-allocate_09.f90
 allocate_10.f90
 allocate_11.f90
 allocate_12.f90
@@ -50,7 +49,6 @@ allocate_21.f90
 allocate_22.f90
 allocate_23.f90
 allocate_24.f90
-allocate_25.f90
 allocate_26.f90
 allocate_27.f90
 allocate_28.f90
@@ -90,26 +88,20 @@ allocate_61_mod2.f90
 allocate_62.f90
 allocate_63.f90
 allocate_64.f90
-allocate_65.f90
 allocate_66.f90
 allocate_67.f90
-allocate_68.f90
 allocate_69.f90
 allocate_70.f90
-allocate_71.f90
 allocate_72.f90
 allocate_73.f90
 allocate_array_descriptor_01.f90
 allocated_01.f90
-allocated_02.f90
-allocated_03.f90
 allocated_04.f90
 allocated_05.f90
 allocate_source_ptr_01.f90
 any_01.f90
 any_02.f90
 any_03.f90
-arithmetic_if_03.f90
 array_01.f90
 array_01_pack.f90
 array_01_transfer.f90
@@ -125,7 +117,6 @@ array_05_transfer.f90
 array_06_transfer.f90
 array_07_transfer.f90
 array_08_transfer.f90
-array_bound_1.f90
 array_bound_2.f90
 array_bound_3.f90
 array_bound_5.f90
@@ -371,7 +362,6 @@ arrays_op_26.f90
 arrays_op_27.f90
 arrays_op_28.f90
 arrays_op_29.f90
-arrays_op_2.f90
 arrays_op_30.f90
 arrays_op_31.f90
 arrays_op_3.f90
@@ -418,7 +408,6 @@ assign_to1.f90
 assign_to2.f90
 associate_01.f90
 associate_02.f90
-associate_03.f90
 associate_04.f90
 associate_05.f90
 associate_06_module.f90
@@ -566,7 +555,6 @@ block_12.f90
 block_13.f90
 block_14.f90
 block_15.f90
-block_16.f90
 block_17.f90
 block_data_02.f90
 block_data_03.f90
@@ -596,7 +584,6 @@ case_09.f90
 c_f_proc_ptr_01.f90
 character_01.f90
 character_02.f90
-character_05.f90
 character_06.f90
 character_08.f90
 character_09.f90
@@ -608,7 +595,6 @@ character_14.f90
 character_16.f90
 character_17.f90
 character_18.f90
-character_19.f90
 character_20.f90
 character_21.f90
 character_22.f90
@@ -706,7 +692,6 @@ class_17.f90
 class_18.f90
 class_19.f90
 class_21.f90
-class_22.f90
 class_23.f90
 class_24.f90
 class_25.f90
@@ -805,7 +790,6 @@ cmd_03.f90
 coarray_01.f90
 common_01.f90
 common_03.f90
-common_04.f90
 common_05.f90
 common_07.f90
 common_12.f90
@@ -834,10 +818,7 @@ common_substring_01.f90
 compiler_version_01.f90
 compiler_version_02.f90
 compiler_version_03.f90
-complex_01.f90
-complex_02.f90
 complex_03.f90
-complex_05.f90
 complex_06.f90
 complex_07.f90
 complex_08.f90
@@ -873,19 +854,15 @@ complex_div_test.f90
 complex_dp.f90
 complex_dp_param.f90
 complex_implicit_cast.f90
-complex_mul_test.f90
 complex_pow_test.f90
 complex_solutions.f90
-complex_sub_test.f90
 complex_unary_minus_03.f90
 concat_char_arrays_01.f90
 cond_02.f90
 cond_04.f90
 cond_05.f90
-cond_06.f90
 const_array_01.f90
 const_real_dp.f90
-contig.f90
 contig_stmt_01.f90
 conv_complex2real.f90
 count_param_01.f90
@@ -956,7 +933,6 @@ data_11.f90
 data_12.f90
 data_13.f90
 data_14.f90
-data_15.f90
 data_16.f90
 data_17.f90
 data_18.f90
@@ -983,7 +959,6 @@ deallocate_02.f90
 declaration_01.f90
 declaration_03.f90
 declaration_04.f90
-declaration_05.f90
 deferred_shape_01.f90
 defined_op_match_01.f90
 derived_component_section_01.f90
@@ -1085,11 +1060,9 @@ derived_types_41.f90
 derived_types_42.f90
 derived_types_43.f90
 derived_types_44.f90
-derived_types_45.f90
 derived_types_46.f90
 derived_types_47.f90
 derived_types_48.f90
-derived_types_49.f90
 derived_types_50.f90
 derived_types_51.f90
 derived_types_52.f90
@@ -1186,7 +1159,6 @@ do_loop_09.f90
 doloop_10.f90
 doloop_12.f90
 doloop_13.f90
-doloop_17.f90
 doloop_18.f90
 doloop_19.f90
 double_complex_01.f90
@@ -1292,7 +1264,6 @@ exit_02.f90
 exit_03.f90
 exponent_inf_01.f90
 expr_01.f90
-expr_04.f90
 expr_05.f90
 expr_09.f90
 expr_12.f90
@@ -1353,7 +1324,6 @@ file_33.f90
 file_34.f90
 file_35.f90
 file_36.f90
-file_37.f90
 file_38.f90
 file_39.f90
 file_40.f90
@@ -1391,8 +1361,6 @@ file_73.f90
 file_close_01.f90
 file_close_02.f90
 file_open_01.f90
-file_open_03.f90
-file_open_04.f90
 file_open_05.f90
 file_open_06.f90
 file_open_07.f90
@@ -1426,7 +1394,6 @@ fma_02.f90
 fma_03.f90
 fma.f90
 forall_02.f90
-forall_03.f90
 forall_04.f90
 format_01.f90
 format_02.f90
@@ -1446,7 +1413,6 @@ format_105.f90
 format_10.f90
 format_11.f90
 format_12.f90
-format_13.f90
 format_14.f90
 format_15.f90
 format_16.f90
@@ -1615,7 +1581,6 @@ goto_03.f90
 goto_05.f90
 goto_06.f90
 goto_gototarget_return_01.f90
-gpu_metal_03.f90
 gpu_metal_07.f90
 gpu_metal_100.f90
 gpu_metal_101.f90
@@ -1780,7 +1745,6 @@ hashmap_derived_pointer_associated.f90
 hashmap_nested_dealloc_derived_pointer.f90
 hashmap_struct_01.f90
 huge_string_read.f90
-iachar_achar_01.f90
 if_02.f90
 if_03.f90
 if_06.f90
@@ -1806,7 +1770,6 @@ implicit_interface_09.f90
 implicit_interface_11.f90
 implicit_interface_12.f90
 implicit_interface_13.f90
-implicit_interface_14.f90
 implicit_interface_15b.f90
 implicit_interface_15.f90
 implicit_interface_16b.f90
@@ -1839,7 +1802,6 @@ implicit_interface_41.f90
 implicit_typing_01.f90
 implicit_typing_03.f90
 implicit_typing_05.f90
-implicit_typing_07.f90
 implicit_typing_08.f90
 implicit_typing_09.f90
 implicit_typing_10.f90
@@ -1896,9 +1858,7 @@ include_04.f90
 infer_walrus_01.f90
 infer_walrus_shadow_01.f90
 infer_walrus_shadow_02.f90
-infer_walrus_shadow_03.f90
 infer_walrus_struct_02.f90
-infer_walrus_struct_03.f90
 init_values.f90
 inquire_02.f90
 inquire_03.f90
@@ -1970,7 +1930,6 @@ intrinsics_07.f90
 intrinsics_08.f90
 intrinsics_09.f90
 intrinsics_100.f90
-intrinsics_101.f90
 intrinsics_102.f90
 intrinsics_103.f90
 intrinsics_104.f90
@@ -2528,7 +2487,6 @@ modules_12.f90
 modules_14.f90
 modules_15b.f90
 modules_15.f90
-modules_16b.f90
 modules_16.f90
 modules_18b.f90
 modules_18.f90
@@ -2702,7 +2660,6 @@ nested_vars2.f90
 nested_vars3.f90
 nested_vars_allocatable_call.f90
 no_explicit_return_type_01.f90
-nullify_02.f90
 nullify_03.f90
 nullify_04.f90
 nullify_05.f90
@@ -2839,7 +2796,6 @@ parameter_12.f90
 parameter_13.f90
 parameter_15.f90
 parameter_16.f90
-param_pass_01.f90
 parent_component_class_operator_01.f90
 parent_component_select_operator_01.f90
 parsing_01.f90
@@ -2891,7 +2847,6 @@ pointer_09.f90
 pointer_10.f90
 pointer_11.f90
 pointer_12.f90
-pointer_13.f90
 pointer_14.f90
 pointer_15.f90
 pointer_16.f90
@@ -2924,7 +2879,6 @@ print_12.f90
 print_13.f90
 print_14.f90
 print_15.f90
-print_arr_02.f90
 print_arr_03.f90
 print_arr_05.f90
 print_arr_06.f90
@@ -3061,7 +3015,6 @@ read_42.f90
 read_43.f90
 read_44.f90
 read_45.f90
-read_46.f90
 read_47.f90
 read_48.f90
 read_49.f90
@@ -3148,7 +3101,6 @@ return_06.f90
 rewind_01.f90
 rewind_inquire_flush.f90
 save_01.f90
-save_02.f90
 save_03.f90
 save_04.f90
 save_05.f90
@@ -3347,7 +3299,6 @@ separate_compilation_43b.f90
 separate_compilation_43.f90
 separate_compilation_44b.f90
 separate_compilation_44.f90
-separate_compilation_45a.f90
 separate_compilation_45.f90
 separate_compilation_46a.f90
 separate_compilation_46.f90
@@ -3393,7 +3344,6 @@ string_04.f90
 string_06.f90
 string_07.f90
 string_08.f90
-string_09.f90
 string_100.f90
 string_101.f90
 string_102.f90
@@ -3420,21 +3370,18 @@ string_14.f90
 string_15.f90
 string_16.f90
 string_17.f90
-string_18.f90
 string_19.f90
 string_20.f90
 string_21.f90
 string_22.f90
 string_23.f90
 string_24.f90
-string_25.f90
 string_27.f90
 string_28.f90
 string_29.f90
 string_30.f90
 string_31.f90
 string_32.f90
-string_33.f90
 string_34.f90
 string_36.f90
 string_37.f90
@@ -3454,7 +3401,6 @@ string_51.f90
 string_52.f90
 string_53.f90
 string_54.f90
-string_55.f90
 string_56.f90
 string_57.f90
 string_58.f90
@@ -3467,10 +3413,8 @@ string_63.f90
 string_64.f90
 string_65.f90
 string_66.f90
-string_67.f90
 string_68.f90
 string_69.f90
-string_70.f90
 string_71.f90
 string_72.f90
 string_73.f90
@@ -3498,7 +3442,6 @@ string_94.f90
 string_95.f90
 string_96.f90
 string_97.f90
-string_98.f90
 string_99.f90
 string_array_concat_01.f90
 string_concat_deferred_len.f90
@@ -3739,8 +3682,6 @@ type_bound_generic_member_access_03.f90
 type_parameter_inquiry_01.f90
 types_01.f90
 types_02.f90
-types_03.f90
-types_05.f90
 types_06.f90
 types_07.f90
 types_09.f90
@@ -3765,7 +3706,6 @@ use_02.f90
 use_03.f90
 use_04.f90
 value_attribute_01.f90
-value_attribute_02.f90
 value_attribute_03.f90
 verify_intent_external_01.f90
 verify_intent_external_01_mod1.f90
@@ -3805,9 +3745,7 @@ write_08.f90
 write_09.f90
 write_10.f90
 write_11.f90
-write_12.f90
 write_13.f90
-write_14.f90
 write_15.f90
 write_16.f90
 write_17.f90
@@ -3821,7 +3759,6 @@ write_23.f90
 write_24.f90
 write_25.f90
 write_26.f90
-write_27.f90
 write_28.f90
 write_34.f90
 write_37.f90
