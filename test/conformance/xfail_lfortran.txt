@@ -1094,7 +1094,6 @@ do_loop_08.f90
 doloop_08.f90
 do_loop_09.f90
 doloop_10.f90
-doloop_12.f90
 doloop_13.f90
 doloop_18.f90
 doloop_19.f90
@@ -1195,7 +1194,6 @@ error_stop_03.f90
 error_stop_04.f90
 exit_01.f90
 exit_02.f90
-exit_03.f90
 exponent_inf_01.f90
 expr_01.f90
 expr_05.f90
@@ -1440,7 +1438,6 @@ func_parameter_type_02.f90
 functions_03.f90
 functions_05.f90
 functions_06.f90
-functions_08.f90
 functions_09.f90
 functions_10.f90
 functions_11.f90
@@ -1546,7 +1543,6 @@ gpu_metal_134.f90
 gpu_metal_135.f90
 gpu_metal_136.f90
 gpu_metal_137.f90
-gpu_metal_138.f90
 gpu_metal_139.f90
 gpu_metal_13.f90
 gpu_metal_140.f90
@@ -1665,7 +1661,6 @@ gpu_metal_98.f90
 gpu_metal_99.f90
 hashmap_derived_pointer_associated.f90
 hashmap_nested_dealloc_derived_pointer.f90
-hashmap_struct_01.f90
 huge_string_read.f90
 if_02.f90
 if_03.f90
@@ -2376,7 +2371,6 @@ module_array_init.f90
 module_function_with_nopass.f90
 module_function_without_nopass.f90
 modules_03.f90
-modules_04.f90
 modules_05.f90
 modules_08_b.f90
 modules_08.f90
@@ -2519,10 +2513,8 @@ nested_04.f90
 nested_05.f90
 nested_06.f90
 nested_07.f90
-nested_08.f90
 nested_09.f90
 nested_10.f90
-nested_11.f90
 nested_12.f90
 nested_13.f90
 nested_14.f90
@@ -3300,7 +3292,6 @@ string_82.f90
 string_83.f90
 string_84.f90
 string_85.f90
-string_86.f90
 string_87.f90
 string_88.f90
 string_89.f90
@@ -3551,7 +3542,6 @@ union_test_02.f90
 union_test_03.f90
 unpack_scalar_field_01.f90
 unpack_scalar_field_02.f90
-use_01.f90
 use_02.f90
 use_03.f90
 use_04.f90
