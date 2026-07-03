@@ -140,10 +140,41 @@
         ! A logical literal (.true./.false.) contains a '.' but is not real.
         if (trim(literal_type) == 'logical') return
         if (trim(value) == '.true.' .or. trim(value) == '.false.') return
+        ! A BOZ constant (B'..'/O'..'/Z'..'/X'..' or postfix '..'B/'..'O/'..'Z)
+        ! is always integer-valued, even when its hex digits spell a letter
+        ! ('e', 'd') that the substring heuristic below would mistake for a
+        ! real exponent marker.
+        if (is_boz_literal_text(value)) return
         is_real_literal = trim(literal_type) == 'real' .or. &
                           index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
                           index(value, 'E') > 0
     end function is_real_literal
+
+    logical function is_boz_literal_text(text) result(is_boz)
+        !! True when text is a BOZ-literal-constant spelling: a b/o/z/x radix
+        !! designator adjacent to a quoted digit string, prefix or postfix.
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: trimmed, lo
+        integer :: n
+
+        is_boz = .false.
+        trimmed = trim(adjustl(text))
+        n = len(trimmed)
+        if (n < 3) return
+        lo = lowercase_text(trimmed)
+        if (trimmed(1:1) == "'" .or. trimmed(1:1) == '"') then
+            is_boz = is_boz_designator(lo(n:n))
+        else
+            is_boz = is_boz_designator(lo(1:1)) .and. &
+                     (trimmed(2:2) == "'" .or. trimmed(2:2) == '"')
+        end if
+    end function is_boz_literal_text
+
+    logical function is_boz_designator(c)
+        character(len=1), intent(in) :: c
+
+        is_boz_designator = c == 'b' .or. c == 'o' .or. c == 'z' .or. c == 'x'
+    end function is_boz_designator
 
     logical function is_character_literal(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
@@ -203,30 +234,40 @@
     end function logical_i32_value
 
     logical function literal_is_f64(text)
-        ! Returns true when a real literal is explicitly f64 — i.e. it carries a
-        ! 'd'/'D' exponent, or a _8 / _real64 / _c_double / _c_long_double kind
-        ! suffix.  A bare literal such as "2.5" or "3.0e0" is default real (f32).
+        ! Returns true when a real literal is explicitly f64 — i.e. its numeric
+        ! part carries a 'd'/'D' exponent, or it carries a _8 / _real64 /
+        ! _c_double / _c_long_double / _dp / _wp kind suffix (the same names
+        ! real_kind_is_f64 accepts for real(kind_spec) declarations).  A bare
+        ! literal such as "2.5" or "3.0e0" is default real (f32).  The exponent
+        ! check is scoped to the numeric part so a suffix that merely contains
+        ! the letter 'd' (e.g. a BOZ digit string reaching this function by
+        ! mistake) cannot misfire.
         character(len=*), intent(in) :: text
-        character(len=:), allocatable :: lo
-        integer :: uscore, dpos
+        character(len=:), allocatable :: lo, numeric_part, suffix
+        integer :: uscore
 
         lo = lowercase_text(trim(text))
-        ! d/D exponent marks a double-precision literal.
-        dpos = scan(lo, 'd')
-        if (dpos > 0) then
+        uscore = scan(lo, '_')
+        if (uscore > 1 .and. scan(lo(uscore - 1:uscore - 1), '0123456789.de') > 0) &
+            then
+            numeric_part = lo(1:uscore - 1)
+            suffix = lo(uscore + 1:)
+        else
+            numeric_part = lo
+            call set_empty(suffix)
+        end if
+
+        if (scan(numeric_part, 'd') > 0) then
             literal_is_f64 = .true.
             return
         end if
-        ! Explicit kind suffix after underscore.
-        uscore = scan(lo, '_', back=.true.)
-        if (uscore > 1) then
-            select case (lo(uscore + 1:))
-            case ('8', 'real64', 'c_double', 'c_long_double')
-                literal_is_f64 = .true.
-                return
-            end select
-        end if
-        literal_is_f64 = .false.
+
+        select case (trim(suffix))
+        case ('8', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
+            literal_is_f64 = .true.
+        case default
+            literal_is_f64 = .false.
+        end select
     end function literal_is_f64
 
     subroutine parse_f64_literal(text, value, error_msg)
@@ -236,6 +277,7 @@
         character(len=:), allocatable :: clean
         integer :: io_stat, uscore
         integer(c_int64_t) :: int_value
+        real(c_float) :: single_value
 
         ! Strip the kind suffix (_8, _dp, _real64, _c_double, etc.) which Fortran
         ! internal reads do not accept. The suffix begins at the first underscore
@@ -249,7 +291,16 @@
             end if
         end if
 
-        read (clean, *, iostat=io_stat) value
+        ! A literal without an explicit f64 marker is default real (f32): it
+        ! rounds to single precision first, and only that rounded value widens
+        ! to f64, matching gfortran (e.g. 1.05 -> 1.0499999523162842d0, not the
+        ! double-precision-accurate 1.05d0).
+        if (literal_is_f64(text)) then
+            read (clean, *, iostat=io_stat) value
+        else
+            read (clean, *, iostat=io_stat) single_value
+            value = real(single_value, c_double)
+        end if
         if (io_stat == 0) then
             call set_empty(error_msg)
             return
