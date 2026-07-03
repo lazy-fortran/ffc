@@ -55,11 +55,13 @@
                                                         array_handled, error_msg)
                 class default
                     call emit_whole_array_print_items(arena, &
-                        node%expression_indices(i), context, array_handled, error_msg)
+                        node%expression_indices(i), context, array_handled, &
+                        error_msg, prev_is_char)
                 end select
                 if (len_trim(error_msg) > 0) return
                 if (array_handled) then
-                    prev_is_char = .false.
+                    prev_is_char = char_print_item(arena, &
+                        node%expression_indices(i), context)
                     cycle
                 end if
             end block
@@ -956,6 +958,12 @@
         end if
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (node%is_array_access) then
+                if (array_access_value_kind(node, context) == VALUE_CHARACTER) then
+                    is_char = .true.
+                    return
+                end if
+            end if
             if (.not. node%is_array_access .and. allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then
                     is_char = .true.

@@ -460,7 +460,7 @@
     end subroutine lower_whole_array_print
 
     subroutine emit_whole_array_print_items(arena, expr_index, context, handled, &
-                                            error_msg)
+                                            error_msg, prev_is_char)
         !! Emit every element of a bare integer/real array print item in storage
         !! order with list-directed spacing, but no trailing newline, so it can
         !! appear among other items in a multi-item list-directed print.
@@ -469,6 +469,10 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
+        !! True when the immediately preceding print item was a character value, so
+        !! a leading separator space is suppressed before a character array.
+        logical, intent(in), optional :: prev_is_char
+        logical :: suppress_leading_space
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: value
         integer :: sym
@@ -488,6 +492,14 @@
         if (.not. context%symbols(sym)%is_array .and. &
             .not. context%symbols(sym)%is_allocatable) return
         vk = context%symbols(sym)%value_kind
+        if (vk == VALUE_CHARACTER .and. .not. context%symbols(sym)%is_allocatable) &
+            then
+            suppress_leading_space = .false.
+            if (present(prev_is_char)) suppress_leading_space = prev_is_char
+            call emit_character_array_print_items(context, sym, &
+                suppress_leading_space, handled, error_msg)
+            return
+        end if
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
             vk /= VALUE_LOGICAL) return
         if (context%symbols(sym)%is_allocatable) then
@@ -1147,6 +1159,12 @@
         if (allocated(target%name)) then
             sym_idx = find_symbol(context, target%name)
             if (sym_idx > 0) vk = context%symbols(sym_idx)%value_kind
+        end if
+
+        if (vk == VALUE_CHARACTER) then
+            call lower_character_array_element_assignment(arena, node, target, &
+                                                          context, error_msg)
+            return
         end if
 
         if (vk == VALUE_F32) then

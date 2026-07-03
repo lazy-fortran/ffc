@@ -197,6 +197,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (node%is_array_access .and. &
+                array_access_value_kind(node, context) == VALUE_CHARACTER) then
+                call lower_character_array_element_print(arena, node, context, &
+                                                         .false., error_msg)
+                return
+            end if
             if (is_contained_complex_function(context, node%name)) then
                 call lower_print_complex_result_call(arena, node_index, context, &
                                                      error_msg)
@@ -447,6 +453,12 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (node%is_array_access .and. &
+                array_access_value_kind(node, context) == VALUE_CHARACTER) then
+                call lower_character_array_element_print(arena, node, context, &
+                                                         .true., error_msg)
+                return
+            end if
             if (is_contained_complex_function(context, node%name)) then
                 call lower_print_complex_result_call(arena, node_index, context, &
                                                      error_msg)

@@ -82,6 +82,8 @@ module session_program_lowering
         emit_i64_store_at, &
         emit_i32_array_alloca, &
         emit_i32_array_element_addr, &
+        emit_ptr_array_alloca, &
+        emit_ptr_array_element_addr, &
         emit_f32_array_alloca, &
         emit_f32_array_element_addr, &
         emit_f64_array_alloca, &
@@ -356,6 +358,10 @@ contains
             end if
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (value_kind == VALUE_CHARACTER) then
+                call lower_character_array_declaration(node, context, error_msg)
+                return
+            end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
                 call unsupported_feature_error('array declaration', node%line, &
@@ -694,6 +700,7 @@ contains
     end subroutine lower_parameter_declaration
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_array_elements.inc'
+    include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
     include 'session_program_lowering_internal_read.inc'

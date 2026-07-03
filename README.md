@@ -24,7 +24,9 @@ Refer to that document instead of this README for the feature list.
 Current slices include compound formatted `print` with literal `I`, `X`,
 `F`, and `A` descriptors on stdout, including a bare array among other print
 items; fixed-size rank-1 and rank-2 arrays with
-`integer`, `real`, `real(8)`, and `logical` elements; array constructors as
+`integer`, `real`, `real(8)`, and `logical` elements; fixed-size rank-1 and
+rank-2 `character(len=N)` arrays (character-literal element assignment, element
+`print`, and whole-array `print`); array constructors as
 whole-array assignment right-hand sides, plain (`[a, b, c]`), typed
 (`[integer :: 1, 2]`, real-to-integer truncation and integer-to-real
 promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element
