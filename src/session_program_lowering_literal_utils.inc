@@ -235,6 +235,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: clean
         integer :: io_stat, uscore
+        integer(c_int64_t) :: int_value
 
         ! Strip the kind suffix (_8, _dp, _real64, _c_double, etc.) which Fortran
         ! internal reads do not accept. The suffix begins at the first underscore
@@ -251,8 +252,17 @@
         read (clean, *, iostat=io_stat) value
         if (io_stat == 0) then
             call set_empty(error_msg)
-        else
-            error_msg = 'invalid real literal for direct LIRIC session: '// &
-                        trim(text)
+            return
         end if
+
+        ! If real parsing failed, try parsing as a BOZ literal (e.g. Z'ABC')
+        ! and convert the integer to real. This handles real(b'010101') expressions.
+        call parse_i32_literal(text, int_value, error_msg)
+        if (len_trim(error_msg) == 0) then
+            value = real(int_value, c_double)
+            return
+        end if
+
+        error_msg = 'invalid real literal for direct LIRIC session: '// &
+                    trim(text)
     end subroutine parse_f64_literal

@@ -1,5 +1,5 @@
 module session_lowering_ops
-    use, intrinsic :: iso_c_binding, only: c_int, c_int64_t
+    use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_double
     use ffc_strings, only: set_empty
     use liric_session_bindings, only: LR_OP_ADD, LR_OP_MUL, LR_OP_SDIV, &
         LR_OP_SUB
@@ -41,6 +41,14 @@ contains
         read (text, *, iostat=io_status) value
         if (io_status == 0) then
             call set_empty(error_msg)
+            return
+        end if
+
+        ! When a real literal appears in an integer context (e.g. y = 2.0 where
+        ! y is integer), truncate it to integer by parsing as real and truncating.
+        call parse_real_as_integer(text, value, io_status)
+        if (io_status == 0) then
+            call set_empty(error_msg)
         else
             error_msg = 'invalid integer literal for direct LIRIC lowering: '// &
                 trim(text)
@@ -63,6 +71,40 @@ contains
         if (us <= 1) return
         read (trimmed(1:us - 1), *, iostat=status) value
     end subroutine parse_kind_suffixed_integer
+
+    subroutine parse_real_as_integer(text, value, status)
+        !! Try to parse text as a real literal and truncate to integer. Used
+        !! when a real literal (e.g. 2.0 or 2.5d0) appears in an integer context.
+        !! status==0 on success; nonzero leaves value untouched so the caller
+        !! can report an error.
+        character(len=*), intent(in) :: text
+        integer(c_int64_t), intent(out) :: value
+        integer, intent(out) :: status
+        character(len=:), allocatable :: clean
+        real(c_double) :: real_value
+        integer :: io_stat, uscore
+
+        status = 1
+        value = 0_c_int64_t
+
+        ! Strip the kind suffix (_8, _dp, _real64, etc.) which Fortran does
+        ! not accept in internal reads. Look for the underscore after a digit,
+        ! dot, or exponent letter (not after 'c' in c_double).
+        clean = trim(adjustl(text))
+        uscore = index(clean, '_')
+        if (uscore > 1) then
+            if (scan(clean(uscore - 1:uscore - 1), &
+                '0123456789.dDeE') > 0) then
+                clean = clean(1:uscore - 1)
+            end if
+        end if
+
+        read (clean, *, iostat=io_stat) real_value
+        if (io_stat == 0) then
+            value = int(real_value, c_int64_t)
+            status = 0
+        end if
+    end subroutine parse_real_as_integer
 
     subroutine parse_boz_literal(text, value, status)
         !! Decode a BOZ constant into an integer value. Recognises the standard
