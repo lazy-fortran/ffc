@@ -142,7 +142,11 @@ across `use`, in the same file or across separate compilation. A module
 subroutine or integer function with integer, real, or logical scalar arguments
 is callable from a separately compiled program: its signature round-trips
 through the `.fmod` and the two objects link, each keeping its own string and
-format literals (#284). A module-scope
+format literals (#284). A named generic interface over such procedures also
+round-trips through the `.fmod`, so a `use`-associated generic call in a
+separately compiled program resolves to the specific matching its first
+argument's kind. A module that exports only contained procedures still writes a
+`.fmod`, so a using unit resolves it. A module-scope
 scalar variable of a registered derived type is likewise a flat slot global, its
 compile-time component defaults folded into the static bytes and read through
 `use` (including a `use ..., alias => var` rename); an explicit
