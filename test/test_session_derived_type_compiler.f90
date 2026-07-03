@@ -17,6 +17,7 @@ program test_session_derived_type_compiler
     if (.not. test_inheritance_parent_component()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
     if (.not. test_generic_binding_diagnostic()) all_passed = .false.
+    if (.not. test_final_binding_ignored()) all_passed = .false.
     if (.not. test_component_default_initialiser()) all_passed = .false.
     if (.not. test_component_default_overridden()) all_passed = .false.
     if (.not. test_array_component_assignment_and_read()) all_passed = .false.
@@ -421,5 +422,34 @@ contains
             source, 'type-bound procedure', &
             '/tmp/ffc_session_generic_bound_test')
     end function test_generic_binding_diagnostic
+
+    logical function test_final_binding_ignored()
+        ! A type with a FINAL binding registers and lowers; ffc does not model
+        ! finalisation, so the finaliser never runs but the type is usable.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: obj_t'//new_line('a')// &
+            '    integer :: val = 0'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    final :: cleanup'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine cleanup(self)'//new_line('a')// &
+            '    type(obj_t), intent(inout) :: self'//new_line('a')// &
+            '    self%val = 0'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end module'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type(obj_t) :: c'//new_line('a')// &
+            '  c%val = 42'//new_line('a')// &
+            '  stop c%val'//new_line('a')// &
+            'end program main'
+
+        test_final_binding_ignored = expect_exit_status( &
+            source, 42, '/tmp/ffc_session_final_binding_test')
+    end function test_final_binding_ignored
 
 end program test_session_derived_type_compiler

@@ -487,8 +487,7 @@
             select type (binding => &
                 context%arena%entries(node%binding_indices(i))%node)
             type is (type_binding_node)
-                if (binding%is_generic .or. binding%is_final .or. &
-                    binding%is_deferred) then
+                if (binding%is_generic .or. binding%is_deferred) then
                     call unsupported_feature_error('type-bound procedure', &
                         node%line, node%column, &
                         'direct LIRIC session only supports plain '// &
@@ -496,6 +495,11 @@
                         'final, or deferred', error_msg)
                     return
                 end if
+                ! FINAL bindings name a destructor, not a callable method.
+                ! ffc does not model finalization, so the type registers and
+                ! lowers ignoring the final; a program that observes the
+                ! finaliser's side effect mismatches rather than mis-passes.
+                if (binding%is_final) cycle
                 if (.not. allocated(binding%binding_name)) cycle
                 method_name_buf = trim(binding%binding_name)
                 if (allocated(binding%implementation) .and. &
