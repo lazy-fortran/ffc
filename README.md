@@ -49,7 +49,11 @@ compile-time size, so `size`, element access, `sum`, and whole-array `print`
 work in the callee. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
-`selected_int_kind` and `selected_real_kind`. Derived types take scalar
+`selected_int_kind` and `selected_real_kind`. Compile-time integer folding
+in array-bound and `parameter` initializer positions also covers `kind`,
+`size`, `len`, `min`, `max`, `int`, `huge`, `bit_size`, `precision`, `range`,
+`selected_char_kind`, and a bare `iso_c_binding` kind name used as a value
+(`c_bool`, `c_int`, `c_long`, ...). Derived types take scalar
 integer, real, logical, and `c_ptr` components, fixed-size rank-1 integer,
 real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
 and scalar nested derived components (`type(inner) :: c`, accessed

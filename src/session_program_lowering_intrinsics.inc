@@ -88,19 +88,18 @@
     end function selected_int_kind_value
 
     ! selected_real_kind(p, r): smallest real kind with at least p decimal
-    ! digits of precision and decimal exponent range r. gfortran available
-    ! kinds (precision, range): 4 (6, 37), 8 (15, 307), 10 (18, 4931),
-    ! 16 (33, 4931). Error codes: -1 precision unmet, -2 range unmet,
-    ! -3 both unmet.
+    ! digits of precision and decimal exponent range r, restricted to the
+    ! kinds direct LIRIC session actually backs (f32, f64); real(10) and
+    ! real(16) fold as unavailable here even where gfortran offers extended
+    ! or quad precision, since a real declaration with such a kind silently
+    ! narrows to f32 instead of being honored. Error codes: -1 precision
+    ! unmet, -2 range unmet, -3 both unmet.
     integer(c_int64_t) function selected_real_kind_value(p, r) result(kind_value)
         integer(c_int64_t), intent(in) :: p, r
-        integer, parameter :: nk = 4
-        integer(c_int64_t), parameter :: kinds(nk) = [4_c_int64_t, 8_c_int64_t, &
-                                                      10_c_int64_t, 16_c_int64_t]
-        integer(c_int64_t), parameter :: precs(nk) = [6_c_int64_t, 15_c_int64_t, &
-                                                      18_c_int64_t, 33_c_int64_t]
-        integer(c_int64_t), parameter :: ranges(nk) = [37_c_int64_t, 307_c_int64_t, &
-                                                       4931_c_int64_t, 4931_c_int64_t]
+        integer, parameter :: nk = 2
+        integer(c_int64_t), parameter :: kinds(nk) = [4_c_int64_t, 8_c_int64_t]
+        integer(c_int64_t), parameter :: precs(nk) = [6_c_int64_t, 15_c_int64_t]
+        integer(c_int64_t), parameter :: ranges(nk) = [37_c_int64_t, 307_c_int64_t]
         logical :: prec_ok, range_ok
         integer :: i
 

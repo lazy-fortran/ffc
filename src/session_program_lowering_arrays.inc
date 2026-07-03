@@ -677,6 +677,10 @@
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
+                if (iso_c_binding_kind_value(id_name, constant_value)) then
+                    call set_empty(error_msg)
+                    return
+                end if
                 error_msg = 'compile-time integer parameter was not declared: '// &
                             trim(id_name)
                 return
@@ -749,6 +753,28 @@
             call eval_size_constant(arena, node, context, constant_value, error_msg)
         else if (same_name(node%name, 'len')) then
             call eval_len_constant(arena, node, context, constant_value, error_msg)
+        else if (same_name(node%name, 'min')) then
+            call eval_min_max_constant(arena, node, context, .false., &
+                                       constant_value, error_msg)
+        else if (same_name(node%name, 'max')) then
+            call eval_min_max_constant(arena, node, context, .true., &
+                                       constant_value, error_msg)
+        else if (same_name(node%name, 'int')) then
+            call eval_int_constant(arena, node, context, constant_value, error_msg)
+        else if (same_name(node%name, 'huge')) then
+            call eval_huge_constant(arena, node, context, constant_value, error_msg)
+        else if (same_name(node%name, 'selected_char_kind')) then
+            call eval_selected_char_kind_constant(arena, node, constant_value, &
+                                                  error_msg)
+        else if (same_name(node%name, 'precision')) then
+            call eval_precision_constant(arena, node, context, constant_value, &
+                                         error_msg)
+        else if (same_name(node%name, 'bit_size')) then
+            call eval_bit_size_constant(arena, node, context, constant_value, &
+                                        error_msg)
+        else if (same_name(node%name, 'range')) then
+            call eval_range_constant(arena, node, context, constant_value, &
+                                     error_msg)
         else
             error_msg = 'compile-time integer expression uses unsupported call: '// &
                         trim(node%name)
@@ -851,8 +877,9 @@
                 k = 4_c_int64_t
             end if
         else
-            ! Default integer literal.
-            k = 4_c_int64_t
+            call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_literal_kind_number(lit_value, k, error_msg)
         end if
     end subroutine kind_of_literal
 

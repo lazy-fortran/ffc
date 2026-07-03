@@ -700,6 +700,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
     include 'session_program_lowering_arrays.inc'
+    include 'session_program_lowering_const_fold.inc'
     include 'session_program_lowering_array_elements.inc'
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
