@@ -50,7 +50,11 @@ whole-array `print` of a 1-D allocatable whose extent is a compile-time
 constant; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
 base address, with their extent taken from a whole-array actual of
 compile-time size, so `size`, element access, `sum`, and whole-array `print`
-work in the callee. Scalar
+work in the callee. A scalar `integer`/`real`/`logical, allocatable` variable
+supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
+with any source expression; a rank-1/rank-2 allocatable array dummy argument
+aliases the caller's own descriptor, so `allocate`/`deallocate`/element writes
+inside the callee are visible to the caller. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Compile-time integer folding

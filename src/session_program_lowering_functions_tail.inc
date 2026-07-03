@@ -325,6 +325,40 @@
         end do
     end function dummy_is_array
 
+    logical function dummy_is_allocatable_array(arena, body_indices, param_name)
+        ! A dummy is an allocatable array when a body declaration names it
+        ! with both an array spec and the allocatable attribute. Selects the
+        ! descriptor-aliasing ABI (W11 duplicate-declaration fix).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i, k
+
+        dummy_is_allocatable_array = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array .or. .not. decl%is_allocatable) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) then
+                        dummy_is_allocatable_array = .true.
+                        return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) then
+                            dummy_is_allocatable_array = .true.
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function dummy_is_allocatable_array
+
     logical function callee_dummy_is_array(arena, callee_name, param_pos)
         ! Whether the contained procedure named callee_name declares its
         ! param_pos-th (1-based) dummy as an array. Selects the array-argument
@@ -373,6 +407,56 @@
             end if
         end do
     end function callee_dummy_is_array
+
+    logical function callee_dummy_is_allocatable_array(arena, callee_name, &
+                                                        param_pos)
+        ! Whether the contained procedure named callee_name declares its
+        ! param_pos-th (1-based) dummy as an allocatable array. Selects the
+        ! descriptor-aliasing ABI on the caller side (W11).
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: name, name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        callee_dummy_is_allocatable_array = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(sb_node%param_indices)) return
+                call parameter_name(arena, sb_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                callee_dummy_is_allocatable_array = dummy_is_allocatable_array( &
+                    arena, sb_node%body_indices, name)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(fn_node%param_indices)) return
+                call parameter_name(arena, fn_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                callee_dummy_is_allocatable_array = dummy_is_allocatable_array( &
+                    arena, fn_node%body_indices, name)
+                return
+            end if
+        end do
+    end function callee_dummy_is_allocatable_array
 
     logical function callee_dummy_is_character(arena, callee_name, param_pos)
         ! Whether the contained procedure named callee_name declares its

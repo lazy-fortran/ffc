@@ -84,6 +84,22 @@
             end if
         end if
 
+        ! allocate(x) for a bare scalar allocatable: no shape at all.
+        if (is_identifier(arena, node%var_indices(1)) .and. &
+            (.not. allocated(node%shape_indices) .or. &
+             size(node%shape_indices) == 0)) then
+            call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_allocatable .and. &
+                    context%symbols(symbol_index)%array_rank == 0) then
+                    call lower_allocate_scalar(symbol_index, context, error_msg)
+                    return
+                end if
+            end if
+        end if
+
         call allocate_target(arena, node, name, size_index1, size_index2, error_msg)
         if (len_trim(error_msg) > 0) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -390,6 +406,15 @@
         end if
         call get_identifier_name(arena, node%var_indices(1), target_name, error_msg)
         if (len_trim(error_msg) > 0) return
+        target_sym = find_symbol(context, target_name)
+        if (target_sym > 0) then
+            if (context%symbols(target_sym)%is_allocatable .and. &
+                context%symbols(target_sym)%array_rank == 0) then
+                call lower_scalar_allocate_mold_source(arena, node, target_sym, &
+                    context, error_msg)
+                return
+            end if
+        end if
         if (.not. is_identifier(arena, source_expr)) then
             error_msg = 'mold/source must name an allocatable array'
             return
@@ -881,6 +906,10 @@
                 trim(name), error_msg)
             return
         end if
+        if (context%symbols(symbol_index)%array_rank == 0) then
+            call lower_deallocate_scalar(symbol_index, context, error_msg)
+            return
+        end if
 
         call lower_deallocate_i32(symbol_index, context, error_msg)
     end subroutine lower_deallocate_statement
@@ -1128,7 +1157,26 @@
         type(lr_operand_desc_t) :: descriptor, zero
         integer :: index, k
 
-        if (find_symbol(context, name) > 0) then
+        index = find_symbol(context, name)
+        if (index > 0) then
+            ! An allocatable dummy argument: the parameter symbol was already
+            ! registered generically at call-entry binding. The incoming
+            ! parameter pointer IS the caller's own descriptor address
+            ! (passed by allocatable_array_actual_descriptor_address), so
+            ! adopt it directly instead of allocating fresh storage -- writes
+            ! to the descriptor (allocate/deallocate) then land in the
+            ! caller's frame too.
+            if (context%symbols(index)%is_parameter .and. &
+                .not. context%symbols(index)%is_array .and. &
+                .not. context%symbols(index)%is_allocatable) then
+                context%symbols(index)%value_kind = value_kind
+                context%symbols(index)%is_allocatable = .true.
+                context%symbols(index)%array_rank = rank
+                context%symbols(index)%allocatable_descriptor_address = &
+                    context%symbols(index)%address
+                call set_empty(error_msg)
+                return
+            end if
             error_msg = 'duplicate allocatable declaration: '//trim(name)
             return
         end if

@@ -77,6 +77,16 @@
                 call whole_array_actual_address(arena, arg_indices(i), context, &
                                                  args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
+                     .and. callee_dummy_is_allocatable_array(arena, callee_name, &
+                                                             i)) then
+                ! Allocatable array actual to an allocatable array dummy: pass
+                ! the caller's own descriptor address so the callee aliases it
+                ! (allocate/deallocate inside the callee are visible to the
+                ! caller too, W11).
+                call allocatable_array_actual_descriptor_address(arena, &
+                    arg_indices(i), context, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            arg_default_kind(arena, callee_name, &
@@ -219,6 +229,54 @@
         address = context%symbols(symbol_index)%element_address
         call set_empty(error_msg)
     end subroutine whole_array_actual_address
+
+    logical function actual_is_allocatable_array(arena, node_index, context)
+        ! Whether an actual argument is a plain allocatable-array identifier.
+        ! Allocatable arrays never set is_array (only array_rank), unlike
+        ! fixed-size arrays, so array_rank > 0 is the array/scalar signal.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_allocatable_array = .false.
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) return
+        actual_is_allocatable_array = &
+            context%symbols(symbol_index)%is_allocatable .and. &
+            context%symbols(symbol_index)%array_rank > 0
+    end function actual_is_allocatable_array
+
+    subroutine allocatable_array_actual_descriptor_address(arena, node_index, &
+                                                            context, address, &
+                                                            error_msg)
+        ! Pass an allocatable array actual by reference to its own 40-byte
+        ! descriptor (data pointer + bounds); the callee aliases the same
+        ! descriptor so allocate/deallocate inside the callee are visible to
+        ! the caller (W11).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'allocatable array argument was not declared: '// &
+                        trim(id_name)
+            return
+        end if
+        address = context%symbols(symbol_index)%allocatable_descriptor_address
+        call set_empty(error_msg)
+    end subroutine allocatable_array_actual_descriptor_address
 
     subroutine derived_actual_address(arena, node_index, context, address, &
                                       error_msg)
