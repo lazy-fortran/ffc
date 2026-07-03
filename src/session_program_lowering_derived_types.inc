@@ -227,7 +227,6 @@
         integer :: export_idx
 
         if (.not. allocated(mod_node%name)) return
-        if (.not. allocated(mod_node%declaration_indices)) return
         call grow_module_exports(context)
 
         export_idx = context%module_export_count + 1
@@ -241,6 +240,10 @@
         context%module_exports(export_idx)%enum_count = 0
         allocate(context%module_exports(export_idx)%enum_indices(8))
 
+        if (.not. allocated(mod_node%declaration_indices)) then
+            context%module_export_count = export_idx
+            return
+        end if
         do j = 1, size(mod_node%declaration_indices)
             select type (decl => &
                 arena%entries(mod_node%declaration_indices(j))%node)
@@ -319,6 +322,9 @@
 
         module_symbol_is_private = .false.
         default_private = .false.
+        ! A module with only contained procedures has no declaration part, so no
+        ! visibility statement can restrict a symbol: it stays public.
+        if (.not. allocated(mod_node%declaration_indices)) return
         ! Pass 1: explicit per-name lists win regardless of position.
         do j = 1, size(mod_node%declaration_indices)
             if (.not. node_exists(arena, mod_node%declaration_indices(j))) cycle
