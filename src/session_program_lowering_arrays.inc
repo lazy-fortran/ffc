@@ -262,7 +262,7 @@
         integer, intent(in) :: dim_count
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: extents(2), total, i
+        integer :: extents(2), total, i, index
         logical :: ok
 
         if (.not. allocated(context%current_proc_name)) then
@@ -275,6 +275,18 @@
         call resolve_assumed_shape_extents(context, context%current_proc_name, &
                                            name, dim_count, extents, ok)
         if (.not. ok) then
+            ! No compile-time-foldable actual: fall back to the hidden i64
+            ! runtime extent argument already loaded for this dummy (rank-1
+            ! only) by bind_hidden_extent_params before this declaration ran.
+            index = find_symbol(context, name)
+            if (dim_count == 1 .and. index > 0) then
+                if (context%symbols(index)%has_runtime_dim_size(1)) then
+                    call define_declared_array_symbol(context, node, name, 1, 0, &
+                                                       value_kind, error_msg, &
+                                                       assumed_extents=[0])
+                    return
+                end if
+            end if
             call unsupported_feature_error('assumed-shape array', node%line, &
                 node%column, 'assumed-shape dummy extent must come from a '// &
                 'whole-array actual of compile-time size', error_msg)
@@ -2088,6 +2100,11 @@
             return
         end if
         if (nargs == 1) then
+            if (context%symbols(source_index)%has_runtime_dim_size(1)) then
+                value = context%symbols(source_index)%runtime_dim_size(1)
+                call set_empty(error_msg)
+                return
+            end if
             value = i32_immediate(context%session, &
                                   int(context%symbols(source_index)%array_size, &
                                       c_int64_t))
@@ -2100,6 +2117,12 @@
         if (dim_val < 1 .or. &
             dim_val > int(context%symbols(source_index)%array_rank, c_int64_t)) then
             error_msg = 'size dim out of range for: '//trim(array_name)
+            return
+        end if
+        if (dim_val == 1_c_int64_t .and. &
+            context%symbols(source_index)%has_runtime_dim_size(1)) then
+            value = context%symbols(source_index)%runtime_dim_size(1)
+            call set_empty(error_msg)
             return
         end if
         value = i32_immediate(context%session, &
@@ -2169,6 +2192,20 @@
             if (.not. context%symbols(source_index)%is_array) then
                 error_msg = trim(reduction_name)// &
                             ' requires an array argument: '//trim(array_name)
+                return
+            end if
+            ! A rank-1 assumed-shape dummy with a runtime-only extent (the
+            ! hidden i64 argument ABI) has no compile-time array_size to
+            ! unroll over; walk a genuine loop instead. Integer elements only.
+            if (context%symbols(source_index)%has_runtime_dim_size(1)) then
+                if (trim(reduction_name) == 'sum' .and. &
+                    context%symbols(source_index)%value_kind == VALUE_I32) then
+                    call lower_runtime_i32_sum(context, source_index, value, &
+                                               error_msg)
+                    return
+                end if
+                error_msg = trim(reduction_name)//' over a runtime-extent '// &
+                            'assumed-shape dummy supports integer sum only'
                 return
             end if
             array_size = context%symbols(source_index)%array_size

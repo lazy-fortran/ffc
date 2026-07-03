@@ -152,6 +152,7 @@ module session_program_lowering
         emit_liric_f64_to_i32, &
         emit_liric_char_byte_zext, &
         emit_liric_i32_to_i64, &
+        emit_liric_i64_to_i32, &
         emit_liric_store_char_byte, &
         emit_liric_print_f64, &
         emit_liric_print_f64_value, &
@@ -1260,6 +1261,7 @@ contains
         handled = len_trim(error_msg) == 0
     end subroutine try_lower_overloaded_assignment
     include 'session_program_lowering_arguments.inc'
+    include 'session_program_lowering_assumed_shape_extent.inc'
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'
     subroutine lower_function_return(node, context, error_msg)

@@ -215,6 +215,33 @@ contents; the next call through `fp` picks up the new address.
 - External procedures, modules, and separate compilation are unsupported; #54
   owns symbol mangling and link behavior.
 
+### Assumed-shape runtime extent (W2)
+
+A rank-1 assumed-shape dummy `a(:)` whose actual has no compile-time-foldable
+shape (an allocatable actual) carries its element count as a hidden `i64`
+argument, passed by reference like every other scalar reference argument: the
+caller allocates an `i64` stack slot, stores the extent, and passes the
+slot's address. The hidden argument is appended after all of the subroutine's
+visible pointer parameters, one per such dummy, in dummy declaration order.
+The callee loads and truncates it to `i32` once at entry and reuses that
+value everywhere the dummy's extent is needed.
+
+The existing whole-arena compile-time fold (a whole-array actual with a
+literal or caller-scope-parameter extent) stays the fast path: it is tried
+first, and only a dummy for which that fold fails gets a hidden parameter, so
+an already-working compile-time-resolved assumed-shape dummy keeps its
+original signature and no hidden argument.
+
+This slice covers: `size(a)` (no `dim`, and `dim=1`), `ubound(a, 1)`, element
+read and write `a(i)` (extent-independent for rank-1, so it needs no ABI
+change), a `do` loop bound by `size(a)`, and `sum(a)` for `integer` elements
+(a genuine runtime loop, since there is no compile-time extent to unroll
+over). Rank-2 assumed-shape dummies, function (not subroutine) dummies,
+array-section and array-constructor actuals, and `sum`/`product`/`maxval`/
+`minval` over non-integer runtime-extent elements are not yet covered and
+keep the pre-existing "assumed-shape dummy extent must come from a
+whole-array actual of compile-time size" diagnostic.
+
 ## Runtime Calls
 
 - Scalar `print` lowers to external C `printf`/`snprintf` calls.

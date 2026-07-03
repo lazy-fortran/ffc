@@ -35,9 +35,13 @@
         integer, allocatable, intent(out) :: copyback_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        integer :: visible_count
+        integer :: hidden_count
 
-        allocate (args(size(arg_indices)))
-        allocate (copyback_indices(size(arg_indices)))
+        visible_count = size(arg_indices)
+        hidden_count = callee_hidden_extent_count(context, callee_name)
+        allocate (args(visible_count + hidden_count))
+        allocate (copyback_indices(visible_count + hidden_count))
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
@@ -87,6 +91,16 @@
                 call allocatable_array_actual_descriptor_address(arena, &
                     arg_indices(i), context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
+                     .and. callee_dummy_assumed_shape_rank1(arena, callee_name, &
+                                                            i)) then
+                ! Allocatable array actual to a rank-1 assumed-shape dummy: pass
+                ! the descriptor's runtime data pointer (the W2 runtime-extent
+                ! ABI); its element count travels separately as a hidden i64
+                ! argument appended below.
+                call allocatable_array_actual_data_address(arena, arg_indices(i), &
+                    context, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            arg_default_kind(arena, context, &
@@ -95,6 +109,13 @@
                 if (len_trim(error_msg) > 0) return
             end if
         end do
+
+        if (hidden_count > 0) then
+            call append_hidden_extent_args(arena, arg_indices, context, &
+                                           callee_name, visible_count, args, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args

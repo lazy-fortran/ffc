@@ -54,7 +54,11 @@ base address, with their extent taken from a whole-array actual of
 compile-time size (including a `dimension(n)` bound naming a caller-scope
 `parameter`), so element read/write, `size(a)`, `size(a, dim)`,
 `lbound`/`ubound`, `sum`, and whole-array `print` work in the callee, in both
-program-contained and module procedures. A scalar
+program-contained and module procedures. A rank-1 assumed-shape dummy of a
+subroutine also accepts a rank-1 allocatable actual of runtime-only extent:
+the extent travels as a hidden argument, so `size(a)`, `ubound(a, 1)`,
+element read/write, a `do` loop bound by `size(a)`, and integer `sum(a)`
+all work against the caller's runtime allocation. A scalar
 `integer`/`real`/`logical, allocatable` variable
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
 with any source expression; a rank-1/rank-2 allocatable array dummy argument

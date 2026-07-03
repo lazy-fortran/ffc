@@ -77,6 +77,14 @@
             error_msg = 'ubound dim out of range'
             return
         end if
+        if (dim_val == 1_c_int64_t .and. &
+            context%symbols(sym)%has_runtime_dim_size(1)) then
+            ! A runtime-extent assumed-shape dummy always has lower bound 1, so
+            ! ubound is exactly the runtime extent (1 + extent - 1).
+            value = context%symbols(sym)%runtime_dim_size(1)
+            call set_empty(error_msg)
+            return
+        end if
         lower = context%symbols(sym)%array_dim_lowers(int(dim_val))
         size_d = context%symbols(sym)%array_dim_sizes(int(dim_val))
         value = i32_immediate(context%session, int(lower + size_d - 1, c_int64_t))

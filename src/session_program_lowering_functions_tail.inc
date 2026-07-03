@@ -8,6 +8,7 @@
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
+        integer :: hidden_extent_count
         logical :: terminated
         character(len=:), allocatable :: emit_name
 
@@ -38,17 +39,27 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
+        ! A rank-1 assumed-shape dummy whose extent does not fold at compile
+        ! time (an allocatable actual) carries one hidden i64 extent argument
+        ! appended after the visible parameters (#W2 runtime-extent ABI).
+        hidden_extent_count = callee_hidden_extent_count(context, trim(node%name))
         if (present(emit_name_override)) then
             emit_name = trim(emit_name_override)
         else
             emit_name = procedure_emit_name(node%name, node%bind_c_clause)
         end if
-        if (.not. begin_void_subroutine(context%session, emit_name, param_count, &
-                                                        error_msg)) return
+        if (.not. begin_void_subroutine(context%session, emit_name, &
+                param_count + hidden_extent_count, error_msg)) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
                                          error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (hidden_extent_count > 0) then
+            call bind_hidden_extent_params(arena, node%param_indices, context, &
+                                           trim(node%name), param_count, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)
