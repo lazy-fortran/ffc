@@ -400,6 +400,30 @@
         end do
     end subroutine find_call_actual_identifier
 
+    subroutine find_call_actual_expr(arena, proc_name, param_pos, actual_index)
+        ! Like find_call_actual_identifier, but returns the raw AST node index
+        ! of the param_pos-th actual argument at a call to proc_name, whatever
+        ! expression it is (literal, size() call, or bare identifier).
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: proc_name
+        integer, intent(in) :: param_pos
+        integer, intent(out) :: actual_index
+        integer :: n
+        character(len=:), allocatable :: call_name
+        integer, allocatable :: arg_indices(:)
+
+        actual_index = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            if (.not. call_targets_proc(arena, n, proc_name, call_name, &
+                                        arg_indices)) cycle
+            if (.not. allocated(arg_indices)) cycle
+            if (param_pos < 1 .or. param_pos > size(arg_indices)) cycle
+            actual_index = arg_indices(param_pos)
+            return
+        end do
+    end subroutine find_call_actual_expr
+
     logical function call_targets_proc(arena, node_index, proc_name, call_name, &
                                        arg_indices) result(matches)
         ! True when node_index is a subroutine-call statement or a
@@ -711,6 +735,22 @@
             ! PARAMETER declaration anywhere in the unit.
             call fold_named_constant_from_arena(arena, context, id_name, &
                                                 constant_value, error_msg)
+            if (len_trim(error_msg) == 0) return
+            ! Still unresolved: id_name may itself be a dummy argument of the
+            ! procedure being lowered (an adjustable-array bound such as
+            ! `real :: a(n)`). Recover its value from the single call site's
+            ! actual argument, matching the assumed-shape extent heuristic.
+            call fold_i32_constant_from_call_site(arena, context, id_name, &
+                                                  constant_value, error_msg)
+            if (len_trim(error_msg) == 0) return
+            ! Last resort: a host/module-associated variable (not a dummy
+            ! argument, not a PARAMETER) used directly as an array bound, e.g.
+            ! `integer :: nx = 4` at module scope and `real, dimension(nx) ::`
+            ! in a USE'd subroutine. Approximate with its declared initial
+            ! value, matching the common case of a value set once and never
+            ! reassigned before the bound is used.
+            call fold_initialized_variable_from_arena(arena, context, id_name, &
+                                                      constant_value, error_msg)
             return
         end if
 
@@ -718,6 +758,16 @@
         type is (call_or_subscript_node)
             call eval_kind_inquiry_constant(arena, node, context, &
                                             constant_value, error_msg)
+        type is (assignment_node)
+            ! A keyword argument (e.g. size(x, dim=1)) parses to an
+            ! assignment_node holding the keyword name and the actual value.
+            ! `=` never appears in an argument position for any other reason
+            ! (Fortran comparison is `==`), so fold the value unconditionally;
+            ! the parser does not always set is_keyword_argument here (only
+            ! for call-statement arguments, not call_or_subscript argument
+            ! lists shared by function calls and array subscripts).
+            call eval_i32_constant(arena, node%value_index, context, &
+                                   constant_value, error_msg)
         class default
             error_msg = 'array bound is not a compile-time integer expression'
         end select
@@ -753,6 +803,76 @@
         end do
         error_msg = 'compile-time integer parameter was not declared: '//trim(name)
     end subroutine fold_named_constant_from_arena
+
+    recursive subroutine fold_i32_constant_from_call_site(arena, context, name, &
+                                                           constant_value, &
+                                                           error_msg)
+        ! An adjustable-array dummy bound (e.g. `real, intent(out) :: a(n)`)
+        ! names a scalar dummy argument of the procedure being lowered.
+        ! Recover its compile-time value from the single call site's actual
+        ! argument at that dummy's position, matching the assumed-shape
+        ! extent recovery heuristic (single call site, caller-derived value).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: param_pos, actual_index
+        character(len=:), allocatable :: actual_name
+
+        constant_value = 0_c_int64_t
+        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
+        if (.not. allocated(context%current_proc_name)) return
+        param_pos = proc_param_position(arena, context%current_proc_name, name)
+        if (param_pos <= 0) return
+        call find_call_actual_expr(arena, context%current_proc_name, param_pos, &
+                                   actual_index)
+        if (actual_index <= 0) return
+        if (is_identifier(arena, actual_index)) then
+            call get_identifier_name(arena, actual_index, actual_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (same_name(actual_name, name)) then
+                error_msg = 'compile-time integer parameter was not declared: '// &
+                            trim(name)
+                return
+            end if
+        end if
+        call eval_i32_constant(arena, actual_index, context, constant_value, &
+                               error_msg)
+    end subroutine fold_i32_constant_from_call_site
+
+    recursive subroutine fold_initialized_variable_from_arena(arena, context, &
+                                                              name, &
+                                                              constant_value, &
+                                                              error_msg)
+        ! Fold a plain (non-PARAMETER) scalar variable's declared initial
+        ! value, for a host/module-associated array bound that names an
+        ! ordinary variable rather than a named constant or dummy argument.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        constant_value = 0_c_int64_t
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (node => arena%entries(n)%node)
+            type is (declaration_node)
+                if (node%is_array) cycle
+                if (node%is_parameter) cycle
+                if (.not. node%has_initializer) cycle
+                if (node%initializer_index <= 0) cycle
+                if (.not. allocated(node%var_name)) cycle
+                if (trim(node%var_name) /= trim(name)) cycle
+                call eval_i32_constant(arena, node%initializer_index, context, &
+                                       constant_value, error_msg)
+                return
+            end select
+        end do
+        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
+    end subroutine fold_initialized_variable_from_arena
 
     ! Constant-fold selected_int_kind / selected_real_kind so they may appear
     ! in a compile-time integer parameter initializer (kind selection).
@@ -941,8 +1061,10 @@
         type(lowering_context_t), intent(in) :: context
         integer(c_int64_t), intent(out) :: constant_value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: sym, nargs
+        integer :: sym, nargs, arr_rank
         integer(c_int64_t) :: dim
+        integer :: arr_size, arr_dim_sizes(ARRAY_MAX_RANK)
+        logical :: ok
         character(len=:), allocatable :: id_name
 
         constant_value = 0_c_int64_t
@@ -962,35 +1084,83 @@
         call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, id_name)
-        if (sym <= 0) then
-            error_msg = 'size argument was not declared: '//trim(id_name)
-            return
+        if (sym > 0) then
+            if (.not. context%symbols(sym)%is_array) then
+                error_msg = 'size argument is not an array: '//trim(id_name)
+                return
+            end if
+            arr_size = context%symbols(sym)%array_size
+            arr_rank = context%symbols(sym)%array_rank
+            arr_dim_sizes = context%symbols(sym)%array_dim_sizes
+        else
+            ! id_name is not in the current lowering scope: it may be a
+            ! caller-scope array passed by size() as another dummy's bound
+            ! actual (e.g. `call mysum(size(x), x)`). Recover its declared
+            ! compile-time shape from its declaration anywhere in the unit.
+            call find_array_decl_extents_any_rank(context, id_name, arr_rank, &
+                                                  arr_dim_sizes, ok)
+            if (.not. ok) then
+                error_msg = 'size argument was not declared: '//trim(id_name)
+                return
+            end if
+            arr_size = product(arr_dim_sizes(1:arr_rank))
         end if
-        if (.not. context%symbols(sym)%is_array) then
-            error_msg = 'size argument is not an array: '//trim(id_name)
-            return
-        end if
-        if (context%symbols(sym)%array_size <= 0) then
+        if (arr_size <= 0) then
             error_msg = 'size argument is not a fixed-size array: '//trim(id_name)
             return
         end if
 
         if (nargs == 1) then
-            constant_value = int(context%symbols(sym)%array_size, c_int64_t)
+            constant_value = int(arr_size, c_int64_t)
             call set_empty(error_msg)
             return
         end if
 
         call eval_i32_constant(arena, node%arg_indices(2), context, dim, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (dim < 1 .or. dim > int(context%symbols(sym)%array_rank, c_int64_t)) then
+        if (dim < 1 .or. dim > int(arr_rank, c_int64_t)) then
             error_msg = 'size dim out of range for: '//trim(id_name)
             return
         end if
-        constant_value = int(context%symbols(sym)%array_dim_sizes(int(dim)), &
-                             c_int64_t)
+        constant_value = int(arr_dim_sizes(int(dim)), c_int64_t)
         call set_empty(error_msg)
     end subroutine eval_size_constant
+
+    subroutine find_array_decl_extents_any_rank(context, var_name, rank, &
+                                                extents, ok)
+        ! Find var_name's array declaration anywhere in the unit, whatever its
+        ! rank, and fold its per-dimension compile-time extents. Used to
+        ! recover a caller-scope array's shape when it is referenced from a
+        ! different procedure's lowering scope (e.g. a call-site actual).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: var_name
+        integer, intent(out) :: rank
+        integer, intent(out) :: extents(ARRAY_MAX_RANK)
+        logical, intent(out) :: ok
+        integer :: n, lower_bound, total
+        character(len=:), allocatable :: err
+        type(declaration_node), pointer :: decl
+
+        ok = .false.
+        rank = 0
+        extents = 0
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            decl => declaration_named(context%arena, n, var_name)
+            if (.not. associated(decl)) cycle
+            if (.not. decl%is_array) cycle
+            if (decl%is_allocatable) cycle
+            if (.not. allocated(decl%dimension_indices)) cycle
+            if (declaration_is_assumed_shape(decl, context)) cycle
+            rank = size(decl%dimension_indices)
+            if (rank < 1 .or. rank > ARRAY_MAX_RANK) cycle
+            call array_decl_dim_extents(context, decl, rank, extents, &
+                                        lower_bound, total, err)
+            if (len_trim(err) > 0) cycle
+            ok = .true.
+            return
+        end do
+    end subroutine find_array_decl_extents_any_rank
 
     ! Fold len(s) for a fixed-length character entity or character literal.
     subroutine eval_len_constant(arena, node, context, constant_value, error_msg)

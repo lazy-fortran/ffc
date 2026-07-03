@@ -1133,9 +1133,9 @@
         end if
         select case (context%symbols(tinfo%source_index)%value_kind)
         case (VALUE_F32)
-            call lower_f32_expression(arena, node%value_index, context, value, error_msg)
+            call lower_f32_operand(arena, node%value_index, context, value, error_msg)
         case (VALUE_F64)
-            call lower_f64_expression(arena, node%value_index, context, value, error_msg)
+            call lower_f64_operand(arena, node%value_index, context, value, error_msg)
         case (VALUE_I64)
             call lower_i64_expression(arena, node%value_index, context, value, error_msg)
         case (VALUE_I8)
@@ -1438,11 +1438,11 @@
         end if
 
         if (vk == VALUE_F32) then
-            call lower_f32_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+            call lower_f32_operand(arena, node%value_index, context, value, &
+                                   error_msg)
         else if (vk == VALUE_F64) then
-            call lower_f64_expression(arena, node%value_index, context, value, &
-                                      error_msg)
+            call lower_f64_operand(arena, node%value_index, context, value, &
+                                   error_msg)
         else if (vk == VALUE_LOGICAL) then
             ! Logical occupies an i32 slot; lower the RHS as a logical so
             ! .true./.false. literals and relational results become 1/0.
