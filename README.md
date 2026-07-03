@@ -157,9 +157,13 @@ value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
 `opened=`, and `iostat=` on `file=` and `unit=`. Invalid programs are
 rejected during lowering: an integer `SELECT CASE` with overlapping
-integer-literal CASE labels, and a character-valued I/O specifier
+integer-literal CASE labels; a character-valued I/O specifier
 (`STATUS=`, `ACCESS=`, `ADVANCE=`, `IOMSG=`, ...) handed a numeric or
-logical literal (`status=1`, `advance=5.`), both fail with a diagnostic.
+logical literal (`status=1`, `advance=5.`); a relational comparison whose
+operands have incompatible intrinsic type classes (`b == i` for logical
+`b` and integer `i`, or `c == i` for character `c`); and a fixed-size
+array assigned an array constructor of the wrong length (`a = [1, 2, 3]`
+for `integer :: a(4)`), each fail with a diagnostic.
 
 ## Build
 

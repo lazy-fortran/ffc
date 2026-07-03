@@ -48,6 +48,12 @@ module session_program_lowering_types
         integer, parameter, public :: TYPE_ID_INTEGER = 1000001
         integer, parameter, public :: TYPE_ID_REAL = 1000002
         integer, parameter, public :: TYPE_ID_LOGICAL = 1000003
+        ! Coarse intrinsic type classes used by the comparison operand
+        ! type-mismatch check. Numeric groups integer/real/complex together.
+        integer, parameter, public :: CMP_CLASS_UNKNOWN = 0
+        integer, parameter, public :: CMP_CLASS_NUMERIC = 1
+        integer, parameter, public :: CMP_CLASS_CHAR = 2
+        integer, parameter, public :: CMP_CLASS_LOGICAL = 3
         integer, parameter, public :: I32_INTRINSIC_NONE = 0
         integer, parameter, public :: I32_INTRINSIC_ABS = 1
         integer, parameter, public :: I32_INTRINSIC_MIN = 2

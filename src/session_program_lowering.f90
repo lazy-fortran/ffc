@@ -240,6 +240,8 @@ module session_program_lowering
         VALUE_ARRAY_RESULT, &
         TYPE_ID_INTEGER, TYPE_ID_REAL, &
         TYPE_ID_LOGICAL, &
+        CMP_CLASS_UNKNOWN, CMP_CLASS_NUMERIC, &
+        CMP_CLASS_CHAR, CMP_CLASS_LOGICAL, &
         I32_INTRINSIC_NONE, &
         I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, &
         I32_INTRINSIC_MAX, I32_INTRINSIC_MOD, &
@@ -1427,6 +1429,7 @@ contains
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_io_typecheck.inc'
+    include 'session_program_lowering_cmp_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_print_ops.inc'
@@ -1678,6 +1681,9 @@ contains
                     bin_right, context, value, error_msg)
                 return
             end if
+            call check_comparison_operand_types(arena, bin_op, bin_left, &
+                bin_right, bin_line, bin_col, context, error_msg)
+            if (len_trim(error_msg) > 0) return
             ! A comparison with a character operand lowers through Fortran's
             ! blank-padded lexical ordering.
             if (is_character_operand(arena, bin_left, context) .or. &
