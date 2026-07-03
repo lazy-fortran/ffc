@@ -346,7 +346,7 @@ contains
             return
         end if
         if (node%is_pointer .or. node%is_target) then
-            call declaration_value_kind(node, value_kind, error_msg)
+            call declaration_value_kind(node, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
@@ -369,7 +369,7 @@ contains
                     'scalar integer, real, and logical locals only', error_msg)
                 return
             end if
-            call declaration_value_kind(node, value_kind, error_msg)
+            call declaration_value_kind(node, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
             if (value_kind == VALUE_CHARACTER) then
                 call lower_character_array_declaration(node, context, error_msg)
@@ -458,7 +458,7 @@ contains
             end if
             return
         end if
-        call declaration_value_kind(node, value_kind, error_msg)
+        call declaration_value_kind(node, value_kind, error_msg, context)
         if (len_trim(error_msg) > 0) return
         if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER .and. &
             value_kind /= VALUE_CLASS_STAR) then
@@ -709,7 +709,7 @@ contains
         end if
         if (allocated(node%type_name)) then
             call type_name_value_kind(node%type_name, node%line, node%column, &
-                value_kind, error_msg)
+                value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
         else
             value_kind = VALUE_I32

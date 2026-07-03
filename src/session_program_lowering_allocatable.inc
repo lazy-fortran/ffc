@@ -5,7 +5,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, rank, value_kind, character_length, symbol_index
 
-        call declaration_value_kind(node, value_kind, error_msg)
+        call declaration_value_kind(node, value_kind, error_msg, context)
         if (len_trim(error_msg) > 0) return
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &

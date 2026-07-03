@@ -41,7 +41,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: value_kind, i
 
-        call saved_scalar_value_kind(node, value_kind, error_msg)
+        call saved_scalar_value_kind(node, value_kind, error_msg, context)
         if (len_trim(error_msg) > 0) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
@@ -59,12 +59,13 @@
         end if
     end subroutine emit_saved_decl_globals
 
-    subroutine saved_scalar_value_kind(node, value_kind, error_msg)
+    subroutine saved_scalar_value_kind(node, value_kind, error_msg, context)
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t), intent(in), optional :: context
 
-        call declaration_value_kind(node, value_kind, error_msg)
+        call declaration_value_kind(node, value_kind, error_msg, context)
         if (len_trim(error_msg) > 0) return
         select case (value_kind)
         case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)

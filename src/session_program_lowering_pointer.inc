@@ -46,7 +46,7 @@
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
-        call declaration_value_kind(node, value_kind, error_msg)
+        call declaration_value_kind(node, value_kind, error_msg, context)
         if (len_trim(error_msg) > 0) return
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &

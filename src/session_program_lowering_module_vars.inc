@@ -55,7 +55,8 @@
             error_msg = kind_err
             return
         end if
-        call type_name_value_kind(type_name, line, column, value_kind, kind_err)
+        call type_name_value_kind(type_name, line, column, value_kind, &
+                                  kind_err, context)
         if (len_trim(kind_err) > 0) then
             error_msg = kind_err
             return
@@ -526,7 +527,8 @@
                 type is (declaration_node)
                     if (find_symbol(context, node%var_name) > 0) cycle
                     if (node%is_array .or. node%is_multi_declaration) cycle
-                    call declaration_value_kind(node, value_kind, kind_err)
+                    call declaration_value_kind(node, value_kind, kind_err, &
+                                                context)
                     if (len_trim(kind_err) > 0) cycle
                     ! Out-of-scope kinds leave the symbol unbound; do not fail.
                     call lower_constant_declaration(node, context, value_kind, &

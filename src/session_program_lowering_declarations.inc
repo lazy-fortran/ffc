@@ -251,11 +251,12 @@
     end subroutine fold_char_constant_expr
 
     recursive subroutine type_name_value_kind(type_name, line, column, &
-                                              value_kind, error_msg)
+                                              value_kind, error_msg, context)
         character(len=*), intent(in) :: type_name
         integer, intent(in) :: line, column
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t), intent(in), optional :: context
         character(len=:), allocatable :: base
         character(len=:), allocatable :: kind_spec
         integer :: paren
@@ -287,15 +288,15 @@
         select case (base)
         case ('integer')
             call integer_kind_to_value_kind(kind_spec, line, column, &
-                                            value_kind, error_msg)
+                                            value_kind, error_msg, context)
         case ('real')
-            if (real_kind_is_f64(kind_spec)) then
+            if (real_kind_is_f64(kind_spec, context)) then
                 value_kind = VALUE_F64
             else
                 value_kind = VALUE_F32
             end if
         case ('complex')
-            if (complex_kind_is_c8(kind_spec)) then
+            if (complex_kind_is_c8(kind_spec, context)) then
                 value_kind = VALUE_C8
             else
                 value_kind = VALUE_C4
@@ -314,7 +315,7 @@
                 ! type(character(len=4)) name the intrinsic type itself, not a
                 ! derived type, so lower them exactly like the bare intrinsic.
                 call type_name_value_kind(kind_spec, line, column, value_kind, &
-                                          error_msg)
+                                          error_msg, context)
             else
                 call unsupported_feature_error('scalar type', line, column, &
                     'direct LIRIC session only supports integer, real, '// &
@@ -363,75 +364,161 @@
     end function is_intrinsic_type_spec
 
     subroutine integer_kind_to_value_kind(kind_spec, line, column, &
-                                          value_kind, error_msg)
+                                          value_kind, error_msg, context)
         character(len=*), intent(in) :: kind_spec
         integer, intent(in) :: line, column
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t), intent(in), optional :: context
+        logical :: resolved
+        integer(c_int64_t) :: resolved_value
+        character(len=32) :: resolved_text
 
         call set_empty(error_msg)
         select case (trim(kind_spec))
         case ('1', 'int8', 'c_int8_t', 'c_signed_char', &
               'c_int_least8_t', 'c_int_fast8_t')
             value_kind = VALUE_I8
+            return
         case ('2', 'int16', 'c_int16_t', 'c_short', &
               'c_int_least16_t', 'c_int_fast16_t')
             value_kind = VALUE_I16
+            return
         case ('', '4', 'c_int', 'c_int32_t', 'c_bool', 'c_char', 'int32', &
               'c_int_least32_t', 'c_int_fast32_t')
             value_kind = VALUE_I32
+            return
         case ('8', 'int64', 'c_int64_t', 'c_long', 'c_long_long', &
               'c_int_least64_t', 'c_int_fast64_t', &
               'c_size_t', 'c_intptr_t', 'c_ptrdiff_t', 'c_intmax_t')
             ! LP64 Linux: size_t/intptr_t/ptrdiff_t/intmax_t are 8 bytes,
             ! matching the liric session's native 64-bit target.
             value_kind = VALUE_I64
-        case default
-            value_kind = VALUE_I32
+            return
+        end select
+
+        ! Not a recognised literal or iso_c_binding name: try resolving it as a
+        ! declared "integer, parameter" kind name (integer(prec) :: v).
+        resolved = .false.
+        if (present(context)) then
+            call resolve_kind_parameter_value(context, kind_spec, resolved, &
+                                              resolved_value)
+        end if
+        if (resolved) then
+            select case (resolved_value)
+            case (1_c_int64_t)
+                value_kind = VALUE_I8
+                return
+            case (2_c_int64_t)
+                value_kind = VALUE_I16
+                return
+            case (4_c_int64_t)
+                value_kind = VALUE_I32
+                return
+            case (8_c_int64_t)
+                value_kind = VALUE_I64
+                return
+            end select
+        end if
+
+        value_kind = VALUE_I32
+        if (resolved) then
+            write (resolved_text, '(I0)') resolved_value
+            call unsupported_feature_error('integer kind', line, column, &
+                'direct LIRIC session supports integer kinds 1 (int8), '// &
+                '2 (int16), 4 (default), and 8 (int64); kind '// &
+                trim(kind_spec)//' resolves to unsupported byte size '// &
+                trim(adjustl(resolved_text)), error_msg)
+        else
             call unsupported_feature_error('integer kind', line, column, &
                 'direct LIRIC session supports integer kinds 1 (int8), '// &
                 '2 (int16), 4 (default), and 8 (int64); kind '// &
                 trim(kind_spec)//' is not yet supported', &
                 error_msg)
-        end select
+        end if
     end subroutine integer_kind_to_value_kind
 
-    ! Returns true when the real kind spec selects f64 (kind 8 or higher).
-    ! Bare real and real(4)/c_float/real32 are f32.
-    logical function real_kind_is_f64(kind_spec)
+    ! Fold a kind-spec token that names a declared "integer, parameter" symbol
+    ! to its compile-time value (real(prec) :: v where prec is not a
+    ! hardcoded name). Purely numeric and iso_c_binding kind specs are matched
+    ! by their caller before this runs, so a lookup miss here just means the
+    ! token is not a resolvable kind name.
+    subroutine resolve_kind_parameter_value(context, kind_spec, resolved, &
+                                            value)
+        type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: kind_spec
+        logical, intent(out) :: resolved
+        integer(c_int64_t), intent(out) :: value
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+
+        resolved = .false.
+        value = 0_c_int64_t
+        name = trim(kind_spec)
+        if (len_trim(name) == 0) return
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_parameter) return
+        if (.not. context%symbols(symbol_index)%has_i32_constant) return
+        resolved = .true.
+        value = context%symbols(symbol_index)%i32_constant
+    end subroutine resolve_kind_parameter_value
+
+    ! Returns true when the real kind spec selects f64 (kind 8). Bare real
+    ! and real(4)/c_float/real32 are f32; a declared "integer, parameter"
+    ! kind name (real(prec) :: v) is folded via the symbol table.
+    logical function real_kind_is_f64(kind_spec, context)
+        character(len=*), intent(in) :: kind_spec
+        type(lowering_context_t), intent(in), optional :: context
+        logical :: resolved
+        integer(c_int64_t) :: resolved_value
 
         select case (trim(kind_spec))
         case ('8', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
             ! dp/wp are the conventional double-precision kind parameters
             ! (dp/wp => real64 or selected_real_kind(15)); sp/default stay f32.
             real_kind_is_f64 = .true.
-        case default
-            real_kind_is_f64 = .false.
+            return
         end select
+        real_kind_is_f64 = .false.
+        if (.not. present(context)) return
+        call resolve_kind_parameter_value(context, kind_spec, resolved, &
+                                          resolved_value)
+        if (.not. resolved) return
+        real_kind_is_f64 = (resolved_value == 8_c_int64_t)
     end function real_kind_is_f64
 
-    ! Returns true when the complex kind spec selects double precision (kind 8).
-    ! Bare complex and complex(4) are c4 (two f32s).
-    logical function complex_kind_is_c8(kind_spec)
+    ! Returns true when the complex kind spec selects double precision (kind
+    ! 8). Bare complex and complex(4) are c4 (two f32s); a declared "integer,
+    ! parameter" kind name is folded via the symbol table.
+    logical function complex_kind_is_c8(kind_spec, context)
         character(len=*), intent(in) :: kind_spec
+        type(lowering_context_t), intent(in), optional :: context
+        logical :: resolved
+        integer(c_int64_t) :: resolved_value
 
         select case (trim(kind_spec))
         case ('8', 'real64', 'c_double', 'c_double_complex')
             complex_kind_is_c8 = .true.
-        case default
-            complex_kind_is_c8 = .false.
+            return
         end select
+        complex_kind_is_c8 = .false.
+        if (.not. present(context)) return
+        call resolve_kind_parameter_value(context, kind_spec, resolved, &
+                                          resolved_value)
+        if (.not. resolved) return
+        complex_kind_is_c8 = (resolved_value == 8_c_int64_t)
     end function complex_kind_is_c8
 
-    subroutine declaration_value_kind(node, value_kind, error_msg)
+    subroutine declaration_value_kind(node, value_kind, error_msg, context)
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t), intent(in), optional :: context
 
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
         call type_name_value_kind(node%type_name, node%line, node%column, &
-                                  value_kind, error_msg)
+                                  value_kind, error_msg, context)
     end subroutine declaration_value_kind

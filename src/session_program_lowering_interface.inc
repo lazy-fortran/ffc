@@ -316,7 +316,7 @@
                     return
                 end if
                 call type_name_value_kind(decl%type_name, decl%line, &
-                                          decl%column, kind, err)
+                                          decl%column, kind, err, context)
                 if (len_trim(err) > 0) kind = VALUE_DERIVED
                 return
             end select
@@ -469,7 +469,7 @@
                 if (.not. allocated(decl%var_name)) cycle
                 if (.not. same_name(decl%var_name, param_name)) cycle
                 call type_name_value_kind(decl%type_name, decl%line, &
-                                          decl%column, kind, err)
+                                          decl%column, kind, err, context)
                 return
             end select
         end do
@@ -580,7 +580,8 @@
             ret_kind = VALUE_I32
             if (allocated(proc%return_type)) then
                 call type_name_value_kind(proc%return_type, proc%line, &
-                                          proc%column, ret_kind, error_msg)
+                                          proc%column, ret_kind, error_msg, &
+                                          context)
                 if (len_trim(error_msg) > 0) return
             end if
             if (ret_kind /= VALUE_I32) then

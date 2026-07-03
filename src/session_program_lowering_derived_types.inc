@@ -20,7 +20,8 @@
                     if (.not. node%is_parameter) cycle
                     if (node%is_array .or. node%is_multi_declaration) cycle
                     if (.not. allocated(node%var_name)) cycle
-                    call declaration_value_kind(node, value_kind, kind_err)
+                    call declaration_value_kind(node, value_kind, kind_err, &
+                                                context)
                     if (len_trim(kind_err) > 0) cycle
                     if (value_kind /= VALUE_I32) cycle
                     if (.not. node%has_initializer) cycle
@@ -724,7 +725,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     type_index, nested_type_index, error_msg)
                 return
             end if
-            call declaration_value_kind(component, value_kind, error_msg)
+            call declaration_value_kind(component, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
             ! A component default initialiser must be a compile-time integer.
             has_default = .false.
@@ -915,7 +916,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
         ! character(len=N) component occupies ceil(N/4) byte-storage slots.
         ! Arrays of these and nested components are handled elsewhere.
         call type_name_value_kind(component%type_name, component%line, &
-                                  component%column, comp_kind, error_msg)
+                                  component%column, comp_kind, error_msg, &
+                                  context)
         if (len_trim(error_msg) > 0) return
         select case (comp_kind)
         case (VALUE_I32, VALUE_C_PTR)

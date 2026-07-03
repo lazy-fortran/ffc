@@ -638,7 +638,7 @@
             value_kind = VALUE_DERIVED
             return
         end if
-        call declaration_value_kind(decl, value_kind, error_msg)
+        call declaration_value_kind(decl, value_kind, error_msg, context)
     end subroutine resolve_result_decl_kind
 
     logical function result_var_is_fixed_array(node, context) result(is_fixed)
@@ -885,7 +885,8 @@
                 if (.not. declaration_is_fixed_rank1(decl)) cycle
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == result_name) then
-                        call declaration_value_kind(decl, element_kind, error_msg)
+                        call declaration_value_kind(decl, element_kind, &
+                                                    error_msg, context)
                         if (len_trim(error_msg) > 0) return
                         call get_array_bounds(decl, context, lower_bound, &
                                               array_size, error_msg)
@@ -896,7 +897,7 @@
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == result_name) then
                             call declaration_value_kind(decl, element_kind, &
-                                                        error_msg)
+                                                        error_msg, context)
                             if (len_trim(error_msg) > 0) return
                             call get_array_bounds(decl, context, lower_bound, &
                                                   array_size, error_msg)
