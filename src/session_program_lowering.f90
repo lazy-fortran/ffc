@@ -13,7 +13,7 @@ module session_program_lowering
     use ast_nodes_legacy, only: common_block_node, enum_node
     use string_types, only: string_t
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
-        rewind_statement_node, io_implied_do_node
+        rewind_statement_node, io_implied_do_node, inquire_statement_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
         module_procedure_node, &
         visibility_statement_node, data_statement_node, &
@@ -1354,6 +1354,7 @@ contains
     end subroutine emit_error_stop_banner
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
+    include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_print_ops.inc'
     include 'session_program_lowering_print_expr.inc'

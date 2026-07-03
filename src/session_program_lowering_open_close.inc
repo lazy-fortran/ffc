@@ -121,14 +121,11 @@
         type(open_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: ustr, nuvar, fpath, sstr, mode_str
-        type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, file_handle
+        character(len=:), allocatable :: ustr, nuvar, fpath, sstr
+        type(lr_operand_desc_t) :: file_handle
         type(lr_operand_desc_t) :: uval_op, ptr_slot
-        type(lr_operand_desc_t) :: fa(2)
         type(lr_operand_desc_t), allocatable :: noargs(:)
         integer :: unit_number, sym, ios
-        character(len=64) :: fgn, mgn
-        integer(c_int32_t) :: fgid, mgid
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
             call unsupported_feature_error('open statement', node%line, &
@@ -151,29 +148,18 @@
             ! written, rewound, and read back within the same scope.
             select case (trim(sstr))
             case ('old')
-                mode_str = 'r+'
+                call open_fixed_mode(context, fpath, 'r+', file_handle, &
+                                     error_msg)
+            case ('new', 'replace')
+                call open_fixed_mode(context, fpath, 'w+', file_handle, &
+                                     error_msg)
             case default
-                mode_str = 'w+'
+                ! No status, or status='unknown': gfortran preserves an
+                ! existing file's content and creates a fresh one otherwise.
+                call open_update_or_create(context, fpath, file_handle, &
+                                           error_msg)
             end select
-
-            context%string_literal_count = context%string_literal_count + 1
-            write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
-            call create_printf_format_global(context%session, trim(fgn), &
-                                             trim(fpath), fgid, error_msg)
             if (len_trim(error_msg) > 0) return
-            file_ptr_op = printf_format_ptr(context%session, fgid)
-
-            context%string_literal_count = context%string_literal_count + 1
-            write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
-            call create_printf_format_global(context%session, trim(mgn), &
-                                             trim(mode_str), mgid, error_msg)
-            if (len_trim(error_msg) > 0) return
-            mode_ptr_op = printf_format_ptr(context%session, mgid)
-
-            fa(1) = file_ptr_op
-            fa(2) = mode_ptr_op
-            if (.not. emit_ptr_call(context%session, 'fopen', fa, &
-                                     file_handle, error_msg)) return
         end if
 
         if (len_trim(nuvar) > 0) then
@@ -239,6 +225,81 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_open
+
+    subroutine open_fixed_mode(context, fpath, mode_str, file_handle, error_msg)
+        ! fopen(fpath, mode_str) unconditionally.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: fpath, mode_str
+        type(lr_operand_desc_t), intent(out) :: file_handle
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, fa(2)
+        integer(c_int32_t) :: fgid, mgid
+        character(len=64) :: fgn, mgn
+
+        call set_empty(error_msg)
+        context%string_literal_count = context%string_literal_count + 1
+        write (fgn, '(A,I0)') '.ffc.open.file.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(fgn), &
+                                         trim(fpath), fgid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        file_ptr_op = printf_format_ptr(context%session, fgid)
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (mgn, '(A,I0)') '.ffc.open.mode.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(mgn), &
+                                         trim(mode_str), mgid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        mode_ptr_op = printf_format_ptr(context%session, mgid)
+
+        fa(1) = file_ptr_op
+        fa(2) = mode_ptr_op
+        if (.not. emit_ptr_call(context%session, 'fopen', fa, file_handle, &
+                                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine open_fixed_mode
+
+    subroutine open_update_or_create(context, fpath, file_handle, error_msg)
+        ! fopen(fpath, "r+") preserves an existing file's content, matching
+        ! gfortran's default STATUS='UNKNOWN'; "w+" always truncates, so probe
+        ! with "r+" first and fall back to "w+" only when that fails (the file
+        ! does not exist yet).
+        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store, &
+                                                  emit_ptr_load
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: fpath
+        type(lr_operand_desc_t), intent(out) :: file_handle
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: is_null, slot
+        integer(c_int32_t) :: create_block, done_block
+
+        call set_empty(error_msg)
+        call open_fixed_mode(context, fpath, 'r+', file_handle, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_ptr_alloca(context%session, slot, error_msg)) return
+        if (.not. emit_ptr_store(context%session, file_handle, slot, &
+                                 error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, file_handle, &
+                null_ptr_operand(context), is_null, error_msg)) return
+        create_block = create_liric_block(context%session)
+        done_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, is_null, create_block, &
+                                     done_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, create_block, error_msg)) return
+        call open_fixed_mode(context, fpath, 'w+', file_handle, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, file_handle, slot, &
+                                 error_msg)) return
+        if (.not. emit_liric_br(context%session, done_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done_block, error_msg)) return
+        context%current_block_id = done_block
+        context%current_block_terminated = .false.
+        if (.not. emit_ptr_load(context%session, slot, file_handle, &
+                                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine open_update_or_create
 
     subroutine track_literal_unit(context, unit_number, file_handle, error_msg)
         use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store

@@ -451,6 +451,8 @@
             call lower_close(node, context, error_msg)
         type is (rewind_statement_node)
             call lower_rewind(node, context, error_msg)
+        type is (inquire_statement_node)
+            call lower_inquire(node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)

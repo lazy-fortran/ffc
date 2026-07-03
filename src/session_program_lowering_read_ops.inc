@@ -338,6 +338,12 @@
             return
         end if
 
+        if (context%symbols(sym)%value_kind == VALUE_CHARACTER) then
+            call lower_read_file_char_item(context, fp, sym, stmt_line, &
+                                           stmt_col, error_msg)
+            return
+        end if
+
         call file_read_slot_for_kind(context, sym, scanf_fmt, slot, error_msg)
         if (len_trim(error_msg) > 0) return
         if (len_trim(scanf_fmt) == 0) then
@@ -376,6 +382,60 @@
                                           error_msg)) return
         end select
     end subroutine lower_read_file_item
+
+    subroutine lower_read_file_char_item(context, fp, sym, stmt_line, &
+                                         stmt_col, error_msg)
+        ! List-directed READ of a fixed-length character scalar from an
+        ! opened file unit: fscanf a whitespace-delimited token, then
+        ! blank-pad and truncate it to the target's declared length.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: fp
+        integer, intent(in) :: sym, stmt_line, stmt_col
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: buflen
+        type(lr_operand_desc_t) :: tmp, dest, fmt_ptr, args(3)
+        integer(c_int32_t) :: fmt_id
+        character(len=64) :: fmt_name
+        character(len=16) :: width_text
+        character(len=:), allocatable :: scanf_fmt
+
+        call set_empty(error_msg)
+        if (context%symbols(sym)%is_deferred_character) then
+            call unsupported_feature_error('read from file unit', stmt_line, &
+                stmt_col, 'file-unit read target must be a fixed-length '// &
+                'character variable (#247)', error_msg)
+            return
+        end if
+        buflen = context%symbols(sym)%character_length
+
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(buflen + 1, c_int64_t)), &
+                tmp, error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(buflen + 1, c_int64_t)), &
+                dest, error_msg)) return
+
+        write (width_text, '(I0)') buflen
+        scanf_fmt = ' %'//trim(width_text)//'s'
+        context%string_literal_count = context%string_literal_count + 1
+        write (fmt_name, '(A,I0)') '.ffc.fscanfc.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(fmt_name), &
+                                         scanf_fmt, fmt_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        fmt_ptr = printf_format_ptr(context%session, fmt_id)
+
+        args(1) = fp
+        args(2) = fmt_ptr
+        args(3) = tmp
+        if (.not. emit_fscanf(context%session, args, error_msg)) return
+
+        call emit_blank_pad_string(context, buflen, tmp, dest, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols(sym)%value = dest
+        context%symbols(sym)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_read_file_char_item
 
     subroutine file_read_slot_for_kind(context, sym, scanf_fmt, slot, error_msg)
         ! Resolve the scanf conversion and ensure the target has an alloca slot.

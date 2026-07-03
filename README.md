@@ -107,7 +107,13 @@ initializer, and that initializer may concatenate an earlier character named
 constant. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
-`log_gamma`, and `hypot`.
+`log_gamma`, and `hypot`. `open`/`close`/`rewind` map to `fopen`/`fclose`/
+`rewind`, preserving an existing file's content when `status=` is omitted;
+a file unit's list-directed and numeric-edit-descriptor `read` covers
+integer, real, and fixed-length character scalars. Internal `read (buf, *)
+value` (list-directed) and `write (buf, fmt) value` with a compound literal
+format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
+`opened=`, and `iostat=` on `file=` and `unit=`.
 
 ## Build
 

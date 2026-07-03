@@ -15,25 +15,67 @@
             context%symbols(symbol_index)%character_length > 0
     end function is_internal_write
 
+    subroutine emit_blank_pad_string(context, buflen, src_ptr, dest_ptr, &
+                                     error_msg)
+        ! snprintf(dest_ptr, buflen+1, "%-*.*s", buflen, buflen, src_ptr):
+        ! left-justify src_ptr's C string, blank-pad and truncate to buflen.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: buflen
+        type(lr_operand_desc_t), intent(in) :: src_ptr, dest_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: pad_id
+        type(lr_operand_desc_t) :: pad_ptr, blen, size_op, args(6)
+        character(len=64) :: fmt_name
+
+        call set_empty(error_msg)
+        context%string_literal_count = context%string_literal_count + 1
+        write (fmt_name, '(A,I0)') '.ffc.pad.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(fmt_name), &
+                                         '%-*.*s', pad_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        pad_ptr = printf_format_ptr(context%session, pad_id)
+        size_op = i64_immediate(context%session, int(buflen + 1, c_int64_t))
+        blen = i32_immediate(context%session, int(buflen, c_int64_t))
+
+        args(1) = dest_ptr
+        args(2) = size_op
+        args(3) = pad_ptr
+        args(4) = blen
+        args(5) = blen
+        args(6) = src_ptr
+        if (.not. emit_snprintf(context%session, args, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_blank_pad_string
+
     subroutine lower_internal_write(arena, node, context, error_msg)
         ! write (buf, fmt) value: format value through a single edit descriptor
         ! into the fixed-length character variable buf, blank-padded to its
         ! declared length. fmt is a literal '(I0)' / '(Iw)' / '(A)'.
+        ! write (buf, '(<d1>,<d2>,...)') v1, v2, ...: a compound literal format
+        ! with one I/A descriptor per value (session_program_lowering_
+        ! internal_write_compound.inc).
         type(ast_arena_t), intent(in) :: arena
         type(write_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: printf_fmt
+        character(len=:), allocatable :: format_body
         character :: kind_char
         integer :: symbol_index, buflen
-        integer(c_int32_t) :: field_id, pad_id
-        type(lr_operand_desc_t) :: dest, tmp, field_ptr, pad_ptr, value
-        type(lr_operand_desc_t) :: data_ptr, length, args(6), size_op, blen
+        integer(c_int32_t) :: field_id
+        type(lr_operand_desc_t) :: dest, tmp, field_ptr, value
+        type(lr_operand_desc_t) :: data_ptr, length, args(6), size_op
         character(len=64) :: fmt_name
 
         if (.not. allocated(node%format_spec)) then
             call unsupported_feature_error('internal write', node%line, &
                 node%column, 'internal write requires a literal format', error_msg)
+            return
+        end if
+        call normalize_format_body(node%format_spec, format_body)
+        if (index(format_body, ',') > 0) then
+            call lower_compound_internal_write(arena, node, context, &
+                                               format_body, error_msg)
             return
         end if
         call parse_single_edit_descriptor(node%format_spec, kind_char, printf_fmt, &
@@ -76,13 +118,7 @@
         call create_printf_format_global(context%session, trim(fmt_name), &
                                          printf_fmt, field_id, error_msg)
         if (len_trim(error_msg) > 0) return
-        context%string_literal_count = context%string_literal_count + 1
-        write (fmt_name, '(A,I0)') '.ffc.iwpad.', context%string_literal_count
-        call create_printf_format_global(context%session, trim(fmt_name), &
-                                         '%-*.*s', pad_id, error_msg)
-        if (len_trim(error_msg) > 0) return
         field_ptr = printf_format_ptr(context%session, field_id)
-        pad_ptr = printf_format_ptr(context%session, pad_id)
         size_op = i64_immediate(context%session, int(buflen + 1, c_int64_t))
 
         ! snprintf(tmp, buflen+1, field_fmt, value)
@@ -102,18 +138,12 @@
         end if
         if (.not. emit_snprintf(context%session, args(1:4), error_msg)) return
 
-        ! snprintf(dest, buflen+1, "%-*.*s", buflen, buflen, tmp): left-justify
-        ! the field, blank-pad and truncate to buflen.
-        blen = i32_immediate(context%session, int(buflen, c_int64_t))
-        args(1) = dest
-        args(2) = size_op
-        args(3) = pad_ptr
-        args(4) = blen
-        args(5) = blen
-        args(6) = tmp
-        if (.not. emit_snprintf(context%session, args(1:6), error_msg)) return
+        call emit_blank_pad_string(context, buflen, tmp, dest, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         context%symbols(symbol_index)%value = dest
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_internal_write
+
+    include 'session_program_lowering_internal_write_compound.inc'
