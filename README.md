@@ -77,7 +77,13 @@ integer `pointer`/`target` with `p => t`, read/write through `p`,
 `selected_int_kind` and `selected_real_kind`. Compile-time integer folding
 in array-bound and `parameter` initializer positions also covers `kind`,
 `size`, `len`, `min`, `max`, `int`, `huge`, `bit_size`, `precision`, `range`,
-`selected_char_kind`, and a bare `iso_c_binding` kind name used as a value
+`digits`, `radix`, `minexponent`, `maxexponent`, `selected_logical_kind`,
+`selected_char_kind`, `mod`, `modulo`, `sign`, `dim`, `abs`, the bit
+intrinsics `iand`/`ior`/`ieor`/`xor`/`not`/`ishft`/`ishftc`/`ibits`/`ibset`/
+`ibclr`, comparison and `.and.`/`.or.` operators folding to 1/0, `merge` on
+a folded mask, `product`/`dot_product` over an array constructor or a named
+integer `parameter` array (itself indexable by a compile-time constant), and
+a bare `iso_c_binding` kind name used as a value
 (`c_bool`, `c_int`, `c_long`, ...). Non-default integer kinds
 `integer(1)`/`(2)`/`(8)` (and their `iso_c_binding` C-interop kind names, incl.
 `c_size_t`/`c_intptr_t`/`c_ptrdiff_t`/`c_intmax_t`) support arithmetic,

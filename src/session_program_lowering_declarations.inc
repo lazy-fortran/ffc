@@ -105,25 +105,41 @@
             return
         end if
         context%symbols(index)%is_parameter = .true.
-        call lower_scalar_initializer(context, name, value_kind, &
-                                      node%initializer_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-        ! A non-default-kind integer parameter (integer(int64) etc.) still has a
-        ! compile-time integer value; record it so array bounds and kind/size/len
-        ! inquiries that reference it fold like a default integer parameter.
+        ! A non-default-kind integer parameter (integer(int64) etc.) folds
+        ! directly to a compile-time value when eval_i32_constant reaches it
+        ! (e.g. a bit-intrinsic call such as ibits() that the general scalar
+        ! initializer lowerer does not know how to emit as runtime code);
+        ! record that value and skip the runtime lowering path entirely.
+        ! Otherwise fall back to lowering the initializer as executable code.
         if (value_kind == VALUE_I8 .or. value_kind == VALUE_I16 .or. &
             value_kind == VALUE_I64) then
             block
                 integer(c_int64_t) :: int_const
                 character(len=:), allocatable :: fold_err
+
                 call eval_i32_constant(context%arena, node%initializer_index, &
                                        context, int_const, fold_err)
                 if (len_trim(fold_err) == 0) then
                     context%symbols(index)%has_i32_constant = .true.
                     context%symbols(index)%i32_constant = int_const
+                    select case (value_kind)
+                    case (VALUE_I8)
+                        context%symbols(index)%value = &
+                            i8_immediate(context%session, int_const)
+                    case (VALUE_I16)
+                        context%symbols(index)%value = &
+                            i16_immediate(context%session, int_const)
+                    case (VALUE_I64)
+                        context%symbols(index)%value = &
+                            i64_immediate(context%session, int_const)
+                    end select
+                    call set_empty(error_msg)
+                    return
                 end if
             end block
         end if
+        call lower_scalar_initializer(context, name, value_kind, &
+                                      node%initializer_index, error_msg)
     end subroutine lower_nonint_constant_declaration
 
     subroutine lower_character_constant_declaration(node, context, name, error_msg)

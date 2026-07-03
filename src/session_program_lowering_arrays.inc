@@ -867,7 +867,7 @@
             if (len_trim(error_msg) > 0) return
             call eval_i32_constant(arena, bin_right, context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
-            select case (trim(bin_op))
+            select case (lowercase_text(trim(bin_op)))
             case ('+')
                 constant_value = lhs + rhs
             case ('-')
@@ -880,6 +880,24 @@
                     return
                 end if
                 constant_value = lhs/rhs
+            case ('==', '=', '.eq.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs == rhs)
+            case ('/=', '.ne.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs /= rhs)
+            case ('>', '.gt.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs > rhs)
+            case ('>=', '.ge.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs >= rhs)
+            case ('<', '.lt.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs < rhs)
+            case ('<=', '.le.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, lhs <= rhs)
+            case ('.and.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, &
+                                       lhs /= 0_c_int64_t .and. rhs /= 0_c_int64_t)
+            case ('.or.')
+                constant_value = merge(1_c_int64_t, 0_c_int64_t, &
+                                       lhs /= 0_c_int64_t .or. rhs /= 0_c_int64_t)
             case default
                 error_msg = 'unsupported integer constant operator: '// &
                             trim(bin_op)
@@ -893,6 +911,12 @@
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
+            if (trim(lowercase_text(lit_value)) == '.true.' .or. &
+                trim(lowercase_text(lit_value)) == '.false.') then
+                constant_value = logical_i32_value(lowercase_text(lit_value))
+                call set_empty(error_msg)
+                return
+            end if
             call parse_i32_literal(lit_value, constant_value, error_msg)
             return
         end if
@@ -1130,7 +1154,51 @@
         else if (same_name(node%name, 'range')) then
             call eval_range_constant(arena, node, context, constant_value, &
                                      error_msg)
+        else if (same_name(node%name, 'digits')) then
+            call eval_digits_constant(arena, node, context, constant_value, &
+                                      error_msg)
+        else if (same_name(node%name, 'radix')) then
+            call eval_radix_constant(arena, node, constant_value, error_msg)
+        else if (same_name(node%name, 'minexponent')) then
+            call eval_exponent_range_constant(arena, node, context, .false., &
+                                              constant_value, error_msg)
+        else if (same_name(node%name, 'maxexponent')) then
+            call eval_exponent_range_constant(arena, node, context, .true., &
+                                              constant_value, error_msg)
+        else if (same_name(node%name, 'selected_logical_kind')) then
+            call eval_selected_logical_kind_constant(arena, node, context, &
+                                                      constant_value, error_msg)
+        else if (same_name(node%name, 'merge')) then
+            call eval_merge_constant(arena, node, context, constant_value, &
+                                     error_msg)
+        else if (same_name(node%name, 'ibits')) then
+            call eval_ibits_constant(arena, node, context, constant_value, &
+                                     error_msg)
+        else if (same_name(node%name, 'product')) then
+            call eval_product_constant(arena, node, context, constant_value, &
+                                       error_msg)
+        else if (same_name(node%name, 'dot_product')) then
+            call eval_dot_product_constant(arena, node, context, constant_value, &
+                                           error_msg)
+        else if (same_name(node%name, 'abs') .or. same_name(node%name, 'not')) then
+            call eval_one_arg_i32_intrinsic(arena, node, context, &
+                                            lowercase_text(node%name), &
+                                            constant_value, error_msg)
+        else if (same_name(node%name, 'mod') .or. same_name(node%name, 'modulo') &
+                 .or. same_name(node%name, 'sign') .or. same_name(node%name, 'dim') &
+                 .or. same_name(node%name, 'iand') .or. same_name(node%name, 'ior') &
+                 .or. same_name(node%name, 'ieor') .or. same_name(node%name, 'xor') &
+                 .or. same_name(node%name, 'ishft') &
+                 .or. same_name(node%name, 'ishftc') &
+                 .or. same_name(node%name, 'ibset') &
+                 .or. same_name(node%name, 'ibclr')) then
+            call eval_two_arg_i32_intrinsic(arena, node, context, &
+                                            lowercase_text(node%name), &
+                                            constant_value, error_msg)
         else
+            call fold_param_array_element_from_arena(arena, node, context, &
+                                                      constant_value, error_msg)
+            if (len_trim(error_msg) == 0) return
             error_msg = 'compile-time integer expression uses unsupported call: '// &
                         trim(node%name)
         end if
