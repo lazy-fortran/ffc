@@ -310,13 +310,13 @@
         n_comp = context%derived_types(di)%component_count
         do c = 1, n_comp
             if (comp_value_index(c) <= 0) cycle
-            if (.not. constructor_component_storeable(context, di, c) .or. &
-                component_kind(context, di, c) /= VALUE_I32) then
-                call unsupported_feature_error('module variable', line, column, &
-                    'derived module variable constructor folds only integer '// &
-                    'component values statically', error_msg)
-                return
-            end if
+            ! Only compile-time integer component values fold into the static
+            ! slots; a non-integer explicit argument (character, real, nested)
+            ! leaves that component at its staged default, matching the
+            ! defaults-only behaviour of a parameter used purely for its
+            ! compile-time inquiries (e.g. x%c%len).
+            if (.not. constructor_component_storeable(context, di, c)) cycle
+            if (component_kind(context, di, c) /= VALUE_I32) cycle
             call eval_i32_constant(arena, comp_value_index(c), context, cval, &
                                    error_msg)
             if (len_trim(error_msg) > 0) return
