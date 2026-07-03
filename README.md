@@ -123,6 +123,10 @@ assignment or as a scalar variable initializer (`type(t) :: v = t(1, 2.5)`).
 Integer, default-real (f32), and logical component default initialisers
 materialise on default-initialised instances, propagating through nested
 components so an inner type's own defaults show up inline (`x%c%field`). A
+scalar allocatable component of intrinsic numeric or logical type
+(`integer, allocatable :: v`) holds an inline data pointer that starts null;
+`allocate(x%v)`, component read/write, `allocated(x%v)`, and `deallocate(x%v)`
+manage it. A
 nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a
