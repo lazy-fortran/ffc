@@ -1270,18 +1270,20 @@
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, id_name)
         if (sym > 0) then
-            if (.not. context%symbols(sym)%is_array) then
-                error_msg = 'size argument is not an array: '//trim(id_name)
-                return
-            end if
+            if (.not. context%symbols(sym)%is_array) sym = 0
+        end if
+        if (sym > 0) then
             arr_size = context%symbols(sym)%array_size
             arr_rank = context%symbols(sym)%array_rank
             arr_dim_sizes = context%symbols(sym)%array_dim_sizes
         else
-            ! id_name is not in the current lowering scope: it may be a
-            ! caller-scope array passed by size() as another dummy's bound
-            ! actual (e.g. `call mysum(size(x), x)`). Recover its declared
-            ! compile-time shape from its declaration anywhere in the unit.
+            ! id_name is not usable as a fixed-size array in the current
+            ! lowering scope (not found, or a same-named dummy of the
+            ! procedure being lowered whose own bound is still unresolved):
+            ! it may be a caller-scope array passed by size() as another
+            ! dummy's bound actual (e.g. `call mysum(size(x), x)`). Recover
+            ! its declared compile-time shape from its declaration anywhere
+            ! in the unit, excluding the current procedure's own scope.
             call find_array_decl_extents_any_rank(context, id_name, arr_rank, &
                                                   arr_dim_sizes, ok)
             if (.not. ok) then
@@ -1337,6 +1339,15 @@
             if (decl%is_allocatable) cycle
             if (.not. allocated(decl%dimension_indices)) cycle
             if (declaration_is_assumed_shape(decl, context)) cycle
+            ! A same-named dummy inside the procedure currently being lowered
+            ! is never the caller-scope actual this lookup wants (e.g. a
+            ! dummy `a(na1)` sharing its name with the caller's actual `a`);
+            ! matching it here would fold the dummy's own unresolved bound
+            ! instead of the caller's declared extent.
+            if (allocated(context%current_proc_name)) then
+                if (call_is_within_proc(context%arena, n, &
+                                        context%current_proc_name)) cycle
+            end if
             rank = size(decl%dimension_indices)
             if (rank < 1 .or. rank > ARRAY_MAX_RANK) cycle
             call array_decl_dim_extents(context, decl, rank, extents, &
