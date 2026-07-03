@@ -423,6 +423,12 @@ contains
         end if
         call declaration_value_kind(node, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER .and. &
+            value_kind /= VALUE_CLASS_STAR) then
+            call lower_scalar_allocatable_declaration(node, context, value_kind, &
+                error_msg)
+            return
+        end if
         ! A true PARAMETER constant never carries an INTENT. Lazy-mode
         ! standardization restates a dummy (integer, intent(in) :: a) as a
         ! declaration that also sets is_parameter; routing that to the constant
@@ -708,6 +714,7 @@ contains
     include 'session_program_lowering_array_elements.inc'
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
+    include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
     include 'session_program_lowering_internal_read.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
@@ -1033,7 +1040,8 @@ contains
             error_msg = 'assignment target was not declared: '//trim(name)
             return
         end if
-        if (context%symbols(symbol_index)%is_allocatable) then
+        if (context%symbols(symbol_index)%is_allocatable .and. &
+            context%symbols(symbol_index)%array_rank > 0) then
             if (node_exists(arena, node%value_index)) then
                 select type (rhs => arena%entries(node%value_index)%node)
                     type is (array_literal_node)
@@ -1130,6 +1138,27 @@ contains
             call lower_c8_assignment(arena, node%value_index, symbol_index, &
                 context, error_msg)
             return
+        else if (is_f64_expression(arena, node%value_index, context) .or. &
+                 is_f32_expression(arena, node%value_index, context)) then
+            ! Integer target with a real rhs: assignment converts by
+            ! truncation toward zero (F2018 10.2.1.3), unlike subscript or
+            ! bound positions where a real is rejected.
+            block
+                type(lr_operand_desc_t) :: real_value, wide_value
+                if (is_f64_expression(arena, node%value_index, context)) then
+                    call lower_f64_expression(arena, node%value_index, context, &
+                        wide_value, error_msg)
+                else
+                    call lower_f32_expression(arena, node%value_index, context, &
+                        real_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_to_f64(context%session, real_value, &
+                        wide_value, error_msg)) return
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_i32(context%session, wide_value, &
+                    value, error_msg)) return
+            end block
         else
             call lower_i32_expression(arena, node%value_index, context, value, &
                 error_msg)

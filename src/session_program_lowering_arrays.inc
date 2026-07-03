@@ -1611,7 +1611,7 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: value, wide_value, narrow_value
         integer :: i
         integer :: array_size
 
@@ -1700,8 +1700,26 @@
                 call lower_logical_expression(arena, node%value_index, context, &
                                               value, error_msg)
             case default
-                call lower_i32_expression(arena, node%value_index, context, &
-                                          value, error_msg)
+                if (is_f64_expression(arena, node%value_index, context)) then
+                    ! Integer array with a real scalar rhs: assignment
+                    ! converts each element by truncation toward zero.
+                    call lower_f64_expression(arena, node%value_index, &
+                                              context, wide_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_to_i32(context%session, &
+                        wide_value, value, error_msg)) return
+                else if (is_f32_expression(arena, node%value_index, context)) then
+                    call lower_f32_expression(arena, node%value_index, &
+                                              context, narrow_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_to_f64(context%session, &
+                        narrow_value, wide_value, error_msg)) return
+                    if (.not. emit_liric_f64_to_i32(context%session, &
+                        wide_value, value, error_msg)) return
+                else
+                    call lower_i32_expression(arena, node%value_index, context, &
+                                              value, error_msg)
+                end if
             end select
             if (len_trim(error_msg) > 0) return
             do i = 1, array_size

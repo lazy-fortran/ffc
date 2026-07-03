@@ -68,6 +68,8 @@ fort.*
 fname
 file_*_data.*
 file_*_test.*
+file_*_file.*
+file * data.*
 file_overwrite.*
 test.bin
 test.dat

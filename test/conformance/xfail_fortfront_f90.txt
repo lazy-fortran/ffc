@@ -27,7 +27,6 @@ issue_1570_pure_elemental_preservation.f90
 issue_1604_type_bound_procedures.f90
 issue_1607_final_procedures.f90
 issue_1611_allocate_no_typespec.f90
-issue_1614_character_mixed_attributes.f90
 issue_1614_character_module_variable.f90
 issue_1615_target_attribute.f90
 issue_1619_nested_types_complex.f90
@@ -37,7 +36,6 @@ issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
 issue_1744_operator_interface.f90
 issue_1771_module_parameter_types.f90
-issue_1774_user_defined_operator.f90
 issue_1782_procedure_pointer.f90
 issue_1810_parameter_array_allocatable.f90
 issue_1818_assumed_size_array.f90
@@ -57,7 +55,6 @@ issue_2250_pure_interface.f90
 issue_2388_program_contains.f90
 issue_2388_uppercase_contains.f90
 issue_2390_module_implicit_rules.f90
-issue_2394_allocatable_function.f90
 issue_2416_io_format_variable.f90
 issue_2416_io_formats_comprehensive.f90
 issue_2416_io_namelist_read.f90
@@ -70,7 +67,6 @@ issue_2453_character_array_constructor.f90
 issue_2455_array_constructor_arg.f90
 issue_2455_nested_array_constructor.f90
 issue_2455_nested_function_args.f90
-issue_2457_logical_type_mismatch.f90
 issue_2458_multi_array_declaration.f90
 issue_2486_class_type_multidecl.f90
 issue_2487_parameter_statement.f90

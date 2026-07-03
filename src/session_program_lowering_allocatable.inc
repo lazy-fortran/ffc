@@ -1271,6 +1271,17 @@
             if (.not. emit_ptr_load(context%session, &
                     context%symbols(symbol_index)%deferred_data, data_ptr, &
                     error_msg)) return
+        else if (context%symbols(symbol_index)%is_allocatable .and. &
+                 context%symbols(symbol_index)%array_rank == 0) then
+            ! A scalar allocatable folds its straight-line association state,
+            ! mirroring associated()'s compile-time limitation.
+            if (context%symbols(symbol_index)%has_address) then
+                value = i32_immediate(context%session, 1_c_int64_t)
+            else
+                value = i32_immediate(context%session, 0_c_int64_t)
+            end if
+            call set_empty(error_msg)
+            return
         else if (context%symbols(symbol_index)%is_allocatable) then
             if (.not. emit_ptr_load(context%session, &
                     context%symbols(symbol_index)%allocatable_descriptor_address, &
