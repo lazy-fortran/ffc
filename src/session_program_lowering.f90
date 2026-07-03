@@ -1426,6 +1426,7 @@ contains
     end subroutine emit_error_stop_banner
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
+    include 'session_program_lowering_io_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_print_ops.inc'

@@ -155,7 +155,11 @@ a file unit's list-directed and numeric-edit-descriptor `read` covers
 integer, real, and fixed-length character scalars. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
-`opened=`, and `iostat=` on `file=` and `unit=`.
+`opened=`, and `iostat=` on `file=` and `unit=`. Invalid programs are
+rejected during lowering: an integer `SELECT CASE` with overlapping
+integer-literal CASE labels, and a character-valued I/O specifier
+(`STATUS=`, `ACCESS=`, `ADVANCE=`, `IOMSG=`, ...) handed a numeric or
+logical literal (`status=1`, `advance=5.`), both fail with a diagnostic.
 
 ## Build
 

@@ -26,6 +26,9 @@
             return
         end if
 
+        call check_case_overlap(arena, node, error_msg)
+        if (len_trim(error_msg) > 0) return
+
         call lower_i32_expression(arena, node%selector_index, context, &
                                    selector, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -55,6 +58,137 @@
 
         call finish_select_merge(context, merge_block, results, nresults, error_msg)
     end subroutine lower_select_case
+
+    ! Reject a SELECT CASE whose integer CASE labels overlap. Only labels whose
+    ! bounds are integer literals are compared; anything non-constant is skipped,
+    ! so valid programs are never flagged.
+    subroutine check_case_overlap(arena, node, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(select_case_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: value_indices(:), body(:)
+        integer, allocatable :: lo(:), hi(:)
+        logical, allocatable :: lo_open(:), hi_open(:)
+        integer :: total, n, arm, k, v_lo, v_hi
+        logical :: v_lo_open, v_hi_open, ok
+
+        call set_empty(error_msg)
+        total = 0
+        do arm = 1, size(node%case_indices)
+            call get_case_block_info(arena, node%case_indices(arm), &
+                                     value_indices, body)
+            if (allocated(value_indices)) total = total + size(value_indices)
+        end do
+        if (total < 2) return
+        allocate (lo(total), hi(total), lo_open(total), hi_open(total))
+        n = 0
+        do arm = 1, size(node%case_indices)
+            call get_case_block_info(arena, node%case_indices(arm), &
+                                     value_indices, body)
+            if (.not. allocated(value_indices)) cycle
+            do k = 1, size(value_indices)
+                call case_value_interval(arena, value_indices(k), v_lo, v_hi, &
+                                         v_lo_open, v_hi_open, ok)
+                if (.not. ok) cycle
+                n = n + 1
+                lo(n) = v_lo
+                hi(n) = v_hi
+                lo_open(n) = v_lo_open
+                hi_open(n) = v_hi_open
+            end do
+        end do
+        call detect_case_overlap(lo, hi, lo_open, hi_open, n, error_msg)
+    end subroutine check_case_overlap
+
+    ! Resolve one CASE label to an inclusive integer interval. ok is false when a
+    ! bound is not an integer literal, so the caller drops that label.
+    subroutine case_value_interval(arena, value_index, lo, hi, lo_open, &
+                                   hi_open, ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(out) :: lo, hi
+        logical, intent(out) :: lo_open, hi_open, ok
+        integer :: s, e
+
+        lo = 0
+        hi = 0
+        lo_open = .false.
+        hi_open = .false.
+        ok = .false.
+        call get_case_range_info(arena, value_index, s, e)
+        if (s /= 0 .or. e /= 0) then
+            lo_open = s == 0
+            hi_open = e == 0
+            if (.not. lo_open) then
+                call eval_int_case_label(arena, s, lo, ok)
+                if (.not. ok) return
+            end if
+            if (.not. hi_open) then
+                call eval_int_case_label(arena, e, hi, ok)
+                if (.not. ok) return
+            end if
+            ok = .true.
+            return
+        end if
+        call eval_int_case_label(arena, value_index, lo, ok)
+        if (.not. ok) return
+        hi = lo
+    end subroutine case_value_interval
+
+    subroutine eval_int_case_label(arena, node_index, value, ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(out) :: value
+        logical, intent(out) :: ok
+        character(len=:), allocatable :: lit_value, lit_type, err
+        integer(c_int64_t) :: parsed
+
+        value = 0
+        ok = .false.
+        if (.not. is_literal(arena, node_index)) return
+        if (is_real_literal(arena, node_index)) return
+        if (is_logical_literal(arena, node_index)) return
+        if (is_character_literal(arena, node_index)) return
+        call get_literal_info(arena, node_index, lit_value, lit_type, err)
+        if (len_trim(err) > 0) return
+        call parse_i32_literal(lit_value, parsed, err)
+        if (len_trim(err) > 0) return
+        value = int(parsed)
+        ok = .true.
+    end subroutine eval_int_case_label
+
+    subroutine detect_case_overlap(lo, hi, lo_open, hi_open, n, error_msg)
+        integer, intent(in) :: lo(:), hi(:)
+        logical, intent(in) :: lo_open(:), hi_open(:)
+        integer, intent(in) :: n
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j
+
+        call set_empty(error_msg)
+        do i = 1, n - 1
+            do j = i + 1, n
+                if (intervals_overlap(lo(i), hi(i), lo_open(i), hi_open(i), &
+                                      lo(j), hi(j), lo_open(j), hi_open(j))) then
+                    error_msg = 'CASE label overlaps with earlier CASE label'
+                    return
+                end if
+            end do
+        end do
+    end subroutine detect_case_overlap
+
+    logical function intervals_overlap(a_lo, a_hi, a_lo_open, a_hi_open, &
+                                       b_lo, b_hi, b_lo_open, b_hi_open) &
+                                       result(overlap)
+        integer, intent(in) :: a_lo, a_hi, b_lo, b_hi
+        logical, intent(in) :: a_lo_open, a_hi_open, b_lo_open, b_hi_open
+        logical :: left_ok, right_ok
+
+        left_ok = a_lo_open .or. b_hi_open
+        if (.not. left_ok) left_ok = a_lo <= b_hi
+        right_ok = b_lo_open .or. a_hi_open
+        if (.not. right_ok) right_ok = b_lo <= a_hi
+        overlap = left_ok .and. right_ok
+    end function intervals_overlap
 
     subroutine snapshot_symbols(context, baseline, baseline_count)
         type(lowering_context_t), intent(in) :: context

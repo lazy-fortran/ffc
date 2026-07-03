@@ -656,16 +656,32 @@
         type is (data_statement_node)
             call lower_data_statement(arena, node, context, error_msg)
         type is (open_statement_node)
-            call lower_open(arena, node, context, error_msg)
+            if (allocated(node%unit_spec)) &
+                call check_io_spec_types(node%unit_spec, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call lower_open(arena, node, context, error_msg)
         type is (close_statement_node)
-            call lower_close(node, context, error_msg)
+            if (allocated(node%unit_spec)) &
+                call check_io_spec_types(node%unit_spec, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call lower_close(node, context, error_msg)
         type is (rewind_statement_node)
-            call lower_rewind(node, context, error_msg)
+            if (allocated(node%unit_spec)) &
+                call check_io_spec_types(node%unit_spec, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call lower_rewind(node, context, error_msg)
         type is (inquire_statement_node)
-            call lower_inquire(node, context, error_msg)
+            if (allocated(node%spec_list)) &
+                call check_io_spec_types(node%spec_list, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call lower_inquire(node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)
+            if (allocated(node%io_control_list)) then
+                call check_io_spec_types(node%io_control_list, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (allocated(node%namelist_group)) then
                 call lower_namelist_read(node, context, error_msg)
                 return
@@ -688,6 +704,10 @@
                                            'support this read form yet', &
                                            error_msg)
         type is (write_statement_node)
+            if (allocated(node%io_control_list)) then
+                call check_io_spec_types(node%io_control_list, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (allocated(node%namelist_group)) then
                 call lower_namelist_write(node, context, error_msg)
             else if (is_internal_write(node, context)) then
