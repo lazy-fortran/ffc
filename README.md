@@ -117,8 +117,9 @@ and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
 fixed-length character component supports reading, writing (blank-padded and
-truncated to its declared length), comparison, concatenation, and `print`
-through `x%name`. A
+truncated to its declared length), comparison, concatenation, `print`, and
+passing as an actual argument to a `character(len=*)` dummy, through
+`x%name`. A
 whole-derived scalar assignment (`y = x`) copies one instance into another,
 and a scalar structure constructor over integer/real/logical/character
 components (`x = t(1, 2.5, .true.)`, `x = person_t("Ada", 7)`, omitted

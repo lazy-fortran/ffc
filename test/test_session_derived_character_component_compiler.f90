@@ -18,6 +18,7 @@ program test_session_derived_character_component_compiler
     if (.not. test_nested_character_component_lowers()) all_passed = .false.
     if (.not. test_character_component_read_write()) all_passed = .false.
     if (.not. test_character_component_constructor()) all_passed = .false.
+    if (.not. test_character_component_argument()) all_passed = .false.
     if (.not. test_character_array_component_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -112,6 +113,30 @@ contains
         test_character_component_constructor = expect_output( &
             source, expected, '/tmp/ffc_derived_char_component_ctor_test')
     end function test_character_component_constructor
+
+    logical function test_character_component_argument()
+        ! A character component passed as an actual argument builds the same
+        ! {data, length} descriptor as a plain character(len=*) variable.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: person_t'//new_line('a')// &
+            '    character(len=8) :: name'//new_line('a')// &
+            '  end type person_t'//new_line('a')// &
+            '  type(person_t) :: p'//new_line('a')// &
+            '  p%name = "Ada"'//new_line('a')// &
+            '  call greet(p%name)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine greet(s)'//new_line('a')// &
+            '    character(len=*), intent(in) :: s'//new_line('a')// &
+            '    print *, "Hello, ", trim(s)'//new_line('a')// &
+            '  end subroutine greet'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            ' Hello, Ada'//new_line('a')
+
+        test_character_component_argument = expect_output( &
+            source, expected, '/tmp/ffc_derived_char_component_arg_test')
+    end function test_character_component_argument
 
     logical function test_character_array_component_rejected()
         ! A character ARRAY component stays unsupported: the flat scalar slot

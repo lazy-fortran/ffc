@@ -174,6 +174,12 @@
             actual_is_character = .true.
             return
         end if
+        select type (n => arena%entries(node_index)%node)
+        type is (component_access_node)
+            actual_is_character = derived_component_access_kind(arena, n, &
+                context) == VALUE_CHARACTER
+            return
+        end select
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
