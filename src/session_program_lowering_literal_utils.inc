@@ -83,6 +83,64 @@
              context%symbols(sym)%value_kind == vk
     end function is_real_array_reduction
 
+    logical function is_real_inquiry_intrinsic(name) result(ok)
+        !! True for the real numeric-model inquiry intrinsics whose result is a
+        !! scalar real constant determined solely by the argument's kind.
+        character(len=*), intent(in) :: name
+
+        select case (trim(name))
+        case ('tiny', 'huge', 'epsilon')
+            ok = .true.
+        case default
+            ok = .false.
+        end select
+    end function is_real_inquiry_intrinsic
+
+    integer function inquiry_arg_real_kind(arena, node, context) result(kind_num)
+        !! Real kind (4 or 8) of a tiny/huge/epsilon argument, or -1 when the
+        !! argument is not a real literal, real array constructor, or real
+        !! variable of a supported kind.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: arg_idx, sym
+        character(len=:), allocatable :: id_name, err, lv, lt, le
+
+        kind_num = -1
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) < 1) return
+        arg_idx = node%arg_indices(1)
+        if (.not. node_exists(arena, arg_idx)) return
+        select type (arg => arena%entries(arg_idx)%node)
+        type is (array_literal_node)
+            if (.not. allocated(arg%element_indices)) return
+            if (size(arg%element_indices) < 1) return
+            arg_idx = arg%element_indices(1)
+        end select
+        if (.not. node_exists(arena, arg_idx)) return
+        if (is_real_literal(arena, arg_idx)) then
+            call get_literal_info(arena, arg_idx, lv, lt, le)
+            if (literal_is_f64(lv, context)) then
+                kind_num = 8
+            else
+                kind_num = 4
+            end if
+            return
+        end if
+        if (is_identifier(arena, arg_idx)) then
+            call get_identifier_name(arena, arg_idx, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, id_name)
+            if (sym <= 0) return
+            select case (context%symbols(sym)%value_kind)
+            case (VALUE_F32)
+                kind_num = 4
+            case (VALUE_F64)
+                kind_num = 8
+            end select
+        end if
+    end function inquiry_arg_real_kind
+
     logical function is_real_dot_product(arena, node, context, vk) result(ok)
         !! True when node is a dot_product call whose two arguments are
         !! rank-1 arrays of value kind vk.

@@ -426,6 +426,58 @@
         end select
     end subroutine lower_f32_intrinsic_call
 
+    subroutine lower_real_inquiry_intrinsic(arena, node, context, vk, value, &
+                                            error_msg)
+        !! Lower tiny/huge/epsilon to a constant f32/f64 immediate. The result
+        !! kind follows the argument kind, so the value is computed with the
+        !! compiler's own intrinsics and emitted into the requested value path.
+        use, intrinsic :: iso_c_binding, only: c_float, c_double
+        use, intrinsic :: iso_fortran_env, only: real32, real64
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: kind_num
+        real(c_double) :: val
+
+        call set_empty(error_msg)
+        kind_num = inquiry_arg_real_kind(arena, node, context)
+        if (kind_num /= 4 .and. kind_num /= 8) then
+            call unsupported_intrinsic_error(node, error_msg)
+            return
+        end if
+        select case (trim(node%name))
+        case ('tiny')
+            if (kind_num == 4) then
+                val = real(tiny(1.0_real32), c_double)
+            else
+                val = tiny(1.0_real64)
+            end if
+        case ('huge')
+            if (kind_num == 4) then
+                val = real(huge(1.0_real32), c_double)
+            else
+                val = huge(1.0_real64)
+            end if
+        case ('epsilon')
+            if (kind_num == 4) then
+                val = real(epsilon(1.0_real32), c_double)
+            else
+                val = epsilon(1.0_real64)
+            end if
+        case default
+            call unsupported_intrinsic_error(node, error_msg)
+            return
+        end select
+        if (vk == VALUE_F32) then
+            value = liric_f32_immediate(context%session, real(val, c_float))
+        else
+            value = liric_f64_immediate(context%session, val)
+        end if
+    end subroutine lower_real_inquiry_intrinsic
+
     subroutine lower_f32_libm_call(arena, node, libm_name, arg_count, context, &
                                    value, error_msg)
         use, intrinsic :: iso_c_binding, only: c_float

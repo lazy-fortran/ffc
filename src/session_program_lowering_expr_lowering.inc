@@ -476,6 +476,12 @@
             return
         end if
 
+        if (is_real_inquiry_intrinsic(call_name)) then
+            call lower_real_inquiry_intrinsic(arena, node, context, VALUE_F32, &
+                                              value, error_msg)
+            return
+        end if
+
         if (is_real_array_reduction(arena, node, context, VALUE_F32)) then
             call lower_array_reduction_intrinsic(arena, node, context, value, &
                                                  error_msg, trim(call_name))
@@ -596,6 +602,8 @@
                             end if
                         end if
                     end if
+                else if (is_real_inquiry_intrinsic(node%name)) then
+                    is_f32 = inquiry_arg_real_kind(arena, node, context) == 4
                 else
                     is_f32 = is_contained_f32_function(context, node%name) .or. &
                         generic_call_return_kind(context, node%name, &
@@ -758,6 +766,12 @@
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                           value, error_msg)
+            return
+        end if
+
+        if (is_real_inquiry_intrinsic(call_name)) then
+            call lower_real_inquiry_intrinsic(arena, node, context, VALUE_F64, &
+                                              value, error_msg)
             return
         end if
         ! dble(x) is identical to real(x, kind=8): promote/convert any type to f64.
@@ -977,6 +991,8 @@
                     if (symbol_index > 0) then
                         is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
                     end if
+                else if (is_real_inquiry_intrinsic(node%name)) then
+                    is_f64 = inquiry_arg_real_kind(arena, node, context) == 8
                 else
                     is_f64 = is_contained_f64_function(context, node%name) .or. &
                         generic_call_return_kind(context, node%name, &
