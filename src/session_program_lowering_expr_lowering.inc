@@ -195,6 +195,15 @@
             call lower_btest_intrinsic(arena, node, context, value, error_msg)
             return
         end if
+        if ((same_name(call_name, 'all') .or. same_name(call_name, 'any')) &
+            .and. .not. is_contained_logical_function(context, call_name)) then
+            block
+                logical :: handled
+                call try_alloc_component_mask_reduction(arena, node, context, &
+                    same_name(call_name, 'all'), handled, value, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            end block
+        end if
         if (.not. is_contained_logical_function(context, call_name)) then
             call unsupported_feature_error('scalar logical function call', &
                                            node%line, node%column, &

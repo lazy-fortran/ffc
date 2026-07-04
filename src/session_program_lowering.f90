@@ -6,7 +6,7 @@ module session_program_lowering
         range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
         pointer_assignment_node, literal_node, &
-        identifier_node
+        identifier_node, binary_op_node
     use ast_nodes_transfer, only: nullify_node
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
         block_data_node

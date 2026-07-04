@@ -1057,10 +1057,8 @@
 
         if (component_access_is_alloc_array(arena, target, context)) then
             value = i32_immediate(context%session, 0_c_int64_t)
-            call unsupported_feature_error('allocatable array component '// &
-                'assignment', target%line, target%column, 'whole-component '// &
-                'assignment to an allocatable array component is not supported '// &
-                'by direct LIRIC session', error_msg)
+            call lower_alloc_array_component_assignment(arena, node, target, &
+                                                        context, error_msg)
             return
         end if
 
@@ -1442,6 +1440,176 @@
             handled = .true.
         end select
     end subroutine lower_allocate_array_component
+
+    subroutine lower_alloc_array_component_assignment(arena, node, target, &
+                                                      context, error_msg)
+        ! obj%v = rhs for a rank-1 allocatable array component: reallocate the
+        ! component to the rhs extent, then store each element in order. Supports
+        ! an explicit array constructor and a whole plain-array or allocatable
+        ! variable rhs whose extent is known at compile time.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: comp_kind, n, i, src_sym
+        integer, allocatable :: flat(:)
+        type(lr_operand_desc_t) :: desc_addr, data_ptr, elem_val
+        logical :: from_ctor
+
+        comp_kind = derived_component_access_kind(arena, target, context)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('allocatable array component '// &
+                'assignment', target%line, target%column, 'character allocatable '// &
+                'array component assignment is not supported', error_msg)
+            return
+        end if
+        call alloc_component_assign_shape(arena, node%value_index, context, &
+                                          from_ctor, flat, src_sym, n, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call alloc_array_component_descriptor(arena, node%target_index, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call realloc_alloc_component(context, desc_addr, comp_kind, n, data_ptr, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        do i = 1, n
+            if (from_ctor) then
+                call lower_component_rhs_value(arena, flat(i), comp_kind, context, &
+                                               elem_val, error_msg)
+            else
+                call load_array_linear_element(context, src_sym, &
+                    int(i - 1, c_int64_t), elem_val, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            call store_alloc_component_element(context, data_ptr, comp_kind, &
+                                               i - 1, elem_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_alloc_array_component_assignment
+
+    subroutine alloc_component_assign_shape(arena, value_index, context, &
+                                            from_ctor, flat, src_sym, n, error_msg)
+        ! Classify the rhs of a whole allocatable-array-component assignment:
+        ! an explicit array constructor (from_ctor, flat holds element indices),
+        ! or a whole array/allocatable variable of compile-time extent n (src_sym).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: from_ctor
+        integer, allocatable, intent(out) :: flat(:)
+        integer, intent(out) :: src_sym, n
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+
+        from_ctor = .false.
+        src_sym = 0
+        n = 0
+        if (.not. node_exists(arena, value_index)) then
+            error_msg = 'allocatable array component assignment rhs is not a node'
+            return
+        end if
+        select type (rhs => arena%entries(value_index)%node)
+        type is (array_literal_node)
+            if (is_implied_do_constructor(arena, rhs) .or. &
+                .not. allocated(rhs%element_indices)) then
+                call unsupported_feature_error('allocatable array component '// &
+                    'assignment', rhs%line, rhs%column, 'only an explicit array '// &
+                    'constructor is supported for a constructor rhs', error_msg)
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, rhs%element_indices, flat, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            n = size(flat)
+            from_ctor = .true.
+            call set_empty(error_msg)
+            return
+        end select
+        if (.not. is_identifier(arena, value_index)) then
+            call unsupported_feature_error('allocatable array component '// &
+                'assignment', get_node_line(arena, value_index), &
+                get_node_column(arena, value_index), 'this rhs form is not '// &
+                'supported for an allocatable array component', error_msg)
+            return
+        end if
+        call get_identifier_name(arena, value_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        src_sym = find_symbol(context, name)
+        if (src_sym <= 0) then
+            error_msg = 'allocatable array component assignment rhs was not '// &
+                        'declared: '//trim(name)
+            return
+        end if
+        if (.not. is_elementwise_array_operand(context, src_sym)) then
+            call unsupported_feature_error('allocatable array component '// &
+                'assignment', get_node_line(arena, value_index), &
+                get_node_column(arena, value_index), 'a whole-array rhs must be '// &
+                'a compile-time-sized array', error_msg)
+            return
+        end if
+        if (context%symbols(src_sym)%is_allocatable) then
+            n = context%symbols(src_sym)%allocatable_static_size
+        else
+            n = context%symbols(src_sym)%array_size
+        end if
+        if (n <= 0) then
+            call unsupported_feature_error('allocatable array component '// &
+                'assignment', get_node_line(arena, value_index), &
+                get_node_column(arena, value_index), 'a whole-array rhs must have '// &
+                'a positive compile-time extent', error_msg)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine alloc_component_assign_shape
+
+    subroutine realloc_alloc_component(context, desc_addr, comp_kind, n, data_ptr, &
+                                       error_msg)
+        ! Size a rank-1 allocatable array component to n elements: free any
+        ! current data (free(null) is a no-op on the default-nulled descriptor),
+        ! malloc n * elem_size, then store the data pointer at byte 0 and the i64
+        ! element extent at byte 8. Returns the fresh data pointer.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: desc_addr
+        integer, intent(in) :: comp_kind, n
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: old_ptr, bytes, extent
+        integer(c_int64_t) :: elem_size
+
+        elem_size = allocatable_elem_size(comp_kind)
+        if (.not. emit_ptr_load(context%session, desc_addr, old_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, old_ptr, error_msg)) return
+        bytes = i64_immediate(context%session, int(n, c_int64_t) * elem_size)
+        if (.not. emit_malloc(context%session, bytes, data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, desc_addr, error_msg)) &
+            return
+        extent = i64_immediate(context%session, int(n, c_int64_t))
+        if (.not. emit_i64_store_at(context%session, extent, desc_addr, &
+                8_c_int64_t, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine realloc_alloc_component
+
+    subroutine store_alloc_component_element(context, data_ptr, comp_kind, &
+                                             zero_based, value, error_msg)
+        ! Store value at element zero_based of an allocatable array component whose
+        ! data pointer is data_ptr.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        integer, intent(in) :: comp_kind, zero_based
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: off, addr
+
+        off = i64_immediate(context%session, &
+            int(zero_based, c_int64_t) * allocatable_elem_size(comp_kind))
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, off, addr, &
+                error_msg)) return
+        call emit_typed_component_store(context, comp_kind, value, addr, error_msg)
+    end subroutine store_alloc_component_element
 
     subroutine lower_component_rhs_value(arena, value_index, comp_kind, context, &
                                          value, error_msg)

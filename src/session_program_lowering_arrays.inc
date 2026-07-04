@@ -2921,6 +2921,13 @@
                 call lower_section_reduction(arena, arg, context, value, &
                                              reduction_name, error_msg)
                 return
+            type is (component_access_node)
+                if (component_access_is_alloc_array(arena, arg, context)) then
+                    call lower_alloc_component_reduction(arena, &
+                        node%arg_indices(1), context, reduction_name, value, &
+                        error_msg)
+                    return
+                end if
             end select
             ! sum(f()): a bare call to a contained function returning an
             ! allocatable array.

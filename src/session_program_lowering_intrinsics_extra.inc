@@ -465,6 +465,148 @@
         call set_empty(error_msg)
     end subroutine lower_logical_array_all_intrinsic
 
+    subroutine try_alloc_component_mask_reduction(arena, node, context, is_all, &
+                                                  handled, value, error_msg)
+        ! all/any of an elementwise integer comparison where one operand is a
+        ! whole rank-1 allocatable array component and the other a compile-time-
+        ! sized integer array. Unrolls over the array's static extent (the
+        ! component must conform). Leaves handled .false. for any other shape.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_all
+        logical, intent(out) :: handled
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: arg_index, left_idx, right_idx, comp_access, arr_sym, n, i
+        logical :: comp_on_left
+        character(len=:), allocatable :: op
+        type(lr_operand_desc_t) :: desc_addr, comp_elem, arr_elem, lhs, rhs
+        type(lr_operand_desc_t) :: cond, acc, next_acc
+        integer(c_int) :: predicate
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 1) return
+        arg_index = node%arg_indices(1)
+        if (.not. node_exists(arena, arg_index)) return
+        left_idx = 0
+        right_idx = 0
+        select type (b => arena%entries(arg_index)%node)
+        type is (binary_op_node)
+            if (.not. is_relational_operator(b%operator)) return
+            op = b%operator
+            left_idx = b%left_index
+            right_idx = b%right_index
+        class default
+            return
+        end select
+        call classify_mask_operands(arena, left_idx, right_idx, context, &
+                                    comp_access, arr_sym, comp_on_left)
+        if (comp_access <= 0 .or. arr_sym <= 0) return
+        if (derived_component_access_kind_at(arena, comp_access, context) &
+            /= VALUE_I32) return
+        if (context%symbols(arr_sym)%value_kind /= VALUE_I32) return
+        if (context%symbols(arr_sym)%is_allocatable) then
+            n = context%symbols(arr_sym)%allocatable_static_size
+        else
+            n = context%symbols(arr_sym)%array_size
+        end if
+        if (n <= 0) return
+        call integer_compare_predicate(op, predicate, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call alloc_array_component_descriptor(arena, comp_access, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (is_all) then
+            acc = i32_immediate(context%session, 1_c_int64_t)
+        else
+            acc = i32_immediate(context%session, 0_c_int64_t)
+        end if
+        do i = 0, n - 1
+            call load_alloc_component_element(context, desc_addr, VALUE_I32, &
+                i32_immediate(context%session, int(i, c_int64_t)), comp_elem, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, arr_sym, int(i, c_int64_t), &
+                                           arr_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (comp_on_left) then
+                lhs = comp_elem
+                rhs = arr_elem
+            else
+                lhs = arr_elem
+                rhs = comp_elem
+            end if
+            if (.not. emit_liric_i32_icmp(context%session, predicate, lhs, rhs, &
+                    cond, error_msg)) return
+            if (is_all) then
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, cond, &
+                        next_acc, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, cond, &
+                        next_acc, error_msg)) return
+            end if
+            acc = next_acc
+        end do
+        value = acc
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine try_alloc_component_mask_reduction
+
+    subroutine classify_mask_operands(arena, left_idx, right_idx, context, &
+                                      comp_access, arr_sym, comp_on_left)
+        ! comp_access = arena index of a whole alloc-array-component operand (or
+        ! 0); arr_sym = symbol of a whole intrinsic array operand (or 0).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: left_idx, right_idx
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: comp_access, arr_sym
+        logical, intent(out) :: comp_on_left
+
+        comp_access = 0
+        arr_sym = 0
+        comp_on_left = .true.
+        if (operand_is_alloc_component(arena, left_idx, context)) then
+            comp_access = left_idx
+            comp_on_left = .true.
+            arr_sym = whole_array_symbol(arena, right_idx, context)
+        else if (operand_is_alloc_component(arena, right_idx, context)) then
+            comp_access = right_idx
+            comp_on_left = .false.
+            arr_sym = whole_array_symbol(arena, left_idx, context)
+        end if
+    end subroutine classify_mask_operands
+
+    logical function operand_is_alloc_component(arena, idx, context) result(is_comp)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+
+        is_comp = .false.
+        if (.not. node_exists(arena, idx)) return
+        select type (acc => arena%entries(idx)%node)
+        type is (component_access_node)
+            is_comp = component_access_is_alloc_array(arena, acc, context)
+        end select
+    end function operand_is_alloc_component
+
+    integer function whole_array_symbol(arena, idx, context) result(sym)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, err
+
+        sym = 0
+        if (.not. is_identifier(arena, idx)) return
+        call get_identifier_name(arena, idx, name, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol(context, name)
+        if (sym <= 0) return
+        if (.not. is_elementwise_array_operand(context, sym)) sym = 0
+    end function whole_array_symbol
+
     ! maxloc(a [,dim] [,mask]) / minloc(a [,dim] [,mask]) for a rank-1
     ! integer or real array, returning the scalar 1-based index of the first
     ! extreme element. With a logical-array mask, only masked elements are
