@@ -13,6 +13,10 @@ program test_session_derived_array_component_compiler
     if (.not. test_real_array_component()) all_passed = .false.
     if (.not. test_real8_array_component()) all_passed = .false.
     if (.not. test_logical_array_component()) all_passed = .false.
+    if (.not. test_array_component_constructor()) all_passed = .false.
+    if (.not. test_array_component_broadcast()) all_passed = .false.
+    if (.not. test_array_component_whole_read()) all_passed = .false.
+    if (.not. test_array_component_component_copy()) all_passed = .false.
 
     if (all_passed) then
         write(*,'(A)') ' PASS: integer/real/logical array components lower'
@@ -124,5 +128,79 @@ contains
             source, ' T F'//new_line('a'), &
             '/tmp/ffc_session_derived_arrcomp_logical_test')
     end function test_logical_array_component
+
+    logical function test_array_component_constructor()
+        ! Whole-component assignment from an array constructor stores each
+        ! element into the component's inline slots in linear order.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: x'//new_line('a')// &
+            '  x%v = [10, 20, 30]'//new_line('a')// &
+            '  print *, x%v(1) + x%v(2) + x%v(3)'//new_line('a')// &
+            'end program main'
+
+        test_array_component_constructor = expect_output( &
+            source, '          60'//new_line('a'), &
+            '/tmp/ffc_session_derived_arrcomp_ctor_test')
+    end function test_array_component_constructor
+
+    logical function test_array_component_broadcast()
+        ! Scalar broadcast into a whole array component stores the value into
+        ! every element.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: x'//new_line('a')// &
+            '  x%v = 7'//new_line('a')// &
+            '  print *, x%v(1) + x%v(2) + x%v(3)'//new_line('a')// &
+            'end program main'
+
+        test_array_component_broadcast = expect_output( &
+            source, '          21'//new_line('a'), &
+            '/tmp/ffc_session_derived_arrcomp_bcast_test')
+    end function test_array_component_broadcast
+
+    logical function test_array_component_whole_read()
+        ! Whole-component read: a plain array assigned the array component copies
+        ! each element out through the component offset.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: x'//new_line('a')// &
+            '  integer :: a(3)'//new_line('a')// &
+            '  x%v = [10, 20, 30]'//new_line('a')// &
+            '  a = x%v'//new_line('a')// &
+            '  print *, a(1) + a(2) + a(3)'//new_line('a')// &
+            'end program main'
+
+        test_array_component_whole_read = expect_output( &
+            source, '          60'//new_line('a'), &
+            '/tmp/ffc_session_derived_arrcomp_read_test')
+    end function test_array_component_whole_read
+
+    logical function test_array_component_component_copy()
+        ! Whole-component copy between two instances of the same type.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: x, y'//new_line('a')// &
+            '  x%v = [10, 20, 30]'//new_line('a')// &
+            '  y%v = x%v'//new_line('a')// &
+            '  print *, y%v(1) + y%v(2) + y%v(3)'//new_line('a')// &
+            'end program main'
+
+        test_array_component_component_copy = expect_output( &
+            source, '          60'//new_line('a'), &
+            '/tmp/ffc_session_derived_arrcomp_copy_test')
+    end function test_array_component_component_copy
 
 end program test_session_derived_array_component_compiler

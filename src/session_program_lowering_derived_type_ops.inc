@@ -460,11 +460,44 @@
         type(lr_operand_desc_t), intent(out) :: addr
         character(len=:), allocatable, intent(out) :: error_msg
         integer, intent(out), optional :: comp_kind
-        character(len=:), allocatable :: base_name, comp_name
-        integer :: base_index, symbol_index, type_index, component_index, width
-        type(lr_operand_desc_t) :: sub_val, zero_based, scaled, slot
+        integer :: symbol_index, type_index, component_index, width
+        type(lr_operand_desc_t) :: sub_val, zero_based, scaled
 
         if (present(comp_kind)) comp_kind = VALUE_I32
+        call resolve_array_component(arena, access_index, context, symbol_index, &
+                                     type_index, component_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (present(comp_kind)) &
+            comp_kind = component_kind(context, type_index, component_index)
+        width = component_slot_width(context, type_index, component_index)
+
+        call lower_i32_expression(arena, sub_index, context, sub_val, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                i32_immediate(context%session, int(width, c_int64_t)), scaled, &
+                error_msg)) return
+        call component_slot_address(context, symbol_index, type_index, &
+                                    component_index, scaled, addr, error_msg)
+    end subroutine derived_component_element_address
+
+    subroutine resolve_array_component(arena, access_index, context, symbol_index, &
+                                       type_index, component_index, error_msg)
+        ! Resolve obj%comp to (symbol, type, component) indices, requiring comp to
+        ! be a fixed-size array component of the base derived variable.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index, type_index, component_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base_name, comp_name
+        integer :: base_index
+
+        symbol_index = 0
+        type_index = 0
+        component_index = 0
         if (.not. node_exists(arena, access_index)) then
             error_msg = 'component element base is not an AST node'
             return
@@ -496,24 +529,34 @@
                 trim(context%derived_types(type_index)%name)//': '//trim(comp_name)
             return
         end if
+        if (component_kind(context, type_index, component_index) == &
+            VALUE_CHARACTER) then
+            ! A character component reuses component_array_size as its slot count,
+            ! so exclude it from the intrinsic-array-component path.
+            error_msg = 'component is not an array: '//trim(comp_name)
+            return
+        end if
         if (context%derived_types(type_index)%component_array_size(component_index) &
             <= 1) then
             error_msg = 'component is not an array: '//trim(comp_name)
             return
         end if
-        if (present(comp_kind)) &
-            comp_kind = component_kind(context, type_index, component_index)
-        width = component_slot_width(context, type_index, component_index)
+        call set_empty(error_msg)
+    end subroutine resolve_array_component
 
-        call lower_i32_expression(arena, sub_index, context, sub_val, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                i32_immediate(context%session, 1_c_int64_t), zero_based, &
-                error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
-                i32_immediate(context%session, int(width, c_int64_t)), scaled, &
-                error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_ADD, scaled, &
+    subroutine component_slot_address(context, symbol_index, type_index, &
+                                      component_index, element_offset, addr, &
+                                      error_msg)
+        ! Element address inside a fixed-size array component: the component's
+        ! start slot plus element_offset (already scaled by the element width).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index, component_index
+        type(lr_operand_desc_t), intent(in) :: element_offset
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot
+
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, element_offset, &
                 i32_immediate(context%session, &
                     int(component_start_slot(context, type_index, component_index), &
                         c_int64_t)), slot, error_msg)) return
@@ -525,7 +568,26 @@
             return
         end if
         call set_empty(error_msg)
-    end subroutine derived_component_element_address
+    end subroutine component_slot_address
+
+    subroutine component_element_address_at(context, symbol_index, type_index, &
+                                            component_index, zero_based, addr, &
+                                            error_msg)
+        ! Element address for a compile-time linear index (0-based) into a
+        ! fixed-size array component.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index, component_index
+        integer, intent(in) :: zero_based
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: width
+
+        width = component_slot_width(context, type_index, component_index)
+        call component_slot_address(context, symbol_index, type_index, &
+            component_index, &
+            i32_immediate(context%session, int(zero_based * width, c_int64_t)), &
+            addr, error_msg)
+    end subroutine component_element_address_at
 
     subroutine lower_derived_component_element_assignment(arena, node, target, &
                                                           context, error_msg)
@@ -837,6 +899,16 @@
         type(lr_operand_desc_t) :: component_address
         integer :: comp_kind
         integer :: type_index, comp_index, dest_len
+        logical :: is_array_component
+
+        call component_target_is_array(arena, node%target_index, context, &
+                                       is_array_component)
+        if (is_array_component) then
+            value = i32_immediate(context%session, 0_c_int64_t)
+            call lower_derived_component_array_assignment(arena, node, context, &
+                                                          error_msg)
+            return
+        end if
 
         comp_kind = derived_component_access_kind(arena, target, context)
         if (comp_kind == VALUE_CHARACTER) then
@@ -882,6 +954,228 @@
         call emit_typed_component_store(context, comp_kind, value, &
                                         component_address, error_msg)
     end subroutine lower_derived_component_assignment
+
+    subroutine component_target_is_array(arena, target_index, context, is_array)
+        ! True when obj%comp names a fixed-size array component of a plain
+        ! derived variable, so the whole-component array assignment path applies.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: is_array
+        character(len=:), allocatable :: err
+        integer :: symbol_index, type_index, component_index
+
+        is_array = .false.
+        call resolve_array_component(arena, target_index, context, symbol_index, &
+                                     type_index, component_index, err)
+        if (len_trim(err) == 0) is_array = .true.
+    end subroutine component_target_is_array
+
+    subroutine lower_derived_component_array_assignment(arena, node, context, &
+                                                        error_msg)
+        ! obj%v = rhs for a fixed-size intrinsic array component: an array
+        ! constructor, a scalar broadcast, or a whole-array copy from another
+        ! array. Character and derived-array components stay out of this path.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index, type_index, component_index, comp_kind, array_size
+
+        call resolve_array_component(arena, node%target_index, context, &
+                                     symbol_index, type_index, component_index, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        comp_kind = component_kind(context, type_index, component_index)
+        array_size = context%derived_types(type_index)% &
+                     component_array_size(component_index)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('array component assignment', &
+                node%line, node%column, 'character array component assignment '// &
+                'is not supported', error_msg)
+            return
+        end if
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                call store_component_array_constructor(arena, rhs, symbol_index, &
+                    type_index, component_index, comp_kind, array_size, context, &
+                    error_msg)
+                return
+            end select
+        end if
+        call store_component_array_copy(arena, node%value_index, symbol_index, &
+            type_index, component_index, comp_kind, array_size, context, error_msg)
+    end subroutine lower_derived_component_array_assignment
+
+    subroutine store_component_array_constructor(arena, ctor, symbol_index, &
+            type_index, component_index, comp_kind, array_size, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index, type_index, component_index
+        integer, intent(in) :: comp_kind, array_size
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, addr
+        integer, allocatable :: flat(:)
+        integer :: i
+
+        if (is_implied_do_constructor(arena, ctor) .or. &
+            .not. allocated(ctor%element_indices)) then
+            call unsupported_feature_error('array component assignment', &
+                ctor%line, ctor%column, 'only an explicit array constructor '// &
+                'is supported for array components', error_msg)
+            return
+        end if
+        allocate (flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (size(flat) /= array_size) then
+            error_msg = 'array constructor element count does not match the '// &
+                'declared component size'
+            return
+        end if
+        do i = 1, array_size
+            call lower_component_rhs_value(arena, flat(i), comp_kind, context, &
+                                           value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call component_element_address_at(context, symbol_index, type_index, &
+                                              component_index, i - 1, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_typed_component_store(context, comp_kind, value, addr, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine store_component_array_constructor
+
+    subroutine store_component_array_copy(arena, value_index, symbol_index, &
+            type_index, component_index, comp_kind, array_size, context, error_msg)
+        ! obj%v = scalar (broadcast) or obj%v = other_array (elementwise copy
+        ! from a plain array variable or another array component).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: symbol_index, type_index, component_index
+        integer, intent(in) :: comp_kind, array_size
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, addr
+        logical :: broadcast
+        integer :: i
+
+        broadcast = is_scalar_broadcast_rhs(arena, value_index, context)
+        if (broadcast) then
+            call lower_component_rhs_value(arena, value_index, comp_kind, context, &
+                                           value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        do i = 1, array_size
+            if (.not. broadcast) then
+                call load_component_array_source(arena, value_index, comp_kind, &
+                    array_size, i - 1, context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            call component_element_address_at(context, symbol_index, type_index, &
+                                              component_index, i - 1, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_typed_component_store(context, comp_kind, value, addr, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine store_component_array_copy
+
+    subroutine load_component_array_source(arena, value_index, comp_kind, &
+            array_size, zero_based, context, value, error_msg)
+        ! Load element zero_based of a whole-array RHS: a plain array variable or
+        ! another fixed-size array component. Anything else declines.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index, comp_kind, array_size, zero_based
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        character(len=:), allocatable :: name
+        integer :: sym, src_type, src_comp
+
+        if (.not. node_exists(arena, value_index)) then
+            error_msg = 'array component assignment rhs is not an AST node'
+            return
+        end if
+        if (is_identifier(arena, value_index)) then
+            call get_identifier_name(arena, value_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol(context, name)
+            if (sym <= 0) then
+                error_msg = 'array component assignment rhs was not declared: '// &
+                            trim(name)
+                return
+            end if
+            if (.not. is_elementwise_array_operand(context, sym)) then
+                error_msg = 'array component assignment requires an array rhs'
+                return
+            end if
+            if (context%symbols(sym)%array_size /= array_size) then
+                error_msg = 'array component assignment rhs size does not match'
+                return
+            end if
+            call load_array_linear_element(context, sym, &
+                int(zero_based, c_int64_t), value, error_msg)
+            return
+        end if
+        select type (rhs => arena%entries(value_index)%node)
+        type is (component_access_node)
+            call resolve_array_component(arena, value_index, context, sym, &
+                                         src_type, src_comp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context%derived_types(src_type)% &
+                component_array_size(src_comp) /= array_size) then
+                error_msg = 'array component assignment rhs size does not match'
+                return
+            end if
+            call component_element_address_at(context, sym, src_type, src_comp, &
+                                              zero_based, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_typed_component_load(context, comp_kind, addr, value, &
+                                           error_msg)
+            return
+        end select
+        call unsupported_feature_error('array component assignment', &
+            get_node_line(arena, value_index), get_node_column(arena, value_index), &
+            'this array component rhs form is not supported', error_msg)
+    end subroutine load_component_array_source
+
+    subroutine try_load_array_component_element(arena, access_index, zero_based, &
+                                                context, value, handled, error_msg)
+        ! Load element zero_based of an array component obj%v used as a whole-array
+        ! operand. handled stays .false. when obj%v is not a fixed-size intrinsic
+        ! array component, leaving the caller's other paths untouched.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index, zero_based
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        integer :: sym, type_index, comp_index, comp_kind
+
+        handled = .false.
+        call set_empty(error_msg)
+        call resolve_array_component(arena, access_index, context, sym, type_index, &
+                                     comp_index, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        comp_kind = component_kind(context, type_index, comp_index)
+        if (comp_kind == VALUE_CHARACTER) return
+        call component_element_address_at(context, sym, type_index, comp_index, &
+                                          zero_based, addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_typed_component_load(context, comp_kind, addr, value, error_msg)
+        handled = .true.
+    end subroutine try_load_array_component_element
 
     subroutine store_allocatable_component_value(context, slot_address, comp_kind, &
                                                  value, error_msg)

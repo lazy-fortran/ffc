@@ -683,6 +683,16 @@
             return
         end select
 
+        select type (comp_node => arena%entries(node_index)%node)
+        type is (component_access_node)
+            block
+                logical :: handled
+                call try_load_array_component_element(arena, node_index, &
+                    linear_index, context, value, handled, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            end block
+        end select
+
         select type (call_node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(call_node%name)) then

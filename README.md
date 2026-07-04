@@ -117,7 +117,10 @@ a contained logical function's result, including the one-line
 `if (cond) stmt` form without `then`. Derived types take scalar
 integer, real, logical, `c_ptr`, and fixed-length character
 (`character(len=N)`) components, fixed-size rank-1 integer,
-real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`),
+real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`,
+with whole-component assignment from an array constructor (`x%v = [1, 2, 3]`),
+scalar broadcast (`x%v = 7`), whole-component copy (`y%v = x%v`), and reading
+the whole component into a conforming plain array (`a = x%v`)),
 and scalar nested derived components (`type(inner) :: c`, accessed
 as `x%c%field` to any depth), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
