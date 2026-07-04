@@ -244,17 +244,13 @@ constant. A local variable declared `character(len=len(other))`, where
 lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
-<<<<<<<
 `log_gamma`, and `hypot`. The real numeric-model inquiry intrinsics `tiny`,
 `huge`, and `epsilon` of a real argument (kind 4 or 8) lower to the constant
 real value for the argument's kind, usable in real expressions, conditions, and
-`print`. `open`/`close`/`rewind` map to `fopen`/`fclose`/
-=======
-`log_gamma`, and `hypot`. Scalar `transfer(source, mold)` reinterprets
-`source`'s bit pattern as `mold`'s type between `integer(4)`/`real(4)` and
-between `integer(8)`/`real(8)`, via a typed stack-slot store/load round trip;
-same-kind `transfer` is the identity. `open`/`close`/`rewind` map to `fopen`/`fclose`/
->>>>>>> (non-row conflict, manual)
+`print`. Scalar `transfer(source, mold)` reinterprets `source`'s bit pattern as
+`mold`'s type between `integer(4)`/`real(4)` and between `integer(8)`/`real(8)`,
+via a typed stack-slot store/load round trip; same-kind `transfer` is the
+identity. `open`/`close`/`rewind` map to `fopen`/`fclose`/
 `rewind`, preserving an existing file's content when `status=` is omitted;
 a file unit's list-directed and numeric-edit-descriptor `read` covers
 integer, real, and fixed-length character scalars. Internal `read (buf, *)
