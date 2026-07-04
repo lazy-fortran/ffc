@@ -66,7 +66,11 @@ base address, with their extent taken from a whole-array actual of
 compile-time size (including a `dimension(n)` bound naming a caller-scope
 `parameter`), so element read/write, `size(a)`, `size(a, dim)`,
 `lbound`/`ubound`, `sum`, and whole-array `print` work in the callee, in both
-program-contained and module procedures. A rank-1 assumed-shape dummy of a
+program-contained and module procedures. The actual may also be a contiguous
+rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
+whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
+the section and whose first-element address binds the dummy in place. A rank-1
+assumed-shape dummy of a
 subroutine also accepts a rank-1 allocatable actual of runtime-only extent:
 the extent travels as a hidden argument, so `size(a)`, `ubound(a, 1)`,
 element read/write, a `do` loop bound by `size(a)`, and integer `sum(a)`

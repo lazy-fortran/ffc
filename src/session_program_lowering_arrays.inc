@@ -503,6 +503,7 @@
         integer, intent(out) :: extents(:)
         logical, intent(out) :: ok
         integer :: param_pos
+        integer :: actual_index
         character(len=:), allocatable :: actual_name
 
         ok = .false.
@@ -511,9 +512,19 @@
         if (param_pos <= 0) return
         call find_call_actual_identifier(context%arena, proc_name, param_pos, &
                                          actual_name)
-        if (.not. allocated(actual_name)) return
-        if (len_trim(actual_name) == 0) return
-        call array_decl_extents(context, actual_name, dim_count, extents, ok)
+        if (allocated(actual_name)) then
+            if (len_trim(actual_name) > 0) then
+                call array_decl_extents(context, actual_name, dim_count, extents, &
+                                        ok)
+                if (ok) return
+            end if
+        end if
+        call find_call_actual_expr(context%arena, proc_name, param_pos, &
+                                   actual_index)
+        if (actual_index > 0) then
+            call section_actual_decl_extents(context, actual_index, dim_count, &
+                                             extents, ok)
+        end if
     end subroutine resolve_assumed_shape_extents
 
     integer function proc_param_position(arena, proc_name, param_name) &
@@ -727,6 +738,209 @@
             return
         end do
     end subroutine array_decl_extents
+
+    subroutine base_array_decl_shape(context, var_name, max_rank, rank, lowers, &
+                                     extents, ok)
+        ! Per-dimension lower bounds and extents of the explicit-shape, non-
+        ! allocatable array declared as var_name anywhere in the unit, folding
+        ! literal and named-constant bounds. ok stays false on any non-constant
+        ! bound or a rank beyond max_rank.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: var_name
+        integer, intent(in) :: max_rank
+        integer, intent(out) :: rank
+        integer(c_int64_t), intent(out) :: lowers(:)
+        integer(c_int64_t), intent(out) :: extents(:)
+        logical, intent(out) :: ok
+        integer :: n, i, dim_index
+        integer(c_int64_t) :: lower_value, upper_value, extent
+        character(len=:), allocatable :: err
+        type(declaration_node), pointer :: decl
+
+        ok = .false.
+        rank = 0
+        lowers = 0_c_int64_t
+        extents = 0_c_int64_t
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            decl => declaration_named(context%arena, n, var_name)
+            if (.not. associated(decl)) cycle
+            if (.not. decl%is_array) cycle
+            if (decl%is_allocatable) cycle
+            if (.not. allocated(decl%dimension_indices)) cycle
+            rank = size(decl%dimension_indices)
+            if (rank < 1 .or. rank > max_rank) then
+                rank = 0
+                return
+            end if
+            if (declaration_is_assumed_shape(decl, context)) cycle
+            do i = 1, rank
+                dim_index = decl%dimension_indices(i)
+                if (.not. node_exists(context%arena, dim_index)) return
+                select type (dim_node => context%arena%entries(dim_index)%node)
+                type is (range_expression_node)
+                    call eval_i32_constant(context%arena, dim_node%start_index, &
+                                           context, lower_value, err)
+                    if (len_trim(err) > 0) return
+                    call eval_i32_constant(context%arena, dim_node%end_index, &
+                                           context, upper_value, err)
+                    if (len_trim(err) > 0) return
+                    extent = upper_value - lower_value + 1_c_int64_t
+                class default
+                    call eval_i32_constant(context%arena, dim_index, context, &
+                                           upper_value, err)
+                    if (len_trim(err) > 0) return
+                    lower_value = 1_c_int64_t
+                    extent = upper_value
+                end select
+                if (extent <= 0_c_int64_t) return
+                lowers(i) = lower_value
+                extents(i) = extent
+            end do
+            ok = .true.
+            return
+        end do
+    end subroutine base_array_decl_shape
+
+    subroutine section_actual_decl_extents(context, actual_index, dim_count, &
+                                           extents, ok)
+        ! Extent of a rank-1 contiguous array section actual (a(lo:hi) or a
+        ! whole column a(:,j)), resolved from the base array's declared shape
+        ! and the section's compile-time bounds. Only a stride-1 result whose
+        ! consecutive elements are adjacent in storage qualifies, so the callee
+        ! can bind it as a fixed contiguous rank-1 dummy. ok stays false for any
+        ! non-contiguous, non-constant, or non-rank-1 section.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: actual_index
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: extents(:)
+        logical, intent(out) :: ok
+        integer :: base_rank, result_rank, keep_dim, dd
+        integer(c_int64_t) :: base_lowers(2), base_extents(2)
+        integer(c_int64_t) :: kept_extent, step
+        character(len=:), allocatable :: base_name, err
+
+        ok = .false.
+        extents = 0
+        if (dim_count /= 1) return
+        if (.not. node_exists(context%arena, actual_index)) return
+        select type (slice => context%arena%entries(actual_index)%node)
+        type is (array_slice_node)
+            call identifier_name(context%arena, slice%array_index, base_name, err)
+            if (len_trim(err) > 0) return
+            call base_array_decl_shape(context, base_name, 2, base_rank, &
+                                       base_lowers, base_extents, ok)
+            if (.not. ok) then
+                ok = .false.
+                return
+            end if
+            call section_dim_walk(context, slice, base_rank, base_lowers, &
+                                  base_extents, result_rank, keep_dim, &
+                                  kept_extent, ok)
+            if (.not. ok) return
+            ok = .false.
+            if (result_rank /= 1) return
+            step = 1_c_int64_t
+            do dd = 1, keep_dim - 1
+                step = step * base_extents(dd)
+            end do
+            if (step /= 1_c_int64_t) return
+            extents(1) = int(kept_extent)
+            ok = .true.
+        class default
+            ok = .false.
+        end select
+    end subroutine section_actual_decl_extents
+
+    subroutine section_dim_walk(context, slice, base_rank, base_lowers, &
+                                base_extents, result_rank, keep_dim, kept_extent, &
+                                ok)
+        ! Classify each subscript of a section: a kept stride-1 range (or full
+        ! colon) dimension contributes the result extent; every other subscript
+        ! must be a compile-time scalar. keep_dim is the single retained source
+        ! dimension. ok stays false on a non-constant bound, a stride other than
+        ! 1, an empty extent, or more than one retained dimension.
+        type(lowering_context_t), intent(in) :: context
+        type(array_slice_node), intent(in) :: slice
+        integer, intent(in) :: base_rank
+        integer(c_int64_t), intent(in) :: base_lowers(:)
+        integer(c_int64_t), intent(in) :: base_extents(:)
+        integer, intent(out) :: result_rank
+        integer, intent(out) :: keep_dim
+        integer(c_int64_t), intent(out) :: kept_extent
+        logical, intent(out) :: ok
+        integer :: dim, bounds_index
+        integer(c_int64_t) :: lower_value, upper_value, stride_value
+        integer(c_int64_t) :: scalar_value
+        logical :: dim_ok
+        character(len=:), allocatable :: scalar_err
+
+        ok = .false.
+        result_rank = 0
+        keep_dim = 0
+        kept_extent = 0_c_int64_t
+        if (slice%num_dimensions > base_rank) return
+        do dim = 1, base_rank
+            if (dim <= slice%num_dimensions) then
+                bounds_index = slice%bounds_indices(dim)
+            else
+                bounds_index = 0
+            end if
+            if (bounds_index <= 0) then
+                result_rank = result_rank + 1
+                keep_dim = dim
+                kept_extent = base_extents(dim)
+                if (result_rank > 1) return
+                cycle
+            end if
+            if (.not. node_exists(context%arena, bounds_index)) return
+            select type (bnode => context%arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                call section_bound_const(context%arena, context, &
+                    bnode%start_index, base_lowers(dim), lower_value, dim_ok)
+                if (.not. dim_ok) return
+                call section_bound_const(context%arena, context, &
+                    bnode%end_index, base_lowers(dim) + base_extents(dim) - &
+                    1_c_int64_t, upper_value, dim_ok)
+                if (.not. dim_ok) return
+                call section_bound_const(context%arena, context, &
+                    bnode%stride_index, 1_c_int64_t, stride_value, dim_ok)
+                if (.not. dim_ok) return
+                if (stride_value /= 1_c_int64_t) return
+                if (upper_value < lower_value) return
+                result_rank = result_rank + 1
+                keep_dim = dim
+                kept_extent = upper_value - lower_value + 1_c_int64_t
+                if (result_rank > 1) return
+            class default
+                call eval_i32_constant(context%arena, bounds_index, context, &
+                                       scalar_value, scalar_err)
+                if (len_trim(scalar_err) > 0) return
+            end select
+        end do
+        ok = result_rank == 1
+    end subroutine section_dim_walk
+
+    subroutine section_bound_const(arena, context, node_index, default_value, &
+                                   bound_value, ok)
+        ! Fold a section range bound to a compile-time integer, or use the
+        ! declared default when the bound is omitted (node_index <= 0).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(in) :: default_value
+        integer(c_int64_t), intent(out) :: bound_value
+        logical, intent(out) :: ok
+        character(len=:), allocatable :: err
+
+        ok = .true.
+        if (node_index <= 0) then
+            bound_value = default_value
+            return
+        end if
+        call eval_i32_constant(arena, node_index, context, bound_value, err)
+        ok = len_trim(err) == 0
+    end subroutine section_bound_const
 
     function declaration_named(arena, node_index, var_name) result(decl)
         ! Pointer to the declaration node at node_index when it declares

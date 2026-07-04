@@ -137,6 +137,17 @@
                 call allocatable_array_actual_data_address(arena, arg_indices(i), &
                     context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_contiguous_section(arena, arg_indices(i), context) &
+                     .and. callee_dummy_is_array(arena, callee_name, &
+                                                 call_arg_param_pos(i, sp))) then
+                ! Contiguous rank-1 array section a(lo:hi) or whole column
+                ! a(:,j): pass the base address of the section's first element,
+                ! so the callee's rank-1 dummy views the section's storage in
+                ! place. The dummy's extent is resolved from the same section at
+                ! compile time (section_actual_decl_extents).
+                call section_actual_address(arena, arg_indices(i), context, &
+                                            args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            arg_default_kind(arena, context, &
@@ -319,6 +330,80 @@
         address = context%symbols(symbol_index)%element_address
         call set_empty(error_msg)
     end subroutine whole_array_actual_address
+
+    logical function actual_is_contiguous_section(arena, node_index, context)
+        ! Whether an actual argument is a rank-1 array section whose elements are
+        ! adjacent in storage: a stride-1 subscript triplet on a rank-1 array
+        ! (a(lo:hi)) or a whole leading dimension of a rank-2 array (a(:,j)).
+        ! Such a section can bind a rank-1 dummy through its base pointer.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        type(array_section_info_t) :: info
+        character(len=:), allocatable :: err
+        integer :: keep, dd
+        integer(c_int64_t) :: step
+
+        actual_is_contiguous_section = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, err)
+            if (len_trim(err) > 0) return
+            if (info%result_rank /= 1) return
+            keep = info%kept_dims(1)
+            if (info%section_strides(keep) /= 1_c_int64_t) return
+            step = 1_c_int64_t
+            do dd = 1, keep - 1
+                step = step*info%source_sizes(dd)
+            end do
+            if (step /= 1_c_int64_t) return
+            actual_is_contiguous_section = .true.
+        end select
+    end function actual_is_contiguous_section
+
+    subroutine section_actual_address(arena, node_index, context, address, &
+                                      error_msg)
+        ! Base address of a contiguous rank-1 section's first element, computed
+        ! from the source array's storage and the section's compile-time start.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: index_op
+        integer(c_int64_t) :: first_linear
+        integer :: vk, arr_size, src
+
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, error_msg)
+            if (len_trim(error_msg) > 0) return
+            src = info%source_index
+            first_linear = array_section_source_linear_index(info, 0_c_int64_t)
+            vk = context%symbols(src)%value_kind
+            arr_size = context%symbols(src)%array_size
+            index_op = i32_immediate(context%session, first_linear)
+            select case (vk)
+            case (VALUE_F32)
+                if (.not. emit_f32_array_element_addr(context%session, arr_size, &
+                        context%symbols(src)%element_address, index_op, address, &
+                        error_msg)) return
+            case (VALUE_F64)
+                if (.not. emit_f64_array_element_addr(context%session, arr_size, &
+                        context%symbols(src)%element_address, index_op, address, &
+                        error_msg)) return
+            case default
+                if (.not. emit_i32_array_element_addr(context%session, arr_size, &
+                        context%symbols(src)%element_address, index_op, address, &
+                        error_msg)) return
+            end select
+            call set_empty(error_msg)
+        class default
+            error_msg = 'array section actual expected an array slice node'
+        end select
+    end subroutine section_actual_address
 
     logical function actual_is_allocatable_array(arena, node_index, context)
         ! Whether an actual argument is a plain allocatable-array identifier.
