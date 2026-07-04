@@ -84,6 +84,11 @@ module session_program_lowering_types
         integer, parameter, public :: I32_INTRINSIC_SELECTED_REAL_KIND = 21
         integer, parameter, public :: I32_INTRINSIC_MODULO = 22
         integer, parameter, public :: I32_INTRINSIC_DIM = 23
+        integer, parameter, public :: I32_INTRINSIC_IABS = 24
+        integer, parameter, public :: I32_INTRINSIC_IBITS = 25
+        integer, parameter, public :: I32_INTRINSIC_IBSET = 26
+        integer, parameter, public :: I32_INTRINSIC_IBCLR = 27
+        integer, parameter, public :: I32_INTRINSIC_BIT_SIZE = 28
         integer, parameter, public :: F64_INTRINSIC_NONE = 0
         integer, parameter, public :: F64_INTRINSIC_ABS = 1
         integer, parameter, public :: F64_INTRINSIC_MIN = 2
@@ -116,14 +121,15 @@ module session_program_lowering_types
         integer, parameter, public :: F64_INTRINSIC_MODULO = 29
         integer, parameter, public :: F64_INTRINSIC_AINT = 30
         integer, parameter, public :: F64_INTRINSIC_ANINT = 31
-        character(len=18), parameter, public :: I32_INTRINSIC_NAMES(23) = &
+        character(len=18), parameter, public :: I32_INTRINSIC_NAMES(28) = &
             [character(len=18) :: 'abs', 'min', 'max', 'mod', &
             'iand', 'ior', 'ieor', 'not', 'ishft', &
             'ishftc', 'sign', 'int', 'nint', 'floor', &
             'ceiling', 'matmul', 'transpose', &
             'dot_product', 'reshape', 'selected_int_kind', &
-            'selected_real_kind', 'modulo', 'dim']
-        integer, parameter, public :: I32_INTRINSIC_IDS(23) = &
+            'selected_real_kind', 'modulo', 'dim', 'iabs', &
+            'ibits', 'ibset', 'ibclr', 'bit_size']
+        integer, parameter, public :: I32_INTRINSIC_IDS(28) = &
             [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
             I32_INTRINSIC_MOD, I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
             I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, I32_INTRINSIC_ISHFT, &
@@ -133,7 +139,9 @@ module session_program_lowering_types
             I32_INTRINSIC_TRANSPOSE, I32_INTRINSIC_DOT_PRODUCT, &
             I32_INTRINSIC_RESHAPE, I32_INTRINSIC_SELECTED_INT_KIND, &
             I32_INTRINSIC_SELECTED_REAL_KIND, I32_INTRINSIC_MODULO, &
-            I32_INTRINSIC_DIM]
+            I32_INTRINSIC_DIM, I32_INTRINSIC_IABS, I32_INTRINSIC_IBITS, &
+            I32_INTRINSIC_IBSET, I32_INTRINSIC_IBCLR, &
+            I32_INTRINSIC_BIT_SIZE]
         character(len=9), parameter, public :: F64_INTRINSIC_NAMES(31) = &
             [character(len=9) :: 'abs', 'min', 'max', 'real', &
             'sign', 'sqrt', 'exp', 'log', 'sin', 'cos', &

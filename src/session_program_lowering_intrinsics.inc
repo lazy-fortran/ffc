@@ -61,6 +61,17 @@
             call lower_i32_modulo_intrinsic(arena, node, context, value, error_msg)
         case (I32_INTRINSIC_DIM)
             call lower_i32_dim_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_IABS)
+            call lower_i32_abs_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_IBITS)
+            call lower_i32_ibits_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_IBSET)
+            call lower_i32_ibset_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_IBCLR)
+            call lower_i32_ibclr_intrinsic(arena, node, context, value, error_msg)
+        case (I32_INTRINSIC_BIT_SIZE)
+            call lower_i32_bit_size_intrinsic(arena, node, context, value, &
+                                              error_msg)
         case default
             call unsupported_intrinsic_error(node, error_msg)
         end select
@@ -946,6 +957,146 @@
         call select_value(context, is_pos, diff, zero, value, error_msg)
     end subroutine lower_i32_dim_intrinsic
 
+    ! ibits(i, pos, len): the len-bit field of i starting at bit pos, shifted
+    ! down to bit 0. shifted = i >> pos (logical); masked keeps its low len
+    ! bits via a shift-left/shift-right-by-(32-len) round trip, which also
+    ! handles len == 32 (shift by 0, keep everything) without an overflowing
+    ! shift count. len == 0 shifts by 32, which is out of range, so that case
+    ! is selected separately and forced to zero.
+    subroutine lower_i32_ibits_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: i_val, pos_val, len_val
+        type(lr_operand_desc_t) :: shifted, complement, tmp, masked
+        type(lr_operand_desc_t) :: thirty_two, zero, is_zero_len
+
+        if (.not. require_intrinsic_arg_count(node, 3, 3, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, i_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, pos_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(3), context, len_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, i_val, pos_val, &
+                                  shifted, error_msg)) return
+        thirty_two = i32_immediate(context%session, 32_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, thirty_two, &
+                                  len_val, complement, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SHL, shifted, &
+                                  complement, tmp, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, tmp, complement, &
+                                  masked, error_msg)) return
+
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, len_val, &
+                                      zero, is_zero_len, error_msg)) return
+        call select_value(context, is_zero_len, zero, masked, value, error_msg)
+    end subroutine lower_i32_ibits_intrinsic
+
+    subroutine lower_i32_ibset_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: i_val, pos_val, one, bit_mask
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, i_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, pos_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        one = i32_immediate(context%session, 1_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_SHL, one, pos_val, &
+                                  bit_mask, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, i_val, bit_mask, &
+                                  value, error_msg)) return
+    end subroutine lower_i32_ibset_intrinsic
+
+    subroutine lower_i32_ibclr_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: i_val, pos_val, one, bit_mask
+        type(lr_operand_desc_t) :: all_ones, inverted_mask
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, i_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, pos_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        one = i32_immediate(context%session, 1_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_SHL, one, pos_val, &
+                                  bit_mask, error_msg)) return
+        all_ones = i32_immediate(context%session, -1_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_XOR, bit_mask, &
+                                  all_ones, inverted_mask, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, i_val, &
+                                  inverted_mask, value, error_msg)) return
+    end subroutine lower_i32_ibclr_intrinsic
+
+    ! bit_size(x): storage width in bits of x's declared integer kind. Folds
+    ! from x's declared kind alone, matching the compile-time bit_size used
+    ! in a PARAMETER initializer, so it also lowers a runtime x whose kind
+    ! is not VALUE_I32 (e.g. bit_size(int8_var) assigned to a default
+    ! integer result).
+    subroutine lower_i32_bit_size_intrinsic(arena, node, context, value, &
+                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: constant_value
+
+        call eval_bit_size_constant(arena, node, context, constant_value, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        value = i32_immediate(context%session, constant_value)
+    end subroutine lower_i32_bit_size_intrinsic
+
+    ! btest(i, pos): .true. when bit pos of i is set.
+    subroutine lower_btest_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: i_val, pos_val, shifted, one, bit, zero
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_i32_expression(arena, node%arg_indices(1), context, i_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, node%arg_indices(2), context, pos_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, i_val, pos_val, &
+                                  shifted, error_msg)) return
+        one = i32_immediate(context%session, 1_c_int64_t)
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, shifted, one, &
+                                  bit, error_msg)) return
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, bit, zero, &
+                                      value, error_msg)) return
+    end subroutine lower_btest_intrinsic
+
     subroutine lower_i32_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1394,26 +1545,28 @@
             call unsupported_feature_error('scalar intrinsic: '//trim(node%name), &
                                            node%line, node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, ishft, ishftc, sign, '// &
-                                           'real, and the libm reals (sqrt, '// &
-                                           'exp, log, log10, sin, cos, tan, '// &
-                                           'asin, acos, atan, atan2, sinh, '// &
-                                           'cosh, tanh, asinh, acosh, atanh, '// &
-                                           'erf, erfc, gamma, log_gamma, '// &
-                                           'hypot)', error_msg)
+                                           'abs, iabs, min, max, mod, modulo, '// &
+                                           'dim, iand, ior, ieor, not, ishft, '// &
+                                           'ishftc, ibits, ibset, ibclr, '// &
+                                           'bit_size, btest, sign, real, and '// &
+                                           'the libm reals (sqrt, exp, log, '// &
+                                           'log10, sin, cos, tan, asin, acos, '// &
+                                           'atan, atan2, sinh, cosh, tanh, '// &
+                                           'asinh, acosh, atanh, erf, erfc, '// &
+                                           'gamma, log_gamma, hypot)', error_msg)
         else
             call unsupported_feature_error('scalar intrinsic', node%line, &
                                            node%column, &
                                            'direct LIRIC session supports only '// &
-                                           'abs, min, max, mod, iand, ior, '// &
-                                           'ieor, not, ishft, ishftc, sign, '// &
-                                           'real, and the libm reals (sqrt, '// &
-                                           'exp, log, log10, sin, cos, tan, '// &
-                                           'asin, acos, atan, atan2, sinh, '// &
-                                           'cosh, tanh, asinh, acosh, atanh, '// &
-                                           'erf, erfc, gamma, log_gamma, '// &
-                                           'hypot)', error_msg)
+                                           'abs, iabs, min, max, mod, modulo, '// &
+                                           'dim, iand, ior, ieor, not, ishft, '// &
+                                           'ishftc, ibits, ibset, ibclr, '// &
+                                           'bit_size, btest, sign, real, and '// &
+                                           'the libm reals (sqrt, exp, log, '// &
+                                           'log10, sin, cos, tan, asin, acos, '// &
+                                           'atan, atan2, sinh, cosh, tanh, '// &
+                                           'asinh, acosh, atanh, erf, erfc, '// &
+                                           'gamma, log_gamma, hypot)', error_msg)
         end if
     end subroutine unsupported_intrinsic_error
 

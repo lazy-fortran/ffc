@@ -204,10 +204,11 @@ own storage. The
 arrays, including a final `elsewhere`. The `forall` construct, single-statement
 and block form, lowers to a sequential loop nest over its index set, with an
 optional scalar-comparison mask guarding the body. The
-scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `int`, `nint`,
-`floor`, `ceiling`, `real`, `dble` are supported, as are the bit intrinsics
-`iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`, `btest`, and
-`mvbits`. The character intrinsics `len`, `len_trim`, `trim`, `adjustl`,
+scalar numeric intrinsics `mod`, `modulo`, `sign`, `dim`, `abs`, `iabs`,
+`int`, `nint`, `floor`, `ceiling`, `real`, `dble` are supported, as are the
+bit intrinsics `iand`, `ior`, `ieor`, `not`, `ishft`, `ishftc`, `ibits`,
+`ibset`, `ibclr`, `btest`, and `bit_size` on default `integer` values. The
+character intrinsics `len`, `len_trim`, `trim`, `adjustl`,
 `adjustr`, `index`, `scan`, `verify`, `repeat`, `achar`, `char`, and `iachar` are
 supported. A `//` concatenation of character variables, literals, and these
 intrinsics assigns into a fixed-length scalar, truncating or blank-padding to

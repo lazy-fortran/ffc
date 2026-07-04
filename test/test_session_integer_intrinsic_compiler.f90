@@ -293,7 +293,7 @@ contains
         ! verify that a genuinely unsupported integer intrinsic still errors
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  stop ibset(0, 1)'//new_line('a')// &
+            '  stop popcnt(0)'//new_line('a')// &
             'end program main'
 
         test_unsupported_intrinsic_diagnostic = expect_error_contains( &
