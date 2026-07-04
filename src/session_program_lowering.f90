@@ -759,6 +759,7 @@ contains
     include 'session_program_lowering_array_elements.inc'
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
+    include 'session_program_lowering_runtime_alloc.inc'
     include 'session_program_lowering_alloc_array_result.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'

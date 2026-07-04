@@ -610,7 +610,12 @@
         call set_empty(error_msg)
         if (context%symbols(sym)%array_rank == 2) return
         n = int(context%symbols(sym)%allocatable_static_size, c_int64_t)
-        if (n <= 0_c_int64_t) return
+        if (n <= 0_c_int64_t) then
+            if (context%symbols(sym)%array_rank /= 1) return
+            handled = .true.
+            call emit_runtime_alloc_print(context, sym, vk, error_msg)
+            return
+        end if
 
         handled = .true.
         stride = allocatable_elem_size(vk)

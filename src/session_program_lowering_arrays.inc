@@ -2562,8 +2562,13 @@
                 return
             end if
             if (context%symbols(source_index)%allocatable_static_size <= 0) then
-                error_msg = 'size requires a constant allocatable extent: '// &
-                            trim(array_name)
+                if (context%symbols(source_index)%array_rank /= 1) then
+                    error_msg = 'size requires a constant allocatable extent: '// &
+                                trim(array_name)
+                    return
+                end if
+                call alloc_runtime_extent_i32(context, source_index, value, &
+                                              error_msg)
                 return
             end if
             value = i32_immediate(context%session, &
@@ -2660,6 +2665,13 @@
             end if
             array_size = context%symbols(source_index)%allocatable_static_size
             if (array_size <= 0) then
+                if (trim(reduction_name) == 'sum' .and. &
+                    context%symbols(source_index)%array_rank == 1 .and. &
+                    context%symbols(source_index)%value_kind == VALUE_I32) then
+                    call lower_runtime_alloc_i32_sum(context, source_index, &
+                                                     value, error_msg)
+                    return
+                end if
                 error_msg = trim(reduction_name)// &
                             ' requires a constant allocatable extent: '// &
                             trim(array_name)
