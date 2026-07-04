@@ -1534,6 +1534,10 @@ contains
             end if
             return
         end if
+        if (same_name(call_name, 'exit')) then
+            call lower_exit_intrinsic(arena, arg_indices, context, error_msg)
+            return
+        end if
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
             call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1542,6 +1546,28 @@ contains
             return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
+
+    subroutine lower_exit_intrinsic(arena, arg_indices, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: status
+        call set_empty(error_msg)
+        if (allocated(arg_indices)) then
+            if (size(arg_indices) > 0) then
+                call lower_i32_expression(arena, arg_indices(1), context, &
+                    status, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                status = i32_immediate(context%session, 0_c_int64_t)
+            end if
+        else
+            status = i32_immediate(context%session, 0_c_int64_t)
+        end if
+        if (.not. emit_void_call(context%session, 'exit', [status], error_msg)) &
+            return
+    end subroutine lower_exit_intrinsic
 
     subroutine lower_cpu_time(arena, arg_indices, context, error_msg)
         ! cpu_time(t): t = processor time in seconds (real). The intent(out)
