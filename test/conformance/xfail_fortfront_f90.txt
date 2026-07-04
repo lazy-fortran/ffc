@@ -38,7 +38,6 @@ issue_1782_procedure_pointer.f90
 issue_1810_parameter_array_allocatable.f90
 issue_1827_submodule_simple.f90
 issue_1827_submodule_with_contents.f90
-issue_1958_intent_preservation.f90
 issue_1960_pointer_assignment_if.f90
 issue_2014_elemental_function_lost.f90
 issue_2017_assumed_shape_duplicate_monomorph.f90

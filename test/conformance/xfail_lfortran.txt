@@ -542,7 +542,6 @@ case_01.f90
 case_05.f90
 case_06.f90
 case_08.f90
-case_09.f90
 c_f_proc_ptr_01.f90
 character_01.f90
 character_02.f90
@@ -795,7 +794,6 @@ complex_26.f90
 complex_28.f90
 complex_29.f90
 complex_31.f90
-complex_32.f90
 complex_33.f90
 complex_34.f90
 complex_35.f90
@@ -895,7 +893,6 @@ data_implied_do_07.f90
 data_implied_do_08.f90
 data_implied_do_09.f90
 datastmt_01.f90
-dcmplx_01.f90
 dealloc_01.f90
 dealloc_02.f90
 dealloc_03.f90
@@ -1057,7 +1054,6 @@ derived_type_shape_pointer_02.f90
 derived_type_shape_pointer_03.f90
 derived_type_target_arg_01.f90
 derived_type_target_arg_02.f90
-derived_type_with_default_init.f90
 dfloat_01.f90
 dict_test_01.f90
 dict_test_01_.f90
@@ -1193,14 +1189,12 @@ error_stop_02.f90
 error_stop_03.f90
 error_stop_04.f90
 exit_01.f90
-exit_02.f90
 exponent_inf_01.f90
 expr_01.f90
 expr_05.f90
 expr_09.f90
 expr_13.f90
 expr_17.f90
-expr_18.f90
 expr_19.f90
 expr_21.f90
 external_01.f90
@@ -1209,7 +1203,6 @@ external_05.f90
 external_06.f90
 external_07.f90
 external_08.f90
-external_11.f90
 external_12.f90
 external_12_module.f90
 external_13.f90
@@ -1559,7 +1552,6 @@ gpu_metal_150.f90
 gpu_metal_151.f90
 gpu_metal_152.f90
 gpu_metal_154.f90
-gpu_metal_156.f90
 gpu_metal_157.f90
 gpu_metal_158.f90
 gpu_metal_159.f90
@@ -1692,7 +1684,6 @@ implicit_interface_16b.f90
 implicit_interface_16.f90
 implicit_interface_17.f90
 implicit_interface_19.f90
-implicit_interface_21.f90
 implicit_interface_22.f90
 implicit_interface_23.f90
 implicit_interface_25.f90
@@ -2163,8 +2154,6 @@ intrinsics_402.f90
 intrinsics_403.f90
 intrinsics_405.f90
 intrinsics_406.f90
-intrinsics_407.f90
-intrinsics_408.f90
 intrinsics_409.f90
 intrinsics_40.f90
 intrinsics_410.f90
@@ -2303,7 +2292,6 @@ lbound_01.f90
 lbound_02.f90
 legacy_array_sections_02.f90
 legacy_array_sections_03.f90
-legacy_array_sections_04b.f90
 legacy_array_sections_04.f90
 legacy_array_sections_05.f90
 legacy_array_sections_06.f90
@@ -2690,7 +2678,6 @@ pass_array_by_data_01.f90
 pass_array_by_data_02.f90
 pass_array_by_data_03.f90
 pass_array_by_data_05.f90
-pass_array_by_data_06.f90
 pass_array_by_data_07.f90
 pass_array_by_data_08.f90
 pass_array_by_data_09.f90
@@ -2774,7 +2761,6 @@ procedure_05.f90
 procedure_06.f90
 procedure_07.f90
 procedure_08.f90
-procedure_09_a.f90
 procedure_09_b.f90
 procedure_11.f90
 procedure_12.f90
@@ -2979,7 +2965,6 @@ save_04.f90
 save_05.f90
 save_07.f90
 save_08.f90
-save_09.f90
 save_10.f90
 save_11.f90
 save_13.f90
@@ -3536,7 +3521,6 @@ types_22.f90
 types_23.f90
 types_24.f90
 types_real_array_to_complex_array_cast.f90
-types_real_to_complex_cast.f90
 union_test_01.f90
 union_test_02.f90
 union_test_03.f90

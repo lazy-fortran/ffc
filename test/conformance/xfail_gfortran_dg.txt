@@ -675,7 +675,6 @@ do_concurrent_13.f90
 do_concurrent_14.f90
 do_concurrent_2.f90
 do_pointer_1.f90
-do_while_1.f90
 dot_product_4.f90
 dtio_1.f90
 dtio_10.f90
@@ -917,7 +916,6 @@ host_assoc_function_7.f90
 host_assoc_function_9.f90
 host_assoc_types_2.f90
 host_dummy_index_1.f90
-host_used_types_1.f90
 hypot_1.f90
 iall_iany_iparity_1.f90
 iall_masked.f90
@@ -981,7 +979,6 @@ int_3.f90
 integer_plus.f90
 intent_decl_1.f90
 intent_out_12.f90
-intent_out_13.f90
 intent_out_14.f90
 intent_out_16.f90
 intent_out_17.f90
@@ -1905,9 +1902,6 @@ scalarize_parameter_array_2.f90
 scale_1.f90
 scan_3.f90
 scratch_1.f90
-select_1.f90
-select_2.f90
-select_3.f90
 select_char_1.f90
 select_rank_1.f90
 select_rank_5.f90
@@ -1937,7 +1931,6 @@ shift-alloc.f90
 shift-kind.f90
 shift-kind_2.f90
 shiftalr_3.f90
-sibling_dummy_procedure_3.f90
 simpleif_1.f90
 simplify_argN_1.f90
 simplify_cshift_1.f90
@@ -1954,7 +1947,6 @@ sizeof_5.f90
 sizeof_6.f90
 slash_1.f90
 spec_expr_10.f90
-spec_expr_2.f90
 spec_expr_3.f90
 spec_expr_4.f90
 spec_expr_5.f90
@@ -2121,7 +2113,6 @@ use_rename_1.f90
 use_rename_12.f90
 use_rename_13.f90
 use_rename_3.f90
-use_rename_4.f90
 use_rename_7.f90
 use_rename_9.f90
 used_dummy_types_1.f90
