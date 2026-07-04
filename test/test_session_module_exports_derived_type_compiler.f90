@@ -13,6 +13,7 @@ program test_session_module_exports_derived_type_compiler
     if (.not. test_module_with_only_integer_params()) stop 1
     if (.not. test_derived_type_with_single_component()) stop 1
     if (.not. test_derived_type_with_many_components()) stop 1
+    if (.not. test_module_proc_uses_sibling_module_variable()) stop 1
 
     print *, 'PASS: module exports derived types lower through direct LIRIC'
 
@@ -228,5 +229,23 @@ contains
         test_derived_type_with_many_components = expect_output( &
             source, '          55'//new_line('a'), '/tmp/ffc_module_exports_many_comp_test')
     end function test_derived_type_with_many_components
+
+    logical function test_module_proc_uses_sibling_module_variable()
+        character(len=*), parameter :: source = &
+            'MODULE module_58_module01'//new_line('a')// &
+            '  INTEGER, PUBLIC :: nx1 = 1000'//new_line('a')// &
+            '  INTEGER, PUBLIC :: nx2 = 1000'//new_line('a')// &
+            'END MODULE'//new_line('a')// &
+            'MODULE module_58_module02'//new_line('a')// &
+            '  USE module_58_module01'//new_line('a')// &
+            'CONTAINS'//new_line('a')// &
+            '  SUBROUTINE mms_allocate()'//new_line('a')// &
+            '    nx1 = 555'//new_line('a')// &
+            '  END SUBROUTINE'//new_line('a')// &
+            'END MODULE'
+
+        test_module_proc_uses_sibling_module_variable = expect_exit_status( &
+            source, 0, '/tmp/ffc_module_proc_uses_sibling_module_variable_test')
+    end function test_module_proc_uses_sibling_module_variable
 
 end program test_session_module_exports_derived_type_compiler

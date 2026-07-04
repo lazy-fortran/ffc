@@ -4,7 +4,7 @@ program test_session_runtime_bound_array_compiler
     ! and deallocate. The extent comes from the descriptor rather than a
     ! compile-time constant. Also covers an automatic local array a(n) in a
     ! procedure sized by a dummy.
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_output
     implicit none
 
     logical :: all_passed

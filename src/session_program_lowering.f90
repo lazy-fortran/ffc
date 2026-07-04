@@ -1,7 +1,6 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_char, c_double, c_float, c_int, &
         c_int32_t, c_int64_t
-    use ast_base, only: LITERAL_INTEGER
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
         range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
@@ -11,7 +10,6 @@ module session_program_lowering
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
         block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
-    use string_types, only: string_t
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
         rewind_statement_node, io_implied_do_node, inquire_statement_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
@@ -20,8 +18,8 @@ module session_program_lowering
         complex_literal_node, comment_node, &
         namelist_statement_node, statement_function_node, &
         end_statement_node
-    use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
-        select_rank_node, rank_block_node
+    use ast_nodes_conditional, only: select_type_node, select_rank_node, &
+        rank_block_node
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
         elsewhere_clause_t, goto_node, pause_node, &
@@ -211,7 +209,6 @@ module session_program_lowering
     use ast_nodes_data, only: mixed_construct_container_node, &
         multi_unit_container_node, submodule_node
     use fortfront, only: get_node_line, get_node_column
-    use ast_arena_source_text, only: get_source_line
     use session_program_lowering_types, only: lowering_context_t, &
         branch_result_t, symbol_t, &
         array_section_info_t, &
@@ -405,7 +402,7 @@ contains
             ! shape, and assumed-rank complex arrays stay unsupported here.
             if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. &
                 (declaration_is_assumed_rank(node, context) .or. &
-                 declaration_is_assumed_shape(node, context))) then
+                declaration_is_assumed_shape(node, context))) then
                 call unsupported_feature_error('complex array declaration', &
                     node%line, node%column, &
                     'direct LIRIC session supports complex arrays as '// &
@@ -1213,7 +1210,7 @@ contains
                 context, error_msg)
             return
         else if (is_f64_expression(arena, node%value_index, context) .or. &
-                 is_f32_expression(arena, node%value_index, context)) then
+                is_f32_expression(arena, node%value_index, context)) then
             ! Integer target with a real rhs: assignment converts by
             ! truncation toward zero (F2018 10.2.1.3), unlike subscript or
             ! bound positions where a real is rejected.
@@ -1546,7 +1543,7 @@ contains
         end if
         if (external_procedure_index(context, call_name) > 0) then
             if (context%external_procedures( &
-                    external_procedure_index(context, call_name))%by_reference) then
+                external_procedure_index(context, call_name))%by_reference) then
                 call lower_module_proc_void_call(arena, node_index, &
                     external_procedure_index(context, call_name), context, &
                     error_msg)
@@ -1878,8 +1875,8 @@ contains
                 call lower_present_condition(arena, node_index, context, value, &
                     error_msg)
             else if ((node%is_array_access .and. &
-                     array_access_value_kind(node, context) == VALUE_LOGICAL) &
-                     .or. is_allocatable_element_ref(node, context)) then
+                    array_access_value_kind(node, context) == VALUE_LOGICAL) &
+                    .or. is_allocatable_element_ref(node, context)) then
                 ! Logical array element used directly as a condition: flags(i).
                 call lower_i32_array_element(arena, node, context, lhs, error_msg)
                 if (len_trim(error_msg) > 0) return

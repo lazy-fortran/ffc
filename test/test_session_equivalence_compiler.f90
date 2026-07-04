@@ -1,7 +1,7 @@
 program test_session_equivalence_compiler
     ! #280 (issue_1745): EQUIVALENCE overlays the storage of its members. A write
     ! through one member is observable bit-for-bit through another.
-    use ffc_test_support, only: expect_output, expect_exit_status
+    use ffc_test_support, only: expect_output
     implicit none
     logical :: all_passed
 

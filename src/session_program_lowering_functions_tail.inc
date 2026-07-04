@@ -34,6 +34,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_host_global_symbols(parent_context, context)
         context%in_internal_function = .true.
         context%in_internal_subroutine = .true.
         context%current_proc_name = trim(node%name)

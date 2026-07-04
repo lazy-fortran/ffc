@@ -1,7 +1,7 @@
 module liric_session_common
     use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char
     use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t
-    use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr, &
+    use, intrinsic :: iso_c_binding, only: c_null_char, c_null_ptr, c_ptr, &
         c_size_t
     implicit none
     private

@@ -86,6 +86,10 @@ contains
         select type (node => arena%entries(decl_index)%node)
             type is (declaration_node)
             if (allocated(node%var_name)) var_name = node%var_name
+            if (len_trim(var_name) == 0 .and. node%is_multi_declaration .and. &
+                allocated(node%var_names)) then
+                if (size(node%var_names) == 1) var_name = node%var_names(1)
+            end if
             call set_empty(error_msg)
         class default
             error_msg = 'AST node is not a declaration'

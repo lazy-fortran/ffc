@@ -1,7 +1,6 @@
 program test_session_integer_kind64_compiler
     ! Verify integer(8) declarations, assignment, arithmetic, and list-directed
     ! print match gfortran byte-for-byte (#246).
-    use ffc_test_support, only: expect_output
     use session_program_lowering, only: lower_program_to_liric_exe
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, &

@@ -964,6 +964,29 @@
         end do
     end subroutine copy_module_exports
 
+    subroutine copy_host_global_symbols(source, destination)
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+        integer :: i
+
+        do i = 1, source%symbol_count
+            if (find_symbol(destination, trim(source%symbols(i)%name)) > 0) cycle
+            if (.not. symbol_has_global_storage(source%symbols(i))) cycle
+            call grow_symbols(destination)
+            destination%symbol_count = destination%symbol_count + 1
+            destination%symbols(destination%symbol_count) = source%symbols(i)
+        end do
+    end subroutine copy_host_global_symbols
+
+    logical function symbol_has_global_storage(symbol)
+        type(symbol_t), intent(in) :: symbol
+
+        symbol_has_global_storage = &
+            symbol%address%kind == LR_OP_KIND_GLOBAL .or. &
+            symbol%element_address%kind == LR_OP_KIND_GLOBAL .or. &
+            symbol%allocatable_descriptor_address%kind == LR_OP_KIND_GLOBAL
+    end function symbol_has_global_storage
+
     logical function is_contained_i32_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
@@ -1547,6 +1570,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_host_global_symbols(parent_context, context)
         context%in_internal_function = .true.
         context%current_proc_name = trim(node%name)
 

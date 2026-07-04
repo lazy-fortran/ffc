@@ -1,5 +1,5 @@
 module session_program_lowering_types
-    use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_ptr
+    use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
     use liric_session_bindings, only: lr_operand_desc_t, liric_session_t
     use fortfront_compiler, only: ast_arena_t
     implicit none

@@ -93,6 +93,9 @@
         select type (decl => arena%entries(node_index)%node)
         type is (declaration_node)
             module_declaration_is_multi = decl%is_multi_declaration
+            if (module_declaration_is_multi .and. allocated(decl%var_names)) then
+                module_declaration_is_multi = size(decl%var_names) > 1
+            end if
         end select
     end function module_declaration_is_multi
 

@@ -24,7 +24,6 @@ module liric_session_io_emission_bindings
         set_empty, require_open_session, &
         to_c_chars, i32_vreg
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg
-    use liric_session_format_bindings, only: LR_OP_FSUB
     use liric_session_real_print_bindings, only: emit_real8_print_call, &
         emit_real4_print_call
     implicit none

@@ -2,7 +2,7 @@ program test_session_real_allocatable_compiler
     ! Real 1-D allocatable arrays through the direct LIRIC session: declare,
     ! allocate(a(n)), element write, constructor assign, whole-array print, and
     ! deallocate. Outputs match gfortran list-directed formatting.
-    use ffc_test_support, only: expect_output, expect_exit_status
+    use ffc_test_support, only: expect_output
     implicit none
 
     logical :: all_passed

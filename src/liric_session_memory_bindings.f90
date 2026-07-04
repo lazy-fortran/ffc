@@ -1,7 +1,7 @@
 module liric_session_memory_bindings
     use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char, c_int, &
         c_int32_t, c_int64_t
-    use, intrinsic :: iso_c_binding, only: c_loc, c_null_char, c_null_ptr, c_ptr
+    use, intrinsic :: iso_c_binding, only: c_loc, c_null_ptr, c_ptr
     use liric_session_common, only: require_open_session, status_ok, &
         liric_session_error_message, &
         clear_liric_error, to_c_chars, set_empty, &

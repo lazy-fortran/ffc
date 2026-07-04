@@ -13,7 +13,7 @@ module liric_session_real_print_bindings
     ! before the point, 16 after, an uppercase E, a sign, and a three-digit
     ! exponent), right-justified in a 25-wide field. The list-directed
     ! leading blank is emitted by the print statement, not here.
-    use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char, c_double, &
+    use, intrinsic :: iso_c_binding, only: c_associated, c_bool, c_char, &
         c_int, c_int32_t, c_int64_t, c_loc, &
         c_null_char, c_null_ptr, c_ptr, c_size_t
     use liric_session_bindings, only: liric_session_t, lr_error_t, &

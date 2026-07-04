@@ -225,6 +225,7 @@
         type(lowering_context_t), intent(inout) :: context
         integer :: j
         integer :: export_idx
+        character(len=:), allocatable :: decl_name, name_err
 
         if (.not. allocated(mod_node%name)) return
         call grow_module_exports(context)
@@ -267,7 +268,9 @@
                 context%module_exports(export_idx)%derived_type_count = &
                     context%module_exports(export_idx)%derived_type_count + 1
             type is (declaration_node)
-                if (.not. allocated(decl%var_name)) cycle
+                call get_declaration_var_name(arena, mod_node%declaration_indices(j), &
+                                              decl_name, name_err)
+                if (len_trim(name_err) > 0 .or. len_trim(decl_name) == 0) cycle
                 ! A scalar derived-type PARAMETER exports like a derived module
                 ! variable: it gets a flat slot global (with its constructor
                 ! folded into the static bytes) and binds as a derived reference
@@ -275,7 +278,7 @@
                 if (decl%is_parameter .and. .not. decl%is_array .and. &
                     declaration_derived_type_index(context, decl) > 0) then
                     if (module_symbol_is_private(arena, mod_node, &
-                            trim(decl%var_name))) cycle
+                            trim(decl_name))) cycle
                     call grow_module_export_variable_indices(context, export_idx)
                     context%module_exports(export_idx)%variable_indices( &
                         context%module_exports(export_idx)%variable_count + 1) = &
@@ -283,7 +286,7 @@
                     context%module_exports(export_idx)%variable_count = &
                         context%module_exports(export_idx)%variable_count + 1
                 else if (decl%is_parameter) then
-                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                    if (module_symbol_is_private(arena, mod_node, trim(decl_name))) &
                         cycle
                     call grow_module_export_parameter_indices(context, export_idx)
                     context%module_exports(export_idx)%parameter_indices( &
@@ -293,7 +296,7 @@
                         context%module_exports(export_idx)%parameter_count + 1
                 else if (.not. decl%is_array) then
                     ! Non-parameter scalar: export as module variable (#249 B7a).
-                    if (module_symbol_is_private(arena, mod_node, trim(decl%var_name))) &
+                    if (module_symbol_is_private(arena, mod_node, trim(decl_name))) &
                         cycle
                     call grow_module_export_variable_indices(context, export_idx)
                     context%module_exports(export_idx)%variable_indices( &
@@ -1304,4 +1307,3 @@ subroutine collect_component_declaration(component_index, parent_line, &
         context%module_exports(export_idx)%enum_indices(1:old_size) = old_indices
         deallocate(old_indices)
     end subroutine grow_module_export_enum_indices
-

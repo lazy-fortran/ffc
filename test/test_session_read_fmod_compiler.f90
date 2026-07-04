@@ -4,9 +4,7 @@ program test_session_read_fmod_compiler
         compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
         lower_program_to_liric_object
-    use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
-        fmod_derived_type_t, fmod_variable_t, &
-        write_fmod
+    use ffc_module_artefact, only: module_info_t, write_fmod
     implicit none
 
     logical :: all_passed
