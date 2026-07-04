@@ -100,8 +100,8 @@
       context%symbols(loop_symbol_index)%value = start_value
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
-        call collect_i32_like_carried_symbols(context, carried_indices, &
-                                               carried_count)
+        call collect_carried_symbols(context, carried_indices, &
+                                     carried_count)
       if (carried_count > 0) then
             call grow_symbols(context)
             allocate(entry_values(context%symbol_count))
@@ -114,7 +114,8 @@
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
-                i32_vreg(context%session, reserved_vreg)
+                carried_backedge_operand(context, carried_indices(i), &
+                                         reserved_vreg)
         end do
 
         header_block = create_liric_block(context%session)
@@ -127,13 +128,13 @@
         context%current_block_id = header_block
         context%current_block_terminated = .false.
         do i = 1, carried_count
-            if (.not. emit_liric_i32_phi(context%session, &
-                                         entry_values(carried_indices(i)), &
-                                         entry_block, &
-                                         backedge_values(carried_indices(i)), &
-                                         latch_block, &
-                                         header_values(carried_indices(i)), &
-                                         error_msg)) return
+            if (.not. emit_carried_phi(context, carried_indices(i), &
+                                       entry_values(carried_indices(i)), &
+                                       entry_block, &
+                                       backedge_values(carried_indices(i)), &
+                                       latch_block, &
+                                       header_values(carried_indices(i)), &
+                                       error_msg)) return
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
@@ -209,16 +210,8 @@
             reserved_vreg, next_index, error_msg)) return
         do i = 1, carried_count
             if (carried_indices(i) == loop_symbol_index) cycle
-            if (.not. is_i32_like_kind( &
-                context%symbols(carried_indices(i))%value_kind)) then
-                error_msg = 'direct LIRIC session DO only carries integer '// &
-                            'or logical symbols'
-                return
-            end if
-            if (.not. emit_i32_copy_to(context%session,  &
-                context%symbols(carried_indices(i))%value, &
-                int(backedge_values(carried_indices(i))%payload, c_int32_t), &
-                copied_value, &
+            if (.not. emit_carried_copy(context, carried_indices(i), &
+                backedge_values(carried_indices(i)), copied_value, &
                 error_msg)) return
         end do
         if (.not. emit_liric_br(context%session, header_block, error_msg)) return
@@ -253,7 +246,11 @@
         call set_empty(error_msg)
     end subroutine lower_counted_loop
 
-    subroutine collect_i32_like_carried_symbols(context, indices, count)
+    subroutine collect_carried_symbols(context, indices, count)
+        ! A loop-modified scalar must flow through the header phi and the latch
+        ! backedge copy so a read in the body sees this iteration's value, not
+        ! the pre-loop entry value (#300). Integers, logicals, and reals qualify;
+        ! arrays and allocatables live in memory and are read by address.
         type(lowering_context_t), intent(in) :: context
         integer, intent(out), allocatable :: indices(:)
         integer, intent(out) :: count
@@ -261,7 +258,7 @@
 
         count = 0
         do i = 1, context%symbol_count
-            if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
+            if (is_carried_kind(context%symbols(i)%value_kind) .and. &
                 .not. context%symbols(i)%is_array .and. &
                 .not. context%symbols(i)%is_allocatable) then
                 count = count + 1
@@ -270,14 +267,81 @@
         allocate(indices(count))
         count = 0
         do i = 1, context%symbol_count
-            if (is_i32_like_kind(context%symbols(i)%value_kind) .and. &
+            if (is_carried_kind(context%symbols(i)%value_kind) .and. &
                 .not. context%symbols(i)%is_array .and. &
                 .not. context%symbols(i)%is_allocatable) then
                 count = count + 1
                 indices(count) = i
             end if
         end do
-    end subroutine collect_i32_like_carried_symbols
+    end subroutine collect_carried_symbols
+
+    function carried_backedge_operand(context, symbol_index, reserved_vreg) &
+            result(operand)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+        integer(c_int32_t), intent(in) :: reserved_vreg
+        type(lr_operand_desc_t) :: operand
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32)
+            operand = f32_vreg(context%session, reserved_vreg)
+        case (VALUE_F64)
+            operand = f64_vreg(context%session, reserved_vreg)
+        case default
+            operand = i32_vreg(context%session, reserved_vreg)
+        end select
+    end function carried_backedge_operand
+
+    logical function emit_carried_phi(context, symbol_index, entry_value, &
+            entry_block, backedge_value, back_block, header_value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: entry_value
+        integer(c_int32_t), intent(in) :: entry_block
+        type(lr_operand_desc_t), intent(in) :: backedge_value
+        integer(c_int32_t), intent(in) :: back_block
+        type(lr_operand_desc_t), intent(out) :: header_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32, VALUE_F64)
+            emit_carried_phi = emit_liric_phi(context%session, entry_value, &
+                entry_block, backedge_value, back_block, header_value, error_msg)
+        case default
+            emit_carried_phi = emit_liric_i32_phi(context%session, entry_value, &
+                entry_block, backedge_value, back_block, header_value, error_msg)
+        end select
+    end function emit_carried_phi
+
+    logical function emit_carried_copy(context, symbol_index, backedge_value, &
+            result, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: backedge_value
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: dest_vreg
+
+        dest_vreg = int(backedge_value%payload, c_int32_t)
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32, VALUE_F64)
+            emit_carried_copy = emit_real_copy_to(context%session, &
+                context%symbols(symbol_index)%value, dest_vreg, result, &
+                error_msg)
+        case default
+            if (.not. is_i32_like_kind( &
+                context%symbols(symbol_index)%value_kind)) then
+                error_msg = 'direct LIRIC session loop only carries integer, '// &
+                            'logical, or real scalar symbols'
+                emit_carried_copy = .false.
+                return
+            end if
+            emit_carried_copy = emit_i32_copy_to(context%session, &
+                context%symbols(symbol_index)%value, dest_vreg, result, &
+                error_msg)
+        end select
+    end function emit_carried_copy
 
     logical function is_i32_like_kind(value_kind)
         integer, intent(in) :: value_kind
@@ -285,6 +349,14 @@
         is_i32_like_kind = value_kind == VALUE_I32 .or. &
                            value_kind == VALUE_LOGICAL
     end function is_i32_like_kind
+
+    logical function is_carried_kind(value_kind)
+        integer, intent(in) :: value_kind
+
+        is_carried_kind = is_i32_like_kind(value_kind) .or. &
+                          value_kind == VALUE_F32 .or. &
+                          value_kind == VALUE_F64
+    end function is_carried_kind
 
     subroutine reserve_backedge_value(context, vreg, error_msg)
         type(lowering_context_t), intent(in) :: context

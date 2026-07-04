@@ -58,7 +58,7 @@ module session_program_lowering
         emit_i32_indirect_call, &
         emit_void_indirect_call, &
         liric_session_create, lr_session_config_t, &
-        i32_immediate, i32_vreg, lr_operand_desc_t, &
+        i32_immediate, i32_vreg, f32_vreg, f64_vreg, lr_operand_desc_t, &
         lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
         lr_type_array_s, &
         lr_session_global, lr_session_intern, &
@@ -72,7 +72,7 @@ module session_program_lowering
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
         ptr_vreg, &
         emit_i32_binary, emit_i32_binary_into, &
-        emit_i32_copy_to, emit_i32_alloca, &
+        emit_i32_copy_to, emit_real_copy_to, emit_i32_alloca, &
         emit_ptr_alloca, &
         emit_i32_load, emit_i32_store, &
         emit_i64_load, emit_ptr_load, &

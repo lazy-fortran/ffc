@@ -23,8 +23,8 @@
         value = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
-        call collect_i32_like_carried_symbols(context, carried_indices, &
-                                               carried_count)
+        call collect_carried_symbols(context, carried_indices, &
+                                     carried_count)
         if (carried_count > 0) then
             allocate(entry_values(context%symbol_count))
             allocate(header_values(context%symbol_count))
@@ -36,7 +36,8 @@
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
-                i32_vreg(context%session, reserved_vreg)
+                carried_backedge_operand(context, carried_indices(i), &
+                                         reserved_vreg)
         end do
 
         header_block = create_liric_block(context%session)
@@ -48,13 +49,13 @@
         context%current_block_id = header_block
         context%current_block_terminated = .false.
         do i = 1, carried_count
-            if (.not. emit_liric_i32_phi(context%session, &
-                                         entry_values(carried_indices(i)), &
-                                         entry_block, &
-                                         backedge_values(carried_indices(i)), &
-                                         body_block, &
-                                         header_values(carried_indices(i)), &
-                                         error_msg)) return
+            if (.not. emit_carried_phi(context, carried_indices(i), &
+                                       entry_values(carried_indices(i)), &
+                                       entry_block, &
+                                       backedge_values(carried_indices(i)), &
+                                       body_block, &
+                                       header_values(carried_indices(i)), &
+                                       error_msg)) return
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
@@ -87,16 +88,9 @@
             return
         end if
         do i = 1, carried_count
-            if (.not. is_i32_like_kind( &
-                context%symbols(carried_indices(i))%value_kind)) then
-                error_msg = 'direct LIRIC session DO WHILE only carries '// &
-                            'integer or logical symbols'
-                return
-            end if
-            if (.not. emit_i32_copy_to(context%session, &
-                context%symbols(carried_indices(i))%value, &
-                int(backedge_values(carried_indices(i))%payload, c_int32_t), &
-                copied_value, error_msg)) return
+            if (.not. emit_carried_copy(context, carried_indices(i), &
+                backedge_values(carried_indices(i)), copied_value, &
+                error_msg)) return
         end do
         if (.not. emit_liric_br(context%session, header_block, error_msg)) return
 

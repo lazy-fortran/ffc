@@ -16,9 +16,11 @@ module liric_session_memory_bindings
     integer(c_int), parameter :: LR_OP_LOAD = 27_c_int
     integer(c_int), parameter :: LR_OP_STORE = 28_c_int
     integer(c_int), parameter :: LR_OP_ADD = 5_c_int
+    integer(c_int), parameter :: LR_OP_FADD = 18_c_int
     integer(c_int), parameter :: LR_OP_CALL = 30_c_int
     integer(c_int), parameter :: LR_OP_KIND_VREG = 0_c_int
     integer(c_int), parameter :: LR_OP_KIND_IMM_I64 = 1_c_int
+    integer(c_int), parameter :: LR_OP_KIND_IMM_FLOAT = 2_c_int
     integer(c_int), parameter :: LR_OP_KIND_GLOBAL = 4_c_int
     integer(c_int), parameter :: LR_OK = 0_c_int
     logical(c_bool), parameter :: c_false = .false.
@@ -27,6 +29,7 @@ module liric_session_memory_bindings
     public :: i64_immediate, ptr_param, &
         reserve_i32_vreg, ptr_vreg, i64_vreg
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
+    public :: emit_real_copy_to
     public :: emit_i32_alloca, emit_i64_alloca, emit_ptr_alloca
     public :: emit_i32_load, emit_i64_load, emit_ptr_load
     public :: emit_i32_store, emit_i64_store
@@ -253,6 +256,48 @@ contains
             LR_OP_ADD, value, i32_immediate(session, 0_c_int64_t), &
             dest_vreg, result, error_msg)
     end function emit_i32_copy_to
+
+    logical function emit_real_copy_to(session, value, dest_vreg, result, &
+            error_msg)
+        ! Copy a real scalar into an explicit destination vreg via value + 0.0.
+        ! The zero immediate and the result inherit value's f32/f64 type so the
+        ! FADD stays float-typed regardless of precision.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: value
+        integer(c_int32_t), intent(in) :: dest_vreg
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t) :: zero
+        integer(c_int32_t) :: vreg
+
+        emit_real_copy_to = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (dest_vreg <= 0_c_int32_t) then
+            error_msg = 'explicit LIRIC destination vreg must be positive'
+            return
+        end if
+
+        zero%kind = LR_OP_KIND_IMM_FLOAT
+        zero%payload = 0_c_int64_t
+        zero%typ = value%typ
+        zero%global_offset = 0_c_int64_t
+
+        vreg = emit_binary_with_dest(session%handle, LR_OP_FADD, value, zero, &
+            error, dest_vreg)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        if (vreg /= dest_vreg) then
+            error_msg = 'LIRIC did not honor explicit binary destination vreg'
+            return
+        end if
+
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = value%typ
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_real_copy_to = .true.
+    end function emit_real_copy_to
 
     logical function emit_i32_alloca(session, address, error_msg)
         type(liric_session_t), intent(inout) :: session

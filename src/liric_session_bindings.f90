@@ -54,7 +54,7 @@ module liric_session_bindings
         lr_inst_desc_t, liric_session_t
     public :: liric_session_create
     public :: liric_session_error_message
-    public :: i32_vreg, i32_immediate
+    public :: i32_vreg, i32_immediate, f32_vreg, f64_vreg
     public :: global_operand
     public :: lr_type_i32_s, lr_type_i64_s, lr_type_f32_s, lr_type_f64_s, &
         lr_type_ptr_s, lr_type_i8_s, lr_type_i16_s, lr_type_array_s, lr_type_void_s
@@ -1214,5 +1214,27 @@ contains
                                         operand%typ = lr_type_i32_s(session%handle)
                                         operand%global_offset = 0_c_int64_t
                                     end function i32_vreg
+
+                                    function f32_vreg(session, vreg) result(operand)
+                                        type(liric_session_t), intent(in) :: session
+                                        integer(c_int32_t), intent(in) :: vreg
+                                        type(lr_operand_desc_t) :: operand
+
+                                        operand%kind = LR_OP_KIND_VREG
+                                        operand%payload = int(vreg, c_int64_t)
+                                        operand%typ = lr_type_f32_s(session%handle)
+                                        operand%global_offset = 0_c_int64_t
+                                    end function f32_vreg
+
+                                    function f64_vreg(session, vreg) result(operand)
+                                        type(liric_session_t), intent(in) :: session
+                                        integer(c_int32_t), intent(in) :: vreg
+                                        type(lr_operand_desc_t) :: operand
+
+                                        operand%kind = LR_OP_KIND_VREG
+                                        operand%payload = int(vreg, c_int64_t)
+                                        operand%typ = lr_type_f64_s(session%handle)
+                                        operand%global_offset = 0_c_int64_t
+                                    end function f64_vreg
 
                                 end module liric_session_bindings
