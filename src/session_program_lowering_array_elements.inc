@@ -762,6 +762,12 @@
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (trim(adjustl(lowercase_text(bin_op))) == '.not.') then
+                call lower_array_not_element(arena, bin_right, &
+                                             target_symbol_index, linear_index, &
+                                             context, value, error_msg)
+                return
+            end if
             if (context%symbols(target_symbol_index)%value_kind == &
                     VALUE_LOGICAL .and. is_comparison_operator(bin_op)) then
                 call lower_array_compare_element(arena, node_index, &
@@ -912,6 +918,46 @@
         false_val = i32_immediate(context%session, 0_c_int64_t)
         call select_value(context, cond, true_val, false_val, value, error_msg)
     end subroutine lower_array_compare_element
+
+    subroutine lower_array_not_element(arena, operand_index, &
+                                       target_symbol_index, linear_index, &
+                                       context, value, error_msg)
+        ! Evaluate a whole-array .NOT. at one element (a = .not. b). Unary
+        ! .not. is parsed as a binary op whose left operand is a virtual
+        ! (invalid) index, so the caller passes only the real right operand.
+        ! The inversion is materialized through select_value's branch-and-phi,
+        ! matching lower_array_compare_element's workaround for the same
+        ! raw-icmp-to-memory miscompile.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: operand_index
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: operand, zero, cond, true_val, false_val
+
+        call set_empty(error_msg)
+        if (context%symbols(target_symbol_index)%value_kind /= VALUE_LOGICAL) then
+            call unsupported_feature_error('whole-array .not.', &
+                                           get_node_line(arena, operand_index), &
+                                           get_node_column(arena, operand_index), &
+                                           'direct LIRIC session supports '// &
+                                           '.not. for logical arrays only', &
+                                           error_msg)
+            return
+        end if
+        call lower_array_elementwise_value(arena, operand_index, &
+                                           target_symbol_index, linear_index, &
+                                           context, operand, error_msg)
+        if (len_trim(error_msg) > 0) return
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, operand, zero, &
+                                      cond, error_msg)) return
+        true_val = i32_immediate(context%session, 0_c_int64_t)
+        false_val = i32_immediate(context%session, 1_c_int64_t)
+        call select_value(context, cond, true_val, false_val, value, error_msg)
+    end subroutine lower_array_not_element
 
     logical function is_elementwise_array_operand(context, symbol_index) &
         result(is_operand)
