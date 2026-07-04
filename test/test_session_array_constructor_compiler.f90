@@ -54,6 +54,22 @@ program test_session_array_constructor_compiler
         '  print *, "vals:", a'//new_line('a')// &
         'end program main', 'ctor_print_tag')) all_passed = .false.
 
+    ! Named constant with dimension(*): extent comes from the array
+    ! constructor initializer, not a caller's actual.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer, parameter :: offset(*) = [0, 1, 2, 3, 4]'//new_line('a')// &
+        '  print *, offset'//new_line('a')// &
+        '  print *, size(offset)'//new_line('a')// &
+        'end program main', 'ctor_param_star_int')) all_passed = .false.
+
+    ! Same feature with a real named constant.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  real, parameter :: a(*) = [1.1, 3.0, 10.0, 2.1, 5.5]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_param_star_real')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: array constructors lower through direct LIRIC session'
 

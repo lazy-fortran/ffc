@@ -429,6 +429,21 @@ contains
                     error_msg)
                 return
             end if
+            ! A named constant a(*) = [...] takes its extent from the array
+            ! constructor initializer rather than a caller's actual (only
+            ! valid for a dummy argument or a PARAMETER); size it from the
+            ! initializer and fall through to the normal fixed-size path.
+            if (declaration_is_assumed_size(node, context) .and. &
+                declaration_is_parameter_assumed_size_array(node, context)) then
+                call get_parameter_assumed_size_extent(node, context, &
+                    array_size, error_msg)
+                if (len_trim(error_msg) > 0) return
+                array_lower_bound = 1
+                call define_declared_array_symbol(context, node, node%var_name, &
+                    array_lower_bound, array_size, value_kind, error_msg, &
+                    is_assumed_size=.true.)
+                return
+            end if
             ! Assumed-size dummy a(n1, ..., *): the trailing asterisk carries
             ! no compile-time extent, so fold only the leading dimensions and
             ! bind the parameter base without a whole-array size.

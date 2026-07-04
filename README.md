@@ -74,7 +74,10 @@ all work against the caller's runtime allocation. An assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write
 and `lbound(a, dim)` work; the trailing dimension carries no extent, so
-`ubound`/`size` on it and whole-array operations are not supported. A scalar
+`ubound`/`size` on it and whole-array operations are not supported. A named
+constant declared `a(*) = [...]` (single dimension, a non-implied-do array
+constructor initializer) instead takes its extent from the initializer's
+element count. A scalar
 `integer`/`real`/`logical, allocatable` variable
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
 with any source expression; a rank-1/rank-2 allocatable array dummy argument

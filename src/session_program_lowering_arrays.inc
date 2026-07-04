@@ -148,6 +148,59 @@
         is_assumed = .true.
     end function declaration_is_assumed_size
 
+    logical function declaration_is_parameter_assumed_size_array(node, context) &
+            result(is_match)
+        ! A named constant a(*) = [...] (single dimension, non-implied-do array
+        ! constructor initializer): its extent comes from the initializer, not
+        ! from a caller's actual, so it takes the fixed-size path instead of
+        ! the assumed-size-dummy one.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+
+        is_match = .false.
+        if (.not. node%is_parameter) return
+        if (node%is_multi_declaration) return
+        if (.not. allocated(node%var_name)) return
+        if (.not. node%has_initializer .or. node%initializer_index <= 0) return
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) return
+        if (.not. node_exists(context%arena, node%initializer_index)) return
+        select type (init => context%arena%entries(node%initializer_index)%node)
+        type is (array_literal_node)
+            if (is_implied_do_constructor(context%arena, init)) return
+            is_match = .true.
+        end select
+    end function declaration_is_parameter_assumed_size_array
+
+    subroutine get_parameter_assumed_size_extent(node, context, array_size, &
+                                                 error_msg)
+        ! Count the flattened elements of a named constant's array-constructor
+        ! initializer to recover the extent a(*) omits.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+
+        select type (init => context%arena%entries(node%initializer_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(init%element_indices)) then
+                error_msg = 'array constructor has no elements'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(context%arena, &
+                init%element_indices, flat, error_msg)
+            if (len_trim(error_msg) > 0) return
+            array_size = size(flat)
+        class default
+            error_msg = 'assumed-size parameter initializer is not an array '// &
+                        'constructor'
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine get_parameter_assumed_size_extent
+
     subroutine lower_assumed_size_declaration(node, context, value_kind, &
                                               error_msg)
         ! Bind an assumed-size dummy a(n1, ..., *) to its parameter base: fold
@@ -1616,8 +1669,11 @@
             do i = 1, dim_count
                 if (present(is_assumed_size)) then
                     if (is_assumed_size .and. i == dim_count) then
+                        ! array_size is the sentinel 0 for a real assumed-size
+                        ! dummy (unknown extent) or the initializer-derived
+                        ! extent for a named constant a(*) = [...].
                         context%symbols(index)%array_dim_lowers(i) = 1
-                        context%symbols(index)%array_dim_sizes(i) = 0
+                        context%symbols(index)%array_dim_sizes(i) = array_size
                         cycle
                     end if
                 end if
