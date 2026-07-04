@@ -10,10 +10,6 @@
             error_msg = 'direct LIRIC session IF requires a condition index'
             return
         end if
-        if (.not. allocated(node%then_body_indices)) then
-            error_msg = 'direct LIRIC session IF requires a THEN body'
-            return
-        end if
 
         ! An ELSE IF chain is lowered as a cascade: arm 0 is the main IF, and
         ! each elseif becomes the IF nested in the previous arm's else branch.
@@ -46,6 +42,7 @@
         integer(c_int32_t) :: then_block, else_block, merge_block
         type(branch_result_t) :: then_result, else_result
         integer :: condition_index, n_elseif, i
+        integer, allocatable :: then_indices(:)
         logical :: has_more_arms
 
         n_elseif = 0
@@ -74,13 +71,22 @@
         saved_symbol_count = context%symbol_count
 
         if (elseif_index == 0) then
-            call lower_if_branch(arena, node%then_body_indices, then_block, &
+            if (allocated(node%then_body_indices)) then
+                then_indices = node%then_body_indices
+            else
+                allocate(then_indices(0))
+            end if
+            call lower_if_branch(arena, then_indices, then_block, &
                                  merge_block, context, value, then_result, &
                                  error_msg)
         else
-            call lower_if_branch(arena, &
-                                 node%elseif_blocks(elseif_index)%body_indices, &
-                                 then_block, merge_block, context, value, &
+            if (allocated(node%elseif_blocks(elseif_index)%body_indices)) then
+                then_indices = node%elseif_blocks(elseif_index)%body_indices
+            else
+                allocate(then_indices(0))
+            end if
+            call lower_if_branch(arena, then_indices, then_block, &
+                                 merge_block, context, value, &
                                  then_result, error_msg)
         end if
         if (len_trim(error_msg) > 0) return
