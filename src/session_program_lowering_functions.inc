@@ -1704,10 +1704,12 @@
             value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
             value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             call define_reference_parameters(arena, node%param_indices, context, &
-                                             error_msg, 1)
+                                             error_msg, body_indices = &
+                                             node%body_indices, param_offset=1)
         else
             call define_reference_parameters(arena, node%param_indices, context, &
-                                             error_msg)
+                                             error_msg, body_indices = &
+                                             node%body_indices)
         end if
         if (len_trim(error_msg) > 0) return
 

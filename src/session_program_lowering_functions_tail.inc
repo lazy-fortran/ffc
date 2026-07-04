@@ -54,7 +54,7 @@
                 param_count + hidden_extent_count, error_msg)) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
-                                         error_msg)
+                                         error_msg, node%body_indices)
         if (len_trim(error_msg) > 0) return
 
         if (hidden_extent_count > 0) then
@@ -836,15 +836,18 @@
     end function call_emit_name
 
     subroutine define_reference_parameters(arena, param_indices, context, &
-                                           error_msg, param_offset)
+                                           error_msg, body_indices, &
+                                           param_offset)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable, intent(in), optional :: body_indices(:)
         integer, intent(in), optional :: param_offset
         character(len=:), allocatable :: name
         integer :: offset
         integer :: i
+        integer :: value_kind
 
         call set_empty(error_msg)
         offset = 0
@@ -853,8 +856,14 @@
         do i = 1, size(param_indices)
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
+            value_kind = VALUE_I32
+            if (present(body_indices)) then
+                value_kind = param_at_value_kind(arena, param_indices, &
+                    body_indices, i)
+                if (value_kind == 0) value_kind = VALUE_I32
+            end if
             call define_parameter_symbol(context, name, i - 1 + offset, &
-                                         error_msg)
+                                        value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters
@@ -886,10 +895,12 @@
         end select
     end subroutine parameter_name
 
-    subroutine define_parameter_symbol(context, name, param_index, error_msg)
+    subroutine define_parameter_symbol(context, name, param_index, value_kind, &
+                                      error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: param_index
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
@@ -901,7 +912,7 @@
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
-        context%symbols(index)%value_kind = VALUE_I32
+        context%symbols(index)%value_kind = value_kind
         context%symbols(index)%address = ptr_param(context%session, param_index)
         context%symbols(index)%has_address = .true.
         context%symbols(index)%is_reference = .true.

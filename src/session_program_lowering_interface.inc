@@ -105,11 +105,13 @@
 
     subroutine add_generic_specific(context, generic_idx, specific_name, error_msg)
         ! Append one specific procedure name to a generic interface entry and
-        ! record its return/first-argument kinds from the function table.
+        ! record its return and per-argument kinds from the function table.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: generic_idx
         character(len=*), intent(in) :: specific_name
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: arg_count
+        integer :: arg_kinds(MAX_PROC_ARGS)
 
         call set_empty(error_msg)
         if (context%generics(generic_idx)%specific_count >= &
@@ -122,10 +124,14 @@
         context%generics(generic_idx)%specific_count = &
             context%generics(generic_idx)%specific_count + 1
         associate (sc => context%generics(generic_idx)%specific_count)
+            arg_count = 0
+            arg_kinds = VALUE_I32
             context%generics(generic_idx)%specific_names(sc) = trim(specific_name)
             call query_specific_kinds(context, trim(specific_name), &
                 context%generics(generic_idx)%return_kinds(sc), &
-                context%generics(generic_idx)%first_arg_kinds(sc))
+                arg_count, arg_kinds)
+            context%generics(generic_idx)%specific_arg_counts(sc) = arg_count
+            context%generics(generic_idx)%specific_arg_kinds(:, sc) = arg_kinds
         end associate
     end subroutine add_generic_specific
 
@@ -396,86 +402,32 @@
     end function operator_return_kind
 
     subroutine query_specific_kinds(context, specific_name, &
-                                    return_kind, first_arg_kind)
-        ! Look up the return kind and first-argument kind of a specific
+                                    return_kind, arg_count, arg_kinds)
+        ! Look up the return kind and per-argument kinds of a specific
         ! procedure from the function table. Falls back to VALUE_I32 when
         ! the specific is not yet registered (registration order does not
         ! guarantee functions come before the interface block).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: specific_name
-        integer, intent(out) :: return_kind, first_arg_kind
-        integer :: i
+        integer, intent(out) :: return_kind, arg_count
+        integer, intent(out) :: arg_kinds(MAX_PROC_ARGS)
+        integer :: i, j
 
         return_kind = VALUE_I32
-        first_arg_kind = VALUE_I32
+        arg_count = 0
+        arg_kinds = VALUE_I32
         do i = 1, context%function_count
             if (same_name(context%function_names(i), specific_name)) then
                 return_kind = context%function_value_kinds(i)
-                ! First-arg kind: scan the specific's node for its first
-                ! parameter declaration.
-                first_arg_kind = specific_first_arg_kind(context, i)
+                arg_count = context%function_param_counts(i)
+                if (arg_count > MAX_PROC_ARGS) arg_count = MAX_PROC_ARGS
+                do j = 1, arg_count
+                    arg_kinds(j) = specific_arg_kind(context, i, j)
+                end do
                 return
             end if
         end do
     end subroutine query_specific_kinds
-
-    integer function specific_first_arg_kind(context, fn_index) result(kind)
-        ! Determine the value kind of the first dummy argument of a registered
-        ! specific by looking at its body declarations.
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: fn_index
-        integer :: node_idx, i
-        character(len=:), allocatable :: param_name, err
-        character(len=:), allocatable :: node_type
-        type(function_def_node), pointer :: fn_node
-        type(subroutine_def_node), pointer :: sb_node
-        integer, allocatable :: body_indices(:), param_indices(:)
-
-        kind = VALUE_I32
-        node_idx = context%function_node_indices(fn_index)
-        if (node_idx <= 0) return
-        if (.not. node_exists(context%arena, node_idx)) return
-
-        node_type = get_node_type_at(context%arena, node_idx)
-        if (node_type == 'function_def_node' .or. &
-            node_type == 'function_def') then
-            fn_node => get_node_as_function_def(context%arena, node_idx)
-            if (.not. associated(fn_node)) return
-            if (.not. allocated(fn_node%param_indices)) return
-            if (size(fn_node%param_indices) == 0) return
-            call parameter_name(context%arena, fn_node%param_indices(1), &
-                                param_name, err)
-            if (len_trim(err) > 0) return
-            body_indices = fn_node%body_indices
-        else if (node_type == 'subroutine_def_node' .or. &
-                 node_type == 'subroutine_def') then
-            sb_node => get_node_as_subroutine_def(context%arena, node_idx)
-            if (.not. associated(sb_node)) return
-            if (.not. allocated(sb_node%param_indices)) return
-            if (size(sb_node%param_indices) == 0) return
-            call parameter_name(context%arena, sb_node%param_indices(1), &
-                                param_name, err)
-            if (len_trim(err) > 0) return
-            body_indices = sb_node%body_indices
-        else
-            return
-        end if
-
-        ! Scan body declarations for the first parameter's type.
-        if (.not. allocated(body_indices)) return
-        do i = 1, size(body_indices)
-            if (.not. node_exists(context%arena, body_indices(i))) cycle
-            select type (decl => context%arena%entries(body_indices(i))%node)
-            type is (declaration_node)
-                if (.not. allocated(decl%type_name)) cycle
-                if (.not. allocated(decl%var_name)) cycle
-                if (.not. same_name(decl%var_name, param_name)) cycle
-                call type_name_value_kind(decl%type_name, decl%line, &
-                                          decl%column, kind, err, context)
-                return
-            end select
-        end do
-    end function specific_first_arg_kind
 
     subroutine grow_generics(context)
         type(lowering_context_t), intent(inout) :: context
@@ -506,13 +458,34 @@
         end do
     end function find_generic
 
-    function resolve_generic(context, generic_idx, first_arg_kind) &
+    logical function generic_signature_matches(stored_count, stored_kinds, &
+                                            call_count, call_kinds) result(ok)
+        integer, intent(in) :: stored_count
+        integer, intent(in) :: stored_kinds(MAX_PROC_ARGS)
+        integer, intent(in) :: call_count
+        integer, intent(in) :: call_kinds(MAX_PROC_ARGS)
+        integer :: i
+
+        ok = .false.
+        if (stored_count /= call_count) return
+        if (stored_count == 0) then
+            ok = .true.
+            return
+        end if
+        do i = 1, call_count
+            if (call_kinds(i) /= stored_kinds(i)) return
+        end do
+        ok = .true.
+    end function generic_signature_matches
+
+    function resolve_generic(context, generic_idx, call_arg_count, call_arg_kinds) &
         result(specific_name)
-        ! Choose the specific procedure that matches first_arg_kind.
-        ! Returns the first specific whose first_arg_kind equals the actual,
+        ! Choose the specific procedure that matches the full argument signature.
+        ! Returns the first specific whose signature equals the actual,
         ! or the first specific when no exact match exists.
         type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: generic_idx, first_arg_kind
+        integer, intent(in) :: generic_idx, call_arg_count
+        integer, intent(in) :: call_arg_kinds(MAX_PROC_ARGS)
         character(len=:), allocatable :: specific_name
         integer :: i
         type(generic_interface_t) :: g
@@ -524,7 +497,8 @@
         end if
         ! Exact match first.
         do i = 1, g%specific_count
-            if (g%first_arg_kinds(i) == first_arg_kind) then
+            if (generic_signature_matches(g%specific_arg_counts(i), &
+                g%specific_arg_kinds(:, i), call_arg_count, call_arg_kinds)) then
                 specific_name = trim(g%specific_names(i))
                 return
             end if
@@ -534,10 +508,11 @@
     end function resolve_generic
 
     integer function generic_return_kind(context, generic_idx, &
-                                         first_arg_kind) result(ret_kind)
-        ! Return kind of the specific selected for first_arg_kind.
+                                         call_arg_count, call_arg_kinds) result(ret_kind)
+        ! Return kind of the specific selected for the full argument signature.
         type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: generic_idx, first_arg_kind
+        integer, intent(in) :: generic_idx, call_arg_count
+        integer, intent(in) :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: i
         type(generic_interface_t) :: g
 
@@ -545,7 +520,8 @@
         ret_kind = VALUE_I32
         if (g%specific_count == 0) return
         do i = 1, g%specific_count
-            if (g%first_arg_kinds(i) == first_arg_kind) then
+            if (generic_signature_matches(g%specific_arg_counts(i), &
+                g%specific_arg_kinds(:, i), call_arg_count, call_arg_kinds)) then
                 ret_kind = g%return_kinds(i)
                 return
             end if
@@ -889,20 +865,23 @@
         context%external_procedures(1:size(old)) = old
     end subroutine grow_external_procedures
 
-    function degeneric_call_name(context, name, first_arg_kind) result(resolved)
+    function degeneric_call_name(context, name, call_arg_count, call_arg_kinds) &
+        result(resolved)
         ! If name is a USE-rename alias, resolve to the real procedure first
         ! (#274); if it is a registered generic, return the matching specific
         ! name; otherwise return name unchanged (#249 B7c).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer, intent(in) :: first_arg_kind
+        integer, intent(in) :: call_arg_count
+        integer, intent(in) :: call_arg_kinds(MAX_PROC_ARGS)
         character(len=:), allocatable :: resolved, dealiased
         integer :: g
 
         dealiased = resolve_proc_alias(context, name)
         g = find_generic(context, dealiased)
         if (g > 0) then
-            resolved = resolve_generic(context, g, first_arg_kind)
+            resolved = resolve_generic(context, g, call_arg_count, &
+                                      call_arg_kinds)
         else
             resolved = dealiased
         end if
@@ -926,18 +905,21 @@
         end do
     end function resolve_proc_alias
 
-    integer function generic_call_return_kind(context, name, first_arg_kind) &
+    integer function generic_call_return_kind(context, name, call_arg_count, &
+                                            call_arg_kinds) &
         result(ret_kind)
         ! Return kind of the specific selected for a generic call, or 0 when
         ! name is not a generic (#249 B7c).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer, intent(in) :: first_arg_kind
+        integer, intent(in) :: call_arg_count
+        integer, intent(in) :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: g
 
         g = find_generic(context, name)
         if (g > 0) then
-            ret_kind = generic_return_kind(context, g, first_arg_kind)
+            ret_kind = generic_return_kind(context, g, call_arg_count, &
+                                          call_arg_kinds)
         else
             ret_kind = 0
         end if

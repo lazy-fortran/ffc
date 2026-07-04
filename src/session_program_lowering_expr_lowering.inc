@@ -156,6 +156,8 @@
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         character(len=:), allocatable :: call_name
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
 
         if (node%is_array_access) then
             call unsupported_feature_error('array expression', &
@@ -170,8 +172,10 @@
             return
         end if
         ! Resolve generic -> specific (#249 B7c).
+        call call_argument_kinds(arena, node, context, VALUE_LOGICAL, &
+                                call_arg_count, call_arg_kinds)
         call_name = degeneric_call_name(context, node%name, &
-            first_call_arg_kind(arena, node, context, VALUE_LOGICAL))
+            call_arg_count, call_arg_kinds)
         if (same_name(call_name, 'c_associated') .and. .not. &
             is_contained_logical_function(context, call_name)) then
             call lower_c_associated(arena, node%arg_indices, context, value, &
@@ -452,6 +456,8 @@
         integer, allocatable :: copyback_indices(:)
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
 
         if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
             .or. is_declared_array_element_ref(node, context)) then
@@ -475,8 +481,10 @@
         end if
 
         ! Resolve generic -> specific (#249 B7c).
+        call call_argument_kinds(arena, node, context, VALUE_F32, &
+                                call_arg_count, call_arg_kinds)
         call_name = degeneric_call_name(context, node%name, &
-            first_call_arg_kind(arena, node, context, VALUE_F32))
+            call_arg_count, call_arg_kinds)
 
         if (same_name(call_name, 'transfer') .and. .not. &
             is_contained_f32_function(context, call_name)) then
@@ -546,6 +554,8 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: id_name, id_err
@@ -633,10 +643,11 @@
                 else if (is_real_inquiry_intrinsic(node%name)) then
                     is_f32 = inquiry_arg_real_kind(arena, node, context) == 4
                 else
+                    call call_argument_kinds(arena, node, context, VALUE_I32, &
+                        call_arg_count, call_arg_kinds)
                     is_f32 = is_contained_f32_function(context, node%name) .or. &
                         generic_call_return_kind(context, node%name, &
-                            first_call_arg_kind(arena, node, context, &
-                                                VALUE_I32)) == VALUE_F32
+                            call_arg_count, call_arg_kinds) == VALUE_F32
                     if (.not. is_f32) &
                         is_f32 = is_real_array_reduction(arena, node, context, VALUE_F32)
                     if (.not. is_f32) &
@@ -764,6 +775,8 @@
         type(lr_operand_desc_t) :: element_addr
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
 
         if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
             .or. is_declared_array_element_ref(node, context)) then
@@ -787,8 +800,10 @@
         end if
 
         ! Resolve generic -> specific (#249 B7c).
+        call call_argument_kinds(arena, node, context, VALUE_F64, &
+                                call_arg_count, call_arg_kinds)
         call_name = degeneric_call_name(context, node%name, &
-            first_call_arg_kind(arena, node, context, VALUE_F64))
+            call_arg_count, call_arg_kinds)
 
         if (same_name(call_name, 'transfer') .and. .not. &
             is_contained_f64_function(context, call_name)) then
@@ -973,6 +988,8 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: id_name, id_err
@@ -1041,10 +1058,11 @@
                 else if (is_real_inquiry_intrinsic(node%name)) then
                     is_f64 = inquiry_arg_real_kind(arena, node, context) == 8
                 else
+                    call call_argument_kinds(arena, node, context, VALUE_I32, &
+                        call_arg_count, call_arg_kinds)
                     is_f64 = is_contained_f64_function(context, node%name) .or. &
                         generic_call_return_kind(context, node%name, &
-                            first_call_arg_kind(arena, node, context, &
-                                                VALUE_I32)) == VALUE_F64
+                            call_arg_count, call_arg_kinds) == VALUE_F64
                     is_f64 = is_f64 .or. is_f64_intrinsic_expression(arena, node, context)
                     if (.not. is_f64) &
                         is_f64 = is_real_array_reduction(arena, node, context, VALUE_F64)

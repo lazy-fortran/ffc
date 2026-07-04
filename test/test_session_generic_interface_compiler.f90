@@ -10,6 +10,7 @@ program test_session_generic_interface_compiler
     if (.not. test_generic_integer_specific()) all_passed = .false.
     if (.not. test_generic_real_specific()) all_passed = .false.
     if (.not. test_generic_subroutine()) all_passed = .false.
+    if (.not. test_generic_full_signature_dispatch()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: generic interfaces resolve to correct specific procedures'
@@ -108,5 +109,41 @@ contains
         test_generic_subroutine = expect_exit_status( &
                 source, 8, '/tmp/ffc_session_generic_sub')
         end function test_generic_subroutine
+
+        logical function test_generic_full_signature_dispatch()
+            ! B7c: when two specifics share the first argument kind, dispatch uses
+            ! the full signature so overloads like (integer, integer) and
+            ! (integer, real) stay distinct.
+            character(len=*), parameter :: source = &
+                'module m'//new_line('a')// &
+                '  implicit none'//new_line('a')// &
+                '  interface mix'//new_line('a')// &
+                '    module procedure mix_ii, mix_ir'//new_line('a')// &
+                '  end interface'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  integer function mix_ii(a, b)'//new_line('a')// &
+                '    integer, intent(in) :: a, b'//new_line('a')// &
+                '    mix_ii = a + b + 10'//new_line('a')// &
+                '  end function mix_ii'//new_line('a')// &
+                '  integer function mix_ir(a, b)'//new_line('a')// &
+                '    integer, intent(in) :: a'//new_line('a')// &
+                '    real(8), intent(in) :: b'//new_line('a')// &
+                '    mix_ir = a + 100 + int(b)'//new_line('a')// &
+                '  end function mix_ir'//new_line('a')// &
+                'end module m'//new_line('a')// &
+                'program main'//new_line('a')// &
+                '  use m'//new_line('a')// &
+                '  integer :: n'//new_line('a')// &
+                '  real(8) :: r'//new_line('a')// &
+                '  n = mix(5, 6)'//new_line('a')// &
+                '  if (n /= 21) error stop 1'//new_line('a')// &
+                '  n = mix(5, 6.0d0)'//new_line('a')// &
+                '  if (n /= 111) error stop 2'//new_line('a')// &
+                '  stop n'//new_line('a')// &
+                'end program main'
+
+            test_generic_full_signature_dispatch = expect_exit_status( &
+                source, 111, '/tmp/ffc_session_generic_sig')
+        end function test_generic_full_signature_dispatch
 
     end program test_session_generic_interface_compiler

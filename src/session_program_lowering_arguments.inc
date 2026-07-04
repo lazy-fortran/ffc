@@ -687,6 +687,8 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: default_kind
         integer :: symbol_index
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
         character(len=:), allocatable :: id_name, id_err
 
         value_kind = default_kind
@@ -737,11 +739,13 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
-                ! Generic interface: resolve first-argument kind and look up
-                ! the return kind of the matching specific (#249 B7c).
+                ! Generic interface: resolve full call signature and look up the
+                ! matching specific return kind (#249 B7c).
                 if (find_generic(context, node%name) > 0) then
+                    call call_argument_kinds(arena, node, context, default_kind, &
+                        call_arg_count, call_arg_kinds)
                     value_kind = generic_call_return_kind(context, node%name, &
-                        first_call_arg_kind(arena, node, context, default_kind))
+                        call_arg_count, call_arg_kinds)
                 else if (is_contained_f32_function(context, node%name)) then
                     value_kind = VALUE_F32
                 else if (is_contained_f64_function(context, node%name)) then
@@ -755,21 +759,28 @@
         end select
     end function expression_value_kind
 
-    integer function first_call_arg_kind(arena, node, context, default_kind) &
-        result(kind)
-        ! Return the value kind of the first actual argument of a function call
-        ! node, for use in generic resolution.
+    subroutine call_argument_kinds(arena, node, context, default_kind, &
+                                  arg_count, arg_kinds)
+        ! Expand the actual argument kinds at a call site for generic signature
+        ! matching.
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: default_kind
+        integer, intent(out) :: arg_count
+        integer, intent(out) :: arg_kinds(MAX_PROC_ARGS)
+        integer :: i
 
-        kind = default_kind
+        arg_count = 0
+        arg_kinds = default_kind
         if (.not. allocated(node%arg_indices)) return
-        if (size(node%arg_indices) == 0) return
-        kind = expression_value_kind(arena, node%arg_indices(1), context, &
-                                     default_kind)
-    end function first_call_arg_kind
+        arg_count = size(node%arg_indices)
+        if (arg_count > MAX_PROC_ARGS) arg_count = MAX_PROC_ARGS
+        do i = 1, arg_count
+            arg_kinds(i) = expression_value_kind(arena, node%arg_indices(i), &
+                                                context, default_kind)
+        end do
+    end subroutine call_argument_kinds
 
     subroutine lower_expression_by_kind(arena, node_index, context, value_kind, &
                                         value, error_msg)

@@ -336,8 +336,11 @@ module session_program_lowering_types
             character(len=64) :: generic_name = ''
             integer :: specific_count = 0
             character(len=64) :: specific_names(MAX_GENERIC_SPECIFICS) = ''
-            ! Value kind of the first dummy of each specific (used for dispatch).
-            integer :: first_arg_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
+            integer :: specific_arg_counts(MAX_GENERIC_SPECIFICS) = 0
+            ! Per-specific argument kinds (scalar-only today): position 1 is the first
+            ! dummy, up to MAX_PROC_ARGS. Unused trailing entries stay VALUE_I32.
+            integer :: specific_arg_kinds(MAX_PROC_ARGS, MAX_GENERIC_SPECIFICS) = &
+                VALUE_I32
             ! Return value kind of each specific.
             integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
         end type generic_interface_t

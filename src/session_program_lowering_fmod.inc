@@ -454,20 +454,41 @@
         type(fmod_variable_t), intent(out) :: var
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, type_name
+        integer :: cur
+        character(len=:), allocatable :: node_type
+        character(len=:), allocatable :: module_name
+        type(module_node), pointer :: node
 
         call set_empty(error_msg)
         var%name = ''
         var%kind = ''
+        var%c_name = ''
         if (.not. is_declaration_node(arena, node_index)) then
             error_msg = 'module variable export is not a declaration'
             return
         end if
+        module_name = ''
+        cur = get_parent(arena, node_index)
+        do while (cur > 0)
+            node_type = get_node_type_at(arena, cur)
+            if (node_type == 'module_node') then
+                select type (node => arena%entries(cur)%node)
+                type is (module_node)
+                    if (allocated(node%name)) module_name = trim(node%name)
+                end select
+                exit
+            end if
+            cur = get_parent(arena, cur)
+        end do
         call get_declaration_var_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         var%name = trim(name)
         call get_declaration_type_name(arena, node_index, type_name, error_msg)
         if (len_trim(error_msg) > 0) return
         var%kind = fmod_variable_kind_token(type_name)
+        if (len_trim(module_name) > 0) then
+            var%c_name = module_procedure_mangled(trim(module_name), trim(name))
+        end if
     end subroutine build_fmod_variable
 
     function fmod_variable_kind_token(type_name) result(token)

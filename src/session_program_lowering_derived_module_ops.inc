@@ -325,14 +325,15 @@
 
     subroutine add_generic_specific_from_external(context, generic_idx, name, &
                                                   ext_idx)
-        ! Append a specific to a generic entry, taking its first-argument and
-        ! return kinds from an already-registered external procedure rather than
-        ! from an AST node (the specific was imported from a .fmod, #284).
+        ! Append a specific to a generic entry, taking its signature and
+        ! return kinds from an already-registered external procedure rather
+        ! than from an AST node (the specific was imported from a .fmod, #284).
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: generic_idx
         character(len=*), intent(in) :: name
         integer, intent(in) :: ext_idx
         integer :: sc
+        integer :: j
 
         if (context%generics(generic_idx)%specific_count >= &
             MAX_GENERIC_SPECIFICS) return
@@ -342,12 +343,14 @@
         context%generics(generic_idx)%specific_names(sc) = trim(name)
         context%generics(generic_idx)%return_kinds(sc) = &
             context%external_procedures(ext_idx)%return_value_kind
-        if (context%external_procedures(ext_idx)%arg_count >= 1) then
-            context%generics(generic_idx)%first_arg_kinds(sc) = &
-                context%external_procedures(ext_idx)%arg_value_kinds(1)
-        else
-            context%generics(generic_idx)%first_arg_kinds(sc) = VALUE_I32
-        end if
+        context%generics(generic_idx)%specific_arg_counts(sc) = &
+            context%external_procedures(ext_idx)%arg_count
+        context%generics(generic_idx)%specific_arg_kinds(:, sc) = VALUE_I32
+        do j = 1, min(context%external_procedures(ext_idx)%arg_count, &
+            MAX_PROC_ARGS)
+            context%generics(generic_idx)%specific_arg_kinds(j, sc) = &
+                context%external_procedures(ext_idx)%arg_value_kinds(j)
+        end do
     end subroutine add_generic_specific_from_external
 
     subroutine import_fmod_procedure(use_node, module_name, proc, context, &
@@ -554,8 +557,12 @@
         value_kind = value_kind_of_token(trim(var%kind))
         if (value_kind == 0) return
         if (find_symbol(context, trim(var%name)) > 0) return
-        mangled = module_procedure_mangled( &
-            trim(use_node%module_name), trim(var%name))
+        if (allocated(var%c_name) .and. len_trim(var%c_name) > 0) then
+            mangled = trim(var%c_name)
+        else
+            mangled = module_procedure_mangled( &
+                trim(use_node%module_name), trim(var%name))
+        end if
         call to_c_chars(mangled, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
         if (global_id < 0_c_int32_t) then

@@ -38,6 +38,7 @@ module ffc_module_artefact
     type :: fmod_variable_t
         character(len=:), allocatable :: name
         character(len=:), allocatable :: kind
+        character(len=:), allocatable :: c_name
     end type fmod_variable_t
 
     ! A module procedure exported for separate compilation: its Fortran name,
@@ -127,6 +128,12 @@ contains
                 write (unit, '(A)') '[[variable]]'
                 write (unit, '(A)') 'name = "'//field(info%variables(i)%name)//'"'
                 write (unit, '(A)') 'kind = "'//field(info%variables(i)%kind)//'"'
+                if (allocated(info%variables(i)%c_name)) then
+                    if (len_trim(info%variables(i)%c_name) > 0) then
+                        write (unit, '(A)') 'c_name = "'// &
+                            field(info%variables(i)%c_name)//'"'
+                    end if
+                end if
             end do
         end if
 
@@ -278,6 +285,7 @@ contains
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
+                if (key == 'c_name') vars(nvar)%c_name = unquote(val)
             case ('procedure')
                 if (key == 'name') procs(nproc)%name = unquote(val)
                 if (key == 'kind') procs(nproc)%kind = unquote(val)

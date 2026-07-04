@@ -1496,7 +1496,9 @@ contains
         integer, allocatable :: arg_indices(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
-        integer :: first_arg_kind
+        integer :: call_arg_count
+        integer :: call_arg_kinds(MAX_PROC_ARGS)
+        integer :: i
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         ! Indirect subroutine call through a procedure pointer (B3d).
@@ -1508,14 +1510,16 @@ contains
             error_msg)
         if (len_trim(error_msg) > 0) return
         ! Resolve generic -> specific (#249 B7c).
-        first_arg_kind = VALUE_I32
+        call_arg_count = 0
+        call_arg_kinds = VALUE_I32
         if (allocated(arg_indices)) then
-            if (size(arg_indices) > 0) then
-                first_arg_kind = expression_value_kind(arena, arg_indices(1), &
+            call_arg_count = min(size(arg_indices), MAX_PROC_ARGS)
+            do i = 1, call_arg_count
+                call_arg_kinds(i) = expression_value_kind(arena, arg_indices(i), &
                     context, VALUE_I32)
-            end if
+            end do
         end if
-        call_name = degeneric_call_name(context, name, first_arg_kind)
+        call_name = degeneric_call_name(context, name, call_arg_count, call_arg_kinds)
         if (same_name(call_name, 'get_command_argument')) then
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
             return
@@ -1687,7 +1691,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: padded(:)
         type(lr_operand_desc_t) :: nullptr
-        integer :: pcount, j
+        integer :: pcount
+        integer :: j
 
         ok = .false.
         pcount = proc_param_count(context, name)
