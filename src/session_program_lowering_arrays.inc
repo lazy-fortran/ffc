@@ -2905,6 +2905,7 @@
         integer :: source_index
         integer :: array_size
         integer :: i
+        integer :: expr_vk, expr_extent
         integer(c_int) :: predicate
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
@@ -2921,6 +2922,34 @@
                                              reduction_name, error_msg)
                 return
             end select
+            ! sum(f()): a bare call to a contained function returning an
+            ! allocatable array.
+            if (is_alloc_array_result_call(arena, node%arg_indices(1), context)) then
+                call lower_alloc_call_reduction(arena, node, context, value, &
+                                                error_msg, reduction_name)
+                return
+            end if
+            ! sum(a + b) and friends: a general array-valued expression.
+            if (is_binary_op(arena, node%arg_indices(1))) then
+                expr_vk = VALUE_F32
+                if (.not. reduction_arg_extent(arena, node%arg_indices(1), &
+                        context, expr_vk, expr_extent)) then
+                    expr_vk = VALUE_F64
+                    if (.not. reduction_arg_extent(arena, node%arg_indices(1), &
+                            context, expr_vk, expr_extent)) then
+                        expr_vk = VALUE_I32
+                        if (.not. reduction_arg_extent(arena, node%arg_indices(1), &
+                                context, expr_vk, expr_extent)) then
+                            error_msg = trim(reduction_name)// &
+                                ' argument expression is not supported'
+                            return
+                        end if
+                    end if
+                end if
+                call lower_general_expr_reduction(arena, node%arg_indices(1), &
+                    expr_extent, expr_vk, context, value, error_msg, reduction_name)
+                return
+            end if
         end if
 
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)

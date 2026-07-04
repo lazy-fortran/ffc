@@ -47,7 +47,8 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: vk
         character(len=:), allocatable :: arg_name, err
-        integer :: sym
+        integer :: sym, elem_kind, rank, extent
+        logical :: alloc_ok
 
         ok = .false.
         if (.not. allocated(node%name)) return
@@ -71,6 +72,21 @@
                      context%symbols(sym)%value_kind == vk
                 return
             end select
+            ! sum(f()): a bare call to a contained function returning an
+            ! allocatable array reduces over that result's element kind.
+            if (is_alloc_array_result_call(arena, node%arg_indices(1), context)) then
+                call alloc_array_result_call_info(arena, node%arg_indices(1), &
+                    context, elem_kind, rank, alloc_ok)
+                ok = alloc_ok .and. rank == 1 .and. elem_kind == vk
+                return
+            end if
+            ! sum(a + b) and friends: a binary-op array expression reduces
+            ! over its own element kind, determined recursively.
+            if (is_binary_op(arena, node%arg_indices(1))) then
+                ok = reduction_arg_extent(arena, node%arg_indices(1), context, &
+                                          vk, extent)
+                return
+            end if
         end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
         if (len_trim(err) > 0) return
