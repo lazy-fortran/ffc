@@ -5,7 +5,6 @@
 abs_04.f90
 abs_06.f90
 allocatable_cchar_01.f90
-allocatable_component_assign_01.f90
 allocatable_component_assign_recursive_01.f90
 allocatable_component_reshape_unallocated_01.f90
 allocatable_component_struct_array_01.f90
@@ -1485,7 +1484,6 @@ global_allocatable_02.f90
 global_array_01.f90
 global_array_pointer_01.f90
 global_array_pointer_02.f90
-goto_02.f90
 goto_03.f90
 goto_05.f90
 goto_06.f90
@@ -1498,10 +1496,8 @@ gpu_metal_103.f90
 gpu_metal_104.f90
 gpu_metal_105.f90
 gpu_metal_106.f90
-gpu_metal_107.f90
 gpu_metal_109.f90
 gpu_metal_110.f90
-gpu_metal_111.f90
 gpu_metal_112.f90
 gpu_metal_113.f90
 gpu_metal_114.f90
@@ -1517,9 +1513,7 @@ gpu_metal_124.f90
 gpu_metal_125.f90
 gpu_metal_127.f90
 gpu_metal_128.f90
-gpu_metal_129.f90
 gpu_metal_12.f90
-gpu_metal_131.f90
 gpu_metal_133.f90
 gpu_metal_134.f90
 gpu_metal_135.f90
@@ -1615,7 +1609,6 @@ gpu_metal_68.f90
 gpu_metal_69.f90
 gpu_metal_70.f90
 gpu_metal_71.f90
-gpu_metal_72.f90
 gpu_metal_73.f90
 gpu_metal_74.f90
 gpu_metal_75.f90
@@ -1624,7 +1617,6 @@ gpu_metal_77.f90
 gpu_metal_78.f90
 gpu_metal_80.f90
 gpu_metal_81.f90
-gpu_metal_83.f90
 gpu_metal_84.f90
 gpu_metal_85.f90
 gpu_metal_86.f90
