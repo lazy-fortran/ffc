@@ -101,3 +101,153 @@
             end if
         end do
     end function arena_proc_param_count
+
+    ! A typed array constructor [T :: ...] whose type-spec T is an intrinsic
+    ! numeric, character, or logical type requires every element to convert to
+    ! T. Character, numeric, and logical form three disjoint classes with no
+    ! intrinsic conversion between them, so a literal element of a class other
+    ! than T's is invalid Fortran (gfortran: "Cannot convert ... to ..."). This
+    ! flags only that provably wrong case: an explicit numeric/character/logical
+    ! type-spec with a literal leaf element of a different class. Elements whose
+    ! class is not statically a literal (identifiers, expressions, calls) are
+    ! left unclassified so a valid constructor is never rejected. Nested
+    ! constructors flatten into the outer type-spec, so their literal leaves are
+    ! checked against the same class.
+    subroutine check_array_constructor_type_specs(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            call check_one_array_constructor(arena, n, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_array_constructor_type_specs
+
+    subroutine check_one_array_constructor(arena, node_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: spec_class
+
+        call set_empty(error_msg)
+        select type (nd => arena%entries(node_index)%node)
+            type is (array_literal_node)
+            if (.not. allocated(nd%type_spec)) return
+            if (len_trim(nd%type_spec) == 0) return
+            spec_class = array_ctor_typespec_class(nd%type_spec)
+            if (spec_class == CMP_CLASS_UNKNOWN) return
+            if (.not. allocated(nd%element_indices)) return
+            call check_array_ctor_elements(arena, nd%element_indices, &
+                spec_class, nd%type_spec, nd%line, nd%column, error_msg)
+        end select
+    end subroutine check_one_array_constructor
+
+    recursive subroutine check_array_ctor_elements(arena, elems, spec_class, &
+                                                   spec_text, line, col, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elems(:)
+        integer, intent(in) :: spec_class, line, col
+        character(len=*), intent(in) :: spec_text
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, ei, elem_class
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(elems)
+            ei = elems(i)
+            if (.not. node_exists(arena, ei)) cycle
+            select type (child => arena%entries(ei)%node)
+                type is (array_literal_node)
+                if (allocated(child%element_indices)) then
+                    call check_array_ctor_elements(arena, &
+                        child%element_indices, spec_class, spec_text, line, &
+                        col, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                cycle
+            end select
+            elem_class = array_ctor_literal_class(arena, ei)
+            if (elem_class == CMP_CLASS_UNKNOWN) cycle
+            if (elem_class /= spec_class) then
+                if (line > 0 .and. col > 0) then
+                    write (location, '(" at line ",I0,", column ",I0)') line, col
+                else
+                    location = ''
+                end if
+                error_msg = 'array constructor'//trim(location)// &
+                    ' cannot convert '//cmp_class_name(elem_class)// &
+                    ' element to '//trim(adjustl(spec_text))
+                return
+            end if
+        end do
+    end subroutine check_array_ctor_elements
+
+    integer function array_ctor_typespec_class(type_spec) result(cls)
+        character(len=*), intent(in) :: type_spec
+        character(len=:), allocatable :: spec_lc
+
+        spec_lc = trim(adjustl(lowercase_text(type_spec)))
+        if (starts_with_word(spec_lc, 'character')) then
+            cls = CMP_CLASS_CHAR
+        else if (starts_with_word(spec_lc, 'logical')) then
+            cls = CMP_CLASS_LOGICAL
+        else if (starts_with_word(spec_lc, 'integer') .or. &
+                 starts_with_word(spec_lc, 'real') .or. &
+                 starts_with_word(spec_lc, 'complex') .or. &
+                 starts_with_word(spec_lc, 'double')) then
+            cls = CMP_CLASS_NUMERIC
+        else
+            cls = CMP_CLASS_UNKNOWN
+        end if
+    end function array_ctor_typespec_class
+
+    logical function starts_with_word(text, word) result(matches)
+        character(len=*), intent(in) :: text, word
+        integer :: nw
+
+        nw = len(word)
+        matches = .false.
+        if (len(text) < nw) return
+        if (text(1:nw) /= word) return
+        if (len(text) == nw) then
+            matches = .true.
+        else
+            matches = scan(text(nw + 1:nw + 1), 'abcdefghijklmnopqrstuvwxyz_') == 0
+        end if
+    end function starts_with_word
+
+    integer function array_ctor_literal_class(arena, node_index) result(cls)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err
+
+        cls = CMP_CLASS_UNKNOWN
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        if (is_character_literal(arena, node_index)) then
+            cls = CMP_CLASS_CHAR
+        else if (is_logical_literal(arena, node_index)) then
+            cls = CMP_CLASS_LOGICAL
+        else
+            cls = CMP_CLASS_NUMERIC
+        end if
+    end function array_ctor_literal_class
+
+    function cmp_class_name(cls) result(name)
+        integer, intent(in) :: cls
+        character(len=:), allocatable :: name
+
+        select case (cls)
+        case (CMP_CLASS_NUMERIC)
+            name = 'numeric'
+        case (CMP_CLASS_CHAR)
+            name = 'character'
+        case (CMP_CLASS_LOGICAL)
+            name = 'logical'
+        case default
+            name = 'unknown'
+        end select
+    end function cmp_class_name

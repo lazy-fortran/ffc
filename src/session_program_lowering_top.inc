@@ -455,6 +455,8 @@
                                            'top-level programs', error_msg)
             return
         end if
+        call check_array_constructor_type_specs(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)
