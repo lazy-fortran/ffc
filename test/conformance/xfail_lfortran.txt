@@ -2320,7 +2320,6 @@ logical_kind_07.f90
 logical_not_01.f90
 logical_testing.f90
 logical_to_integer_cast.f90
-loop_var_use_after_loop.f90
 matmul_01.f90
 matmul_02.f90
 matmul_03.f90

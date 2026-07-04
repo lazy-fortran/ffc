@@ -16,6 +16,12 @@
         end if
 
         if (.not. allocated(node%expression_indices)) then
+            if (.not. emit_liric_print_newline(context%session, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+        if (size(node%expression_indices) == 0) then
+            if (.not. emit_liric_print_newline(context%session, error_msg)) return
             call set_empty(error_msg)
             return
         end if
