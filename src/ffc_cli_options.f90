@@ -16,6 +16,7 @@ module ffc_cli_options
         character(len=:), allocatable :: error_message
         logical :: show_version = .false.
         logical :: show_help = .false.
+        integer :: backend = 0
     end type cli_options_t
 
 contains
@@ -59,6 +60,26 @@ contains
                 end if
                 i = i + 1
                 call append_include_path(opts%include_paths, trim(argv(i)))
+            case ('--backend')
+                if (i + 1 > n) then
+                    call set_error(opts, 'Missing value for --backend')
+                    return
+                end if
+                i = i + 1
+                select case (trim(argv(i)))
+                case ('default')
+                    opts%backend = 0
+                case ('isel')
+                    opts%backend = 1
+                case ('copy-patch')
+                    opts%backend = 2
+                case ('llvm')
+                    opts%backend = 3
+                case default
+                    call set_error(opts, 'Unknown --backend value: '// &
+                        trim(argv(i))//' (expected default|isel|copy-patch|llvm)')
+                    return
+                end select
             case default
                 if (ends_with(trim(argv(i)), '.o')) then
                     call append_include_path(opts%link_inputs, trim(argv(i)))

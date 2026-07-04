@@ -57,7 +57,7 @@ module session_program_lowering
         emit_i32_call, emit_i64_call, emit_ptr_call, &
         emit_i32_indirect_call, &
         emit_void_indirect_call, &
-        liric_session_create, &
+        liric_session_create, lr_session_config_t, &
         i32_immediate, i32_vreg, lr_operand_desc_t, &
         lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
         lr_type_array_s, &

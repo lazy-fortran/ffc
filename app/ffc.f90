@@ -104,12 +104,12 @@ contains
             call lower_program_to_liric_object(frontend_result%arena, &
                 frontend_result%root_index, &
                 trim(output_file), error_msg, &
-                search_paths)
+                search_paths, backend=opts%backend)
         else
             call lower_program_to_liric_exe(frontend_result%arena, &
                 frontend_result%root_index, &
                 trim(output_file), error_msg, &
-                search_paths, opts%link_inputs)
+                search_paths, opts%link_inputs, backend=opts%backend)
         end if
         if (len_trim(error_msg) > 0) then
             diag_msg = trim(error_msg)
@@ -154,6 +154,8 @@ contains
         print '(A)', '  -I <dir>      Add module/include search directory'
         print '(A)', '  <file>.o      Link input object (its directory is '// &
             'searched for .fmod)'
+        print '(A)', '  --backend <b> Codegen backend: default|isel|'// &
+            'copy-patch|llvm'
         print '(A)', '  --version     Print version and exit'
         print '(A)', '  --help, -h    Print this help and exit'
     end subroutine print_usage
