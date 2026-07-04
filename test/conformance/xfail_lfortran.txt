@@ -36,7 +36,6 @@ allocate_08.f90
 allocate_10.f90
 allocate_11.f90
 allocate_12.f90
-allocate_13.f90
 allocate_14.f90
 allocate_15.f90
 allocate_16.f90
@@ -107,7 +106,6 @@ array_02_pack.f90
 array_02_transfer.f90
 array_03.f90
 array_03_pack.f90
-array_03_transfer.f90
 array_04_all.f90
 array_04_pack.f90
 array_04_transfer.f90
@@ -198,7 +196,6 @@ arrays_14.f90
 arrays_15.f90
 arrays_20.f90
 arrays_21.f90
-arrays_22.f90
 arrays_23.f90
 arrays_25.f90
 arrays_26.f90
@@ -803,7 +800,6 @@ concat_char_arrays_01.f90
 cond_02.f90
 cond_04.f90
 cond_05.f90
-const_array_01.f90
 contig_stmt_01.f90
 conv_complex2real.f90
 count_param_01.f90
@@ -908,7 +904,6 @@ derived_types_01.f90
 derived_types_02.f90
 derived_types_03.f90
 derived_types_05.f90
-derived_types_07.f90
 derived_types_09b.f90
 derived_types_09.f90
 derived_types_100.f90
@@ -1821,8 +1816,6 @@ intrinsics_04.f90
 intrinsics_04s.f90
 intrinsics_06.f90
 intrinsics_07.f90
-intrinsics_08.f90
-intrinsics_09.f90
 intrinsics_100.f90
 intrinsics_102.f90
 intrinsics_103.f90
@@ -2182,7 +2175,6 @@ intrinsics_441.f90
 intrinsics_442.f90
 intrinsics_443.f90
 intrinsics_444.f90
-intrinsics_445.f90
 intrinsics_446.f90
 intrinsics_447.f90
 intrinsics_448.f90
@@ -3523,7 +3515,6 @@ value_attribute_01.f90
 verify_intent_external_01.f90
 verify_intent_external_01_mod1.f90
 verify_intent_external_01_mod2.f90
-volatile_01.f90
 where_01.f90
 where_02.f90
 where_03.f90
