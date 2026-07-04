@@ -3,7 +3,6 @@
 # Lines starting with # and blank lines are ignored.
 # Promote entries by removing them when ffc starts passing.
 abs_04.f90
-abs_05.f90
 abs_06.f90
 allocatable_cchar_01.f90
 allocatable_component_assign_01.f90
@@ -187,7 +186,6 @@ arrays_118.f90
 arrays_119.f90
 arrays_11_size.f90
 arrays_120.f90
-arrays_122.f90
 arrays_123.f90
 arrays_124.f90
 arrays_125.f90
@@ -354,8 +352,6 @@ arrays_reshape_21.f90
 arrays_reshape_22.f90
 arrays_reshape_23.f90
 arrays_reshape_24.f90
-arrays_reshape_25.f90
-arrays_reshape_26.f90
 arrays_reshape_27.f90
 arrays_reshape_28.f90
 arrays_reshape_29.f90
@@ -503,12 +499,10 @@ binop_of_struct_instance_in_function_call.f90
 bin_op_real_01.f90
 bin_op_real_02.f90
 bin_op_real_dp.f90
-bits_01.f90
 bits_02.f90
 bits_03.f90
 bits_04.f90
 bits_05.f90
-bits_06.f90
 bits_07.f90
 block_01.f90
 block_02.f90
@@ -1570,7 +1564,6 @@ gpu_metal_174.f90
 gpu_metal_175.f90
 gpu_metal_176.f90
 gpu_metal_177.f90
-gpu_metal_178.f90
 gpu_metal_179.f90
 gpu_metal_180.f90
 gpu_metal_181.f90
@@ -2013,7 +2006,6 @@ intrinsics_266.f90
 intrinsics_267.f90
 intrinsics_268.f90
 intrinsics_269.f90
-intrinsics_26.f90
 intrinsics_270.f90
 intrinsics_271.f90
 intrinsics_272.f90
@@ -2833,7 +2825,6 @@ product_01.f90
 product_02.f90
 program_01.f90
 program_03.f90
-pure_side_effects_02.f90
 pure_side_effects_03.f90
 random_init_01.f90
 random_init_02.f90
@@ -3343,7 +3334,6 @@ submodule_32.f90
 submodule_33.f90
 submodule_34a.f90
 submodule_34b.f90
-submodule_36.f90
 submodule_37a.f90
 submodule_37c.f90
 submodule_37d.f90
