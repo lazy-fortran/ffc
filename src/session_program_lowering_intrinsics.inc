@@ -481,12 +481,21 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: arg, re_val, im_val
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: negative
         type(lr_operand_desc_t) :: zero
 
         if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+
+        if (is_complex_valued(arena, node%arg_indices(1), context, VALUE_C4)) then
+            call eval_c4_rhs(arena, node%arg_indices(1), context, re_val, &
+                             im_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_call(context%session, 'hypotf', &
+                    [re_val, im_val], value, error_msg)) return
+            return
+        end if
 
         call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
                                      error_msg)
@@ -787,12 +796,21 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: arg, re_val, im_val
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: negative
         type(lr_operand_desc_t) :: zero
 
         if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+
+        if (is_complex_valued(arena, node%arg_indices(1), context, VALUE_C8)) then
+            call eval_c8_rhs(arena, node%arg_indices(1), context, re_val, &
+                             im_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_call(context%session, 'hypot', &
+                    [re_val, im_val], value, error_msg)) return
+            return
+        end if
 
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
                                      error_msg)

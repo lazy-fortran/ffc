@@ -498,7 +498,9 @@
         integer(c_int64_t) :: resolved_value
 
         select case (trim(kind_spec))
-        case ('8', 'real64', 'c_double', 'c_double_complex')
+        case ('8', 'real64', 'c_double', 'c_double_complex', 'dp', 'wp')
+            ! dp/wp are the conventional double-precision kind parameters,
+            ! matching real_kind_is_f64; sp/default stay c4.
             complex_kind_is_c8 = .true.
             return
         end select

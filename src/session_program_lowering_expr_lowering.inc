@@ -578,10 +578,18 @@
                     ! Elemental real intrinsics (sqrt, sin, abs, ...) return the
                     ! kind of their argument, so a nested sqrt(sqrt(x)) is f32
                     ! exactly when its argument is. Recurse on the first argument.
+                    ! abs() of a complex(4) yields a real(4) magnitude.
                     if (allocated(node%arg_indices)) then
-                        if (size(node%arg_indices) >= 1) &
-                            is_f32 = is_f32_expression(arena, node%arg_indices(1), &
-                                                       context)
+                        if (size(node%arg_indices) >= 1) then
+                            if (same_name(node%name, 'abs') .and. &
+                                is_complex_valued(arena, node%arg_indices(1), &
+                                                  context, VALUE_C4)) then
+                                is_f32 = .true.
+                            else
+                                is_f32 = is_f32_expression(arena, &
+                                    node%arg_indices(1), context)
+                            end if
+                        end if
                     end if
                 else
                     is_f32 = is_contained_f32_function(context, node%name) .or. &

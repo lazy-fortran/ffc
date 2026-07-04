@@ -103,7 +103,11 @@ convention and resolves a literal kind suffix naming any other declared
 declared-parameter names, not just `dp`/`wp`. `real()`/`dble()`
 applied to a BOZ-literal-constant argument reinterpret its bit pattern as
 the result kind rather than converting the magnitude. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
-including a mixed real/complex operand, and fixed-size rank-1/rank-2 complex
+including a mixed real/complex operand, `cmplx()` (single-argument or with a
+keyword/positional kind selector), `dcmplx()`, `real()`/`aimag()` component
+extraction (`real(z, kind)` accepts a kind selector), `conjg()`/`dconjg()`, and
+`abs()` (real magnitude via libm `hypot`); `complex(dp)`/`complex(wp)` resolve
+the double-precision kind aliases. Fixed-size rank-1/rank-2 complex
 arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
 between array elements, and single-element `print`. An `if` condition accepts any
 scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a

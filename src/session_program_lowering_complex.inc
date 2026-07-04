@@ -67,8 +67,12 @@
         integer :: li, ri, ln, cl, sym
 
         is_c = .false.
-        if (complex_call_args(arena, node_index, 'cmplx', li, ri)) then
+        if (cmplx_call_args(arena, node_index, li, ri)) then
             is_c = .true.
+            return
+        end if
+        if (conjg_call_arg(arena, node_index, li)) then
+            is_c = is_complex_valued(arena, li, context, want_kind)
             return
         end if
         if (is_binary_op(arena, node_index)) then
@@ -152,13 +156,25 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: lre, lim, rre, rim
         character(len=:), allocatable :: op, name
-        integer :: li, ri, opc, ln, cl, sym
+        integer :: li, ri, opc, ln, cl, sym, ci
 
         call set_empty(error_msg)
-        if (complex_call_args(arena, rhs_index, 'cmplx', li, ri)) then
+        if (cmplx_call_args(arena, rhs_index, li, ri)) then
             call lower_f32_expression(arena, li, context, re_val, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f32_expression(arena, ri, context, im_val, error_msg)
+            if (ri > 0) then
+                call lower_f32_expression(arena, ri, context, im_val, error_msg)
+            else
+                im_val = liric_f32_immediate(context%session, 0.0_c_float)
+            end if
+            return
+        end if
+        if (conjg_call_arg(arena, rhs_index, ci)) then
+            call eval_c4_rhs(arena, ci, context, re_val, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lre = liric_f32_immediate(context%session, 0.0_c_float)
+            if (.not. emit_liric_f32_binary(context%session, 19, lre, lim, &
+                                            im_val, error_msg)) return
             return
         end if
         if (is_binary_op(arena, rhs_index)) then
@@ -221,13 +237,25 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: lre, lim, rre, rim
         character(len=:), allocatable :: op, name
-        integer :: li, ri, opc, ln, cl, sym
+        integer :: li, ri, opc, ln, cl, sym, ci
 
         call set_empty(error_msg)
-        if (complex_call_args(arena, rhs_index, 'cmplx', li, ri)) then
+        if (cmplx_call_args(arena, rhs_index, li, ri)) then
             call lower_f64_expression(arena, li, context, re_val, error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, ri, context, im_val, error_msg)
+            if (ri > 0) then
+                call lower_f64_expression(arena, ri, context, im_val, error_msg)
+            else
+                im_val = liric_f64_immediate(context%session, 0.0_c_double)
+            end if
+            return
+        end if
+        if (conjg_call_arg(arena, rhs_index, ci)) then
+            call eval_c8_rhs(arena, ci, context, re_val, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lre = liric_f64_immediate(context%session, 0.0_c_double)
+            if (.not. emit_liric_f64_binary(context%session, 19, lre, lim, &
+                                            im_val, error_msg)) return
             return
         end if
         if (is_binary_op(arena, rhs_index)) then
@@ -481,29 +509,103 @@
         end if
     end subroutine load_complex_identifier
 
-    ! True when node_index is a two-argument call to the named intrinsic
-    ! (cmplx(re, im)); returns the two argument node indices.
-    logical function complex_call_args(arena, node_index, name, arg1, arg2) &
+    ! Recognize a cmplx()/dcmplx() intrinsic call. re_arg is the real-part
+    ! argument index; im_arg is the imaginary-part argument index, or 0 when the
+    ! call gives a single value argument (imaginary part is zero). The kind
+    ! selector is accepted and ignored (the result kind follows the assignment
+    ! target): a keyword kind= argument, which fortfront keeps as a keyword
+    ! assignment node, or a third positional argument. Any other keyword argument
+    ! makes the recognizer decline.
+    logical function cmplx_call_args(arena, node_index, re_arg, im_arg) &
         result(is_call)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
-        character(len=*), intent(in) :: name
-        integer, intent(out) :: arg1, arg2
+        integer, intent(out) :: re_arg, im_arg
+        character(len=:), allocatable :: name, kw_name
+        integer :: i, npos
 
         is_call = .false.
-        arg1 = 0
-        arg2 = 0
+        re_arg = 0
+        im_arg = 0
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (lowercase_text(trim(node%name)) /= name) return
+            if (node%is_array_access) return
+            if (.not. allocated(node%name)) return
+            name = lowercase_text(trim(node%name))
+            if (name /= 'cmplx' .and. name /= 'dcmplx') return
             if (.not. allocated(node%arg_indices)) return
-            if (size(node%arg_indices) /= 2) return
-            arg1 = node%arg_indices(1)
-            arg2 = node%arg_indices(2)
+            npos = 0
+            do i = 1, size(node%arg_indices)
+                if (keyword_arg_name(arena, node%arg_indices(i), kw_name)) then
+                    if (kw_name /= 'kind') return
+                    cycle
+                end if
+                npos = npos + 1
+                if (npos == 1) then
+                    re_arg = node%arg_indices(i)
+                else if (npos == 2) then
+                    im_arg = node%arg_indices(i)
+                else if (npos > 3) then
+                    re_arg = 0
+                    im_arg = 0
+                    return
+                end if
+            end do
+            if (npos < 1) return
             is_call = .true.
         end select
-    end function complex_call_args
+    end function cmplx_call_args
+
+    ! True when arg_index is a keyword actual argument (name=value), which
+    ! fortfront keeps as a keyword assignment node; kw_name is the lowercased
+    ! keyword name.
+    logical function keyword_arg_name(arena, arg_index, kw_name) result(is_kw)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        character(len=:), allocatable, intent(out) :: kw_name
+        character(len=:), allocatable :: id_err
+
+        is_kw = .false.
+        call set_empty(kw_name)
+        if (.not. node_exists(arena, arg_index)) return
+        select type (node => arena%entries(arg_index)%node)
+        type is (assignment_node)
+            if (.not. node%is_keyword_argument) return
+            if (.not. is_identifier(arena, node%target_index)) return
+            call get_identifier_name(arena, node%target_index, kw_name, id_err)
+            if (len_trim(id_err) > 0) then
+                call set_empty(kw_name)
+                return
+            end if
+            kw_name = lowercase_text(trim(kw_name))
+            is_kw = .true.
+        end select
+    end function keyword_arg_name
+
+    ! Recognize a conjg()/dconjg() intrinsic call with a single argument; arg
+    ! is that argument's node index.
+    logical function conjg_call_arg(arena, node_index, arg) result(is_call)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(out) :: arg
+        character(len=:), allocatable :: name
+
+        is_call = .false.
+        arg = 0
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%is_array_access) return
+            if (.not. allocated(node%name)) return
+            name = lowercase_text(trim(node%name))
+            if (name /= 'conjg' .and. name /= 'dconjg') return
+            if (.not. allocated(node%arg_indices)) return
+            if (size(node%arg_indices) /= 1) return
+            arg = node%arg_indices(1)
+            is_call = .true.
+        end select
+    end function conjg_call_arg
 
     ! True when node is real(z)/aimag(z) on a complex symbol of want_kind
     ! (VALUE_C4 or VALUE_C8). Used to route the extraction through the matching
@@ -523,7 +625,10 @@
         name = lowercase_text(trim(node%name))
         if (name /= 'real' .and. name /= 'aimag') return
         if (.not. allocated(node%arg_indices)) return
-        if (size(node%arg_indices) /= 1) return
+        if (size(node%arg_indices) < 1) return
+        ! real(z, kind) carries a trailing kind selector; aimag takes only z.
+        if (name == 'aimag' .and. size(node%arg_indices) /= 1) return
+        if (name == 'real' .and. size(node%arg_indices) > 2) return
         if (.not. is_identifier(arena, node%arg_indices(1))) return
         call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
         if (len_trim(err) > 0) return

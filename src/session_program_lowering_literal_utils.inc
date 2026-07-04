@@ -22,6 +22,15 @@
         if (intrinsic_id == F64_INTRINSIC_NONE) return
         if (.not. allocated(node%arg_indices)) return
 
+        ! abs() of a complex(8) yields a real(8) magnitude.
+        if (same_name(node%name, 'abs') .and. size(node%arg_indices) >= 1) then
+            if (is_complex_valued(arena, node%arg_indices(1), context, &
+                                  VALUE_C8)) then
+                is_f64 = .true.
+                return
+            end if
+        end if
+
         do i = 1, size(node%arg_indices)
             if (is_f64_expression(arena, node%arg_indices(i), context)) then
                 is_f64 = .true.
