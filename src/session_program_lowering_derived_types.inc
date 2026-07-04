@@ -714,6 +714,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer :: value_kind
         integer :: nested_type_index
         logical :: comp_allocatable
+        logical :: comp_alloc_array
         integer :: char_length
         if (.not. node_exists(context%arena, component_index)) then
             error_msg = 'derived type component index does not reference an AST node'
@@ -747,12 +748,30 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     comp_allocatable = .false.
                 end select
             end if
+            ! A rank-1 allocatable array component of intrinsic numeric/logical
+            ! type stores an inline 16-byte descriptor (data pointer + i64
+            ! extent). Higher ranks, character, pointer, and c_ptr element types
+            ! stay unsupported and fall through to the fixed-size array path,
+            ! which declines them.
+            comp_alloc_array = component%is_allocatable .and. &
+                               component%is_array .and. &
+                               .not. component%is_pointer .and. &
+                               component_alloc_array_rank_one(component)
+            if (comp_alloc_array) then
+                select case (value_kind)
+                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+                case default
+                    comp_alloc_array = .false.
+                end select
+            end if
             ! A component default initialiser must be a compile-time integer.
             has_default = .false.
             default_value = 0_c_int64_t
             array_size = 1
             char_length = 0
-            if (component%is_array) then
+            if (comp_alloc_array) then
+                array_size = 1
+            else if (component%is_array) then
                 call component_array_count(component, context, array_size, &
                                            error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -800,7 +819,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                has_default, default_value, &
                                                array_size, value_kind, error_msg, &
                                                is_allocatable=comp_allocatable, &
-                                               comp_char_length=char_length)
+                                               comp_char_length=char_length, &
+                                               is_alloc_array=comp_alloc_array)
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
@@ -809,7 +829,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                            has_default, default_value, array_size, &
                                            value_kind, error_msg, &
                                            is_allocatable=comp_allocatable, &
-                                           comp_char_length=char_length)
+                                           comp_char_length=char_length, &
+                                           is_alloc_array=comp_alloc_array)
             else
                 error_msg = 'derived type component declaration did not expose a name'
                 return
@@ -1007,6 +1028,15 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end if
     end function character_component_slots
 
+    logical function component_alloc_array_rank_one(component) result(is_rank_one)
+        ! True when an allocatable array component declares exactly one dimension.
+        type(declaration_node), intent(in) :: component
+
+        is_rank_one = .false.
+        if (.not. allocated(component%dimension_indices)) return
+        is_rank_one = size(component%dimension_indices) == 1
+    end function component_alloc_array_rank_one
+
     subroutine component_array_count(component, context, array_size, error_msg)
         ! Compile-time element count of an array component (literal or
         ! parameter bound). Only a default lower bound of 1 is assumed.
@@ -1031,7 +1061,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
     subroutine add_derived_component(context, type_index, name, line, column, &
                                      has_default, default_value, array_size, &
                                      value_kind, error_msg, comp_type_index, &
-                                     is_allocatable, comp_char_length)
+                                     is_allocatable, comp_char_length, &
+                                     is_alloc_array)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -1046,6 +1077,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer, intent(in), optional :: comp_type_index
         ! True for a scalar allocatable component (descriptor-in-struct pointer).
         logical, intent(in), optional :: is_allocatable
+        ! True for a rank-1 allocatable array component (inline descriptor).
+        logical, intent(in), optional :: is_alloc_array
         ! Declared length of a VALUE_CHARACTER component; 0 (or absent) for
         ! every other kind.
         integer, intent(in), optional :: comp_char_length
@@ -1078,6 +1111,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(is_allocatable)) &
             context%derived_types(type_index)%component_is_allocatable( &
                 component_index) = is_allocatable
+        context%derived_types(type_index)%component_is_alloc_array(component_index) = &
+            .false.
+        if (present(is_alloc_array)) &
+            context%derived_types(type_index)%component_is_alloc_array( &
+                component_index) = is_alloc_array
         context%derived_types(type_index)%component_char_length(component_index) = 0
         if (present(comp_char_length)) &
             context%derived_types(type_index)%component_char_length(component_index) = &
@@ -1103,6 +1141,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_value_kind(8))
             allocate(context%derived_types(type_index)%component_type_index(8))
             allocate(context%derived_types(type_index)%component_is_allocatable(8))
+            allocate(context%derived_types(type_index)%component_is_alloc_array(8))
             allocate(context%derived_types(type_index)%component_char_length(8))
             context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
@@ -1110,6 +1149,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             context%derived_types(type_index)%component_value_kind = VALUE_I32
             context%derived_types(type_index)%component_type_index = 0
             context%derived_types(type_index)%component_is_allocatable = .false.
+            context%derived_types(type_index)%component_is_alloc_array = .false.
             context%derived_types(type_index)%component_char_length = 0
             context%derived_types(type_index)%component_count = 0
             return
@@ -1128,6 +1168,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer, allocatable :: old_vk(:)
             integer, allocatable :: old_ti(:)
             logical, allocatable :: old_ia(:)
+            logical, allocatable :: old_iaa(:)
             integer, allocatable :: old_cl(:)
             associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
@@ -1136,6 +1177,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 old_vk = dt%component_value_kind
                 old_ti = dt%component_type_index
                 old_ia = dt%component_is_allocatable
+                old_iaa = dt%component_is_alloc_array
                 old_cl = dt%component_char_length
                 deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
@@ -1143,6 +1185,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(dt%component_value_kind)
                 deallocate(dt%component_type_index)
                 deallocate(dt%component_is_allocatable)
+                deallocate(dt%component_is_alloc_array)
                 deallocate(dt%component_char_length)
                 allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
@@ -1150,6 +1193,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 allocate(dt%component_value_kind(new_size))
                 allocate(dt%component_type_index(new_size))
                 allocate(dt%component_is_allocatable(new_size))
+                allocate(dt%component_is_alloc_array(new_size))
                 allocate(dt%component_char_length(new_size))
                 dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
@@ -1157,6 +1201,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_value_kind = VALUE_I32
                 dt%component_type_index = 0
                 dt%component_is_allocatable = .false.
+                dt%component_is_alloc_array = .false.
                 dt%component_char_length = 0
                 dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
@@ -1164,6 +1209,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_value_kind(1:old_size) = old_vk
                 dt%component_type_index(1:old_size) = old_ti
                 dt%component_is_allocatable(1:old_size) = old_ia
+                dt%component_is_alloc_array(1:old_size) = old_iaa
                 dt%component_char_length(1:old_size) = old_cl
             end associate
         end block

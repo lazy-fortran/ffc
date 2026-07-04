@@ -98,6 +98,10 @@
         end if
 
         if (node%mold_expr_index <= 0 .and. node%source_expr_index <= 0) then
+            call lower_allocate_array_component(arena, node%var_indices(1), &
+                                                context, handled, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (handled) return
             call lower_allocate_scalar_component(arena, node%var_indices(1), &
                                                  context, handled, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1570,7 +1574,8 @@
         if (.not. node_exists(arena, arg_index)) return
         select type (arg => arena%entries(arg_index)%node)
         type is (component_access_node)
-            if (.not. component_access_is_allocatable(arena, arg, context)) return
+            if (.not. component_access_is_allocatable(arena, arg, context) .and. &
+                .not. component_access_is_alloc_array(arena, arg, context)) return
             call lower_derived_component_address(arena, arg, context, &
                 slot_address, error_msg, 'allocated component argument')
             if (len_trim(error_msg) > 0) return
@@ -1599,15 +1604,26 @@
         if (.not. node_exists(arena, target_index)) return
         select type (target => arena%entries(target_index)%node)
         type is (component_access_node)
-            if (.not. component_access_is_allocatable(arena, target, context)) return
-            call lower_derived_component_address(arena, target, context, &
-                slot_address, error_msg, 'deallocate component target')
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
-                                    error_msg)) return
-            if (.not. emit_free(context%session, data_ptr, error_msg)) return
-            if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
-                                     slot_address, error_msg)) return
-            handled = .true.
+            block
+                logical :: is_alloc_array
+                is_alloc_array = component_access_is_alloc_array(arena, target, &
+                                                                context)
+                if (.not. component_access_is_allocatable(arena, target, context) &
+                    .and. .not. is_alloc_array) return
+                call lower_derived_component_address(arena, target, context, &
+                    slot_address, error_msg, 'deallocate component target')
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                        error_msg)) return
+                if (.not. emit_free(context%session, data_ptr, error_msg)) return
+                if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                         slot_address, error_msg)) return
+                if (is_alloc_array) then
+                    if (.not. emit_i64_store_at(context%session, &
+                            i64_immediate(context%session, 0_c_int64_t), &
+                            slot_address, 8_c_int64_t, error_msg)) return
+                end if
+                handled = .true.
+            end block
         end select
     end subroutine lower_deallocate_scalar_component

@@ -294,6 +294,11 @@ module session_program_lowering_types
             ! its value lives in a separately malloc'd slot reached by loading the
             ! pointer. Null pointer marks it unallocated.
             logical, allocatable :: component_is_allocatable(:)
+            ! True for a rank-1 allocatable array component (integer/real/logical).
+            ! Such a component stores an inline 16-byte descriptor (four i32
+            ! slots): an 8-byte data pointer at byte 0 and an i64 element extent
+            ! at byte 8. A null data pointer marks it unallocated.
+            logical, allocatable :: component_is_alloc_array(:)
             ! Declared character length of a VALUE_CHARACTER component (0 for
             ! every other kind); component_array_size holds the derived slot
             ! count, not the length itself.

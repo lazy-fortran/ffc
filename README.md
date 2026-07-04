@@ -149,7 +149,12 @@ components so an inner type's own defaults show up inline (`x%c%field`). A
 scalar allocatable component of intrinsic numeric or logical type
 (`integer, allocatable :: v`) holds an inline data pointer that starts null;
 `allocate(x%v)`, component read/write, `allocated(x%v)`, and `deallocate(x%v)`
-manage it. A
+manage it. A rank-1 allocatable array component of intrinsic numeric or logical
+type (`integer, allocatable :: v(:)`) holds an inline 16-byte descriptor (data
+pointer plus i64 element extent) that starts null; `allocate(x%v(n))` with a
+runtime extent, element read/write `x%v(i)`, `allocated(x%v)`, `size(x%v)`, and
+`deallocate(x%v)` manage it (whole-component assignment, whole-component reads,
+and passing the component as an actual argument stay unsupported). A
 nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a

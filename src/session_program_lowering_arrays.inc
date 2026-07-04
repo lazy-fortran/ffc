@@ -2605,6 +2605,12 @@
             error_msg = 'size requires one or two arguments'
             return
         end if
+        block
+            logical :: handled
+            call lower_alloc_array_component_size(arena, node%arg_indices(1), &
+                                                  context, value, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+        end block
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
         source_index = find_symbol(context, array_name)
