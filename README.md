@@ -215,7 +215,10 @@ fixed-length dummy (`character(len=N), intent(in)`) keeps its own declared
 width rather than the caller's runtime length. A character `parameter` named
 constant may declare a fixed length, padded or truncated from its folded
 initializer, and that initializer may concatenate an earlier character named
-constant. The real transcendental intrinsics lower to libm: `sqrt`, `exp`,
+constant. A local variable declared `character(len=len(other))`, where
+`other` is an already-declared character variable, takes its length from
+`other`'s runtime length at that point. The real transcendental intrinsics
+lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
 `log_gamma`, and `hypot`. `open`/`close`/`rewind` map to `fopen`/`fclose`/

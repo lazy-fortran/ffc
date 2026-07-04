@@ -5,6 +5,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: character_length
         integer :: existing_index
+        integer :: source_index
 
         existing_index = find_symbol(context, name)
         if (existing_index > 0) then
@@ -54,9 +55,84 @@
         end if
         call declaration_character_length(context, node, character_length, &
                                           error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (len_trim(error_msg) > 0) then
+            call resolve_len_of_character_length(context, node, source_index)
+            if (source_index > 0) then
+                call define_runtime_length_character_local(context, name, &
+                    source_index, error_msg)
+            end if
+            return
+        end if
         call define_character_symbol(context, name, character_length, error_msg)
     end subroutine define_declared_character_symbol
+
+    subroutine define_runtime_length_character_local(context, name, &
+                                                      source_index, error_msg)
+        ! character(len=len(other)) :: name, where other is a declared
+        ! character variable whose own length is only known at runtime (an
+        ! assumed-length dummy, for instance). The local reuses the deferred
+        ! {data, length} descriptor ABI, seeding its length from other's
+        ! current runtime length; content stays unset until an assignment
+        ! fills it in, matching an ordinary automatic-length local that is
+        ! declared before use.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: source_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: source_data, source_len_i32, source_len_i64
+
+        call define_deferred_character_symbol(context, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) then
+            error_msg = &
+                'internal error defining runtime-length character local: '// &
+                trim(name)
+            return
+        end if
+
+        call char_length_operands(context, source_index, source_data, &
+                                  source_len_i32, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, source_len_i32, &
+                source_len_i64, error_msg)) return
+        if (.not. emit_i64_store(context%session, source_len_i64, &
+                context%symbols(symbol_index)%deferred_length, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine define_runtime_length_character_local
+
+    subroutine resolve_len_of_character_length(context, node, source_index)
+        ! Recognize a character length expression of the exact shape
+        ! len(<name>), where <name> is a declared character variable.
+        ! source_index is left at 0 when the expression does not match.
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: source_index
+        character(len=:), allocatable :: expr
+        character(len=:), allocatable :: lowered
+        character(len=:), allocatable :: inner
+
+        source_index = 0
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        expr = trim(adjustl(node%character_length_expr))
+        if (len(expr) < 6) return
+        lowered = lowercase_text(expr)
+        if (lowered(1:4) /= 'len(') return
+        if (lowered(len(lowered):len(lowered)) /= ')') return
+        inner = trim(adjustl(expr(5:len(expr) - 1)))
+        if (len(inner) == 0) return
+        if (verify(inner, &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+
+        source_index = find_symbol(context, inner)
+        if (source_index <= 0) return
+        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) &
+            source_index = 0
+    end subroutine resolve_len_of_character_length
 
     subroutine declaration_character_length(context, node, character_length, &
                                             error_msg)
