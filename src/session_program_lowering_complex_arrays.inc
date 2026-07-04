@@ -147,3 +147,232 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_complex_array_element_assignment
+
+    ! Element addresses in the re/im component arrays for a compile-time linear
+    ! index (re array base = element_address, im array base = address).
+    subroutine complex_array_linear_addresses(context, symbol_index, &
+                                               linear_index, vk, re_addr, &
+                                               im_addr, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: linear_index
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: re_addr, im_addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: idx
+
+        call set_empty(error_msg)
+        idx = i32_immediate(context%session, int(linear_index, c_int64_t))
+        if (vk == VALUE_C4) then
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, idx, &
+                    re_addr, error_msg)) return
+            if (.not. emit_f32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%address, idx, &
+                    im_addr, error_msg)) return
+        else
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, idx, &
+                    re_addr, error_msg)) return
+            if (.not. emit_f64_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%address, idx, &
+                    im_addr, error_msg)) return
+        end if
+    end subroutine complex_array_linear_addresses
+
+    ! True when node is a bare identifier naming a fixed-size complex array;
+    ! returns its symbol index for elementwise loads.
+    logical function operand_is_whole_complex_array(arena, node_index, context, &
+                                                     sym) result(is_arr)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: sym
+        character(len=:), allocatable :: nm, err
+
+        is_arr = .false.
+        sym = 0
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, nm, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol(context, nm)
+        if (sym <= 0) return
+        if (.not. context%symbols(sym)%is_array) then
+            sym = 0
+            return
+        end if
+        if (context%symbols(sym)%value_kind == VALUE_C4 .or. &
+            context%symbols(sym)%value_kind == VALUE_C8) is_arr = .true.
+        if (.not. is_arr) sym = 0
+    end function operand_is_whole_complex_array
+
+    ! A scalar/self-indexed complex leaf broadcasts per element; decline forms
+    ! that fold a whole complex array we cannot index elementwise here (e.g.
+    ! conjg(a) over a whole array).
+    logical function leaf_folds_whole_complex_array(arena, node_index, context) &
+            result(folds)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable :: arg_indices(:)
+        character(len=:), allocatable :: err
+        integer :: k, sym
+
+        folds = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (n%is_array_access) return
+        class default
+            return
+        end select
+        call call_or_subscript_arg_indices(arena, node_index, arg_indices, err)
+        if (len_trim(err) > 0) return
+        do k = 1, size(arg_indices)
+            if (operand_is_whole_complex_array(arena, arg_indices(k), context, &
+                                               sym)) then
+                folds = .true.
+                return
+            end if
+        end do
+    end function leaf_folds_whole_complex_array
+
+    ! Evaluate the RHS complex value of a whole-array assignment at one linear
+    ! element index. Binary +/-/*// recurse; a whole complex-array operand loads
+    ! its element; scalar/self-indexed leaves broadcast via eval_cN_rhs.
+    recursive subroutine eval_complex_array_element(arena, node_index, &
+                                                    target_sym, linear_index, &
+                                                    context, vk, re_val, im_val, &
+                                                    error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: target_sym
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lre, lim, rre, rim, re_addr, im_addr
+        character(len=:), allocatable :: op, kind_tag
+        integer :: li, ri, opc, ln, cl, sym
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'complex whole-array expression references no AST node'
+            return
+        end if
+
+        kind_tag = 'complex(4)'
+        if (vk == VALUE_C8) kind_tag = 'complex(8)'
+
+        if (is_binary_op(arena, node_index)) then
+            call complex_binary_op(arena, node_index, op, li, ri, opc, ln, cl, &
+                                   kind_tag, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_complex_array_element(arena, li, target_sym, linear_index, &
+                                            context, vk, lre, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_complex_array_element(arena, ri, target_sym, linear_index, &
+                                            context, vk, rre, rim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk == VALUE_C4) then
+                call complex_combine_c4(context, op, opc, lre, lim, rre, rim, &
+                                        re_val, im_val, error_msg)
+            else
+                call complex_combine_c8(context, op, opc, lre, lim, rre, rim, &
+                                        re_val, im_val, error_msg)
+            end if
+            return
+        end if
+
+        if (operand_is_whole_complex_array(arena, node_index, context, sym)) then
+            if (context%symbols(sym)%value_kind /= vk) then
+                call unsupported_feature_error('complex whole-array assignment', &
+                    get_node_line(arena, node_index), &
+                    get_node_column(arena, node_index), &
+                    'operand kind does not match the assignment target', &
+                    error_msg)
+                return
+            end if
+            call ensure_array_shapes_match(context, target_sym, sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call complex_array_linear_addresses(context, sym, linear_index, vk, &
+                                                re_addr, im_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk == VALUE_C4) then
+                if (.not. emit_liric_f32_load(context%session, re_addr, re_val, &
+                                              error_msg)) return
+                if (.not. emit_liric_f32_load(context%session, im_addr, im_val, &
+                                              error_msg)) return
+            else
+                if (.not. emit_liric_f64_load(context%session, re_addr, re_val, &
+                                              error_msg)) return
+                if (.not. emit_liric_f64_load(context%session, im_addr, im_val, &
+                                              error_msg)) return
+            end if
+            return
+        end if
+
+        if (leaf_folds_whole_complex_array(arena, node_index, context)) then
+            call unsupported_feature_error('complex whole-array assignment', &
+                get_node_line(arena, node_index), &
+                get_node_column(arena, node_index), &
+                'direct LIRIC session supports elementwise +, -, *, / over '// &
+                'complex arrays with scalar or complex-array operands only', &
+                error_msg)
+            return
+        end if
+
+        if (vk == VALUE_C4) then
+            call eval_c4_rhs(arena, node_index, context, re_val, im_val, error_msg)
+        else
+            call eval_c8_rhs(arena, node_index, context, re_val, im_val, error_msg)
+        end if
+    end subroutine eval_complex_array_element
+
+    ! Whole-array assignment to a fixed-size complex array: evaluate the RHS
+    ! elementwise and store each re/im pair into the component arrays.
+    subroutine lower_complex_array_whole_assignment(arena, node, symbol_index, &
+                                                     context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_val, im_val, re_addr, im_addr
+        integer :: i, array_size, vk
+
+        call set_empty(error_msg)
+        vk = context%symbols(symbol_index)%value_kind
+        array_size = context%symbols(symbol_index)%array_size
+        if (array_size <= 0) then
+            error_msg = 'complex whole-array assignment requires a positive '// &
+                        'array size'
+            return
+        end if
+        do i = 1, array_size
+            call eval_complex_array_element(arena, node%value_index, &
+                                            symbol_index, i - 1, context, vk, &
+                                            re_val, im_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call complex_array_linear_addresses(context, symbol_index, i - 1, &
+                                                vk, re_addr, im_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk == VALUE_C4) then
+                if (.not. emit_liric_f32_store(context%session, re_val, re_addr, &
+                                               error_msg)) return
+                if (.not. emit_liric_f32_store(context%session, im_val, im_addr, &
+                                               error_msg)) return
+            else
+                if (.not. emit_liric_f64_store(context%session, re_val, re_addr, &
+                                               error_msg)) return
+                if (.not. emit_liric_f64_store(context%session, im_val, im_addr, &
+                                               error_msg)) return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_complex_array_whole_assignment

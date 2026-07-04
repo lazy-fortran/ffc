@@ -2289,6 +2289,15 @@
             end select
         end if
 
+        ! Complex arrays keep re/im in two component arrays; route every
+        ! elementwise whole-array assignment through the complex evaluator.
+        if (context%symbols(symbol_index)%value_kind == VALUE_C4 .or. &
+            context%symbols(symbol_index)%value_kind == VALUE_C8) then
+            call lower_complex_array_whole_assignment(arena, node, symbol_index, &
+                                                      context, error_msg)
+            return
+        end if
+
         ! Scalar broadcast: a = expr where expr is a scalar. Lower the scalar
         ! once and store it into every element.
         if (is_scalar_broadcast_rhs(arena, node%value_index, context)) then

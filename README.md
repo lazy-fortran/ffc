@@ -111,7 +111,10 @@ extraction (`real(z, kind)` accepts a kind selector), `conjg()`/`dconjg()`, and
 `abs()` (real magnitude via libm `hypot`); `complex(dp)`/`complex(wp)` resolve
 the double-precision kind aliases. Fixed-size rank-1/rank-2 complex
 arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
-between array elements, and single-element `print`. An `if` condition accepts any
+between array elements, single-element `print`, and whole-array assignment
+with elementwise `+`/`-`/`*`/`/`, whole-array copy, or scalar broadcast
+(`c = a + b`, `c = a`, `c = (1.0, 2.0)`) between conforming complex arrays.
+An `if` condition accepts any
 scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a
 logical array element, a derived-type logical component, `allocated(a)`, and
 a contained logical function's result, including the one-line
