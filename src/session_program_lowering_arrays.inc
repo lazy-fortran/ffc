@@ -1726,6 +1726,16 @@
                     call lower_array_constructor_assignment(context%arena, init, &
                                                             index, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                type is (call_or_subscript_node)
+                    if (allocated(init%name) .and. same_name(init%name, 'reshape')) then
+                        call lower_reshape_call(context%arena, init, index, &
+                                                context, error_msg)
+                    else
+                        call broadcast_scalar_initializer(context, index, &
+                                                          node%initializer_index, &
+                                                          array_size, error_msg)
+                    end if
+                    if (len_trim(error_msg) > 0) return
                 class default
                     call broadcast_scalar_initializer(context, index, &
                                                       node%initializer_index, &
@@ -3982,29 +3992,39 @@
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
-            if (.not. allocated(rhs%name) .or. .not. same_name(rhs%name, 'reshape')) then
-                error_msg = 'reshape requires a reshape intrinsic'
-                return
-            end if
-            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 2) then
-                error_msg = 'reshape requires a source array and a shape array'
-                return
-            end if
-            if (context%symbols(symbol_index)%array_rank < 1 .or. &
-                context%symbols(symbol_index)%array_rank > 2) then
-                error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
-                return
-            end if
-            call check_reshape_shape(arena, rhs%arg_indices(2), symbol_index, &
-                                     context, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_reshape_source(arena, rhs%arg_indices(1), symbol_index, &
-                                      context, error_msg)
+            call lower_reshape_call(arena, rhs, symbol_index, context, error_msg)
         class default
             error_msg = 'reshape requires an intrinsic call'
             return
         end select
     end subroutine lower_reshape_assignment
+
+    subroutine lower_reshape_call(arena, rhs, symbol_index, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. allocated(rhs%name) .or. .not. same_name(rhs%name, 'reshape')) then
+            error_msg = 'reshape requires a reshape intrinsic'
+            return
+        end if
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 2) then
+            error_msg = 'reshape requires a source array and a shape array'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_rank < 1 .or. &
+            context%symbols(symbol_index)%array_rank > 2) then
+            error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
+            return
+        end if
+        call check_reshape_shape(arena, rhs%arg_indices(2), symbol_index, &
+                                 context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_reshape_source(arena, rhs%arg_indices(1), symbol_index, &
+                                  context, error_msg)
+    end subroutine lower_reshape_call
 
     subroutine check_reshape_shape(arena, shape_index, symbol_index, context, &
                                    error_msg)
@@ -4032,8 +4052,8 @@
                 return
             end if
             do i = 1, shape_rank
-                call parse_i32_constant(arena, shape_node%element_indices(i), &
-                                        shape_value, 'reshape shape', error_msg)
+                call eval_i32_constant(arena, shape_node%element_indices(i), &
+                                       context, shape_value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (shape_value /= &
                     int(context%symbols(symbol_index)%array_dim_sizes(i), c_int64_t)) then
@@ -4059,6 +4079,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: converted
         integer :: source_sym
         integer(c_int64_t) :: target_size
         integer(c_int64_t) :: linear_index
@@ -4090,12 +4111,46 @@
             call load_array_linear_element(context, source_sym, linear_index, &
                                            value, error_msg)
             if (len_trim(error_msg) > 0) return
+            call convert_reshape_element(context, value, &
+                                         context%symbols(source_sym)%value_kind, &
+                                         context%symbols(symbol_index)%value_kind, &
+                                         converted, error_msg)
+            if (len_trim(error_msg) > 0) return
             call store_array_linear_element(context, symbol_index, linear_index, &
-                                            value, error_msg)
+                                            converted, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)
     end subroutine lower_reshape_source
+
+    subroutine convert_reshape_element(context, value, src_kind, dst_kind, &
+                                       converted, error_msg)
+        !! reshape preserves values, not bit patterns: an integer source into a
+        !! real target must be converted per element before storing.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: value
+        integer, intent(in) :: src_kind
+        integer, intent(in) :: dst_kind
+        type(lr_operand_desc_t), intent(out) :: converted
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        converted = value
+        call set_empty(error_msg)
+        if (src_kind == dst_kind) return
+        if (src_kind == VALUE_I32 .and. dst_kind == VALUE_F32) then
+            if (.not. emit_liric_i32_to_f32(context%session, value, converted, &
+                                            error_msg)) return
+        else if (src_kind == VALUE_I32 .and. dst_kind == VALUE_F64) then
+            if (.not. emit_liric_i32_to_f64(context%session, value, converted, &
+                                            error_msg)) return
+        else if (src_kind == VALUE_F32 .and. dst_kind == VALUE_F64) then
+            if (.not. emit_liric_f32_to_f64(context%session, value, converted, &
+                                            error_msg)) return
+        else
+            error_msg = 'reshape does not support this source-to-target kind '// &
+                        'conversion'
+        end if
+    end subroutine convert_reshape_element
 
     subroutine lower_reshape_literal_source(arena, source_index, symbol_index, &
                                             context, error_msg)
