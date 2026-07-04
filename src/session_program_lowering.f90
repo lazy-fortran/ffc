@@ -1469,6 +1469,7 @@ contains
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_intrinsics_extra.inc'
+    include 'session_program_lowering_transfer.inc'
     include 'session_program_lowering_c_ptr.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_fmod.inc'

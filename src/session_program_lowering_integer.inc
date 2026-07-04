@@ -350,6 +350,16 @@
           call lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
           return
       end if
+      if (same_name(call_name, 'transfer') .and. .not. &
+          is_contained_i32_function(context, call_name)) then
+          block
+              logical :: handled
+              call lower_transfer_intrinsic(arena, node, context, VALUE_I32, &
+                                            value, handled, error_msg)
+              if (handled) return
+              if (len_trim(error_msg) > 0) return
+          end block
+      end if
       intrinsic_id = i32_intrinsic_id(call_name)
       if (.not. is_contained_i32_function(context, call_name)) then
           if (intrinsic_id /= I32_INTRINSIC_NONE) then

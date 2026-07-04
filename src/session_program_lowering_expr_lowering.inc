@@ -469,6 +469,17 @@
         call_name = degeneric_call_name(context, node%name, &
             first_call_arg_kind(arena, node, context, VALUE_F32))
 
+        if (same_name(call_name, 'transfer') .and. .not. &
+            is_contained_f32_function(context, call_name)) then
+            block
+                logical :: handled
+                call lower_transfer_intrinsic(arena, node, context, VALUE_F32, &
+                                              value, handled, error_msg)
+                if (handled) return
+                if (len_trim(error_msg) > 0) return
+            end block
+        end if
+
         intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f32_intrinsic_call(arena, node, intrinsic_id, context, &
@@ -579,6 +590,14 @@
                 return
             end if
             if (allocated(node%name)) then
+                if (same_name(node%name, 'transfer') .and. &
+                    allocated(node%arg_indices)) then
+                    if (size(node%arg_indices) == 2) then
+                        is_f32 = transfer_operand_kind(arena, &
+                            node%arg_indices(2), context) == VALUE_F32
+                    end if
+                    return
+                end if
                 if (node%is_array_access .or. &
                     is_declared_array_element_ref(node, context)) then
                     symbol_index = find_symbol(context, node%name)
@@ -761,6 +780,17 @@
         ! Resolve generic -> specific (#249 B7c).
         call_name = degeneric_call_name(context, node%name, &
             first_call_arg_kind(arena, node, context, VALUE_F64))
+
+        if (same_name(call_name, 'transfer') .and. .not. &
+            is_contained_f64_function(context, call_name)) then
+            block
+                logical :: handled
+                call lower_transfer_intrinsic(arena, node, context, VALUE_F64, &
+                                              value, handled, error_msg)
+                if (handled) return
+                if (len_trim(error_msg) > 0) return
+            end block
+        end if
 
         intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
@@ -985,6 +1015,14 @@
                 return
             end if
             if (allocated(node%name)) then
+                if (same_name(node%name, 'transfer') .and. &
+                    allocated(node%arg_indices)) then
+                    if (size(node%arg_indices) == 2) then
+                        is_f64 = transfer_operand_kind(arena, &
+                            node%arg_indices(2), context) == VALUE_F64
+                    end if
+                    return
+                end if
                 if (node%is_array_access .or. &
                     is_declared_array_element_ref(node, context)) then
                     symbol_index = find_symbol(context, node%name)
@@ -1173,6 +1211,16 @@
                 if (contained_function_kind(context, node%name) == VALUE_I64) then
                     call lower_i64_call(arena, node, context, value, error_msg)
                     return
+                end if
+                if (same_name(node%name, 'transfer') .and. &
+                    contained_function_kind(context, node%name) == 0) then
+                    block
+                        logical :: handled
+                        call lower_transfer_intrinsic(arena, node, context, &
+                            VALUE_I64, value, handled, error_msg)
+                        if (handled) return
+                        if (len_trim(error_msg) > 0) return
+                    end block
                 end if
             end if
         end select
