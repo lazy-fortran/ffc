@@ -542,17 +542,20 @@
 
         array_size = 1
         call set_empty(error_msg)
-        if (.not. allocated(decl%dimension_indices)) then
-            error_msg = 'array has no dimensions'
-            return
-        end if
-        if (size(decl%dimension_indices) /= 1) then
-            error_msg = 'multidimensional arrays not supported in COMMON'
-            return
-        end if
+        if (.not. allocated(decl%dimension_indices)) return
+        ! A multidimensional or runtime-extent COMMON array member is laid out
+        ! as a single scalar slot - ffc does not model its multi-element storage
+        ! - matching the behaviour from when fortfront dropped the array-spec.
+        ! Decline to a scalar rather than failing the whole unit (#2870 made
+        ! these shapes visible again).
+        if (size(decl%dimension_indices) /= 1) return
         dim_idx = decl%dimension_indices(1)
         call extract_dimension_size(arena, dim_idx, dim_size, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (len_trim(error_msg) > 0) then
+            array_size = 1
+            call set_empty(error_msg)
+            return
+        end if
         array_size = dim_size
     end subroutine extract_array_size
 
