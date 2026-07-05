@@ -96,7 +96,6 @@ allocate_source_ptr_01.f90
 any_01.f90
 any_02.f90
 any_03.f90
-array_01.f90
 array_01_pack.f90
 array_01_transfer.f90
 array_02_pack.f90
@@ -1261,7 +1260,6 @@ file_close_01.f90
 file_close_02.f90
 file_open_01.f90
 file_open_05.f90
-file_open_06.f90
 file_open_07.f90
 file_open_08.f90
 file_open_09.f90
@@ -1333,7 +1331,6 @@ format_36.f90
 format_37.f90
 format_38.f90
 format_39.f90
-format_40.f90
 format_41.f90
 format_42.f90
 format_43.f90
@@ -1466,7 +1463,6 @@ generic_name_07.f90
 generic_name_08.f90
 global_allocatable_01.f90
 global_allocatable_02.f90
-global_array_01.f90
 global_array_pointer_01.f90
 global_array_pointer_02.f90
 goto_03.f90
@@ -2197,7 +2193,6 @@ intrinsics_77.f90
 intrinsics_78.f90
 intrinsics_79.f90
 intrinsics_81.f90
-intrinsics_82.f90
 intrinsics_83.f90
 intrinsics_84.f90
 intrinsics_85.f90
@@ -2311,7 +2306,6 @@ modules_08_b.f90
 modules_08.f90
 modules_09_a.f90
 modules_09.f90
-modules_12.f90
 modules_15b.f90
 modules_15.f90
 modules_18b.f90
@@ -3469,7 +3463,6 @@ use_03.f90
 use_04.f90
 value_attribute_01.f90
 verify_intent_external_01.f90
-verify_intent_external_01_mod1.f90
 verify_intent_external_01_mod2.f90
 where_01.f90
 where_02.f90

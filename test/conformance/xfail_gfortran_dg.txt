@@ -752,7 +752,6 @@ eoshift_5.f90
 eoshift_6.f90
 equiv_6.f90
 equiv_9.f90
-erf.f90
 erfc_scaled_2.f90
 error_format_2.f90
 error_recovery_5.f90
@@ -893,7 +892,6 @@ host_assoc_call_4.f90
 host_assoc_call_5.f90
 host_assoc_function_1.f90
 host_assoc_function_2.f90
-host_assoc_function_4.f90
 host_assoc_function_5.f90
 host_assoc_function_6.f90
 host_assoc_function_7.f90
@@ -1170,7 +1168,6 @@ module_equivalence_5.f90
 module_error_1.f90
 module_interface_1.f90
 module_interface_2.f90
-module_parameter_array_refs_1.f90
 module_private_array_refs_1.f90
 module_proc_external_dummy.f90
 module_procedure_1.f90
@@ -1571,7 +1568,6 @@ pr77632_1.f90
 pr77942.f90
 pr78092.f90
 pr78290.f90
-pr78297.f90
 pr78719_1.f90
 pr81509_1.f90
 pr81849.f90
@@ -2075,7 +2071,6 @@ use_allocated_1.f90
 use_only_2.f90
 use_only_3.f90
 use_only_5.f90
-use_rename_1.f90
 use_rename_12.f90
 use_rename_13.f90
 use_rename_7.f90
