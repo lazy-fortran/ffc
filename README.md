@@ -47,7 +47,10 @@ arrays assigned to a logical array, e.g. `mask = a > b`, and whole-array
 `a = .not. (b > c)`), and the array intrinsics
 `size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
 `matmul`, `transpose`, `reshape` (also as a declaration initializer, with
-integer-source-to-real conversion), `lbound`, `ubound`, `count`, `any`, `all`,
+integer-source-to-real conversion), `lbound`, `ubound`, `count`, `any`, `all`
+(including a whole-array relational comparison of two conforming integer, real,
+or allocatable arrays, an array against a scalar, or an array against an array
+constructor, e.g. `if (any(a /= b))`, `all(a == [1, 2, 3])`),
 and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar
 element read and write on an allocated 1-D or 2-D integer, real, or
 logical allocatable (`a(i)`, `a(i,j)`); whole-array assignment from an array

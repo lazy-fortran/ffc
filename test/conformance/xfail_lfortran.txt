@@ -57,7 +57,6 @@ allocate_33.f90
 allocate_34.f90
 allocate_35.f90
 allocate_36.f90
-allocate_37.f90
 allocate_38.f90
 allocate_39.f90
 allocate_40.f90
@@ -84,7 +83,6 @@ allocate_61.f90
 allocate_61_mod2.f90
 allocate_62.f90
 allocate_63.f90
-allocate_64.f90
 allocate_66.f90
 allocate_67.f90
 allocate_69.f90
@@ -253,7 +251,6 @@ arrays_86.f90
 arrays_87.f90
 arrays_88.f90
 arrays_89.f90
-arrays_90.f90
 arrays_91.f90
 arrays_92.f90
 arrays_93.f90
@@ -864,7 +861,6 @@ data_07.f90
 data_08.f90
 data_11.f90
 data_12.f90
-data_13.f90
 data_14.f90
 data_16.f90
 data_17.f90
@@ -1066,7 +1062,6 @@ doloop_03.f90
 do_loop_04.f90
 doloop_04.f90
 do_loop_05.f90
-do_loop_06.f90
 do_loop_07.f90
 doloop_07.f90
 do_loop_08.f90
@@ -1293,10 +1288,8 @@ floor_01.f90
 floor_02.f90
 flush_02.f90
 flush_05.f90
-fma_02.f90
 fma_03.f90
 fma.f90
-forall_02.f90
 forall_04.f90
 format_01.f90
 format_02.f90
@@ -1751,7 +1744,6 @@ inquire_unit_exist.f90
 insertion_sort_01.f90
 int_02.f90
 int_03.f90
-integer_bin_op_dim_external_module.f90
 integer_boz_01.f90
 intent_02.f90
 intent_03.f90
@@ -2033,7 +2025,6 @@ intrinsics_320.f90
 intrinsics_321.f90
 intrinsics_322.f90
 intrinsics_323.f90
-intrinsics_324.f90
 intrinsics_325.f90
 intrinsics_326.f90
 intrinsics_327.f90
@@ -3289,7 +3280,6 @@ submodule_23c.f90
 submodule_24.f90
 submodule_25a.f90
 submodule_25c.f90
-submodule_26.f90
 submodule_27a.f90
 submodule_27c.f90
 submodule_29a.f90
@@ -3334,7 +3324,6 @@ subroutines_09.f90
 subroutines_10.f90
 subroutines_11.f90
 subroutines_13.f90
-subroutines_14.f90
 subroutines_15.f90
 subroutines_16.f90
 subroutines_17.f90
@@ -3511,7 +3500,6 @@ where_17.f90
 while_02.f90
 while_03.f90
 while_05.f90
-while_06.f90
 while_07.f90
 write_01.f90
 write_02.f90

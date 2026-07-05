@@ -346,6 +346,13 @@
             return
         end if
 
+        block
+            logical :: handled
+            call try_array_mask_reduction(arena, node, context, .false., &
+                                          handled, value, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+        end block
+
         call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
                                      scalar_index, array_on_left, source_op, &
                                      error_msg)
@@ -410,6 +417,13 @@
             error_msg = 'all requires one logical array argument'
             return
         end if
+
+        block
+            logical :: handled
+            call try_array_mask_reduction(arena, node, context, .true., &
+                                          handled, value, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+        end block
 
         call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
                                      scalar_index, array_on_left, source_op, &
