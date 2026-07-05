@@ -467,6 +467,12 @@
         if (len_trim(error_msg) > 0) return
         call check_assumed_size_dimension_order(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_intrinsic_external_conflict(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_function_result_save(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_duplicate_contained_procedures(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)

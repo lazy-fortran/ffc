@@ -17,7 +17,7 @@ module session_program_lowering
         visibility_statement_node, data_statement_node, &
         complex_literal_node, comment_node, &
         namelist_statement_node, statement_function_node, &
-        end_statement_node
+        end_statement_node, intrinsic_statement_node
     use ast_nodes_conditional, only: select_type_node, select_rank_node, &
         rank_block_node
     use ast_nodes_associate, only: associate_node, association_t

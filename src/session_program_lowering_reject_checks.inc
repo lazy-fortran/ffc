@@ -367,3 +367,206 @@
             return
         end do
     end subroutine check_dims_assumed_size_order
+
+    ! A name shall not appear in both an EXTERNAL and an INTRINSIC statement
+    ! in the same scoping unit (F2018 8.10 note 12, gfortran: "EXTERNAL
+    ! attribute conflicts with INTRINSIC attribute"). Both a bare INTRINSIC
+    ! statement and a bare EXTERNAL statement lower as no-ops (#291), so
+    ! nothing else notices the same name spelled both ways; this scans every
+    ! INTRINSIC name against every bare-EXTERNAL declaration in the program.
+    subroutine check_intrinsic_external_conflict(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, i
+        character(len=:), allocatable :: intr_name, ext_name
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (intrinsic_statement_node)
+                if (.not. allocated(nd%procedure_names)) cycle
+                do i = 1, size(nd%procedure_names)
+                    if (.not. allocated(nd%procedure_names(i)%s)) cycle
+                    intr_name = trim(nd%procedure_names(i)%s)
+                    if (len_trim(intr_name) == 0) cycle
+                    call find_bare_external_name(arena, intr_name, ext_name)
+                    if (len_trim(ext_name) > 0) then
+                        error_msg = 'EXTERNAL attribute conflicts with '// &
+                            'INTRINSIC attribute for '''//intr_name//''''
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end subroutine check_intrinsic_external_conflict
+
+    subroutine find_bare_external_name(arena, target_name, found_name)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: target_name
+        character(len=:), allocatable, intent(out) :: found_name
+        integer :: n, i
+
+        call set_empty(found_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. nd%is_external) cycle
+                if (allocated(nd%var_name)) then
+                    if (same_name(nd%var_name, target_name)) then
+                        found_name = trim(nd%var_name)
+                        return
+                    end if
+                end if
+                if (nd%is_multi_declaration .and. allocated(nd%var_names)) then
+                    do i = 1, size(nd%var_names)
+                        if (same_name(nd%var_names(i), target_name)) then
+                            found_name = trim(nd%var_names(i))
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end subroutine find_bare_external_name
+
+    ! A function RESULT variable never carries the SAVE attribute (gfortran:
+    ! "RESULT attribute conflicts with SAVE attribute", PR20856). The result
+    ! variable only differs from the function's own name when RESULT(...) is
+    ! used, so this only fires on that explicit form: scan each function's
+    ! own body declarations for one that both names the result variable and
+    ! sets is_save.
+    subroutine check_function_result_save(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (function_def_node)
+                if (.not. allocated(nd%result_variable)) cycle
+                if (len_trim(nd%result_variable) == 0) cycle
+                if (.not. allocated(nd%body_indices)) cycle
+                call check_result_save_in_body(arena, nd%result_variable, &
+                    nd%body_indices, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine check_function_result_save
+
+    subroutine check_result_save_in_body(arena, result_name, body_indices, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: result_name
+        integer, intent(in) :: body_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (nd => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. nd%is_save) cycle
+                if (allocated(nd%var_name)) then
+                    if (same_name(nd%var_name, result_name)) then
+                        write (location, '(" at line ",I0,", column ",I0)') &
+                            nd%line, nd%column
+                        error_msg = 'RESULT attribute conflicts with SAVE '// &
+                            'attribute'//trim(location)
+                        return
+                    end if
+                end if
+                if (nd%is_multi_declaration .and. allocated(nd%var_names)) then
+                    do j = 1, size(nd%var_names)
+                        if (same_name(nd%var_names(j), result_name)) then
+                            write (location, &
+                                '(" at line ",I0,", column ",I0)') &
+                                nd%line, nd%column
+                            error_msg = 'RESULT attribute conflicts with '// &
+                                'SAVE attribute'//trim(location)
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end subroutine check_result_save_in_body
+
+    ! Two procedures sharing one name in the same CONTAINS section are not
+    ! distinguishable at the call site (gfortran: "Procedure ... is already
+    ! defined at ..."). Scan each program/module/submodule's own contained-
+    ! procedure list for a repeated name; the same name reused across two
+    ! different scopes (two separate modules each defining their own "bah")
+    ! is ordinary Fortran and stays untouched since each scope is checked on
+    ! its own index list.
+    subroutine check_duplicate_contained_procedures(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (program_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                call check_procedure_names_unique(arena, nd%body_indices, &
+                    error_msg)
+            type is (module_node)
+                if (.not. allocated(nd%procedure_indices)) cycle
+                call check_procedure_names_unique(arena, &
+                    nd%procedure_indices, error_msg)
+            type is (submodule_node)
+                if (.not. allocated(nd%procedure_indices)) cycle
+                call check_procedure_names_unique(arena, &
+                    nd%procedure_indices, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_duplicate_contained_procedures
+
+    subroutine check_procedure_names_unique(arena, indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j
+        character(len=:), allocatable :: name_i, name_j
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(indices)
+            call procedure_def_name(arena, indices(i), name_i)
+            if (len_trim(name_i) == 0) cycle
+            do j = i + 1, size(indices)
+                call procedure_def_name(arena, indices(j), name_j)
+                if (len_trim(name_j) == 0) cycle
+                if (.not. same_name(name_i, name_j)) cycle
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    get_node_line(arena, indices(j)), &
+                    get_node_column(arena, indices(j))
+                error_msg = 'procedure '''//trim(name_i)//''' is '// &
+                    'already defined'//trim(location)
+                return
+            end do
+        end do
+    end subroutine check_procedure_names_unique
+
+    subroutine procedure_def_name(arena, node_index, name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: name
+
+        call set_empty(name)
+        if (.not. node_exists(arena, node_index)) return
+        select type (nd => arena%entries(node_index)%node)
+        type is (function_def_node)
+            if (allocated(nd%name)) name = trim(nd%name)
+        type is (subroutine_def_node)
+            if (allocated(nd%name)) name = trim(nd%name)
+        end select
+    end subroutine procedure_def_name
