@@ -5,7 +5,7 @@ author = "krystophny"
 license = "MIT"
 
 [dependencies]
-fortfront = { path = "../fortfront-dep2" }
+fortfront = { path = "../fortfront" }
 
 [build]
 auto-examples = false

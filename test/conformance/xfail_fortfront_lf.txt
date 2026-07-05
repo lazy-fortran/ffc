@@ -3,7 +3,6 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Promote entries by removing them from this file when ffc starts passing.
-api_complex_transform.lf
 array_index_brackets_multi.lf
 array_index_brackets_simple.lf
 array_literal_integer.lf
@@ -16,7 +15,6 @@ debug_mixed_constructs.lf
 docs_character_arrays.lf
 docs_unsigned_integers.lf
 error_missing_then.lf
-function_parameter_integer_inference.lf
 implicit_do_print.lf
 intrinsic_functions.lf
 issue_1330_missing_declarations.lf
@@ -32,7 +30,6 @@ issue_1961_array_reduction_intrinsics.lf
 issue_1968_lazy_function_result.lf
 issue_1973_empty_typed_array_constructor.lf
 issue_2012_subroutine_local_not_inferred.lf
-issue_2023_loop_variable_declaration.lf
 issue_2062_nested_do_missing_var_type_mismatch.lf
 issue_2063_deferred_char_function_syntax.lf
 issue_2066_array_function_rank_mismatch.lf
@@ -47,10 +44,8 @@ issue_2147_mono_name_collision_wrong_types.lf
 issue_2150_reshape_variable_vs_literal_shape.lf
 issue_2151_array_function_broken.lf
 issue_2153_array_call_scalar_param.lf
-issue_2160_global_var_and_calls.lf
 issue_2163_character_substring_lengths.lf
 issue_2165_undeclared_argument.lf
-issue_2659_implicit_contains_pure_subroutine.lf
 issue_2691_implied_do_static_size_known.lf
 issue_2691_implied_do_static_size_unknown.lf
 issue_2694_strict_zero_iter_implied_do.lf
