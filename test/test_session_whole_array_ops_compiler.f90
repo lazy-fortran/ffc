@@ -70,7 +70,7 @@ contains
 
         test_real_rank1_array_division = expect_output( &
             source, '   5.00000000       5.00000000       6.00000000    ' &
-                //new_line('a'), '/tmp/ffc_wa_ops_real_div_test')
+            //new_line('a'), '/tmp/ffc_wa_ops_real_div_test')
     end function test_real_rank1_array_division
 
     logical function test_real_rank1_scalar_division()
@@ -84,7 +84,7 @@ contains
 
         test_real_rank1_scalar_division = expect_output( &
             source, '   5.00000000       10.0000000       15.0000000    ' &
-                //new_line('a'), '/tmp/ffc_wa_ops_real_scalar_div_test')
+            //new_line('a'), '/tmp/ffc_wa_ops_real_scalar_div_test')
     end function test_real_rank1_scalar_division
 
     logical function test_real_rank1_unary_minus()
@@ -98,7 +98,7 @@ contains
 
         test_real_rank1_unary_minus = expect_output( &
             source, '  -10.0000000       20.0000000      -30.0000000    ' &
-                //new_line('a'), '/tmp/ffc_wa_ops_real_neg_test')
+            //new_line('a'), '/tmp/ffc_wa_ops_real_neg_test')
     end function test_real_rank1_unary_minus
 
     logical function test_rank2_array_division_and_unary_minus()
@@ -115,8 +115,8 @@ contains
 
         test_rank2_array_division_and_unary_minus = expect_output( &
             source, '           5           5           6           5'// &
-                new_line('a')//'         -10         -20         -30         -40'// &
-                new_line('a'), '/tmp/ffc_wa_ops_rank2_test')
+            new_line('a')//'         -10         -20         -30         -40'// &
+            new_line('a'), '/tmp/ffc_wa_ops_rank2_test')
     end function test_rank2_array_division_and_unary_minus
 
 end program test_session_whole_array_ops_compiler

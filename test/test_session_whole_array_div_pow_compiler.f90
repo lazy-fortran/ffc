@@ -84,7 +84,7 @@ contains
 
         test_scalar_call_broadcast = expect_output( &
             source, '   4.00000000       4.00000000       4.00000000    ' &
-                //new_line('a'), '/tmp/ffc_wa_scalar_call_test')
+            //new_line('a'), '/tmp/ffc_wa_scalar_call_test')
     end function test_scalar_call_broadcast
 
 end program test_session_whole_array_div_pow_compiler

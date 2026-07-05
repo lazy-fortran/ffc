@@ -150,7 +150,7 @@ contains
     end function test_procedures_only_module_links
 
     logical function build_and_run(m_src, main_src, m_obj, main_exe, out_file, &
-                                   fmods) result(ok)
+            fmods) result(ok)
         ! Compile the module source to an object (emitting its .fmod), compile
         ! and link the program against it, then run capturing stdout to out_file.
         character(len=*), intent(in) :: m_src, main_src, m_obj, main_exe

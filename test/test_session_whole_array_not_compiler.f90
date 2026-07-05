@@ -71,7 +71,7 @@ contains
 
         test_real_division_scalar_broadcast = expect_output( &
             source, '   5.00000000       2.50000000       2.00000000    ' &
-                //new_line('a'), '/tmp/ffc_wa_div_scalar_broadcast_test')
+            //new_line('a'), '/tmp/ffc_wa_div_scalar_broadcast_test')
     end function test_real_division_scalar_broadcast
 
 end program test_session_whole_array_not_compiler

@@ -36,27 +36,27 @@ contains
             'end program main'
 
         test_real_contained_function = expect_exit_status( &
-            source, 7, '/tmp/ffc_session_container_real_fn_test')
-    end function test_real_contained_function
+                source, 7, '/tmp/ffc_session_container_real_fn_test')
+        end function test_real_contained_function
 
-    logical function test_logical_contained_function()
-        character(len=*), parameter :: source = &
-            'module m'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            'end module m'//new_line('a')// &
-            'program main'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            '  if (is_pos(3.0)) stop 5'//new_line('a')// &
-            '  stop 0'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  logical function is_pos(a) result(r)'//new_line('a')// &
-            '    real, intent(in) :: a'//new_line('a')// &
-            '    r = a > 0.0'//new_line('a')// &
-            '  end function is_pos'//new_line('a')// &
-            'end program main'
+        logical function test_logical_contained_function()
+            character(len=*), parameter :: source = &
+                'module m'//new_line('a')// &
+                '  implicit none'//new_line('a')// &
+                'end module m'//new_line('a')// &
+                'program main'//new_line('a')// &
+                '  implicit none'//new_line('a')// &
+                '  if (is_pos(3.0)) stop 5'//new_line('a')// &
+                '  stop 0'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  logical function is_pos(a) result(r)'//new_line('a')// &
+                '    real, intent(in) :: a'//new_line('a')// &
+                '    r = a > 0.0'//new_line('a')// &
+                '  end function is_pos'//new_line('a')// &
+                'end program main'
 
-        test_logical_contained_function = expect_exit_status( &
-            source, 5, '/tmp/ffc_session_container_logical_fn_test')
-    end function test_logical_contained_function
+            test_logical_contained_function = expect_exit_status( &
+                    source, 5, '/tmp/ffc_session_container_logical_fn_test')
+            end function test_logical_contained_function
 
-end program test_session_container_contained_fn
+        end program test_session_container_contained_fn
