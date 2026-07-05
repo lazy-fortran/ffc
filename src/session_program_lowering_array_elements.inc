@@ -481,7 +481,11 @@
 
         handled = .false.
         call set_empty(error_msg)
-        if (.not. is_identifier(arena, expr_index)) return
+        if (.not. is_identifier(arena, expr_index)) then
+            call emit_whole_array_expr_print_items(arena, expr_index, context, &
+                                                   handled, error_msg)
+            return
+        end if
         call identifier_name(arena, expr_index, name, error_msg)
         if (len_trim(error_msg) > 0) then
             call set_empty(error_msg)
@@ -519,36 +523,147 @@
             if (.not. emit_liric_print_space(context%session, error_msg)) return
             call load_array_linear_element(context, sym, k, value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (vk == VALUE_F32) then
-                if (.not. emit_liric_print_f32_value(context%session, &
-                                                     value, error_msg)) return
-            else if (vk == VALUE_F64) then
-                if (.not. emit_liric_print_f64_value(context%session, &
-                                                     value, error_msg)) return
-            else if (vk == VALUE_LOGICAL) then
-                ! A logical element occupies an i32 slot (0/1); print it as T/F.
-                call lower_print_logical_value(context, value, error_msg)
-                if (len_trim(error_msg) > 0) return
-            else if (vk == VALUE_I64) then
-                if (.not. emit_liric_print_i64_value(context%session, &
-                                                     context%i64_print_format_id, &
-                                                     value, error_msg)) return
-            else if (vk == VALUE_I8) then
-                if (.not. emit_liric_print_i8_value(context%session, &
-                                                    context%i8_print_format_id, &
-                                                    value, error_msg)) return
-            else if (vk == VALUE_I16) then
-                if (.not. emit_liric_print_i16_value(context%session, &
-                                                     context%i16_print_format_id, &
-                                                     value, error_msg)) return
-            else
-                if (.not. emit_liric_print_i32_value(context%session, &
-                                                     context%i32_print_format_id, &
-                                                     value, error_msg)) return
-            end if
+            call emit_typed_array_print_value(context, vk, value, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)
     end subroutine emit_whole_array_print_items
+
+    subroutine emit_typed_array_print_value(context, vk, value, error_msg)
+        !! Emit one array element already loaded into value, formatted by its
+        !! value kind with list-directed spacing already written by the caller.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (vk == VALUE_F32) then
+            if (.not. emit_liric_print_f32_value(context%session, &
+                                                 value, error_msg)) return
+        else if (vk == VALUE_F64) then
+            if (.not. emit_liric_print_f64_value(context%session, &
+                                                 value, error_msg)) return
+        else if (vk == VALUE_LOGICAL) then
+            ! A logical element occupies an i32 slot (0/1); print it as T/F.
+            call lower_print_logical_value(context, value, error_msg)
+        else if (vk == VALUE_I64) then
+            if (.not. emit_liric_print_i64_value(context%session, &
+                                                 context%i64_print_format_id, &
+                                                 value, error_msg)) return
+        else if (vk == VALUE_I8) then
+            if (.not. emit_liric_print_i8_value(context%session, &
+                                                context%i8_print_format_id, &
+                                                value, error_msg)) return
+        else if (vk == VALUE_I16) then
+            if (.not. emit_liric_print_i16_value(context%session, &
+                                                 context%i16_print_format_id, &
+                                                 value, error_msg)) return
+        else
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end if
+    end subroutine emit_typed_array_print_value
+
+    subroutine emit_whole_array_expr_print_items(arena, expr_index, context, &
+                                                 handled, error_msg)
+        !! Print a whole-array expression that is not a bare identifier, e.g.
+        !! print *, sin(x) or print *, a + b. The shape and element kind follow
+        !! a whole-array operand inside the expression; each element is
+        !! materialised through the elementwise evaluator and printed in storage
+        !! order with list-directed spacing. Forms without a resolvable
+        !! whole-array operand leave handled false (declined, not an error).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: sym
+        integer :: vk
+        integer(c_int64_t) :: k, n
+
+        handled = .false.
+        call set_empty(error_msg)
+        sym = whole_array_expr_shape_symbol(arena, expr_index, context)
+        if (sym <= 0) return
+        vk = context%symbols(sym)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
+            vk /= VALUE_LOGICAL .and. vk /= VALUE_I64 .and. vk /= VALUE_I8 .and. &
+            vk /= VALUE_I16) return
+
+        handled = .true.
+        n = int(context%symbols(sym)%array_size, c_int64_t)
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+            call lower_array_elementwise_value(arena, expr_index, sym, &
+                                               int(k), context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_typed_array_print_value(context, vk, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_whole_array_expr_print_items
+
+    recursive integer function whole_array_expr_shape_symbol(arena, expr_index, &
+                                                             context) result(sym)
+        !! Symbol whose shape and element kind govern a whole-array expression:
+        !! the first whole-array identifier operand reached through elemental
+        !! intrinsic calls, min/max calls, and elementwise binary operators.
+        !! Returns 0 for forms without such an operand (scalars, unsupported
+        !! calls, sections), so the caller can decline gracefully.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, err, bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        integer :: i
+
+        sym = 0
+        if (.not. node_exists(arena, expr_index)) return
+
+        if (is_identifier(arena, expr_index)) then
+            call get_identifier_name(arena, expr_index, id_name, err)
+            if (len_trim(err) > 0) return
+            i = find_symbol(context, id_name)
+            if (i > 0) then
+                if (is_elementwise_array_operand(context, i)) sym = i
+            end if
+            return
+        end if
+
+        if (is_elemental_real_call(arena, expr_index)) then
+            select type (n => arena%entries(expr_index)%node)
+            type is (call_or_subscript_node)
+                if (n%is_array_access) return
+                sym = whole_array_expr_shape_symbol(arena, n%arg_indices(1), &
+                                                    context)
+            end select
+            return
+        end if
+
+        if (is_elemental_minmax_call(arena, expr_index)) then
+            select type (n => arena%entries(expr_index)%node)
+            type is (call_or_subscript_node)
+                do i = 1, size(n%arg_indices)
+                    sym = whole_array_expr_shape_symbol(arena, n%arg_indices(i), &
+                                                        context)
+                    if (sym > 0) return
+                end do
+            end select
+            return
+        end if
+
+        if (is_binary_op(arena, expr_index)) then
+            call get_binary_op_info(arena, expr_index, bin_op, bin_left, &
+                                    bin_right, bin_line, bin_col, err)
+            if (len_trim(err) > 0) return
+            sym = whole_array_expr_shape_symbol(arena, bin_left, context)
+            if (sym > 0) return
+            sym = whole_array_expr_shape_symbol(arena, bin_right, context)
+        end if
+    end function whole_array_expr_shape_symbol
 
     subroutine emit_array_literal_print_items(arena, expr_index, context, &
                                               handled, error_msg)

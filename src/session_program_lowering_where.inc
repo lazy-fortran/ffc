@@ -727,6 +727,30 @@
             libm32 = 'cosf'; libm64 = 'cos'
         else if (same_name(name, 'tan')) then
             libm32 = 'tanf'; libm64 = 'tan'
+        else if (same_name(name, 'asin')) then
+            libm32 = 'asinf'; libm64 = 'asin'
+        else if (same_name(name, 'acos')) then
+            libm32 = 'acosf'; libm64 = 'acos'
+        else if (same_name(name, 'atan')) then
+            libm32 = 'atanf'; libm64 = 'atan'
+        else if (same_name(name, 'sinh')) then
+            libm32 = 'sinhf'; libm64 = 'sinh'
+        else if (same_name(name, 'cosh')) then
+            libm32 = 'coshf'; libm64 = 'cosh'
+        else if (same_name(name, 'tanh')) then
+            libm32 = 'tanhf'; libm64 = 'tanh'
+        else if (same_name(name, 'asinh')) then
+            libm32 = 'asinhf'; libm64 = 'asinh'
+        else if (same_name(name, 'acosh')) then
+            libm32 = 'acoshf'; libm64 = 'acosh'
+        else if (same_name(name, 'atanh')) then
+            libm32 = 'atanhf'; libm64 = 'atanh'
+        else if (same_name(name, 'log10')) then
+            libm32 = 'log10f'; libm64 = 'log10'
+        else if (same_name(name, 'erf')) then
+            libm32 = 'erff'; libm64 = 'erf'
+        else if (same_name(name, 'erfc')) then
+            libm32 = 'erfcf'; libm64 = 'erfc'
         else if (same_name(name, 'abs')) then
             libm32 = 'fabsf'; libm64 = 'fabs'
         end if
