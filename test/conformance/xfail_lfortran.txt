@@ -858,7 +858,6 @@ data_03.f90
 data_05.f90
 data_06.f90
 data_07.f90
-data_08.f90
 data_11.f90
 data_12.f90
 data_14.f90
@@ -870,7 +869,6 @@ data_20.f90
 data_21.f90
 data_22.f90
 data_23.f90
-data_implied_do_02.f90
 data_implied_do_07.f90
 data_implied_do_08.f90
 data_implied_do_09.f90
@@ -1475,7 +1473,6 @@ goto_03.f90
 goto_05.f90
 goto_06.f90
 goto_gototarget_return_01.f90
-gpu_metal_07.f90
 gpu_metal_100.f90
 gpu_metal_101.f90
 gpu_metal_102.f90
@@ -1500,7 +1497,6 @@ gpu_metal_124.f90
 gpu_metal_125.f90
 gpu_metal_127.f90
 gpu_metal_128.f90
-gpu_metal_12.f90
 gpu_metal_133.f90
 gpu_metal_134.f90
 gpu_metal_135.f90
@@ -1798,7 +1794,6 @@ intrinsics_106.f90
 intrinsics_107.f90
 intrinsics_108.f90
 intrinsics_109.f90
-intrinsics_10.f90
 intrinsics_110.f90
 intrinsics_111.f90
 intrinsics_112.f90
@@ -1884,7 +1879,6 @@ intrinsics_187.f90
 intrinsics_188.f90
 intrinsics_189.f90
 intrinsics_18c.f90
-intrinsics_18.f90
 intrinsics_190.f90
 intrinsics_191.f90
 intrinsics_192.f90
@@ -2214,7 +2208,6 @@ intrinsics_90.f90
 intrinsics_91.f90
 intrinsics_92.f90
 intrinsics_93.f90
-intrinsics_94.f90
 intrinsics_96.f90
 intrinsics_97.f90
 intrinsics_98.f90
@@ -2302,7 +2295,6 @@ matrix_01_transpose.f90
 matrix_02_matmul.f90
 matrix_03_transpose_param.f90
 max_02.f90
-max_03.f90
 merge_str_01.f90
 min_01.f90
 min_02.f90
@@ -2522,7 +2514,6 @@ openmp_25.f90
 openmp_26.f90
 openmp_27.f90
 openmp_28.f90
-openmp_29.f90
 openmp_30.f90
 openmp_32.f90
 openmp_33.f90

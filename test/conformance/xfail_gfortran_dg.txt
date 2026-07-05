@@ -900,7 +900,6 @@ host_assoc_function_7.f90
 host_assoc_function_9.f90
 host_assoc_types_2.f90
 host_dummy_index_1.f90
-hypot_1.f90
 iall_iany_iparity_1.f90
 iall_masked.f90
 ibits_2.f90
@@ -1274,7 +1273,6 @@ nested_modules_3.f90
 nested_modules_6.f90
 nested_reshape.f90
 nesting_1.f90
-nesting_3.f90
 new_line.f90
 newunit_1.f90
 newunit_3.f90
@@ -1624,7 +1622,6 @@ pr89646.f90
 pr89647.f90
 pr89943_2.f90
 pr90344.f90
-pr91552.f90
 pr91553.f90
 pr91566.f90
 pr91577.f90
@@ -2078,7 +2075,6 @@ use_allocated_1.f90
 use_only_2.f90
 use_only_3.f90
 use_only_5.f90
-use_only_6.f90
 use_rename_1.f90
 use_rename_12.f90
 use_rename_13.f90
