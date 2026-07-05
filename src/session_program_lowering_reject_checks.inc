@@ -251,3 +251,119 @@
             name = 'unknown'
         end select
     end function cmp_class_name
+
+    ! A BOZ-literal-constant is not one of the ac-value forms an array
+    ! constructor may hold: it is only valid as a DATA-statement constant, an
+    ! actual argument to INT/REAL/DBLE/CMPLX, or (as a gfortran extension) the
+    ! right side of a scalar intrinsic assignment. This flags any array
+    ! constructor element whose literal spelling is a BOZ constant, whether
+    ! or not the constructor carries a type-spec (both forms are rejected by
+    ! gfortran).
+    subroutine check_boz_in_array_constructors(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (array_literal_node)
+                if (.not. allocated(nd%element_indices)) cycle
+                call check_boz_ctor_elements(arena, nd%element_indices, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine check_boz_in_array_constructors
+
+    recursive subroutine check_boz_ctor_elements(arena, elems, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elems(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, ei
+        character(len=:), allocatable :: value, literal_type, err
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(elems)
+            ei = elems(i)
+            if (.not. node_exists(arena, ei)) cycle
+            select type (child => arena%entries(ei)%node)
+            type is (array_literal_node)
+                if (allocated(child%element_indices)) then
+                    call check_boz_ctor_elements(arena, &
+                        child%element_indices, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                cycle
+            end select
+            call get_literal_info(arena, ei, value, literal_type, err)
+            if (len_trim(err) > 0) cycle
+            if (.not. is_boz_literal_text(value)) cycle
+            write (location, '(" at line ",I0,", column ",I0)') &
+                get_node_line(arena, ei), get_node_column(arena, ei)
+            error_msg = 'BOZ literal constant'//trim(location)// &
+                ' cannot appear in an array constructor'
+            return
+        end do
+    end subroutine check_boz_ctor_elements
+
+    ! An assumed-size specifier (*) is only well-formed as the extent of the
+    ! LAST array dimension; a bare asterisk anywhere earlier is not a valid
+    ! array-spec (gfortran: "Bad specification for assumed size array" for a
+    ! standalone DIMENSION statement, "cannot be implied-shape" for an inline
+    ! type declaration). declaration_is_assumed_size already treats any
+    ! earlier is_assumed_size dimension as disqualifying the whole
+    ! declaration from the assumed-size lowering path, so this check gives
+    ! that otherwise-silent fallthrough an explicit diagnostic instead of
+    ! lowering it as a bogus fixed-size array. Covers declaration_node (type
+    ! decl with inline dims) and parameter_declaration_node (dummy arg with
+    ! inline dims); a standalone DIMENSION statement on an otherwise
+    ! untyped dummy does not carry its array-spec into either node, so that
+    ! spelling is not visible here.
+    subroutine check_assumed_size_dimension_order(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. nd%is_array) cycle
+                if (.not. allocated(nd%dimension_indices)) cycle
+                call check_dims_assumed_size_order(arena, &
+                    nd%dimension_indices, nd%line, nd%column, error_msg)
+            type is (parameter_declaration_node)
+                if (.not. nd%is_array) cycle
+                if (.not. allocated(nd%dimension_indices)) cycle
+                call check_dims_assumed_size_order(arena, &
+                    nd%dimension_indices, nd%line, nd%column, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_assumed_size_dimension_order
+
+    subroutine check_dims_assumed_size_order(arena, dimension_indices, line, &
+                                             column, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: dimension_indices(:)
+        integer, intent(in) :: line, column
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_count, i
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        dim_count = size(dimension_indices)
+        if (dim_count < 2) return
+        do i = 1, dim_count - 1
+            if (.not. dim_is_assumed_size(arena, dimension_indices(i))) cycle
+            write (location, '(" at line ",I0,", column ",I0)') line, column
+            error_msg = 'bad specification for assumed size array'// &
+                trim(location)//': only the last dimension may be '// &
+                'an assumed size (*) specifier'
+            return
+        end do
+    end subroutine check_dims_assumed_size_order
