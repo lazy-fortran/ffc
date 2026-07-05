@@ -1094,15 +1094,11 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, var_idx, value_kind, status
-        character(len=:), allocatable :: var_name, name_err
 
         call set_empty(error_msg)
         do i = 1, context%module_exports(export_idx)%variable_count
             var_idx = context%module_exports(export_idx)%variable_indices(i)
             if (.not. node_exists(arena, var_idx)) cycle
-            call get_declaration_var_name(arena, var_idx, var_name, name_err)
-            if (len_trim(name_err) > 0) cycle
-            if (.not. use_only_wants(use_node, trim(var_name))) cycle
             call module_variable_kind(arena, var_idx, value_kind, status, &
                                       context, error_msg)
             ! An unsupported module variable already failed in
@@ -1111,10 +1107,19 @@
                 call set_empty(error_msg)
                 cycle
             end if
-            call bind_one_module_variable(arena, var_idx, value_kind, &
-                trim(context%module_exports(export_idx)%module_name), context, &
-                error_msg)
-            if (len_trim(error_msg) > 0) return
+            block
+                character(len=64), allocatable :: names(:)
+                integer :: nm
+                call module_declaration_var_names(arena, var_idx, names)
+                do nm = 1, size(names)
+                    if (.not. use_only_wants(use_node, trim(names(nm)))) cycle
+                    call bind_one_module_variable(arena, var_idx, value_kind, &
+                        trim(names(nm)), &
+                        trim(context%module_exports(export_idx)%module_name), &
+                        context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end block
         end do
     end subroutine import_module_variables
 

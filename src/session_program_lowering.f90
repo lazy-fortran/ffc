@@ -319,17 +319,37 @@ module session_program_lowering
     end interface
 contains
     include 'session_program_lowering_top.inc'
-    subroutine lower_declaration(node, node_index, context, error_msg)
-        type(declaration_node), intent(in) :: node
+    subroutine lower_declaration(node_in, node_index, context, error_msg)
+        type(declaration_node), intent(in) :: node_in
         ! Arena index of this declaration, the unique key for SAVE-local globals.
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        ! A DIMENSION statement (is_array, no type) and the variable's typed
+        ! declaration arrive as two separate nodes. Merge the pending shape into
+        ! a local working copy so an otherwise-scalar typed declaration lowers as
+        ! the intended array; skip the bare DIMENSION statement itself.
+        type(declaration_node) :: node
         integer :: array_lower_bound
         integer :: array_size
         integer :: derived_type_index
         integer :: i
         integer :: value_kind
+
+        if (declaration_is_bare_dimension(node_in)) then
+            call set_empty(error_msg)
+            return
+        end if
+        ! A bare EXTERNAL statement (external :: bar) names a procedure, not a
+        ! variable, and carries no type. The call site resolves the procedure
+        ! from the function table, so the statement itself defines no storage.
+        if (declaration_is_bare_external(node_in)) then
+            call set_empty(error_msg)
+            return
+        end if
+        node = node_in
+        if (.not. node%is_array .and. allocated(node%var_name)) &
+            call apply_pending_dimension(context, node)
         derived_type_index = declaration_derived_type_index(context, node)
         if (derived_type_index > 0) then
             call lower_derived_type_declaration(node, context, derived_type_index, &
@@ -528,6 +548,65 @@ contains
             error_msg = 'scalar declaration did not expose a variable name'
         end if
     end subroutine lower_declaration
+
+    ! A bare DIMENSION statement: it carries the array shape (is_array with
+    ! dimension_indices) but names no type, so the variable's type comes from a
+    ! separate typed declaration. Lowering the statement on its own has no type
+    ! to define, so it is skipped and its shape merged into the typed node.
+    logical function declaration_is_bare_dimension(node) result(is_bare)
+        type(declaration_node), intent(in) :: node
+
+        is_bare = .false.
+        if (.not. node%is_array) return
+        if (.not. allocated(node%type_name)) then
+            is_bare = .true.
+            return
+        end if
+        is_bare = len_trim(node%type_name) == 0
+    end function declaration_is_bare_dimension
+
+    logical function declaration_is_bare_external(node) result(is_bare)
+        ! An EXTERNAL statement (external :: bar) with no intrinsic type: FortFront
+        ! marks is_external and sets the placeholder type_name 'external'. A typed
+        ! external (real, external :: f) keeps its intrinsic type and is left to
+        ! the ordinary declaration path.
+        type(declaration_node), intent(in) :: node
+
+        is_bare = .false.
+        if (.not. node%is_external) return
+        if (.not. allocated(node%type_name)) then
+            is_bare = .true.
+            return
+        end if
+        if (len_trim(node%type_name) == 0) then
+            is_bare = .true.
+            return
+        end if
+        is_bare = lowercase_text(trim(node%type_name)) == 'external'
+    end function declaration_is_bare_external
+
+    subroutine apply_pending_dimension(context, node)
+        ! Give a typed scalar declaration the array shape declared for the same
+        ! name by a separate DIMENSION statement (attr_dim_02).
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(inout) :: node
+        integer :: n
+
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            select type (other => context%arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. declaration_is_bare_dimension(other)) cycle
+                if (.not. allocated(other%var_name)) cycle
+                if (.not. same_name(trim(other%var_name), &
+                                    trim(node%var_name))) cycle
+                if (.not. allocated(other%dimension_indices)) return
+                node%is_array = .true.
+                node%dimension_indices = other%dimension_indices
+                return
+            end select
+        end do
+    end subroutine apply_pending_dimension
 
     subroutine lower_scalar_initializer(context, name, value_kind, init_index, &
             error_msg)

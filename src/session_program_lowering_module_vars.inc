@@ -30,11 +30,10 @@
             error_msg = 'module export is not a declaration'
             return
         end if
-        if (module_declaration_is_array(arena, var_idx) .or. &
-            module_declaration_is_multi(arena, var_idx)) then
+        if (module_declaration_is_array(arena, var_idx)) then
             call unsupported_feature_error('module variable', line, column, &
-                'direct LIRIC session stores only scalar single-name module '// &
-                'variables', error_msg)
+                'direct LIRIC session stores only scalar module variables', &
+                error_msg)
             return
         end if
         ! A scalar derived-type module variable stores as a flat slot global.
@@ -99,6 +98,31 @@
         end select
     end function module_declaration_is_multi
 
+    subroutine module_declaration_var_names(arena, node_index, names)
+        ! Names declared by a module-variable declaration: the single var_name,
+        ! or every entry of a multi-name declaration (integer :: i, j).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=64), allocatable, intent(out) :: names(:)
+        integer :: k
+
+        if (node_exists(arena, node_index)) then
+            select type (decl => arena%entries(node_index)%node)
+            type is (declaration_node)
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    allocate(names(size(decl%var_names)))
+                    do k = 1, size(decl%var_names)
+                        names(k) = trim(decl%var_names(k))
+                    end do
+                else if (allocated(decl%var_name)) then
+                    allocate(names(1))
+                    names(1) = trim(decl%var_name)
+                end if
+            end select
+        end if
+        if (.not. allocated(names)) allocate(names(0))
+    end subroutine module_declaration_var_names
+
     logical function module_declaration_has_initializer(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -143,15 +167,25 @@
                 call module_variable_kind(arena, var_idx, value_kind, status, &
                                           context, error_msg)
                 if (status /= MODVAR_OK) return
-                call emit_module_variable_global(arena, var_idx, value_kind, &
-                    trim(context%module_exports(m)%module_name), context, error_msg)
-                if (len_trim(error_msg) > 0) return
+                block
+                    character(len=64), allocatable :: names(:)
+                    integer :: nm
+                    call module_declaration_var_names(arena, var_idx, names)
+                    do nm = 1, size(names)
+                        call emit_module_variable_global(arena, var_idx, &
+                            value_kind, trim(names(nm)), &
+                            trim(context%module_exports(m)%module_name), &
+                            context, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
+                end block
             end do
         end do
     end subroutine lower_module_variables
 
     subroutine emit_module_variable_global(arena, var_idx, value_kind, &
-                                           module_name, context, error_msg)
+                                           var_name, module_name, context, &
+                                           error_msg)
         use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
                                                c_loc, c_size_t, c_ptr, c_double, &
                                                c_float, c_int32_t
@@ -160,10 +194,11 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: var_name
         character(len=*), intent(in) :: module_name
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: var_name, mangled
+        character(len=:), allocatable :: mangled
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t), target :: init_i32
         real(c_float), target :: init_f32
@@ -179,8 +214,7 @@
                                                      context, error_msg)
             return
         end if
-        call get_declaration_var_name(arena, var_idx, var_name, error_msg)
-        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
         call fold_module_variable_initializer(arena, var_idx, value_kind, &
@@ -418,29 +452,38 @@
                     call set_empty(error_msg)
                     cycle
                 end if
-                call bind_one_module_variable(arena, var_idx, value_kind, &
-                    trim(context%module_exports(m)%module_name), context, error_msg)
-                if (len_trim(error_msg) > 0) return
+                block
+                    character(len=64), allocatable :: names(:)
+                    integer :: nm
+                    call module_declaration_var_names(arena, var_idx, names)
+                    do nm = 1, size(names)
+                        call bind_one_module_variable(arena, var_idx, &
+                            value_kind, trim(names(nm)), &
+                            trim(context%module_exports(m)%module_name), &
+                            context, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
+                end block
             end do
         end do
     end subroutine bind_module_variables_in_context
 
-    subroutine bind_one_module_variable(arena, var_idx, value_kind, module_name, &
-                                        context, error_msg)
+    subroutine bind_one_module_variable(arena, var_idx, value_kind, var_name, &
+                                        module_name, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: var_name
         character(len=*), intent(in) :: module_name
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: var_name, mangled
+        character(len=:), allocatable :: mangled
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
         integer :: sym_idx
 
-        call get_declaration_var_name(arena, var_idx, var_name, error_msg)
-        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
         if (find_symbol(context, var_name) > 0) return
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)

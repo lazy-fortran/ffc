@@ -43,7 +43,88 @@
                                        body_indices, ff_error)
             if (len_trim(ff_error) > 0) error_msg = ff_error
         end select
+        if (len_trim(error_msg) == 0) &
+            call drop_nested_procedure_units(arena, body_indices)
     end subroutine get_unit_body_indices
+
+    subroutine drop_nested_procedure_units(arena, body_indices)
+        ! FortFront hoists the last CONTAINS procedure of a subroutine or
+        ! function out to the enclosing multi_unit_container's top-level list
+        ! while leaving a bare `contains` marker in the original body. When that
+        ! hoisted procedure shares a name with a genuine top-level procedure (a
+        ! contained helper and an external procedure with the same name), the
+        ! flat function table sees two same-named top-level units and both are
+        ! registered and emitted. Two same-named procedures at file scope are not
+        ! valid Fortran, so any repeat is a hoisting artefact: keep the first
+        ! occurrence of each procedure name and drop later duplicates.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(inout) :: body_indices(:)
+        integer, allocatable :: kept(:)
+        character(len=:), allocatable :: name
+        integer :: i, keep_count
+
+        if (.not. allocated(body_indices)) return
+        if (size(body_indices) <= 1) return
+        allocate(kept(size(body_indices)))
+        keep_count = 0
+        do i = 1, size(body_indices)
+            if (procedure_unit_name(arena, body_indices(i), name)) then
+                if (name_precedes_in_list(arena, body_indices, i, name)) cycle
+            end if
+            keep_count = keep_count + 1
+            kept(keep_count) = body_indices(i)
+        end do
+        if (keep_count == size(body_indices)) return
+        deallocate(body_indices)
+        allocate(body_indices(keep_count))
+        body_indices = kept(1:keep_count)
+    end subroutine drop_nested_procedure_units
+
+    logical function name_precedes_in_list(arena, body_indices, pos, name) &
+                                           result(precedes)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_indices(:)
+        integer, intent(in) :: pos
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: earlier
+        integer :: j
+
+        precedes = .false.
+        do j = 1, pos - 1
+            if (.not. procedure_unit_name(arena, body_indices(j), earlier)) cycle
+            if (same_name(earlier, name)) then
+                precedes = .true.
+                return
+            end if
+        end do
+    end function name_precedes_in_list
+
+    logical function procedure_unit_name(arena, node_index, name) result(is_proc)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        is_proc = .false.
+        name = ''
+        if (.not. node_exists(arena, node_index)) return
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (allocated(fn_node%name)) name = fn_node%name
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%name)) name = sb_node%name
+        else
+            return
+        end if
+        is_proc = .true.
+    end function procedure_unit_name
 
     subroutine collect_internal_function_names(arena, root_index, context, &
                                                error_msg)

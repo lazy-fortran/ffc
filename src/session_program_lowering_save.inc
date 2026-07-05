@@ -174,12 +174,8 @@
         character(len=:), allocatable :: gname
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
-        integer :: sym_idx
+        integer :: sym_idx, existing_idx
 
-        if (find_symbol(context, name) > 0) then
-            error_msg = 'duplicate declaration of saved local: '//name
-            return
-        end if
         gname = saved_local_global_name(node_index, name)
         call to_c_chars(gname, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
@@ -187,8 +183,20 @@
             error_msg = 'saved local global not found: '//gname
             return
         end if
-        call grow_symbols(context)
-        sym_idx = context%symbol_count + 1
+        ! A saved local may share a name with a host-associated module variable.
+        ! The local shadows it with its own persistent storage, so rebind the
+        ! existing (enclosing-scope) slot onto this saved global rather than
+        ! rejecting it as a duplicate. A genuine same-scope duplicate already
+        ! addresses this saved global, so this rebind is idempotent.
+        existing_idx = find_symbol(context, name)
+        if (existing_idx > 0) then
+            sym_idx = existing_idx
+        else
+            call grow_symbols(context)
+            sym_idx = context%symbol_count + 1
+            context%symbol_count = sym_idx
+        end if
+        context%symbols(sym_idx) = symbol_t()
         context%symbols(sym_idx)%name = name
         context%symbols(sym_idx)%value_kind = value_kind
         context%symbols(sym_idx)%has_address = .true.
@@ -197,7 +205,6 @@
         context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
-        context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_saved_scalar
 
