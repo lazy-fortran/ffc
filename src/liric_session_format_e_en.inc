@@ -21,8 +21,10 @@
         if (.not. declare_e_en_libc(session, error_msg)) return
         if (.not. create_cstring_operand(session, '.ffc.een.norm', '%.17E', &
                                          g_norm, error_msg)) return
+        ! The "#" flag keeps the decimal point when the fractional digit count
+        ! is zero (gfortran's Ew.0/ENw.0 print "3.E+00"; plain %.0f drops it).
         if (.not. create_cstring_operand(session, '.ffc.een.field', &
-                                         '%*.*fE%c%02d', g_field, error_msg)) &
+                                         '%#*.*fE%c%02d', g_field, error_msg)) &
             return
         call begin_e_en_helper(session, params, c_name, status, error)
         if (.not. status_ok(status, error, error_msg)) return

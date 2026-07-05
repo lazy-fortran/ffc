@@ -12,6 +12,7 @@ program test_session_open_positional_unit_compiler
     if (.not. test_positional_unit_roundtrip()) all_passed = .false.
     if (.not. test_close_with_trailing_status()) all_passed = .false.
     if (.not. test_read_end_label_on_eof()) all_passed = .false.
+    if (.not. test_stdout_sign_plus()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: positional-unit OPEN and READ end= lower correctly'
@@ -77,5 +78,20 @@ contains
         test_read_end_label_on_eof = expect_exit_status(source, 0, &
             '/tmp/ffc_read_end_label')
     end function test_read_end_label_on_eof
+
+    logical function test_stdout_sign_plus()
+        ! open(6, sign='plus') reconfigures the preconnected stdout connection
+        ! (#280): a subsequent F-edited PRINT on a non-negative value gets a
+        ! forced leading '+', matching gfortran.
+        character(len=*), parameter :: q = achar(39)
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  open(6, sign='//q//'plus'//q//')'//new_line('a')// &
+            "  print '(F5.1)', 1.0"//new_line('a')// &
+            'end program main'
+
+        test_stdout_sign_plus = expect_output(source, ' +1.0'//new_line('a'), &
+            '/tmp/ffc_open_sign_plus')
+    end function test_stdout_sign_plus
 
 end program test_session_open_positional_unit_compiler

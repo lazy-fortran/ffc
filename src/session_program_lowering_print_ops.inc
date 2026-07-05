@@ -329,7 +329,13 @@
             if (len_trim(error_msg) > 0) return
             write (width_text, '(I0)') width_value
             write (precision_text, '(I0)') precision_value
-            printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'f'
+            ! stdout's SIGN='PLUS' connection mode (#280) forces a leading '+'
+            ! on non-negative values, matching printf's own '+' flag.
+            if (context%stdout_force_plus_sign) then
+                printf_fmt = '%+'//trim(width_text)//'.'//trim(precision_text)//'f'
+            else
+                printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'f'
+            end if
             buffer_size = max(64, width_value + precision_value + 32)
             call repeat_data_descriptor(arena, node, context, kind_char, &
                                         printf_fmt, buffer_size, repeat_count, &
@@ -369,7 +375,9 @@
                 ! gfortran ESw.d prints d fraction digits and an uppercase
                 ! two-digit exponent: printf %w.dE matches.
                 write (precision_text, '(I0)') precision_value
-                printf_fmt = '%'//trim(width_text)//'.'//trim(precision_text)//'E'
+                ! The "#" flag keeps the decimal point when precision is zero
+                ! (gfortran's ESw.0 prints "3.E+00"; plain %.0E drops the dot).
+                printf_fmt = '%#'//trim(width_text)//'.'//trim(precision_text)//'E'
                 buffer_size = max(64, width_value + precision_value + 32)
                 call repeat_data_descriptor(arena, node, context, 'E', &
                                             printf_fmt, buffer_size, &

@@ -8,7 +8,7 @@
     ! --- spec-text helpers ---------------------------------------------------
 
     subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                status_str, error_msg)
+                                status_str, sign_str, error_msg)
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
         character(len=*), intent(in) :: spec
@@ -16,6 +16,7 @@
         character(len=:), allocatable, intent(out) :: newunit_var
         character(len=:), allocatable, intent(out) :: file_path
         character(len=:), allocatable, intent(out) :: status_str
+        character(len=:), allocatable, intent(out) :: sign_str
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: text, kw, val
         integer :: p, eq_pos, cp, qend, arg_end
@@ -27,6 +28,7 @@
         newunit_var = ''
         file_path = ''
         status_str = ''
+        sign_str = ''
         text = trim(adjustl(spec))
         p = 1
         first_arg = .true.
@@ -92,6 +94,8 @@
                 file_path = trim(val)
             case ('status')
                 status_str = spec_lower(trim(val))
+            case ('sign')
+                sign_str = spec_lower(trim(val))
             end select
         end do
     end subroutine parse_open_spec
@@ -121,7 +125,7 @@
         type(open_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: ustr, nuvar, fpath, sstr
+        character(len=:), allocatable :: ustr, nuvar, fpath, sstr, signstr
         type(lr_operand_desc_t) :: file_handle
         type(lr_operand_desc_t) :: uval_op, ptr_slot
         type(lr_operand_desc_t), allocatable :: noargs(:)
@@ -133,8 +137,16 @@
             return
         end if
 
-        call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, sstr, error_msg)
+        call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, sstr, signstr, &
+                              error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! Unit 6 is preconnected to stdout: OPEN reconfigures that connection
+        ! rather than opening a distinct file, so its sign mode also governs
+        ! PRINT and WRITE(*,...), which share the same connection (#280).
+        if (trim(ustr) == '6') then
+            context%stdout_force_plus_sign = (trim(signstr) == 'plus')
+        end if
 
         if (len_trim(fpath) == 0) then
             ! A connection without file= is a scratch file. gfortran also

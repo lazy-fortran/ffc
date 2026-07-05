@@ -9,6 +9,7 @@ program test_session_e_descriptor_compiler
     all_passed = .true.
     if (.not. test_plain_e_descriptors()) all_passed = .false.
     if (.not. test_en_descriptors()) all_passed = .false.
+    if (.not. test_zero_precision_descriptors()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: E and EN descriptors lower through direct LIRIC session'
@@ -48,5 +49,25 @@ contains
         test_en_descriptors = expect_output(source, expected, &
             '/tmp/ffc_fmt_en_test')
     end function test_en_descriptors
+
+    logical function test_zero_precision_descriptors()
+        ! A zero fraction-digit count (d=0) still requires the decimal point
+        ! (gfortran: "3.E+00", not "3E+00") for ES and EN forms (#280). Plain
+        ! E with d=0 is itself a gfortran runtime error ("scale factor out of
+        ! range"), so it is not exercised here.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  write(*,''(ES0.0)'') 3.14159'//new_line('a')// &
+            '  write(*,''(ES12.0)'') 30.14159'//new_line('a')// &
+            '  write(*,''(EN12.0)'') 3141.59'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '3.E+00'//new_line('a')// &
+            '      3.E+01'//new_line('a')// &
+            '      3.E+03'//new_line('a')
+
+        test_zero_precision_descriptors = expect_output(source, expected, &
+            '/tmp/ffc_fmt_zero_prec_test')
+    end function test_zero_precision_descriptors
 
 end program test_session_e_descriptor_compiler

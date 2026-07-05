@@ -480,6 +480,10 @@ module session_program_lowering_types
                     ! A call to such a name inlines the body with actuals bound to dummies.
                     type(statement_function_t), allocatable :: statement_functions(:)
                     integer :: statement_function_count = 0
+                    ! OPEN(unit=6, sign='plus') reconfigures the preconnected stdout
+                    ! connection's sign mode (#280): PRINT and WRITE(*,...) share that
+                    ! connection, so a forced-plus mode applies to their F editing too.
+                    logical :: stdout_force_plus_sign = .false.
                 end type lowering_context_t
 
                 type, public :: branch_result_t
