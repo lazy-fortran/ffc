@@ -17,6 +17,7 @@ module ffc_cli_options
         logical :: show_version = .false.
         logical :: show_help = .false.
         integer :: backend = 0
+        integer :: opt_level = 0
     end type cli_options_t
 
 contains
@@ -80,6 +81,14 @@ contains
                         trim(argv(i))//' (expected default|isel|copy-patch|llvm)')
                     return
                 end select
+            case ('-O0')
+                opts%opt_level = 0
+            case ('-O1')
+                opts%opt_level = 1
+            case ('-O', '-O2')
+                opts%opt_level = 2
+            case ('-O3')
+                opts%opt_level = 3
             case default
                 if (ends_with(trim(argv(i)), '.o')) then
                     call append_include_path(opts%link_inputs, trim(argv(i)))

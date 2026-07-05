@@ -1,6 +1,6 @@
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
                                           error_msg, include_paths, link_objects, &
-                                          backend)
+                                          backend, opt_level)
 
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -9,31 +9,36 @@
         character(len=*), intent(in), optional :: include_paths(:)
         character(len=*), intent(in), optional :: link_objects(:)
         integer, intent(in), optional :: backend
+        integer, intent(in), optional :: opt_level
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .true., error_msg, include_paths, &
-                                         link_objects, backend)
+                                         link_objects, backend, opt_level)
     end subroutine lower_program_to_liric_exe
     subroutine lower_program_to_liric_object(arena, root_index, output_path, &
-                                             error_msg, include_paths, backend)
+                                             error_msg, include_paths, backend, &
+                                             opt_level)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in), optional :: include_paths(:)
         integer, intent(in), optional :: backend
+        integer, intent(in), optional :: opt_level
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .false., error_msg, include_paths, &
-                                         backend=backend)
+                                         backend=backend, opt_level=opt_level)
     end subroutine lower_program_to_liric_object
     subroutine lower_program_to_liric_path(arena, root_index, output_path, &
                                            emit_executable, error_msg, &
-                                           include_paths, link_objects, backend)
+                                           include_paths, link_objects, backend, &
+                                           opt_level)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=*), intent(in), optional :: include_paths(:)
         character(len=*), intent(in), optional :: link_objects(:)
         integer, intent(in), optional :: backend
+        integer, intent(in), optional :: opt_level
         logical, intent(in) :: emit_executable
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
@@ -46,6 +51,7 @@
         if (len_trim(error_msg) > 0) return
         session_config = lr_session_config_t()
         if (present(backend)) session_config%backend = int(backend, c_int)
+        if (present(opt_level)) session_config%opt_level = int(opt_level, c_int)
         call liric_session_create(context%session, error_msg, session_config)
         if (len_trim(error_msg) > 0) return
         allocate(context%symbols(16))
