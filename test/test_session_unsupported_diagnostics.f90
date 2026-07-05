@@ -92,12 +92,19 @@ contains
     end function test_unassigned_character_print_diagnostic
 
     logical function test_module_diagnostic()
-        ! Scalar module variables lower since #263; a module ARRAY variable still
-        ! needs storage that is not yet emitted, so it stays a clean diagnostic.
+        ! Scalar module variables lower since #263; a fixed-size numeric module
+        ! ARRAY variable now lowers too (wave 11), binding to one shared global.
+        ! An allocatable module array still needs runtime storage that is not
+        ! emitted, so it stays a clean diagnostic.
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
-            '  integer :: counter(3)'//new_line('a')// &
-            'end module m'
+            '  integer, allocatable :: counter(:)'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  allocate(counter(3))'//new_line('a')// &
+            '  counter(1) = 1'//new_line('a')// &
+            'end program main'
 
         test_module_diagnostic = expect_error_contains( &
             source, 'unsupported module variable', &
@@ -359,12 +366,18 @@ contains
     end function test_cli_unassigned_character_print_diagnostic
 
     logical function test_cli_module_diagnostic()
-        ! Scalar module variables lower since #263; a module ARRAY variable still
-        ! needs storage that is not yet emitted, so it stays a clean diagnostic.
+        ! Scalar module variables lower since #263, and fixed-size numeric module
+        ! arrays since wave 11; an allocatable module array still needs runtime
+        ! storage that is not emitted, so it stays a clean diagnostic.
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
-            '  integer :: counter(3)'//new_line('a')// &
-            'end module m'
+            '  integer, allocatable :: counter(:)'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  allocate(counter(3))'//new_line('a')// &
+            '  counter(1) = 1'//new_line('a')// &
+            'end program main'
 
         test_cli_module_diagnostic = expect_cli_error_contains( &
             source, 'unsupported module variable', &

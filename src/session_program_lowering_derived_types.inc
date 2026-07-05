@@ -294,8 +294,11 @@
                         mod_node%declaration_indices(j)
                     context%module_exports(export_idx)%parameter_count = &
                         context%module_exports(export_idx)%parameter_count + 1
-                else if (.not. decl%is_array) then
-                    ! Non-parameter scalar: export as module variable (#249 B7a).
+                else
+                    ! Non-parameter scalar or array: export as module variable
+                    ! (#249 B7a). module_variable_kind classifies whether the
+                    ! shape/kind is one ffc can store; unsupported forms keep the
+                    ! unit xfail rather than being silently absent.
                     if (module_symbol_is_private(arena, mod_node, trim(decl_name))) &
                         cycle
                     call grow_module_export_variable_indices(context, export_idx)

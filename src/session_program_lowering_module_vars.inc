@@ -31,9 +31,8 @@
             return
         end if
         if (module_declaration_is_array(arena, var_idx)) then
-            call unsupported_feature_error('module variable', line, column, &
-                'direct LIRIC session stores only scalar module variables', &
-                error_msg)
+            call module_array_variable_kind(arena, var_idx, value_kind, status, &
+                                            context, error_msg)
             return
         end if
         ! A scalar derived-type module variable stores as a flat slot global.
@@ -83,6 +82,110 @@
             module_declaration_is_array = decl%is_array
         end select
     end function module_declaration_is_array
+
+    subroutine module_array_variable_kind(arena, var_idx, value_kind, status, &
+                                           context, error_msg)
+        ! Classify a module-level ARRAY declaration. A fixed-size rank-1 array of
+        ! integer(4), real, or logical whose extent folds to a compile-time
+        ! constant is MODVAR_OK (value_kind is the element kind). Allocatable,
+        ! pointer, character, derived, multidimensional, or runtime-sized arrays
+        ! stay MODVAR_UNSUPPORTED with a clean diagnostic, so a case that never
+        ! compiled keeps its xfail rather than miscompiling.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: status
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: array_size, array_lower, line, column
+
+        value_kind = VALUE_I32
+        status = MODVAR_UNSUPPORTED
+        call set_empty(error_msg)
+        line = get_node_line(arena, var_idx)
+        column = get_node_column(arena, var_idx)
+        call module_array_variable_info(arena, var_idx, context, value_kind, &
+                                        array_size, array_lower, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('module variable', line, column, &
+                trim(error_msg), error_msg)
+            return
+        end if
+        status = MODVAR_OK
+    end subroutine module_array_variable_kind
+
+    subroutine module_array_variable_info(arena, var_idx, context, value_kind, &
+                                          array_size, array_lower, error_msg)
+        ! Resolve the element kind, total extent, and lower bound of a supported
+        ! fixed-size module array. error_msg names the reason a form is out of
+        ! scope; callers turn that into an xfail diagnostic.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: array_size
+        integer, intent(out) :: array_lower
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: type_name, kind_err
+        integer :: line, column
+
+        value_kind = VALUE_I32
+        array_size = 0
+        array_lower = 1
+        call set_empty(error_msg)
+        line = get_node_line(arena, var_idx)
+        column = get_node_column(arena, var_idx)
+        if (.not. node_exists(arena, var_idx)) then
+            error_msg = 'module array declaration is missing'
+            return
+        end if
+        select type (decl => arena%entries(var_idx)%node)
+        type is (declaration_node)
+            if (decl%is_allocatable .or. decl%is_pointer) then
+                error_msg = 'allocatable and pointer module arrays are not '// &
+                            'stored as static globals'
+                return
+            end if
+            if (.not. allocated(decl%dimension_indices)) then
+                error_msg = 'module array has no static dimension'
+                return
+            end if
+            if (size(decl%dimension_indices) /= 1) then
+                error_msg = 'only rank-1 module arrays are stored as globals'
+                return
+            end if
+            call get_array_bounds(decl, context, array_lower, array_size, &
+                                  error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'module array extent must be a compile-time constant'
+                return
+            end if
+            if (array_size <= 0) then
+                error_msg = 'module array has a non-positive extent'
+                return
+            end if
+        class default
+            error_msg = 'module export is not a declaration'
+            return
+        end select
+        call get_declaration_type_name(arena, var_idx, type_name, kind_err)
+        if (len_trim(kind_err) > 0) then
+            error_msg = kind_err
+            return
+        end if
+        call type_name_value_kind(type_name, line, column, value_kind, &
+                                  kind_err, context)
+        if (len_trim(kind_err) > 0) then
+            error_msg = kind_err
+            return
+        end if
+        select case (value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+        case default
+            error_msg = 'direct LIRIC session stores only integer(4), real, '// &
+                        'and logical module arrays'
+        end select
+    end subroutine module_array_variable_info
 
     logical function module_declaration_is_multi(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
@@ -214,6 +317,11 @@
                                                      context, error_msg)
             return
         end if
+        if (module_declaration_is_array(arena, var_idx)) then
+            call emit_module_array_variable_global(arena, var_idx, value_kind, &
+                var_name, module_name, context, error_msg)
+            return
+        end if
         call set_empty(error_msg)
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
@@ -246,6 +354,192 @@
         end if
         call set_empty(error_msg)
     end subroutine emit_module_variable_global
+
+    subroutine emit_module_array_variable_global(arena, var_idx, value_kind, &
+                                                 var_name, module_name, context, &
+                                                 error_msg)
+        ! Emit a fixed-size module array as one [extent x elem] LIRIC global,
+        ! zero-filled unless a compile-time array-constructor initialiser folds
+        ! into its static bytes. The buffer is local, so lr_session_global (which
+        ! copies immediately) runs before it goes out of scope.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_int64_t, c_loc, c_size_t, &
+                                               c_ptr, c_double, c_float
+        use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
+                                          lr_type_f64_s, lr_type_array_s
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: var_name
+        character(len=*), intent(in) :: module_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), target, allocatable :: array_i32(:)
+        real(c_float), target, allocatable :: array_f32(:)
+        real(c_double), target, allocatable :: array_f64(:)
+        type(c_ptr) :: elem_type, gtype, init_ptr
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        integer :: value_kind_local, array_size, array_lower
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        call module_array_variable_info(arena, var_idx, context, value_kind_local, &
+                                        array_size, array_lower, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            allocate (array_i32(array_size))
+            array_i32 = 0_c_int32_t
+            call fold_module_array_initializer(arena, var_idx, value_kind, &
+                array_size, context, array_i32, array_f32, array_f64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            elem_type = lr_type_i32_s(context%session%handle)
+            init_ptr = c_loc(array_i32)
+            init_size = int(array_size, c_size_t) * 4_c_size_t
+        case (VALUE_F32)
+            allocate (array_f32(array_size))
+            array_f32 = 0.0_c_float
+            call fold_module_array_initializer(arena, var_idx, value_kind, &
+                array_size, context, array_i32, array_f32, array_f64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            elem_type = lr_type_f32_s(context%session%handle)
+            init_ptr = c_loc(array_f32)
+            init_size = int(array_size, c_size_t) * 4_c_size_t
+        case (VALUE_F64)
+            allocate (array_f64(array_size))
+            array_f64 = 0.0_c_double
+            call fold_module_array_initializer(arena, var_idx, value_kind, &
+                array_size, context, array_i32, array_f32, array_f64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            elem_type = lr_type_f64_s(context%session%handle)
+            init_ptr = c_loc(array_f64)
+            init_size = int(array_size, c_size_t) * 8_c_size_t
+        case default
+            error_msg = 'unsupported module array kind for global emission'
+            return
+        end select
+        mangled = module_procedure_mangled(module_name, trim(var_name))
+        call to_c_chars(mangled, c_name)
+        gtype = lr_type_array_s(context%session%handle, elem_type, &
+                                int(array_size, c_int64_t))
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+                                      c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create module array global: '// &
+                        trim(mangled)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_module_array_variable_global
+
+    subroutine fold_module_array_initializer(arena, var_idx, value_kind, &
+                                             array_size, context, array_i32, &
+                                             array_f32, array_f64, error_msg)
+        ! Fold a compile-time array-constructor initialiser into the static
+        ! element buffer of the matching kind. An absent initialiser leaves the
+        ! zero fill. A non-constructor or non-constant initialiser sets error_msg
+        ! so the unit stays xfail rather than storing wrong bytes.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float, &
+                                               c_double
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(in) :: value_kind
+        integer, intent(in) :: array_size
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int32_t), intent(inout), allocatable :: array_i32(:)
+        real(c_float), intent(inout), allocatable :: array_f32(:)
+        real(c_double), intent(inout), allocatable :: array_f64(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+        integer :: init_index, i, io_stat, line, column
+        integer(c_int64_t) :: iconst
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
+
+        call set_empty(error_msg)
+        if (.not. get_declaration_has_initializer(arena, var_idx)) return
+        init_index = get_declaration_initializer_index(arena, var_idx)
+        if (init_index <= 0) return
+        line = get_node_line(arena, var_idx)
+        column = get_node_column(arena, var_idx)
+        allocate (flat(0))
+        call module_array_constructor_elements(arena, init_index, flat, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('module array initializer', line, &
+                column, trim(error_msg), error_msg)
+            return
+        end if
+        if (size(flat) /= array_size) then
+            call unsupported_feature_error('module array initializer', line, &
+                column, 'array constructor length does not match declared '// &
+                'extent', error_msg)
+            return
+        end if
+        do i = 1, array_size
+            select case (value_kind)
+            case (VALUE_I32)
+                call eval_i32_constant(arena, flat(i), context, iconst, error_msg)
+            case (VALUE_LOGICAL)
+                call get_literal_info(arena, flat(i), lit_value, lit_type, lit_err)
+                if (len_trim(lit_err) > 0) error_msg = lit_err
+            case (VALUE_F32, VALUE_F64)
+                call get_literal_info(arena, flat(i), lit_value, lit_type, lit_err)
+                if (len_trim(lit_err) > 0) error_msg = lit_err
+            end select
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('module array initializer', line, &
+                    column, 'only compile-time constant array constructors '// &
+                    'initialise module arrays', error_msg)
+                return
+            end if
+            select case (value_kind)
+            case (VALUE_I32)
+                array_i32(i) = int(iconst, c_int32_t)
+            case (VALUE_LOGICAL)
+                array_i32(i) = logical_literal_to_i32(lit_value)
+            case (VALUE_F32)
+                read (lit_value, *, iostat=io_stat) array_f32(i)
+                if (io_stat /= 0) error_msg = 'malformed real initializer: '// &
+                                              lit_value
+            case (VALUE_F64)
+                read (lit_value, *, iostat=io_stat) array_f64(i)
+                if (io_stat /= 0) error_msg = 'malformed real initializer: '// &
+                                              lit_value
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine fold_module_array_initializer
+
+    subroutine module_array_constructor_elements(arena, init_index, flat, error_msg)
+        ! Flatten a plain array-constructor initialiser into ordered leaf element
+        ! indices. A non-constructor initialiser (e.g. a scalar broadcast or a
+        ! reshape call) is out of scope and reported so the unit stays xfail.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: init_index
+        integer, allocatable, intent(inout) :: flat(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, init_index)) then
+            error_msg = 'array constructor initializer is missing'
+            return
+        end if
+        select type (node => arena%entries(init_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) then
+                error_msg = 'empty array constructor'
+                return
+            end if
+            call flatten_constructor_elements(arena, node%element_indices, flat, &
+                                              error_msg)
+        class default
+            error_msg = 'module array initializer must be a plain array '// &
+                        'constructor'
+        end select
+    end subroutine module_array_constructor_elements
 
     subroutine emit_derived_module_variable_global(arena, var_idx, module_name, &
                                                    context, error_msg)
@@ -497,6 +791,11 @@
                                                   global_id, context, error_msg)
             return
         end if
+        if (module_declaration_is_array(arena, var_idx)) then
+            call bind_one_module_array_variable(arena, var_idx, value_kind, &
+                trim(var_name), global_id, context, error_msg)
+            return
+        end if
         call grow_symbols(context)
         sym_idx = context%symbol_count + 1
         context%symbols(sym_idx)%name = trim(var_name)
@@ -510,6 +809,48 @@
         context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_one_module_variable
+
+    subroutine bind_one_module_array_variable(arena, var_idx, value_kind, &
+                                              sym_name, global_id, context, &
+                                              error_msg)
+        ! Bind a fixed-size module array as an addressed reference whose storage
+        ! is the interned [extent x elem] global. element_address mirrors address
+        ! so the shared element-GEP path (session_program_lowering_array_elements)
+        ! reads and writes the global, and array_size/array_dim_* carry the shape
+        ! that size and bounds inquiries need. sym_name is the local binding name
+        ! (a USE rename may differ from the module name).
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: sym_name
+        integer(c_int32_t), intent(in) :: global_id
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym_idx, value_kind_local, array_size, array_lower
+
+        call module_array_variable_info(arena, var_idx, context, value_kind_local, &
+                                        array_size, array_lower, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call grow_symbols(context)
+        sym_idx = context%symbol_count + 1
+        context%symbols(sym_idx)%name = trim(sym_name)
+        context%symbols(sym_idx)%value_kind = value_kind
+        context%symbols(sym_idx)%has_address = .true.
+        context%symbols(sym_idx)%is_reference = .true.
+        context%symbols(sym_idx)%is_array = .true.
+        context%symbols(sym_idx)%array_rank = 1
+        context%symbols(sym_idx)%array_size = array_size
+        context%symbols(sym_idx)%array_dim_sizes(1) = array_size
+        context%symbols(sym_idx)%array_dim_lowers(1) = array_lower
+        context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+        context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+        context%symbols(sym_idx)%element_address = context%symbols(sym_idx)%address
+        context%symbol_count = sym_idx
+        call set_empty(error_msg)
+    end subroutine bind_one_module_array_variable
 
     subroutine bind_one_derived_module_variable(arena, var_idx, sym_name, &
                                                 global_id, context, error_msg)
