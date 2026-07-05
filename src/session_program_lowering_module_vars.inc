@@ -187,6 +187,33 @@
         end select
     end subroutine module_array_variable_info
 
+    subroutine probe_module_array_initializer(arena, var_idx, value_kind, &
+                                              array_size, context, error_msg)
+        ! A supported-shape module array whose initializer is not a foldable
+        ! compile-time constant constructor is still out of scope: fold into
+        ! throwaway buffers so the collector can decline it up front, keeping a
+        ! unit that only declares such an array compilable.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_float, c_double
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx, value_kind, array_size
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t), allocatable :: probe_i32(:)
+        real(c_float), allocatable :: probe_f32(:)
+        real(c_double), allocatable :: probe_f64(:)
+
+        call set_empty(error_msg)
+        if (array_size <= 0) return
+        allocate (probe_i32(array_size), probe_f32(array_size), &
+                  probe_f64(array_size))
+        probe_i32 = 0_c_int32_t
+        probe_f32 = 0.0_c_float
+        probe_f64 = 0.0_c_double
+        call fold_module_array_initializer(arena, var_idx, value_kind, &
+                                           array_size, context, probe_i32, &
+                                           probe_f32, probe_f64, error_msg)
+    end subroutine probe_module_array_initializer
+
     logical function module_declaration_is_multi(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

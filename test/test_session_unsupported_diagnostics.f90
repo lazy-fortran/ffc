@@ -92,18 +92,19 @@ contains
     end function test_unassigned_character_print_diagnostic
 
     logical function test_module_diagnostic()
-        ! Scalar module variables lower since #263; a fixed-size numeric module
-        ! ARRAY variable now lowers too (wave 11), binding to one shared global.
-        ! An allocatable module array still needs runtime storage that is not
-        ! emitted, so it stays a clean diagnostic.
+        ! Integer/real/logical scalar and fixed-size numeric array module
+        ! variables lower (#263 / wave 11). A complex module scalar still needs
+        ! storage ffc does not emit, so it stays a clean diagnostic. (An
+        ! out-of-scope module ARRAY - allocatable/pointer/rank>1 - is instead
+        ! skipped so a unit that merely declares it still compiles.)
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
-            '  integer, allocatable :: counter(:)'//new_line('a')// &
+            '  complex :: c'//new_line('a')// &
             'end module m'//new_line('a')// &
             'program main'//new_line('a')// &
             '  use m'//new_line('a')// &
-            '  allocate(counter(3))'//new_line('a')// &
-            '  counter(1) = 1'//new_line('a')// &
+            '  c = (1.0, 2.0)'//new_line('a')// &
+            '  print *, c'//new_line('a')// &
             'end program main'
 
         test_module_diagnostic = expect_error_contains( &
@@ -366,17 +367,17 @@ contains
     end function test_cli_unassigned_character_print_diagnostic
 
     logical function test_cli_module_diagnostic()
-        ! Scalar module variables lower since #263, and fixed-size numeric module
-        ! arrays since wave 11; an allocatable module array still needs runtime
-        ! storage that is not emitted, so it stays a clean diagnostic.
+        ! Integer/real/logical scalar and fixed-size numeric array module
+        ! variables lower (#263 / wave 11). A complex module scalar still needs
+        ! storage ffc does not emit, so it stays a clean diagnostic.
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
-            '  integer, allocatable :: counter(:)'//new_line('a')// &
+            '  complex :: c'//new_line('a')// &
             'end module m'//new_line('a')// &
             'program main'//new_line('a')// &
             '  use m'//new_line('a')// &
-            '  allocate(counter(3))'//new_line('a')// &
-            '  counter(1) = 1'//new_line('a')// &
+            '  c = (1.0, 2.0)'//new_line('a')// &
+            '  print *, c'//new_line('a')// &
             'end program main'
 
         test_cli_module_diagnostic = expect_cli_error_contains( &

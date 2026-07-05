@@ -296,11 +296,27 @@
                         context%module_exports(export_idx)%parameter_count + 1
                 else
                     ! Non-parameter scalar or array: export as module variable
-                    ! (#249 B7a). module_variable_kind classifies whether the
-                    ! shape/kind is one ffc can store; unsupported forms keep the
-                    ! unit xfail rather than being silently absent.
+                    ! (#249 B7a). A module array is exported only when ffc can
+                    ! store it as a static global; an out-of-scope array form
+                    ! (allocatable/pointer, rank > 1, runtime extent) is skipped
+                    ! here so a unit that merely declares it still compiles,
+                    ! exactly as before fixed-size module arrays were supported.
                     if (module_symbol_is_private(arena, mod_node, trim(decl_name))) &
                         cycle
+                    if (decl%is_array) then
+                        block
+                            integer :: mv_kind, mv_size, mv_lower
+                            character(len=:), allocatable :: mv_err
+                            call module_array_variable_info(arena, &
+                                mod_node%declaration_indices(j), context, &
+                                mv_kind, mv_size, mv_lower, mv_err)
+                            if (len_trim(mv_err) > 0) cycle
+                            call probe_module_array_initializer(arena, &
+                                mod_node%declaration_indices(j), mv_kind, &
+                                mv_size, context, mv_err)
+                            if (len_trim(mv_err) > 0) cycle
+                        end block
+                    end if
                     call grow_module_export_variable_indices(context, export_idx)
                     context%module_exports(export_idx)%variable_indices( &
                         context%module_exports(export_idx)%variable_count + 1) = &
