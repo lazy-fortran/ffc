@@ -623,6 +623,10 @@
                     if (symbol_index > 0) then
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
                     end if
+                else if (f64_intrinsic_id(node%name) == F64_INTRINSIC_REAL) then
+                    ! real(A [,KIND]) is the one non-kind-preserving conversion:
+                    ! it is f32 whenever its result kind is not f64.
+                    is_f32 = .not. real_intrinsic_is_f64(arena, node, context)
                 else if (f64_intrinsic_id(node%name) /= F64_INTRINSIC_NONE) then
                     ! Elemental real intrinsics (sqrt, sin, abs, ...) return the
                     ! kind of their argument, so a nested sqrt(sqrt(x)) is f32

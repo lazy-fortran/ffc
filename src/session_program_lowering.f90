@@ -143,6 +143,7 @@ module session_program_lowering
         emit_liric_i32_to_f32, &
         emit_liric_f32_to_i32, &
         emit_liric_f32_to_f64, &
+        emit_liric_f64_to_f32, &
         emit_liric_print_f32, &
         emit_liric_print_f32_value, &
         emit_liric_f64_binary, &

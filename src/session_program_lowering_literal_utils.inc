@@ -1,3 +1,32 @@
+    logical function real_intrinsic_is_f64(arena, node, context) result(is_f64)
+        !! Result kind of a REAL(A [,KIND]) conversion (F2018 16.9.160). With a
+        !! KIND selector the width follows KIND; a literal 8 is f64 and a literal
+        !! 4 is f32, while an unfoldable selector (named constant, kind() inquiry)
+        !! stays f64 to preserve the historical conservative width. With no KIND,
+        !! the result is default real (f32) for integer or real A, and keeps the
+        !! argument kind only when A is complex, so real(z) on a complex(8) is the
+        !! one no-KIND case that is f64.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: kind_error
+
+        is_f64 = .false.
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) >= 2) then
+            call parse_i32_constant(arena, node%arg_indices(2), kind_value, &
+                                    'real kind', kind_error)
+            if (len_trim(kind_error) > 0) then
+                is_f64 = .true.
+            else
+                is_f64 = kind_value == 8_c_int64_t
+            end if
+            return
+        end if
+        is_f64 = is_complex_valued(arena, node%arg_indices(1), context, VALUE_C8)
+    end function real_intrinsic_is_f64
+
     logical function is_f64_intrinsic_expression(arena, node, context) &
         result(is_f64)
         type(ast_arena_t), intent(in) :: arena
@@ -11,7 +40,7 @@
 
         intrinsic_id = f64_intrinsic_id(node%name)
         if (intrinsic_id == F64_INTRINSIC_REAL) then
-            is_f64 = .true.
+            is_f64 = real_intrinsic_is_f64(arena, node, context)
             return
         end if
         ! dble() always returns real(8), regardless of argument kind.

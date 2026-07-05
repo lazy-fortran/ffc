@@ -40,6 +40,7 @@ module liric_session_io_emission_bindings
     public :: emit_liric_i32_to_f32
     public :: emit_liric_f32_to_i32
     public :: emit_liric_f32_to_f64
+    public :: emit_liric_f64_to_f32
     public :: emit_liric_f64_binary
     public :: emit_liric_i32_to_f64
     public :: emit_liric_f64_to_i32
@@ -734,6 +735,28 @@ contains
         call set_empty(error_msg)
         emit_liric_f32_to_f64 = .true.
     end function emit_liric_f32_to_f64
+
+    logical function emit_liric_f64_to_f32(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f64_to_f32 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_cast_f32(session%handle, LR_OP_FPTRUNC, source, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_f32_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_liric_f64_to_f32 = .true.
+    end function emit_liric_f64_to_f32
 
     logical function emit_liric_f64_binary(session, opcode, lhs, rhs, result, &
             error_msg)

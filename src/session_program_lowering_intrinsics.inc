@@ -656,6 +656,20 @@
             return
         end if
 
+        ! An f64 argument to a single-precision conversion (real(d), real(d, 4))
+        ! narrows to f32.
+        if (is_f64_expression(arena, node_index, context)) then
+            block
+                type(lr_operand_desc_t) :: wide_value
+                call lower_f64_expression(arena, node_index, context, &
+                                          wide_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_f32(context%session, wide_value, &
+                                                value, error_msg)) return
+            end block
+            return
+        end if
+
         ! Integer argument: promote to f32.
         call lower_i32_expression(arena, node_index, context, integer_value, &
                                   error_msg)
