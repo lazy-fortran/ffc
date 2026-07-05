@@ -6,16 +6,20 @@ the gfortran -O2 reference, and reports best-of-N compile and run wall times.
 
 Toolchains:
   gfortran-O0, gfortran-O2      always (if gfortran on PATH)
-  ffc-isel, ffc-copy-patch      native liric backends via --backend
+  ffc-isel, ffc-copy-patch      native liric backends (O0-class direct emission)
+  ffc-llvm-O0, ffc-llvm-O2      LLVM liric backend, only with --ffc-llvm <bin>
   lfortran                      only when --lfortran <bin> is given
 
-The LLVM liric backend is intentionally absent: the session AOT path is not
-yet functional (liric#522). Add an ffc-llvm toolchain here once it lands.
+The ffc-llvm toolchains need a second ffc binary linked against the LLVM liric
+build. Build it (from an LLVM-enabled liric at <liric>/build_llvm) by adding the
+LLVM link lib to fpm.toml temporarily, `LIBRARY_PATH=<liric>/build_llvm fpm
+build`, then reverting fpm.toml, and pass that build's app/ffc via --ffc-llvm.
+The shipped ffc links native liric and does not need LLVM.
 
 Usage:
   LIBRARY_PATH=<liric-build> scripts/perf_compare.py \
-      --ffc build/fo/bin/ffc [--lfortran <bin>] [--repeats 3] \
-      [--out /tmp/ffc_perf.md]
+      --ffc build/fo/bin/ffc [--ffc-llvm <llvm-ffc>] [--lfortran <bin>] \
+      [--repeats 3] [--out /tmp/ffc_perf.md]
 """
 import argparse
 import os
@@ -88,6 +92,11 @@ def make_toolchains(args):
     tc["ffc-isel"] = lambda src, exe: [args.ffc, src, "-o", exe, "--backend", "isel"]
     tc["ffc-copy-patch"] = lambda src, exe: [
         args.ffc, src, "-o", exe, "--backend", "copy-patch"]
+    if args.ffc_llvm:
+        tc["ffc-llvm-O0"] = lambda src, exe: [
+            args.ffc_llvm, src, "-o", exe, "--backend", "llvm", "-O0"]
+        tc["ffc-llvm-O2"] = lambda src, exe: [
+            args.ffc_llvm, src, "-o", exe, "--backend", "llvm", "-O2"]
     if args.lfortran:
         tc["lfortran"] = lambda src, exe: [args.lfortran, src, "-o", exe]
     return tc
@@ -96,6 +105,9 @@ def make_toolchains(args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ffc", required=True)
+    ap.add_argument("--ffc-llvm", default=None,
+                    help="ffc built against the LLVM liric backend "
+                         "(adds ffc-llvm-O0 and ffc-llvm-O2 toolchains)")
     ap.add_argument("--lfortran", default=None)
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--out", default="/tmp/ffc_perf.md")
@@ -106,7 +118,8 @@ def main():
         for f in os.listdir(BENCH_DIR)
         if f.endswith(".f90"))
     toolchains = make_toolchains(args)
-    order = ["gfortran-O0", "gfortran-O2", "ffc-isel", "ffc-copy-patch", "lfortran"]
+    order = ["gfortran-O0", "gfortran-O2", "ffc-isel", "ffc-copy-patch",
+             "ffc-llvm-O0", "ffc-llvm-O2", "lfortran"]
     order = [t for t in order if t in toolchains]
 
     tmp = tempfile.mkdtemp(prefix="ffc_perf_")
