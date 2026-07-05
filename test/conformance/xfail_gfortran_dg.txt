@@ -225,7 +225,6 @@ arrayio_derived_2.f90
 assign_12.f90
 assign_13.f90
 assign_9.f90
-assignment_3.f90
 associate_12.f90
 associate_13.f90
 associate_14.f90
@@ -247,12 +246,10 @@ associate_42.f90
 associate_43.f90
 associate_44.f90
 associate_45.f90
-associate_46.f90
 associate_47.f90
 associate_48.f90
 associate_49.f90
 associate_52.f90
-associate_57.f90
 associate_58.f90
 associate_60.f90
 associate_61.f90
@@ -333,7 +330,6 @@ bind_c_usage_19.f90
 bind_c_usage_21.f90
 bind_c_usage_29.f90
 bind_c_usage_30.f90
-binding_label_tests_23.f90
 binding_label_tests_26a.f90
 binding_label_tests_32.f90
 binding_label_tests_33.f90
@@ -413,7 +409,6 @@ char_length_5.f90
 char_length_6.f90
 char_length_7.f90
 char_length_8.f90
-char_length_9.f90
 char_pack_1.f90
 char_pack_2.f90
 char_pointer_assign_3.f90
@@ -442,18 +437,15 @@ char_unpack_1.f90
 char_unpack_2.f90
 character_array_constructor_1.f90
 character_array_dummy_1.f90
-character_assign_1.f90
 character_workout_1.f90
 character_workout_4.f90
 charlen_15.f90
 charlen_16.f90
 charlen_17.f90
 chkbits.f90
-class_32.f90
 class_33.f90
 class_34.f90
 class_35.f90
-class_47.f90
 class_48.f90
 class_49.f90
 class_63.f90
@@ -477,7 +469,6 @@ class_array_18.f90
 class_assign_4.f90
 class_dummy_11.f90
 class_dummy_6.f90
-class_dummy_7.f90
 class_dummy_8.f90
 class_dummy_9.f90
 class_elemental_1.f90
@@ -600,7 +591,6 @@ defined_assignment_3.f90
 defined_assignment_4.f90
 defined_assignment_6.f90
 defined_assignment_7.f90
-defined_assignment_8.f90
 defined_assignment_9.f90
 dependency_1.f90
 dependency_19.f90
@@ -656,7 +646,6 @@ derived_init_6.f90
 derived_init_7.f90
 derived_pointer_recursion_2.f90
 derived_result_3.f90
-derived_result_4.f90
 derived_result_5.f90
 direct_io_1.f90
 direct_io_11.f90
@@ -724,7 +713,6 @@ elemental_subroutine_1.f90
 elemental_subroutine_10.f90
 elemental_subroutine_11.f90
 elemental_subroutine_3.f90
-elemental_subroutine_6.f90
 elemental_subroutine_7.f90
 elemental_subroutine_9.f90
 empty_type.f90
@@ -882,7 +870,6 @@ gamma_1.f90
 gamma_5.f90
 generic_10.f90
 generic_12.f90
-generic_13.f90
 generic_15.f90
 generic_20.f90
 generic_21.f90
@@ -902,12 +889,10 @@ generic_stmt_4.f90
 getenv_1.f90
 goto_4.f90
 hollerith_9.f90
-host_assoc_blockdata_1.f90
 host_assoc_call_4.f90
 host_assoc_call_5.f90
 host_assoc_function_1.f90
 host_assoc_function_2.f90
-host_assoc_function_3.f90
 host_assoc_function_4.f90
 host_assoc_function_5.f90
 host_assoc_function_6.f90
@@ -935,10 +920,8 @@ implied_do_io_8.f90
 implied_do_io_9.f90
 implied_shape_4.f90
 import.f90
-import11.f90
 import4.f90
 import6.f90
-import7.f90
 import9.f90
 in_pack_rank7.f90
 include_4.f90
@@ -987,10 +970,8 @@ intent_out_2.f90
 intent_out_20.f90
 intent_out_21.f90
 intent_out_22.f90
-intent_out_4.f90
 intent_out_5.f90
 intent_out_6.f90
-intent_used_1.f90
 interface_10.f90
 interface_12.f90
 interface_13.f90
@@ -998,7 +979,6 @@ interface_16.f90
 interface_19.f90
 interface_25.f90
 interface_29.f90
-interface_31.f90
 interface_32.f90
 interface_4.f90
 interface_41.f90
@@ -1235,7 +1215,6 @@ namelist_28.f90
 namelist_29.f90
 namelist_30.f90
 namelist_31.f90
-namelist_36.f90
 namelist_38.f90
 namelist_39.f90
 namelist_40.f90
@@ -1270,7 +1249,6 @@ namelist_79.f90
 namelist_80.f90
 namelist_81.f90
 namelist_82.f90
-namelist_83_2.f90
 namelist_84.f90
 namelist_88.f90
 namelist_89.f90
@@ -1544,7 +1522,6 @@ pr50069_1.f90
 pr51434.f90
 pr51993.f90
 pr53298.f90
-pr54967.f90
 pr55086_1.f90
 pr55086_2.f90
 pr57910.f90
@@ -1710,7 +1687,6 @@ proc_decl_20.f90
 proc_decl_22.f90
 proc_decl_23.f90
 proc_decl_24.f90
-proc_decl_25.f90
 proc_decl_27.f90
 proc_decl_28.f90
 proc_decl_9.f90
@@ -1725,14 +1701,12 @@ proc_ptr_23.f90
 proc_ptr_25.f90
 proc_ptr_26.f90
 proc_ptr_27.f90
-proc_ptr_28.f90
 proc_ptr_29.f90
 proc_ptr_34.f90
 proc_ptr_36.f90
 proc_ptr_41.f90
 proc_ptr_42.f90
 proc_ptr_43.f90
-proc_ptr_45.f90
 proc_ptr_47.f90
 proc_ptr_48.f90
 proc_ptr_49.f90
@@ -1774,7 +1748,6 @@ proc_ptr_comp_44.f90
 proc_ptr_comp_45.f90
 proc_ptr_comp_47.f90
 proc_ptr_comp_49.f90
-proc_ptr_comp_5.f90
 proc_ptr_comp_50.f90
 proc_ptr_comp_52.f90
 proc_ptr_comp_53.f90
@@ -1893,7 +1866,6 @@ ret_pointer_2.f90
 rrspacing_1.f90
 save_8.f90
 save_alloc_character_1.f90
-save_parameter.f90
 scalar_mask_1.f90
 scalar_mask_2.f90
 scalarize_parameter_array_1.f90
@@ -2042,7 +2014,6 @@ typebound_assignment_4.f90
 typebound_assignment_7.f90
 typebound_assignment_8.f90
 typebound_call_26.f90
-typebound_call_27.f90
 typebound_call_28.f90
 typebound_call_30.f90
 typebound_call_32.f90
@@ -2111,7 +2082,6 @@ use_only_6.f90
 use_rename_1.f90
 use_rename_12.f90
 use_rename_13.f90
-use_rename_3.f90
 use_rename_7.f90
 use_rename_9.f90
 used_dummy_types_1.f90
@@ -2124,7 +2094,6 @@ used_interface_ref.f90
 used_types_1.f90
 used_types_10.f90
 used_types_11.f90
-used_types_12.f90
 used_types_13.f90
 used_types_15.f90
 used_types_16.f90
@@ -2151,7 +2120,6 @@ vector_subscript_3.f90
 vector_subscript_5.f90
 vector_subscript_8.f90
 vector_subscript_9.f90
-vector_subscript_bound_1.f90
 verify_2.f90
 verify_3.f90
 warn_unused_dummy_argument_5.f90
@@ -2166,7 +2134,6 @@ whole_file_10.f90
 whole_file_11.f90
 whole_file_12.f90
 whole_file_13.f90
-whole_file_15.f90
 whole_file_23.f90
 whole_file_27.f90
 whole_file_35.f90
