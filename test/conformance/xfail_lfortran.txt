@@ -732,7 +732,6 @@ cmd_03.f90
 coarray_01.f90
 common_03.f90
 common_07.f90
-common_12.f90
 common_16.f90
 common_19.f90
 common_21.f90

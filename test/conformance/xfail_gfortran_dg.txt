@@ -335,7 +335,6 @@ binding_label_tests_32.f90
 binding_label_tests_33.f90
 block_14.f90
 block_name_1.f90
-blockdata_11.f90
 blockdata_7.f90
 bound_1.f90
 bound_10.f90
