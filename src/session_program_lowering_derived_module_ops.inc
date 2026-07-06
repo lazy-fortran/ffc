@@ -323,11 +323,12 @@
             context%generic_count = next
     end subroutine import_fmod_generic
 
-    subroutine add_generic_specific_from_external(context, generic_idx, name, &
-                                                  ext_idx)
+ subroutine add_generic_specific_from_external(context, generic_idx, name, &
+                                                   ext_idx)
         ! Append a specific to a generic entry, taking its signature and
         ! return kinds from an already-registered external procedure rather
         ! than from an AST node (the specific was imported from a .fmod, #284).
+        ! Ranks default to 0 (scalar) since .fmod does not yet carry rank info.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: generic_idx
         character(len=*), intent(in) :: name
@@ -346,6 +347,7 @@
         context%generics(generic_idx)%specific_arg_counts(sc) = &
             context%external_procedures(ext_idx)%arg_count
         context%generics(generic_idx)%specific_arg_kinds(:, sc) = VALUE_I32
+        context%generics(generic_idx)%specific_arg_ranks(:, sc) = 0
         do j = 1, min(context%external_procedures(ext_idx)%arg_count, &
             MAX_PROC_ARGS)
             context%generics(generic_idx)%specific_arg_kinds(j, sc) = &

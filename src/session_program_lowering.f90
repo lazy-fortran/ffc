@@ -1617,6 +1617,7 @@ contains
         integer, allocatable :: copyback_indices(:)
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
+        integer :: call_arg_ranks(MAX_PROC_ARGS)
         integer :: i
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1631,14 +1632,18 @@ contains
         ! Resolve generic -> specific (#249 B7c).
         call_arg_count = 0
         call_arg_kinds = VALUE_I32
+        call_arg_ranks = 0
         if (allocated(arg_indices)) then
             call_arg_count = min(size(arg_indices), MAX_PROC_ARGS)
             do i = 1, call_arg_count
                 call_arg_kinds(i) = expression_value_kind(arena, arg_indices(i), &
                     context, VALUE_I32)
+                call_arg_ranks(i) = expression_value_rank(arena, arg_indices(i), &
+                    context)
             end do
         end if
-        call_name = degeneric_call_name(context, name, call_arg_count, call_arg_kinds)
+        call_name = degeneric_call_name(context, name, call_arg_count, call_arg_kinds, &
+            call_arg_ranks)
         if (same_name(call_name, 'get_command_argument')) then
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
             return
