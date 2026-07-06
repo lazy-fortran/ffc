@@ -90,10 +90,14 @@
         integer :: size_index1, size_index2, symbol_index
         logical :: handled
 
-        if (.not. allocated(node%var_indices) .or. size(node%var_indices) /= 1) then
+        if (.not. allocated(node%var_indices) .or. size(node%var_indices) < 1) then
             call unsupported_feature_error('allocate statement', node%line, &
-                node%column, 'direct LIRIC session supports allocating exactly '// &
-                'one variable per allocate', error_msg)
+                node%column, 'allocate statement has no target variable', &
+                error_msg)
+            return
+        end if
+        if (size(node%var_indices) > 1) then
+            call lower_multi_var_allocate(arena, node, context, error_msg)
             return
         end if
 
@@ -164,6 +168,10 @@
         if (context%symbols(symbol_index)%array_rank == 2) then
             call lower_allocate_i32_2d(arena, size_index1, size_index2, &
                                        symbol_index, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call record_allocatable_static_size_2d(arena, size_index1, &
+                                                    size_index2, symbol_index, &
+                                                    context)
         else
             call lower_allocate_i32_1d(arena, size_index1, symbol_index, &
                                        context, error_msg)
@@ -175,7 +183,181 @@
                 call init_allocatable_character_blanks(context, symbol_index, &
                                                        error_msg)
         end if
+        if (len_trim(error_msg) == 0) &
+            call set_alloc_stat_zero(arena, node, context, error_msg)
     end subroutine lower_allocate_statement
+
+    subroutine lower_multi_var_allocate(arena, node, context, error_msg)
+        ! allocate(a(N), b(N), c(M,K), ...): allocate each target independently.
+        ! Each target carries its own shape in its call_or_subscript subscripts.
+        ! The shared type-spec / mold= / source= forms are single-target only and
+        ! stay unsupported here (they previously errored for any multi-target
+        ! allocate, so declining them regresses nothing).
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k
+        logical :: handled
+
+        call set_empty(error_msg)
+        if (allocated(node%type_spec)) then
+            if (len_trim(node%type_spec) > 0) then
+                call unsupported_feature_error('allocate statement', node%line, &
+                    node%column, 'multi-variable allocate with a type-spec is '// &
+                    'not supported', error_msg)
+                return
+            end if
+        end if
+        if (node%mold_expr_index > 0 .or. node%source_expr_index > 0) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'multi-variable allocate with mold= or source= is '// &
+                'not supported', error_msg)
+            return
+        end if
+
+        do k = 1, size(node%var_indices)
+            call lower_one_allocate_var(arena, node%var_indices(k), context, &
+                                        handled, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. handled) then
+                call unsupported_feature_error('allocate statement', node%line, &
+                    node%column, 'unsupported target in multi-variable allocate', &
+                    error_msg)
+                return
+            end if
+        end do
+        call set_alloc_stat_zero(arena, node, context, error_msg)
+    end subroutine lower_multi_var_allocate
+
+    subroutine lower_one_allocate_var(arena, vi, context, handled, error_msg)
+        ! Allocate a single target within a multi-variable allocate. Handles an
+        ! allocatable array/scalar component, a bare scalar allocatable, and the
+        ! rank-1/rank-2 integer/real/logical/character array a(N)[,(M)] form.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: vi
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: symbol_index, size_index1, size_index2
+
+        handled = .false.
+        call set_empty(error_msg)
+
+        call lower_allocate_array_component(arena, vi, context, handled, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (handled) return
+        call lower_allocate_scalar_component(arena, vi, context, handled, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (handled) return
+
+        if (is_identifier(arena, vi)) then
+            call get_identifier_name(arena, vi, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, name)
+            if (symbol_index <= 0) return
+            if (context%symbols(symbol_index)%is_allocatable .and. &
+                context%symbols(symbol_index)%array_rank == 0) then
+                call lower_allocate_scalar(symbol_index, context, error_msg)
+                handled = len_trim(error_msg) == 0
+            end if
+            return
+        end if
+
+        call allocate_var_target(arena, vi, name, size_index1, size_index2, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_allocatable) return
+
+        if (context%symbols(symbol_index)%array_rank == 2) then
+            call lower_allocate_i32_2d(arena, size_index1, size_index2, &
+                                       symbol_index, context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call record_allocatable_static_size_2d(arena, size_index1, &
+                                                    size_index2, symbol_index, &
+                                                    context)
+        else
+            call lower_allocate_i32_1d(arena, size_index1, symbol_index, &
+                                       context, error_msg)
+            if (len_trim(error_msg) == 0) &
+                call record_allocatable_static_size(arena, size_index1, &
+                                                    symbol_index, context)
+            if (len_trim(error_msg) == 0 .and. &
+                context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) &
+                call init_allocatable_character_blanks(context, symbol_index, &
+                                                       error_msg)
+        end if
+        handled = len_trim(error_msg) == 0
+    end subroutine lower_one_allocate_var
+
+    subroutine allocate_var_target(arena, vi, name, size_index1, size_index2, &
+                                   error_msg)
+        ! Extract the array name and rank-1/rank-2 shape expressions from a single
+        ! allocate target node a(N) or a(M,K) (a call_or_subscript). size_index2
+        ! is 0 for rank-1.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: vi
+        character(len=:), allocatable, intent(out) :: name
+        integer, intent(out) :: size_index1, size_index2
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        size_index1 = 0
+        size_index2 = 0
+        if (.not. node_exists(arena, vi)) then
+            error_msg = 'allocate target is not an AST node'
+            return
+        end if
+        select type (v => arena%entries(vi)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(v%name) .or. .not. allocated(v%arg_indices)) then
+                error_msg = 'allocate target must name an array with a size'
+                return
+            end if
+            if (size(v%arg_indices) < 1 .or. size(v%arg_indices) > 2) then
+                error_msg = 'only rank-1 and rank-2 allocate is supported'
+                return
+            end if
+            name = v%name
+            size_index1 = v%arg_indices(1)
+            if (size(v%arg_indices) == 2) size_index2 = v%arg_indices(2)
+        class default
+            error_msg = 'allocate target must be a scalar array name'
+        end select
+    end subroutine allocate_var_target
+
+    subroutine set_alloc_stat_zero(arena, node, context, error_msg)
+        ! A successful allocate sets an optional stat= integer variable to 0.
+        ! Best-effort: an unresolved or non-integer stat target is left untouched
+        ! rather than raising an error.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: sym
+
+        call set_empty(error_msg)
+        if (node%stat_var_index <= 0) return
+        if (.not. is_identifier(arena, node%stat_var_index)) return
+        call get_identifier_name(arena, node%stat_var_index, name, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        sym = find_symbol(context, name)
+        if (sym <= 0) return
+        if (context%symbols(sym)%value_kind /= VALUE_I32) return
+        call assign_i32_to_symbol(context, sym, &
+            i32_immediate(context%session, 0_c_int64_t), error_msg)
+    end subroutine set_alloc_stat_zero
 
     subroutine lower_allocate_type_spec(arena, node, context, error_msg)
         ! allocate(<type-spec> :: x): the element type/length comes from the
@@ -528,6 +710,26 @@
             context%symbols(symbol_index)%allocatable_static_size = int(n)
     end subroutine record_allocatable_static_size
 
+    subroutine record_allocatable_static_size_2d(arena, size_index1, size_index2, &
+                                                 symbol_index, context)
+        ! Remember the total rank-2 element count (M*N) when both extents are
+        ! compile-time constants, so a whole-array scalar broadcast can unroll
+        ! over the flat storage. A non-constant extent leaves the size 0.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: size_index1, size_index2
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t) :: m, n
+        character(len=:), allocatable :: err1, err2
+
+        context%symbols(symbol_index)%allocatable_static_size = 0
+        call eval_i32_constant(arena, size_index1, context, m, err1)
+        call eval_i32_constant(arena, size_index2, context, n, err2)
+        if (len_trim(err1) == 0 .and. len_trim(err2) == 0 .and. &
+            m >= 0_c_int64_t .and. n >= 0_c_int64_t) &
+            context%symbols(symbol_index)%allocatable_static_size = int(m * n)
+    end subroutine record_allocatable_static_size_2d
+
     subroutine allocate_target(arena, node, name, size_index1, size_index2, &
                                error_msg)
         ! Extract the variable name and size expression(s). allocate parses
@@ -756,8 +958,9 @@
         integer :: vk, n, i
         integer(c_int64_t) :: stride
 
-        if (context%symbols(symbol_index)%array_rank == 2) then
-            error_msg = 'allocatable scalar broadcast supports only rank-1 arrays'
+        if (context%symbols(symbol_index)%array_rank > 2) then
+            error_msg = 'allocatable scalar broadcast supports only rank-1 and '// &
+                        'rank-2 arrays'
             return
         end if
         if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
@@ -920,31 +1123,56 @@
     end function emit_allocatable_element_load
 
     subroutine lower_deallocate_statement(arena, node, context, error_msg)
-        ! deallocate(a) for one integer 1-D allocatable.
+        ! deallocate(a) or deallocate(a, b, c): free each target independently.
         type(ast_arena_t), intent(in) :: arena
         type(deallocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. allocated(node%var_indices) .or. size(node%var_indices) < 1) then
+            call unsupported_feature_error('deallocate statement', node%line, &
+                node%column, 'deallocate statement has no target variable', &
+                error_msg)
+            return
+        end if
+        if (size(node%var_indices) > 1) then
+            block
+                integer :: k
+                do k = 1, size(node%var_indices)
+                    call lower_one_deallocate_var(arena, node, &
+                        node%var_indices(k), context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end block
+            return
+        end if
+        call lower_one_deallocate_var(arena, node, node%var_indices(1), context, &
+                                      error_msg)
+    end subroutine lower_deallocate_statement
+
+    subroutine lower_one_deallocate_var(arena, node, vi, context, error_msg)
+        ! Deallocate a single target (shared by single- and multi-variable
+        ! deallocate). Handles an allocatable scalar component, a deferred-length
+        ! character allocatable, a scalar allocatable, and a rank-1/rank-2 array.
+        type(ast_arena_t), intent(in) :: arena
+        type(deallocate_statement_node), intent(in) :: node
+        integer, intent(in) :: vi
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: symbol_index
         logical :: handled
 
-        if (.not. allocated(node%var_indices) .or. size(node%var_indices) /= 1) then
-            call unsupported_feature_error('deallocate statement', node%line, &
-                node%column, 'direct LIRIC session supports deallocating exactly '// &
-                'one variable per deallocate', error_msg)
-            return
-        end if
-        if (.not. node_exists(arena, node%var_indices(1))) then
+        if (.not. node_exists(arena, vi)) then
             error_msg = 'deallocate target is not an AST node'
             return
         end if
-        call lower_deallocate_scalar_component(arena, node%var_indices(1), &
+        call lower_deallocate_scalar_component(arena, vi, &
                                                context, handled, error_msg)
         if (len_trim(error_msg) > 0) return
         if (handled) return
-        if (is_identifier(arena, node%var_indices(1))) then
-            call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+        if (is_identifier(arena, vi)) then
+            call get_identifier_name(arena, vi, name, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             call unsupported_feature_error('deallocate statement', node%line, &
@@ -976,7 +1204,7 @@
         end if
 
         call lower_deallocate_i32(symbol_index, context, error_msg)
-    end subroutine lower_deallocate_statement
+    end subroutine lower_one_deallocate_var
 
     subroutine lower_deallocate_deferred_char(symbol_index, context, error_msg)
         ! deallocate(str) for a character(len=:), allocatable scalar. Mark the

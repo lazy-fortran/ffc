@@ -92,7 +92,12 @@ element count. A scalar
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
 with any source expression; a rank-1/rank-2 allocatable array dummy argument
 aliases the caller's own descriptor, so `allocate`/`deallocate`/element writes
-inside the callee are visible to the caller. Scalar
+inside the callee are visible to the caller. A single `allocate` or
+`deallocate` may list several targets at once
+(`allocate(a(N), b(N), c(M,K), stat=ierr)`, `deallocate(a, b, c)`); each target
+is sized from its own subscripts and an optional `stat=` integer is set to 0 on
+success. A rank-2 allocatable also supports whole-array scalar broadcast
+(`m = 9`) once allocated to a compile-time-constant shape. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported. Rank-1 and rank-2 fixed-size
 integer, real, logical, and complex `pointer`/`target` arrays support whole-
