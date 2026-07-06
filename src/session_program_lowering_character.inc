@@ -1248,9 +1248,15 @@
                                   error_msg)
         if (len_trim(error_msg) > 0) return
         ! 2 bytes: the character plus a null terminator.
-        if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, 2_c_int64_t), buf, error_msg)) &
-            return
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, &
+                    i64_immediate(context%session, 2_c_int64_t), buf, error_msg)) &
+                return
+        else
+            if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, 2_c_int64_t), buf, error_msg)) &
+                return
+        end if
         if (.not. emit_liric_store_char_byte(context%session, buf, &
                 i32_immediate(context%session, 0_c_int64_t), code, error_msg)) &
             return
