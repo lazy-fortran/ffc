@@ -47,7 +47,6 @@ issue_2236_optional_assumed_rank_bridge.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
-issue_2388_uppercase_contains.f90
 issue_2416_io_format_variable.f90
 issue_2416_io_formats_comprehensive.f90
 issue_2416_io_namelist_read.f90
