@@ -62,7 +62,6 @@ alloc_comp_assign_4.f90
 alloc_comp_assign_6.f90
 alloc_comp_assign_7.f90
 alloc_comp_assign_8.f90
-alloc_comp_assign_9.f90
 alloc_comp_auto_array_1.f90
 alloc_comp_auto_array_2.f90
 alloc_comp_auto_array_4.f90
@@ -242,7 +241,6 @@ associate_46.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end uni
 associate_47.f90
 associate_48.f90
 associate_49.f90
-associate_52.f90
 associate_58.f90
 associate_60.f90
 associate_61.f90
@@ -436,19 +434,15 @@ charlen_15.f90
 charlen_16.f90
 charlen_17.f90
 chkbits.f90
-class_33.f90
-class_34.f90
 class_35.f90
 class_48.f90
 class_49.f90
 class_63.f90
-class_65.f90
 class_66.f90
 class_67.f90
 class_68.f90
 class_74.f90
 class_75.f90
-class_78.f90
 class_79.f90
 class_allocate_12.f90
 class_allocate_13.f90
@@ -543,7 +537,6 @@ deferred_character_20.f90
 deferred_character_22.f90
 deferred_character_23.f90
 deferred_character_24.f90
-deferred_character_25.f90
 deferred_character_26.f90
 deferred_character_27.f90
 deferred_character_28.f90
@@ -568,7 +561,6 @@ deferred_character_assignment_1.f90
 deferred_type_component_1.f90
 deferred_type_component_2.f90
 deferred_type_component_3.f90
-deferred_type_param_3.f90
 deferred_type_param_4.f90
 deferred_type_param_5.f90
 deferred_type_param_6.f90
@@ -766,12 +758,8 @@ finalize_13.f90
 finalize_14.f90
 finalize_15.f90
 finalize_17.f90
-finalize_19.f90
-finalize_23.f90
 finalize_25.f90
-finalize_27.f90
 finalize_31.f90
-finalize_32.f90
 finalize_38.f90
 finalize_39.f90
 finalize_40.f90
@@ -849,7 +837,6 @@ func_decl_2.f90
 func_derived_2.f90
 func_derived_3.f90
 func_derived_4.f90
-func_derived_5.f90
 func_result_1.f90
 func_result_5.f90
 func_result_6.f90
@@ -986,7 +973,6 @@ interface_assignment_1.f90
 interface_assignment_2.f90
 interface_assignment_3.f90
 interface_assignment_4.f90
-interface_assignment_6.f90
 interface_assignment_7.f90
 interface_proc_end.f90
 internal_pack_1.f90
@@ -1174,12 +1160,9 @@ move_alloc_12.f90
 move_alloc_13.f90
 move_alloc_14.f90
 move_alloc_16.f90
-move_alloc_18.f90
 move_alloc_19.f90
 move_alloc_2.f90
-move_alloc_5.f90
 move_alloc_6.f90
-move_alloc_7.f90
 multiple_allocation_1.f90
 multiple_allocation_2.f90
 multiple_allocation_3.f90
@@ -1189,7 +1172,6 @@ mvbits_3.f90
 mvbits_4.f90
 mvbits_5.f90
 mvbits_6.f90
-mvbits_8.f90
 namelist_102.f90
 namelist_13.f90
 namelist_15.f90
@@ -1432,7 +1414,6 @@ pr117768.f90
 pr117797.f90
 pr117819.f90
 pr117820.f90
-pr118640.f90
 pr119502.f90
 pr119836_1.f90
 pr119836_3.f90
@@ -1531,9 +1512,7 @@ pr65996.f90
 pr66311.f90
 pr67140.f90
 pr67219.f90
-pr67496.f90
 pr67524.f90
-pr67616.f90
 pr67805_2.f90
 pr67987.f90
 pr68053.f90
@@ -1558,7 +1537,6 @@ pr77420_4.f90
 pr77632_1.f90
 pr77942.f90
 pr78092.f90
-pr78290.f90
 pr78719_1.f90
 pr81509_1.f90
 pr81849.f90
@@ -1605,7 +1583,6 @@ pr88688.f90
 pr89077.f90
 pr89084.f90
 pr89266.f90
-pr89646.f90
 pr89647.f90
 pr89943_2.f90
 pr90344.f90
@@ -1705,7 +1682,6 @@ proc_ptr_6.f90
 proc_ptr_9.f90
 proc_ptr_comp_1.f90
 proc_ptr_comp_10.f90
-proc_ptr_comp_11.f90
 proc_ptr_comp_12.f90
 proc_ptr_comp_13.f90
 proc_ptr_comp_14.f90
@@ -1717,7 +1693,6 @@ proc_ptr_comp_19.f90
 proc_ptr_comp_2.f90
 proc_ptr_comp_21.f90
 proc_ptr_comp_23.f90
-proc_ptr_comp_24.f90
 proc_ptr_comp_26.f90
 proc_ptr_comp_27.f90
 proc_ptr_comp_28.f90
@@ -1738,7 +1713,6 @@ proc_ptr_comp_53.f90
 proc_ptr_comp_54.f90
 proc_ptr_comp_6.f90
 proc_ptr_comp_7.f90
-proc_ptr_comp_9.f90
 proc_ptr_comp_pass_1.f90
 proc_ptr_comp_pass_2.f90
 proc_ptr_comp_pass_3.f90
@@ -1801,7 +1775,6 @@ realloc_on_assign_11.f90
 realloc_on_assign_12.f90
 realloc_on_assign_13.f90
 realloc_on_assign_15.f90
-realloc_on_assign_16.f90
 realloc_on_assign_17.f90
 realloc_on_assign_23.f90
 realloc_on_assign_24.f90
@@ -1812,7 +1785,6 @@ realloc_on_assign_29.f90
 realloc_on_assign_30.f90
 realloc_on_assign_31.f90
 realloc_on_assign_32.f90
-realloc_on_assign_8.f90
 realloc_on_assign_9.f90
 recursive_alloc_comp_5.f90
 recursive_alloc_comp_6.f90
@@ -1946,7 +1918,6 @@ submodule_34.f90
 subref_array_pointer_1.f90
 subref_array_pointer_2.f90
 subref_array_pointer_3.f90
-subref_array_pointer_4.f90
 substr_1.f90
 substr_5.f90
 substr_7.f90
@@ -1988,7 +1959,6 @@ transpose_intrinsic_func_call_1.f90
 trim_1.f90
 trim_optimize_4.f90
 trim_optimize_6.f90
-typebound_assignment_4.f90
 typebound_assignment_7.f90
 typebound_assignment_8.f90
 typebound_call_26.f90
@@ -1997,19 +1967,15 @@ typebound_call_30.f90
 typebound_call_32.f90
 typebound_deferred_1.f90
 typebound_generic_15.f90
-typebound_generic_16.f90
 typebound_operator_11.f90
 typebound_operator_15.f90
 typebound_operator_17.f90
-typebound_operator_18.f90
-typebound_operator_19.f90
 typebound_operator_20.f90
 typebound_proc_20.f90
 typebound_proc_21.f90
 typebound_proc_23.f90
 typebound_proc_25.f90
 typebound_proc_30.f90
-typebound_proc_31.f90
 typebound_proc_32.f90
 typebound_proc_33.f90
 typebound_proc_35.f90
@@ -2077,7 +2043,6 @@ used_types_15.f90
 used_types_16.f90
 used_types_2.f90
 used_types_20.f90
-used_types_21.f90
 used_types_22.f90
 used_types_3.f90
 used_types_4.f90
