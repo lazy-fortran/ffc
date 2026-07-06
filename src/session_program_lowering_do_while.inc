@@ -12,6 +12,7 @@
         integer(c_int32_t) :: entry_block
         integer(c_int32_t) :: header_block
         integer(c_int32_t) :: body_block
+        integer(c_int32_t) :: latch_block
         integer(c_int32_t) :: exit_block
         integer(c_int32_t) :: reserved_vreg
         integer, allocatable :: carried_indices(:)
@@ -42,6 +43,7 @@
 
         header_block = create_liric_block(context%session)
         body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
         exit_block = create_liric_block(context%session)
         if (.not. emit_liric_br(context%session, header_block, error_msg)) return
 
@@ -53,7 +55,7 @@
                                        entry_values(carried_indices(i)), &
                                        entry_block, &
                                        backedge_values(carried_indices(i)), &
-                                       body_block, &
+                                       latch_block, &
                                        header_values(carried_indices(i)), &
                                        error_msg)) return
             context%symbols(carried_indices(i))%value = &
@@ -87,6 +89,14 @@
                                            'do while loops', error_msg)
             return
         end if
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        ! The body may end in a merge block (e.g. after a conditional stop), so
+        ! the phi backedge must come from a dedicated latch, not body_block, or
+        ! the carried updates never reach the header phi (#300, do-while).
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
         do i = 1, carried_count
             if (.not. emit_carried_copy(context, carried_indices(i), &
                 backedge_values(carried_indices(i)), copied_value, &
