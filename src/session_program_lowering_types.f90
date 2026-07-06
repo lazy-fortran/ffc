@@ -213,6 +213,14 @@ module session_program_lowering_types
             ! per-dimension count lives in this i32 operand instead.
             logical, dimension(2) :: has_runtime_dim_size = .false.
             type(lr_operand_desc_t), dimension(2) :: runtime_dim_size
+            ! A rank-1 local automatic array whose element count is only known at
+            ! runtime (integer :: a(n) with n a dummy/host value). Its storage is
+            ! a dynamic alloca reached through element_address; the compile-time
+            ! lower bound stays in array_lower_bound/array_dim_lowers(1) and the
+            ! runtime element count lives in runtime_dim_size(1). array_size stays
+            ! the 0 sentinel. Whole-array print/assign and size()/sum() walk a
+            ! genuine LIRIC loop over runtime_dim_size(1) instead of unrolling.
+            logical :: is_runtime_array = .false.
             logical :: is_derived = .false.
             integer :: derived_type_index = 0
             type(lr_operand_desc_t) :: element_address

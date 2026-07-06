@@ -62,6 +62,31 @@
         is_runtime = len_trim(fold_error) > 0
     end function declaration_is_runtime_rank1
 
+    logical function declaration_is_runtime_local_array(node, context, value_kind) &
+            result(is_local)
+        ! A rank-1 explicit-shape local automatic array whose extent is a runtime
+        ! expression and whose name is not already bound (not a dummy argument,
+        ! function result, or COMMON member). Such a symbol owns dynamic storage
+        ! allocated at its declaration; adjustable-array dummies keep their
+        ! parameter-base binding and the existing compile-time fold path.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: value_kind
+        integer :: k
+
+        is_local = .false.
+        if (.not. runtime_local_array_kind_ok(value_kind)) return
+        if (.not. declaration_is_runtime_rank1(node, context)) return
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do k = 1, size(node%var_names)
+                if (find_symbol(context, node%var_names(k)) > 0) return
+            end do
+            is_local = .true.
+        else if (allocated(node%var_name)) then
+            is_local = find_symbol(context, node%var_name) <= 0
+        end if
+    end function declaration_is_runtime_local_array
+
     logical function declaration_rebinds_runtime_array_result(node, context) &
             result(is_rebind)
         ! True when this body array declaration names the pre-bound array function
@@ -2470,6 +2495,20 @@
         integer :: i
         integer :: array_size
         logical :: reduction_handled
+        logical :: runtime_handled
+
+        if (context%symbols(symbol_index)%is_runtime_array) then
+            call lower_runtime_local_array_assignment(arena, node, symbol_index, &
+                                                      context, runtime_handled, &
+                                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (runtime_handled) return
+            call unsupported_feature_error('whole-array assignment', node%line, &
+                node%column, 'runtime-sized local array assignment supports a '// &
+                'scalar broadcast or a whole-array copy of the same kind', &
+                error_msg)
+            return
+        end if
 
         array_size = context%symbols(symbol_index)%array_size
         if (array_size <= 0) then

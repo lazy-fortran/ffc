@@ -30,7 +30,12 @@ fixed-size arrays of rank 1 through 7 with
 declaration, `a(i, j, k, ...)` element read/write, scalar broadcast,
 whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,
 `ubound`, `size(a[, dim])`, and `sum`; sections, `matmul`, `transpose`, and
-`reshape` stay rank-1/rank-2); fixed-size rank-1 and
+`reshape` stay rank-1/rank-2); rank-1 local automatic arrays sized by a
+runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
+`n` is a dummy, host, or COMMON value the compiler cannot fold), covering
+element read/write, `size`, `sum` (integer), `lbound`/`ubound`, whole-array
+`print`, scalar broadcast, and whole-array copy over a runtime loop; fixed-size
+rank-1 and
 rank-2 `character(len=N)` arrays (character-literal element assignment, element
 `print`, whole-array `print`, element comparison in `if` conditions such as
 `if (arr(i) /= "A")`, and compile-time initializers from a literal array

@@ -478,6 +478,23 @@ contains
                     error_msg)
                 return
             end if
+            ! A rank-1 local automatic array sized by a runtime expression
+            ! (integer :: a(n) with n a dummy/host value): allocate dynamic
+            ! storage and record the runtime element count. Fresh locals only;
+            ! adjustable-array dummies keep their parameter-base binding.
+            if (declaration_is_runtime_local_array(node, context, value_kind)) then
+                if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                    do i = 1, size(node%var_names)
+                        call define_runtime_array_symbol(context, node, &
+                            node%var_names(i), value_kind, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
+                else
+                    call define_runtime_array_symbol(context, node, &
+                        node%var_name, value_kind, error_msg)
+                end if
+                return
+            end if
             ! A runtime-sized array function result (dimension(n) with dummy n):
             ! its extent does not fold at compile time. The result symbol is
             ! pre-bound to the sret buffer, so skip bound folding and let

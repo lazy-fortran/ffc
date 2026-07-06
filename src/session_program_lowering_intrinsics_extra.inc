@@ -79,9 +79,18 @@
         end if
         if (dim_val == 1_c_int64_t .and. &
             context%symbols(sym)%has_runtime_dim_size(1)) then
-            ! A runtime-extent assumed-shape dummy always has lower bound 1, so
-            ! ubound is exactly the runtime extent (1 + extent - 1).
-            value = context%symbols(sym)%runtime_dim_size(1)
+            ! Runtime extent: ubound = lower + extent - 1. An assumed-shape dummy
+            ! has lower bound 1 (extent); a runtime-sized local array a(L:n)
+            ! carries a constant lower bound L in array_dim_lowers(1).
+            lower = context%symbols(sym)%array_dim_lowers(1)
+            if (lower == 1) then
+                value = context%symbols(sym)%runtime_dim_size(1)
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                        context%symbols(sym)%runtime_dim_size(1), &
+                        i32_immediate(context%session, &
+                        int(lower - 1, c_int64_t)), value, error_msg)) return
+            end if
             call set_empty(error_msg)
             return
         end if

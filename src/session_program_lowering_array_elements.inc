@@ -516,6 +516,11 @@
             call emit_allocatable_print_items(context, sym, vk, handled, error_msg)
             return
         end if
+        if (context%symbols(sym)%is_runtime_array) then
+            handled = .true.
+            call emit_runtime_local_array_print(context, sym, vk, error_msg)
+            return
+        end if
 
         handled = .true.
         n = int(context%symbols(sym)%array_size, c_int64_t)
