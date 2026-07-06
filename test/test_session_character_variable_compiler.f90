@@ -43,7 +43,7 @@ contains
 
         test_short_character_assignment_pads = expect_output( &
             source, ' hi   '//new_line('a'), &
-            '/tmp/ffc_session_char_pad_test')
+            '/tmp/ffc_session_char_variable_pad_test')
     end function test_short_character_assignment_pads
 
     logical function test_long_character_assignment_truncates()
@@ -56,7 +56,7 @@ contains
 
         test_long_character_assignment_truncates = expect_output( &
             source, ' hel'//new_line('a'), &
-            '/tmp/ffc_session_char_trunc_test')
+            '/tmp/ffc_session_char_variable_trunc_test')
     end function test_long_character_assignment_truncates
 
     logical function test_character_concat_two_literals()

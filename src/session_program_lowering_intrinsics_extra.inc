@@ -1157,8 +1157,13 @@
                 total_len, error_msg)) return
         if (.not. emit_liric_i32_to_i64(context%session, total_len, total_len64, &
                 error_msg)) return
-        if (.not. emit_alloca_bytes(context%session, &
-                emit_or_add1(context, total_len64), buf, error_msg)) return
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, &
+                    emit_or_add1(context, total_len64), buf, error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, &
+                    emit_or_add1(context, total_len64), buf, error_msg)) return
+        end if
 
         if (.not. emit_liric_i32_to_i64(context%session, s_len, s_len64, &
                 error_msg)) return

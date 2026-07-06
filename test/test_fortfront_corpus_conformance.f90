@@ -51,6 +51,7 @@ contains
         if (exit_stat /= 0) then
             failed = failed + 1
             print *, 'FAIL[', suite, ']: runner exit ', exit_stat
+            call print_failures(report)
             call execute_command_line('tail -20 '//log_path)
             return
         end if
@@ -69,6 +70,10 @@ contains
             print *, 'FAIL[', suite, ']: SUMMARY has nonzero FAIL count'
         end if
 
+        if (index(summary, '"xpass":0') == 0) then
+            call print_failures(report)
+        end if
+
         write (expected_text, '(A,I0)') '"total":', expected_total
         if (index(summary, trim(expected_text)) == 0) then
             failed = failed + 1
@@ -76,6 +81,25 @@ contains
                 expected_total
         end if
     end subroutine run_suite
+
+    subroutine print_failures(report)
+        character(len=*), intent(in) :: report
+        integer :: unit, io_stat
+        character(len=4096) :: line
+
+        open (newunit=unit, file=report, status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) return
+        do
+            read (unit, '(A)', iostat=io_stat) line
+            if (io_stat /= 0) exit
+            if (index(line, '"status":"FAIL"') > 0 .or. &
+                index(line, '"status":"XPASS"') > 0) then
+                print *, '  REPORT: '//trim(line)
+            end if
+        end do
+        close (unit)
+    end subroutine print_failures
 
     subroutine read_summary(report, summary, found)
         character(len=*), intent(in) :: report

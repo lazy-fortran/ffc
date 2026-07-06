@@ -48,7 +48,7 @@ module session_program_lowering
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
         begin_ptr_function, &
-        emit_ret_i32_operand, emit_ret_void, &
+        emit_ret_i32_operand, emit_ret_i64_operand, emit_ret_void, &
         finish_function, finish_and_emit_exe, &
         finish_and_emit_exe_objects, emit_object_no_active_function, &
         finish_and_emit_object, emit_void_call, &
@@ -1441,6 +1441,11 @@ contains
         case (VALUE_I32, VALUE_LOGICAL, VALUE_F32, VALUE_F64)
             result_value = context%symbols(idx)%value
             if (.not. emit_ret_i32_operand(context%session, result_value, &
+                error_msg)) return
+            context%current_block_terminated = .true.
+        case (VALUE_I64)
+            result_value = context%symbols(idx)%value
+            if (.not. emit_ret_i64_operand(context%session, result_value, &
                 error_msg)) return
             context%current_block_terminated = .true.
         case default

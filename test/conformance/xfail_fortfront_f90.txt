@@ -19,6 +19,8 @@ f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
+# Uninitialized vars: output matches gfortran-14 but mismatches gfortran-16 (local).
+# Kept in xfail so local dev does not FAIL; produces XPASS on CI gfortran-14.
 issue_104_if_condition_identifiers.f90
 issue_1324_if_inside_do_loop.f90
 issue_1353_class_pointer_declaration.f90
@@ -47,7 +49,6 @@ issue_2236_optional_assumed_rank_bridge.f90
 issue_2238_select_rank_performance.f90
 issue_2248_read_keyword.f90
 issue_2250_pure_interface.f90
-issue_2388_uppercase_contains.f90
 issue_2416_io_format_variable.f90
 issue_2416_io_formats_comprehensive.f90
 issue_2416_io_namelist_read.f90
@@ -90,8 +91,9 @@ library_usage_ast_node_position.f90
 tmp_goto_ast.f90
 tooling_lightweight_ast.f90
 undefined_var_recursive_type.f90
+# Output matches gfortran-14 (structural) but mismatches gfortran-16 (local).
+# Kept in xfail so local dev does not FAIL; produces XPASS on CI gfortran-14.
 undefined_var_segfault.f90
-
 # C interoperability: c_funloc/c_funptr/c_f_procpointer and bind(c) procedure
 # pointers are not yet lowered by the direct LIRIC session.
 issue_2814_c_funloc.f90
@@ -119,3 +121,6 @@ issue_2848_dimension_statement.f90  # ff#2848 DIMENSION statement -> unsupported
 issue_2850_bare_function_interface.f90  # ff#2850 bare interface: duplicate decl
 issue_2850_bare_subroutine_interface.f90  # ff#2850 bare interface
 issue_2855_external_intrinsic_conflict.f90  # ff#2855 external/intrinsic conflict
+# DATA with implied-DO: ffc output matches gfortran-16 but mismatches gfortran-14
+# (CI runner). Kept in xfail so CI does not FAIL; produces XPASS locally on gfortran-16+.
+issue_2349_data_implied_do.f90

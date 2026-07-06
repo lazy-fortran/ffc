@@ -750,7 +750,16 @@
                 call result_var_scalar_kind(node, context, value_kind, &
                                              derived_type_index, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (value_kind /= VALUE_I64) value_kind = VALUE_I32
+                if (value_kind /= VALUE_I64) then
+                    ! Body declaration didn't resolve to i64; check if any
+                    ! dummy argument is i64 — a strong indicator the result
+                    ! is also i64 when the header kind was dropped.
+                    if (.not. function_has_i64_parameter(node, context)) then
+                        value_kind = VALUE_I32
+                    else
+                        value_kind = VALUE_I64
+                    end if
+                end if
             else
                 call integer_kind_to_value_kind(kind_spec, node%line, &
                                                 node%column, value_kind, error_msg)
@@ -868,6 +877,83 @@
             end select
         end do
     end function result_var_body_decl_is_f64
+
+    logical function function_has_i64_parameter(node, context) result(has_i64)
+        ! True when the function body contains an integer(8)/i64 declaration
+        ! or an integer literal with kind '8'.
+        ! Used as a fallback to recover i64 return kind when FortFront drops
+        ! the kind from the function header (e.g. "integer(8) function f" ->
+        ! return_type "integer" with no kind spec). Body declarations carry
+        ! the full type information even when the header is truncated. When
+        ! declarations also lose the kind, i64 literals in the body serve as
+        ! a reliable indicator.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+        character(len=:), allocatable :: decl_err
+        integer :: decl_kind
+
+        has_i64 = .false.
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_array) cycle
+                call declaration_value_kind(decl, decl_kind, decl_err, context)
+                if (len_trim(decl_err) == 0 .and. decl_kind == VALUE_I64) then
+                    has_i64 = .true.
+                    return
+                end if
+            type is (assignment_node)
+                if (body_node_has_i64_literal(context%arena, decl%value_index)) then
+                    has_i64 = .true.
+                    return
+                end if
+            end select
+        end do
+    end function function_has_i64_parameter
+
+    recursive logical function body_node_has_i64_literal(arena, node_index) result(has_lit)
+        ! Recursively check if an AST subtree contains an integer literal
+        ! with kind '8' (i64 indicator when kind specs are dropped).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer :: idx
+        character(len=:), allocatable :: lit_val, lit_type, err
+        integer(c_int64_t) :: literal_kind
+
+        has_lit = .false.
+        if (.not. node_exists(arena, node_index)) return
+
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_val, lit_type, err)
+            if (len_trim(err) == 0) then
+                if (trim(lowercase_text(trim(lit_type))) == 'integer') then
+                    call integer_literal_kind_number(lit_val, literal_kind, err)
+                    has_lit = (len_trim(err) == 0 .and. literal_kind == 8_c_int64_t)
+                else
+                    has_lit = .false.
+                end if
+            end if
+            return
+        end if
+
+        select type (n => arena%entries(node_index)%node)
+        type is (binary_op_node)
+            has_lit = body_node_has_i64_literal(arena, n%left_index) .or. &
+                      body_node_has_i64_literal(arena, n%right_index)
+        type is (call_or_subscript_node)
+            if (allocated(n%arg_indices)) then
+                do idx = 1, size(n%arg_indices)
+                    if (body_node_has_i64_literal(arena, n%arg_indices(idx))) then
+                        has_lit = .true.
+                        return
+                    end if
+                end do
+            end if
+        end select
+    end function body_node_has_i64_literal
 
     subroutine result_var_scalar_kind(node, context, value_kind, &
                                       derived_type_index, error_msg)
@@ -1991,18 +2077,20 @@
             context%current_function_result_index = find_symbol(context, &
                                                                 result_name)
         end if
-        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
-            value_kind == VALUE_DERIVED .or. &
-            value_kind == VALUE_ARRAY_RESULT .or. &
-            value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
-            value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+       if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
+                value_kind == VALUE_DERIVED .or. &
+                value_kind == VALUE_ARRAY_RESULT .or. &
+                value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
+                value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             call define_reference_parameters(arena, node%param_indices, context, &
-                                             error_msg, body_indices = &
-                                             node%body_indices, param_offset=1)
+                                              error_msg, body_indices = &
+                                              node%body_indices, param_offset=1, &
+                                              return_value_kind=value_kind)
         else
             call define_reference_parameters(arena, node%param_indices, context, &
-                                             error_msg, body_indices = &
-                                             node%body_indices)
+                                              error_msg, body_indices = &
+                                              node%body_indices, &
+                                              return_value_kind=value_kind)
         end if
         if (len_trim(error_msg) > 0) return
 
@@ -2032,6 +2120,9 @@
                 value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
+            else if (value_kind == VALUE_I64) then
+                value = context%symbols(result_index)%value
+                if (.not. emit_ret_i64_operand(context%session, value, error_msg)) return
             else
                 value = context%symbols(result_index)%value
                 if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return

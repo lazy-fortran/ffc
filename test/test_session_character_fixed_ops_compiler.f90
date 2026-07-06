@@ -36,7 +36,7 @@ contains
 
         test_assignment_pads_shorter_source = expect_output( &
             source, ' [hi    ]'//new_line('a'), &
-            '/tmp/ffc_session_char_pad_test')
+            '/tmp/ffc_session_char_fixed_ops_pad_test')
     end function test_assignment_pads_shorter_source
 
     logical function test_assignment_truncates_longer_source()
@@ -51,7 +51,7 @@ contains
 
         test_assignment_truncates_longer_source = expect_output( &
             source, ' [hel]'//new_line('a'), &
-            '/tmp/ffc_session_char_trunc_test')
+            '/tmp/ffc_session_char_fixed_ops_trunc_test')
     end function test_assignment_truncates_longer_source
 
     logical function test_fixed_dummy_keeps_declared_length()

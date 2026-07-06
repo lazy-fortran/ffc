@@ -22,9 +22,12 @@
 
         if (.not. emit_liric_i32_to_i64(context%session, s_len, len64, &
                 error_msg)) return
-        if (.not. emit_alloca_bytes(context%session, &
-                  emit_or_add1(context, len64), buf, error_msg)) then
-            return
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, &
+                    emit_or_add1(context, len64), buf, error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, &
+                    emit_or_add1(context, len64), buf, error_msg)) return
         end if
         ! Pre-fill the whole result with spaces, then drop the content in place.
         call fill_spaces(context, buf, s_len, error_msg)
@@ -537,8 +540,13 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, n64, &
                 i64_immediate(context%session, 1_c_int64_t), size64, &
                 error_msg)) return
-        if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) &
-            return
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, size64, buf, error_msg)) &
+                return
+        else
+            if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) &
+                return
+        end if
         if (.not. emit_memcpy(context%session, buf, data_ptr, n64, error_msg)) &
             return
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, n64, &

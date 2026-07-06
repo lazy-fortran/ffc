@@ -621,9 +621,9 @@
         ! The scalar value kind of the param_pos-th (1-based) dummy of the
         ! contained procedure callee_name, read from its body declaration.
         ! Returns 0 when the procedure or its dummy declaration is not found, so
-        ! the caller falls back to its own default. Lets a real literal actual
-        ! adopt the dummy's kind (e.g. 2.0 to a real(4) step) regardless of the
-        ! caller-side default kind.
+        ! the caller falls back to its own default. When the body declaration
+        ! lacks a kind spec but the function return type is i64, infer i64 for
+        ! the dummy as well (FortFront may drop the kind from body declarations).
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
@@ -653,10 +653,43 @@
                 if (.not. same_name(fn_node%name, callee_name)) cycle
                 value_kind = param_at_value_kind(arena, fn_node%param_indices, &
                     fn_node%body_indices, param_pos)
+                if (value_kind == 0 .and. fn_return_type_is_i64(fn_node)) then
+                    value_kind = VALUE_I64
+                end if
                 return
             end if
         end do
     end function callee_dummy_value_kind
+
+    logical function fn_return_type_is_i64(node) result(is_i64)
+        ! True when the function return type string indicates integer(8)/i64.
+        ! Used as a fallback for parameter kind inference when the body
+        ! declaration lacks a kind spec (FortFront drops the kind).
+        type(function_def_node), intent(in) :: node
+        character(len=:), allocatable :: base, kind_s
+        integer :: lp, rp
+
+        is_i64 = .false.
+        if (.not. allocated(node%return_type)) return
+        if (len_trim(node%return_type) == 0) return
+        lp = index(node%return_type, '(')
+        if (lp > 0) then
+            base = lowercase_text(trim(adjustl(node%return_type(1:lp - 1))))
+            rp = index(node%return_type, ')', back=.true.)
+            if (rp > lp) then
+                kind_s = lowercase_text(trim(adjustl(node%return_type(lp + 1:rp - 1))))
+            else
+                return
+            end if
+        else
+            base = lowercase_text(trim(adjustl(node%return_type)))
+            return
+        end if
+        if (base == 'integer') then
+            is_i64 = (kind_s == '8' .or. kind_s == 'int64' .or. &
+                      kind_s == 'int64_t' .or. kind_s == 'c_int64')
+        end if
+    end function fn_return_type_is_i64
 
     integer function param_at_value_kind(arena, param_indices, body_indices, &
                                          param_pos) result(value_kind)
@@ -836,22 +869,26 @@
     end function call_emit_name
 
     subroutine define_reference_parameters(arena, param_indices, context, &
-                                           error_msg, body_indices, &
-                                           param_offset)
+                                            error_msg, body_indices, &
+                                            param_offset, return_value_kind)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer, allocatable, intent(in), optional :: body_indices(:)
         integer, intent(in), optional :: param_offset
+        integer, intent(in), optional :: return_value_kind
         character(len=:), allocatable :: name
         integer :: offset
         integer :: i
         integer :: value_kind
+        integer :: rvk
 
         call set_empty(error_msg)
         offset = 0
         if (present(param_offset)) offset = param_offset
+        rvk = 0
+        if (present(return_value_kind)) rvk = return_value_kind
         if (.not. allocated(param_indices)) return
         do i = 1, size(param_indices)
             call parameter_name(arena, param_indices(i), name, error_msg)
@@ -860,10 +897,18 @@
             if (present(body_indices)) then
                 value_kind = param_at_value_kind(arena, param_indices, &
                     body_indices, i)
-                if (value_kind == 0) value_kind = VALUE_I32
+                if (value_kind == 0) then
+                    ! Body declaration lacks kind spec; fall back to the
+                    ! function's return type when it indicates i64.
+                    if (rvk == VALUE_I64) then
+                        value_kind = VALUE_I64
+                    else
+                        value_kind = VALUE_I32
+                    end if
+                end if
             end if
             call define_parameter_symbol(context, name, i - 1 + offset, &
-                                        value_kind, error_msg)
+                                         value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters
