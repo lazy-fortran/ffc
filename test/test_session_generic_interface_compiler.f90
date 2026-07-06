@@ -11,6 +11,7 @@ program test_session_generic_interface_compiler
     if (.not. test_generic_real_specific()) all_passed = .false.
     if (.not. test_generic_subroutine()) all_passed = .false.
     if (.not. test_generic_full_signature_dispatch()) all_passed = .false.
+    if (.not. test_generic_rank_dispatch()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: generic interfaces resolve to correct specific procedures'
@@ -145,5 +146,40 @@ contains
             test_generic_full_signature_dispatch = expect_exit_status( &
                 source, 111, '/tmp/ffc_session_generic_sig')
         end function test_generic_full_signature_dispatch
+
+        logical function test_generic_rank_dispatch()
+            ! B7c: generic with two specifics sharing element kind but differing
+            ! in rank (scalar vs array) resolves to the correct specific based on
+            ! the actual argument rank, not just the kind vector.
+            character(len=*), parameter :: source = &
+                'module m'//new_line('a')// &
+                '  implicit none'//new_line('a')// &
+                '  interface proc'//new_line('a')// &
+                '    module procedure proc_scalar, proc_array'//new_line('a')// &
+                '  end interface'//new_line('a')// &
+                'contains'//new_line('a')// &
+                '  integer function proc_scalar(x)'//new_line('a')// &
+                '    integer, intent(in) :: x'//new_line('a')// &
+                '    proc_scalar = x * 10'//new_line('a')// &
+                '  end function proc_scalar'//new_line('a')// &
+                '  integer function proc_array(x)'//new_line('a')// &
+                '    integer, intent(in) :: x(3)'//new_line('a')// &
+                '    proc_array = x(1) + x(2) + x(3)'//new_line('a')// &
+                '  end function proc_array'//new_line('a')// &
+                'end module m'//new_line('a')// &
+                'program main'//new_line('a')// &
+                '  use m'//new_line('a')// &
+                '  integer :: n, a(3)'//new_line('a')// &
+                '  n = 5'//new_line('a')// &
+                '  a = [1, 2, 3]'//new_line('a')// &
+                '  stop proc(n) - proc(a)'//new_line('a')// &
+                'end program main'
+
+            ! proc(5) -> proc_scalar(5) -> 50
+            ! proc([1,2,3]) -> proc_array([1,2,3]) -> 6
+            ! exit code = 50 - 6 = 44
+            test_generic_rank_dispatch = expect_exit_status( &
+                source, 44, '/tmp/ffc_session_generic_rank')
+        end function test_generic_rank_dispatch
 
     end program test_session_generic_interface_compiler
