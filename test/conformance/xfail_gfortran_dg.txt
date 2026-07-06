@@ -58,8 +58,6 @@ alloc_comp_assign_1.f90
 alloc_comp_assign_10.f90
 alloc_comp_assign_11.f90
 alloc_comp_assign_17.f90
-alloc_comp_assign_2.f90
-alloc_comp_assign_3.f90
 alloc_comp_assign_4.f90
 alloc_comp_assign_6.f90
 alloc_comp_assign_7.f90
@@ -77,7 +75,6 @@ alloc_comp_bounds_1.f90
 alloc_comp_class_1.f90
 alloc_comp_class_2.f90
 alloc_comp_constraint_6.f90
-alloc_comp_constructor_2.f90
 alloc_comp_constructor_3.f90
 alloc_comp_constructor_4.f90
 alloc_comp_constructor_7.f90
@@ -1368,7 +1365,6 @@ pointer_init_5.f90
 pointer_init_8.f90
 pointer_intent_5.f90
 pointer_intent_6.f90
-pointer_intent_8.f90
 pointer_remapping_9.f90
 pointer_target_1.f90
 pointer_to_substring.f90
@@ -1902,7 +1898,6 @@ sizeof_5.f90
 sizeof_6.f90
 slash_1.f90
 spec_expr_10.f90
-spec_expr_3.f90
 spec_expr_4.f90
 spec_expr_5.f90
 spec_expr_8.f90
@@ -1946,7 +1941,6 @@ string_length_5.f90
 string_pad_trunc.f90
 structure_constructor_10.f90
 structure_constructor_14.f90
-structure_constructor_17.f90
 submodule_23.f90
 submodule_34.f90
 subref_array_pointer_1.f90
