@@ -750,7 +750,16 @@
                 call result_var_scalar_kind(node, context, value_kind, &
                                              derived_type_index, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (value_kind /= VALUE_I64) value_kind = VALUE_I32
+                if (value_kind /= VALUE_I64) then
+                    ! Body declaration didn't resolve to i64; check if any
+                    ! dummy argument is i64 — a strong indicator the result
+                    ! is also i64 when the header kind was dropped.
+                    if (.not. function_has_i64_parameter(node, context)) then
+                        value_kind = VALUE_I32
+                    else
+                        value_kind = VALUE_I64
+                    end if
+                end if
             else
                 call integer_kind_to_value_kind(kind_spec, node%line, &
                                                 node%column, value_kind, error_msg)
@@ -868,6 +877,34 @@
             end select
         end do
     end function result_var_body_decl_is_f64
+
+    logical function function_has_i64_parameter(node, context) result(has_i64)
+        ! True when the function body contains an integer(8)/i64 declaration.
+        ! Used as a fallback to recover i64 return kind when FortFront drops
+        ! the kind from the function header (e.g. "integer(8) function f" ->
+        ! return_type "integer" with no kind spec). Body declarations carry
+        ! the full type information even when the header is truncated.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+        character(len=:), allocatable :: decl_err
+        integer :: decl_kind
+
+        has_i64 = .false.
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_array) cycle
+                call declaration_value_kind(decl, decl_kind, decl_err, context)
+                if (len_trim(decl_err) == 0 .and. decl_kind == VALUE_I64) then
+                    has_i64 = .true.
+                    return
+                end if
+            end select
+        end do
+    end function function_has_i64_parameter
 
     subroutine result_var_scalar_kind(node, context, value_kind, &
                                       derived_type_index, error_msg)
