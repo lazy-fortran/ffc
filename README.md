@@ -156,7 +156,11 @@ An `if` condition accepts any
 scalar logical expression: `.not.`/`.and.`/`.or.`/`.eqv.`/`.neqv.` trees, a
 logical array element, a derived-type logical component, `allocated(a)`, and
 a contained logical function's result, including the one-line
-`if (cond) stmt` form without `then`. Derived types take scalar
+`if (cond) stmt` form without `then`. An empty or behavioral-only type
+(no data components, a bare `type :: t; end type` or a type with only a
+`contains` type-bound-procedure block) registers with a hidden placeholder
+slot, so declarations, dispatch, allocation, and extension resolve against it.
+Derived types take scalar
 integer, real, logical, `c_ptr`, and fixed-length character
 (`character(len=N)`) components, fixed-size rank-1 integer,
 real, and logical array components (`real :: r(N)`, accessed as `x%r(i)`,

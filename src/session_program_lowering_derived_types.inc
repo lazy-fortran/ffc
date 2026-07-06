@@ -439,15 +439,6 @@
                                            error_msg)
             return
         end if
-        if (.not. allocated(node%component_indices) .and. &
-            .not. allocated(node%extends_parent)) then
-            call unsupported_feature_error('derived type definition', &
-                                           node%line, node%column, &
-                                           'derived types need at least one '// &
-                                           'integer component', error_msg)
-            return
-        end if
-
         call grow_derived_types(context)
 
         type_index = context%derived_type_count + 1
@@ -461,12 +452,18 @@
             call collect_derived_components(node, context, type_index, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
+        ! An empty or behavioral-only type (no data components, e.g. a type that
+        ! carries only a `contains` type-bound-procedure block, or a bare
+        ! `type :: t; end type`) registers with a single hidden i32 placeholder
+        ! slot so it has a nonzero footprint and reuses the fully-supported
+        ! single-integer layout. This lets class(t)/type(t) declarations,
+        ! type-bound dispatch, and allocation resolve against the type instead
+        ! of failing because the type never registered.
         if (context%derived_types(type_index)%component_count <= 0) then
-            call unsupported_feature_error('derived type definition', &
-                                           node%line, node%column, &
-                                           'derived types need at least one '// &
-                                           'integer component', error_msg)
-            return
+            call add_derived_component(context, type_index, '__ffc_placeholder', &
+                                       node%line, node%column, .false., &
+                                       0_c_int64_t, 1, VALUE_I32, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         call collect_type_bindings(node, context, type_index, error_msg)
         if (len_trim(error_msg) > 0) return
