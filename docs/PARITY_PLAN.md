@@ -64,6 +64,8 @@ Feature gaps (each a bucket of xfailed files):
 - **#284** separate compilation: duplicate runtime-helper symbols.
 - **#286** file:line:col diagnostics on stderr plus `--json`.
 - **#294** mixed-kind generic dispatch per call-site argument kinds.
+- **#303** generic dispatch rank tracking: same-kind specifics distinguished by
+  argument rank (scalar vs array), resolved in PR #312.
 - **#297** separate-file submodules from `.fmod`.
 
 Correctness bugs:
