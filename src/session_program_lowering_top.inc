@@ -473,6 +473,8 @@
         if (len_trim(error_msg) > 0) return
         call check_duplicate_contained_procedures(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_bit_intrinsic_arg_ranges(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)

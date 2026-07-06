@@ -570,3 +570,162 @@
             if (allocated(nd%name)) name = trim(nd%name)
         end select
     end subroutine procedure_def_name
+
+    ! The bit-model intrinsics constrain their bit-position and length
+    ! arguments to be nonnegative (F2018 16.9.x): BTEST/IBSET/IBCLR take a
+    ! single POS, IBITS takes POS and LEN, and MVBITS takes FROMPOS, LEN, and
+    ! TOPOS. A statically-known negative constant in any of those positions is
+    ! never valid Fortran (gfortran: "must be nonnegative"), independent of the
+    ! argument kind. Only whole-constant folds of integer literals joined by
+    ! +, -, or * are evaluated here, so a runtime value leaves the call
+    ! unflagged; a user procedure shadowing the intrinsic name (found by
+    ! arena_proc_param_count) also disqualifies the call so a valid program is
+    ! never rejected.
+    subroutine check_bit_intrinsic_arg_ranges(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+        integer, allocatable :: call_args(:)
+        character(len=:), allocatable :: call_name, sub_err
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            if (is_subroutine_call_statement(arena, n)) then
+                call get_subroutine_call_name(arena, n, call_name, sub_err)
+                if (len_trim(sub_err) > 0) cycle
+                call get_subroutine_call_arg_indices(arena, n, call_args, sub_err)
+                if (len_trim(sub_err) > 0) cycle
+                if (size(call_args) == 0) cycle
+                call check_bit_intrinsic_call(arena, call_name, call_args, &
+                    get_node_line(arena, n), get_node_column(arena, n), error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
+            select type (nd => arena%entries(n)%node)
+            type is (call_or_subscript_node)
+                if (nd%is_array_access) cycle
+                if (.not. allocated(nd%name)) cycle
+                if (.not. allocated(nd%arg_indices)) cycle
+                call check_bit_intrinsic_call(arena, nd%name, nd%arg_indices, &
+                    nd%line, nd%column, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_bit_intrinsic_arg_ranges
+
+    subroutine check_bit_intrinsic_call(arena, name, arg_indices, line, col, &
+                                        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: arg_indices(:)
+        integer, intent(in) :: line, col
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lname
+        integer :: nargs, nn, k, ai, nonneg(3)
+        integer(c_int64_t) :: val
+        logical :: ok
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        lname = trim(lowercase_text(name))
+        nargs = size(arg_indices)
+        nn = 0
+        select case (lname)
+        case ('btest', 'ibset', 'ibclr')
+            if (nargs /= 2) return
+            nonneg(1) = 2
+            nn = 1
+        case ('ibits')
+            if (nargs /= 3) return
+            nonneg(1) = 2
+            nonneg(2) = 3
+            nn = 2
+        case ('mvbits')
+            if (nargs /= 5) return
+            nonneg(1) = 2
+            nonneg(2) = 3
+            nonneg(3) = 5
+            nn = 3
+        case default
+            return
+        end select
+        if (arena_proc_param_count(arena, lname) >= 0) return
+        do k = 1, nn
+            ai = arg_indices(nonneg(k))
+            call try_const_int64(arena, ai, val, ok)
+            if (.not. ok) cycle
+            if (val < 0_c_int64_t) then
+                write (location, '(" at line ",I0,", column ",I0)') line, col
+                error_msg = 'argument of '//lname// &
+                    ' must be nonnegative'//trim(location)
+                return
+            end if
+        end do
+    end subroutine check_bit_intrinsic_call
+
+    ! Fold an argument expression to a compile-time i64 value when it is built
+    ! solely from integer literals and +, -, * operators. Anything else
+    ! (identifiers, other operators, non-integer literals) leaves ok = .false.
+    ! so callers treat the value as statically unknown. This never consults the
+    ! symbol table, so it is safe from validate_program, which has no lowering
+    ! context.
+    recursive subroutine try_const_int64(arena, node_index, value, ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(out) :: value
+        logical, intent(out) :: ok
+        integer(c_int64_t) :: lv, rv
+        integer :: li, ri, ln, cl, ios
+        character(len=:), allocatable :: op, lit_value, lit_type, err
+
+        value = 0_c_int64_t
+        ok = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, li, ri, ln, cl, err)
+            if (len_trim(err) > 0) return
+            call try_const_int64(arena, li, lv, ok)
+            if (.not. ok) return
+            call try_const_int64(arena, ri, rv, ok)
+            if (.not. ok) return
+            ok = .false.
+            select case (trim(op))
+            case ('+')
+                value = lv + rv
+                ok = .true.
+            case ('-')
+                value = lv - rv
+                ok = .true.
+            case ('*')
+                value = lv*rv
+                ok = .true.
+            end select
+            return
+        end if
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, err)
+            if (len_trim(err) > 0) return
+            if (allocated(lit_type)) then
+                if (len_trim(lit_type) > 0 .and. &
+                    trim(lowercase_text(lit_type)) /= 'integer') return
+            end if
+            if (.not. is_integer_text(lit_value)) return
+            read (lit_value, *, iostat=ios) value
+            if (ios == 0) ok = .true.
+        end if
+    end subroutine try_const_int64
+
+    logical function is_integer_text(text) result(is_int)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: trimmed
+        integer :: i
+
+        is_int = .false.
+        trimmed = trim(adjustl(text))
+        if (len(trimmed) == 0) return
+        do i = 1, len(trimmed)
+            if (scan(trimmed(i:i), '0123456789') == 0) return
+        end do
+        is_int = .true.
+    end function is_integer_text
