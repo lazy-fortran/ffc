@@ -190,6 +190,8 @@ module session_program_lowering
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
+        get_type_for_node, mono_type_t, &
+        TINT, TREAL, TCHAR, TLOGICAL, TARRAY, TCOMPLEX, TDOUBLE, TDERIVED, &
         get_program_body_info, get_module_body_info, &
         get_function_body_info, get_subroutine_body_info, &
         get_select_case_info, get_case_block_info, &
@@ -735,6 +737,7 @@ contains
 
     include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'
+    include 'session_program_lowering_inferred.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node

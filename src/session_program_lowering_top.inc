@@ -168,6 +168,14 @@
             call destroy(context%session)
             return
         end if
+        ! Seed inferred symbols from FortFront type info for variables with no
+        ! explicit declaration (#262). Runs after module variables so USE-imported
+        ! names are already in the symbol table and not shadowed by inferred seeds.
+        call collect_inferred_symbols(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         ! A bare module compiled on its own may USE another module resolved from
         ! a .fmod. Its procedures reference those imports, so process the module
         ! USE statements before lowering the procedure bodies (#284).

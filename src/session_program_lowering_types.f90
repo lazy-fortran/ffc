@@ -511,6 +511,11 @@ module session_program_lowering_types
                     ! connection's sign mode (#280): PRINT and WRITE(*,...) share that
                     ! connection, so a forced-plus mode applies to their F editing too.
                     logical :: stdout_force_plus_sign = .false.
+                    ! Explicitly declared variable names (from declaration_node). Used
+                    ! by the inferred-symbol seeding pass to avoid overwriting an
+                    ! explicit declaration with an inferred one (#262).
+                    character(len=64), allocatable :: explicit_decl_names(:)
+                    integer :: explicit_decl_count = 0
                 end type lowering_context_t
 
                 type, public :: branch_result_t

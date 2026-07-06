@@ -6,13 +6,19 @@ module ffc_fortfront_queries
         get_select_case_info, get_case_block_info, &
         get_case_default_body, get_case_range_info, &
         get_select_type_info, get_type_guard_info
-    use fortfront_utils, only: node_exists, get_node_type_at
+    use fortfront_utils, only: node_exists, get_node_type_at, &
+        get_type_for_node
     use fortfront, only: is_derived_type_node, derived_type_node, &
         is_declaration_node, declaration_node
+    use type_system_unified, only: mono_type_t, &
+        TINT, TREAL, TCHAR, TLOGICAL, TARRAY, TCOMPLEX, TDOUBLE, TDERIVED
     use ast_nodes_control, only: goto_node
     implicit none
     private
     public :: ast_arena_t, node_exists, get_node_type_at
+    public :: get_type_for_node
+    public :: mono_type_t
+    public :: TINT, TREAL, TCHAR, TLOGICAL, TARRAY, TCOMPLEX, TDOUBLE, TDERIVED
     public :: get_node_stmt_label, get_goto_label, goto_is_computed
     public :: get_goto_label_list, get_goto_selector_index
     public :: get_program_body_info, get_module_body_info
