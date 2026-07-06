@@ -146,7 +146,6 @@ allocated_4.f90
 ambiguous_specific_2.f90
 and_or_xor.f90
 anint_1.f90
-any_all_1.f90
 any_all_2.f90
 anyallcount_1.f90
 append_1.f90
@@ -215,7 +214,6 @@ arrayio_15.f90
 arrayio_16.f90
 arrayio_2.f90
 arrayio_3.f90
-arrayio_4.f90
 arrayio_5.f90
 arrayio_6.f90
 arrayio_9.f90
@@ -241,7 +239,6 @@ associate_35.f90
 associate_38.f90
 associate_41.f90
 associate_42.f90
-associate_43.f90
 associate_44.f90
 associate_45.f90
 associate_46.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
@@ -1008,7 +1005,6 @@ internal_readwrite_2.f90
 internal_readwrite_3.f90
 internal_readwrite_4.f90
 intrinsic_1.f90
-intrinsic_7.f90
 intrinsic_8.f90
 intrinsic_9.f90
 intrinsic_actual_2.f90
@@ -1761,7 +1757,6 @@ ptr-func-5.f90
 public_private_module_10.f90
 public_private_module_4.f90
 pure_byref_1.f90
-pure_byref_3.f90
 pure_formal_proc_2.f90
 pure_formal_proc_4.f90
 pure_initializer_3.f90
@@ -1863,7 +1858,6 @@ scalarize_parameter_array_2.f90
 scale_1.f90
 scan_3.f90
 scratch_1.f90
-select_char_1.f90
 select_rank_1.f90
 select_rank_5.f90
 select_type_4.f90

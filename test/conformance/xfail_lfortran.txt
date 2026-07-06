@@ -91,7 +91,6 @@ allocated_05.f90
 allocate_source_ptr_01.f90
 any_01.f90
 any_02.f90
-any_03.f90
 array_01_pack.f90
 array_01_transfer.f90
 array_02_pack.f90
@@ -544,10 +543,8 @@ character_30.f90
 character_31.f90
 character_32.f90
 character_array_block_padding.f90
-character_array_parameter_padding_trimming.f90
 character_assignment_01.f90
 character_max_parameter_01.f90
-character_parameter_padding_trimming.f90
 char_array_01.f90
 char_array_indexing_02.f90
 char_array_indexing.f90
@@ -739,9 +736,6 @@ complex_08.f90
 complex_09.f90
 complex_10.f90
 complex_11.f90
-complex_12.f90
-complex_13.f90
-complex_14.f90
 complex_15.f90
 complex_16.f90
 complex_17.f90
@@ -1382,7 +1376,6 @@ functions_12.f90
 functions_13.f90
 functions_15.f90
 functions_16.f90
-functions_17.f90
 functions_18.f90
 functions_19.f90
 functions_20.f90
@@ -2254,7 +2247,6 @@ matmul_04.f90
 matmul_05.f90
 matmul_06.f90
 matrix_01_transpose.f90
-matrix_02_matmul.f90
 matrix_03_transpose_param.f90
 max_02.f90
 merge_str_01.f90
@@ -2630,7 +2622,6 @@ present_07.f90
 present_08.f90
 print_02.f90
 print_04.f90
-print_05.f90
 print_06.f90
 print_07.f90
 print_10.f90
@@ -2879,7 +2870,6 @@ select_rank_14.f90
 select_rank_15.f90
 select_rank_16.f90
 select_rank_17.f90
-select_rank_18.f90
 select_rank_19.f90
 select_rank_20.f90
 select_rank_21.f90
