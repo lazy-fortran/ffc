@@ -119,7 +119,7 @@
             call eval_c4_rhs(arena, node_index, context, re_val, im_val, error_msg)
             return
         end if
-        call lower_f32_expression(arena, node_index, context, re_val, error_msg)
+        call lower_real_component_f32(arena, node_index, context, re_val, error_msg)
         if (len_trim(error_msg) > 0) return
         im_val = liric_f32_immediate(context%session, 0.0_c_float)
     end subroutine eval_c4_operand
@@ -137,10 +137,73 @@
             call eval_c8_rhs(arena, node_index, context, re_val, im_val, error_msg)
             return
         end if
-        call lower_f64_expression(arena, node_index, context, re_val, error_msg)
+        call lower_real_component_f64(arena, node_index, context, re_val, error_msg)
         if (len_trim(error_msg) > 0) return
         im_val = liric_f64_immediate(context%session, 0.0_c_double)
     end subroutine eval_c8_operand
+
+    ! Lower a scalar numeric expression to an f32 component value, promoting an
+    ! integer (i32) subexpression and demoting an f64 one so cmplx()/complex
+    ! literal/real-to-complex forms accept integer or wider-precision operands.
+    ! Unknown kinds fall through to the plain f32 path, which either handles the
+    ! node or emits the existing unsupported-form error (no new hard failure).
+    subroutine lower_real_component_f32(arena, node_index, context, value, &
+                                        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: tmp
+        integer :: comp_kind
+
+        call set_empty(error_msg)
+        comp_kind = expression_value_kind(arena, node_index, context, VALUE_F32)
+        select case (comp_kind)
+        case (VALUE_I32)
+            call lower_i32_expression(arena, node_index, context, tmp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_f32(context%session, tmp, value, &
+                                            error_msg)) return
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node_index, context, tmp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_to_f32(context%session, tmp, value, &
+                                            error_msg)) return
+        case default
+            call lower_f32_expression(arena, node_index, context, value, &
+                                      error_msg)
+        end select
+    end subroutine lower_real_component_f32
+
+    subroutine lower_real_component_f64(arena, node_index, context, value, &
+                                        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: tmp
+        integer :: comp_kind
+
+        call set_empty(error_msg)
+        comp_kind = expression_value_kind(arena, node_index, context, VALUE_F64)
+        select case (comp_kind)
+        case (VALUE_I32)
+            call lower_i32_expression(arena, node_index, context, tmp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_f64(context%session, tmp, value, &
+                                            error_msg)) return
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node_index, context, tmp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_to_f64(context%session, tmp, value, &
+                                            error_msg)) return
+        case default
+            call lower_f64_expression(arena, node_index, context, value, &
+                                      error_msg)
+        end select
+    end subroutine lower_real_component_f64
 
     ! Evaluate a complex(4) rhs into its real/imag SSA components. Handles the
     ! (re, im) literal, a complex(4) identifier load, cmplx(re, im), and binary
@@ -160,10 +223,29 @@
 
         call set_empty(error_msg)
         if (cmplx_call_args(arena, rhs_index, li, ri)) then
-            call lower_f32_expression(arena, li, context, re_val, error_msg)
+            ! cmplx(z [, kind]) with a single complex argument is a kind
+            ! conversion: take both components from the complex operand,
+            ! demoting a complex(8) source to the f32 components.
+            if (ri <= 0 .and. &
+                is_complex_valued(arena, li, context, VALUE_C4)) then
+                call eval_c4_rhs(arena, li, context, re_val, im_val, error_msg)
+                return
+            end if
+            if (ri <= 0 .and. &
+                is_complex_valued(arena, li, context, VALUE_C8)) then
+                call eval_c8_rhs(arena, li, context, lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_f32(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f64_to_f32(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
+            call lower_real_component_f32(arena, li, context, re_val, error_msg)
             if (len_trim(error_msg) > 0) return
             if (ri > 0) then
-                call lower_f32_expression(arena, ri, context, im_val, error_msg)
+                call lower_real_component_f32(arena, ri, context, im_val, &
+                                              error_msg)
             else
                 im_val = liric_f32_immediate(context%session, 0.0_c_float)
             end if
@@ -191,11 +273,11 @@
         end if
         select type (rhs => arena%entries(rhs_index)%node)
         type is (complex_literal_node)
-            call lower_f32_expression(arena, rhs%real_index, context, re_val, &
-                                      error_msg)
+            call lower_real_component_f32(arena, rhs%real_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f32_expression(arena, rhs%imag_index, context, im_val, &
-                                      error_msg)
+            call lower_real_component_f32(arena, rhs%imag_index, context, im_val, &
+                                          error_msg)
         type is (call_or_subscript_node)
             sym = 0
             if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
@@ -207,7 +289,8 @@
                     return
                 end if
             end if
-            call lower_f32_expression(arena, rhs_index, context, re_val, error_msg)
+            call lower_real_component_f32(arena, rhs_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
             im_val = liric_f32_immediate(context%session, 0.0_c_float)
         class default
@@ -222,7 +305,20 @@
                                              .true., re_val, im_val, error_msg)
                 return
             end if
-            call lower_f32_expression(arena, rhs_index, context, re_val, error_msg)
+            ! complex(4) = complex(8): load the wider source and demote both
+            ! components to f32.
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_C8) then
+                call load_complex_identifier(arena, rhs_index, context, VALUE_C8, &
+                                             .false., lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_f32(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f64_to_f32(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
+            call lower_real_component_f32(arena, rhs_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
             im_val = liric_f32_immediate(context%session, 0.0_c_float)
         end select
@@ -241,10 +337,28 @@
 
         call set_empty(error_msg)
         if (cmplx_call_args(arena, rhs_index, li, ri)) then
-            call lower_f64_expression(arena, li, context, re_val, error_msg)
+            ! cmplx(z [, kind]) / dcmplx(z): single complex argument is a kind
+            ! conversion; promote a complex(4) source to the f64 components.
+            if (ri <= 0 .and. &
+                is_complex_valued(arena, li, context, VALUE_C8)) then
+                call eval_c8_rhs(arena, li, context, re_val, im_val, error_msg)
+                return
+            end if
+            if (ri <= 0 .and. &
+                is_complex_valued(arena, li, context, VALUE_C4)) then
+                call eval_c4_rhs(arena, li, context, lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_to_f64(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f32_to_f64(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
+            call lower_real_component_f64(arena, li, context, re_val, error_msg)
             if (len_trim(error_msg) > 0) return
             if (ri > 0) then
-                call lower_f64_expression(arena, ri, context, im_val, error_msg)
+                call lower_real_component_f64(arena, ri, context, im_val, &
+                                              error_msg)
             else
                 im_val = liric_f64_immediate(context%session, 0.0_c_double)
             end if
@@ -272,11 +386,11 @@
         end if
         select type (rhs => arena%entries(rhs_index)%node)
         type is (complex_literal_node)
-            call lower_f64_expression(arena, rhs%real_index, context, re_val, &
-                                      error_msg)
+            call lower_real_component_f64(arena, rhs%real_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_f64_expression(arena, rhs%imag_index, context, im_val, &
-                                      error_msg)
+            call lower_real_component_f64(arena, rhs%imag_index, context, im_val, &
+                                          error_msg)
         type is (call_or_subscript_node)
             sym = 0
             if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
@@ -288,7 +402,8 @@
                     return
                 end if
             end if
-            call lower_f64_expression(arena, rhs_index, context, re_val, error_msg)
+            call lower_real_component_f64(arena, rhs_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
             im_val = liric_f64_immediate(context%session, 0.0_c_double)
         class default
@@ -303,7 +418,20 @@
                                              .false., re_val, im_val, error_msg)
                 return
             end if
-            call lower_f64_expression(arena, rhs_index, context, re_val, error_msg)
+            ! complex(8) = complex(4): load the narrower source and promote both
+            ! components to f64.
+            if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_C4) then
+                call load_complex_identifier(arena, rhs_index, context, VALUE_C4, &
+                                             .true., lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_to_f64(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f32_to_f64(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
+            call lower_real_component_f64(arena, rhs_index, context, re_val, &
+                                          error_msg)
             if (len_trim(error_msg) > 0) return
             im_val = liric_f64_immediate(context%session, 0.0_c_double)
         end select

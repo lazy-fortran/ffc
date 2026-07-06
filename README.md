@@ -121,7 +121,11 @@ including a mixed real/complex operand, `cmplx()` (single-argument or with a
 keyword/positional kind selector), `dcmplx()`, `real()`/`aimag()` component
 extraction (`real(z, kind)` accepts a kind selector), `conjg()`/`dconjg()`, and
 `abs()` (real magnitude via libm `hypot`); `complex(dp)`/`complex(wp)` resolve
-the double-precision kind aliases. Fixed-size rank-1/rank-2 complex
+the double-precision kind aliases. A `cmplx()` component or complex-assignment
+operand may be an integer or a mismatched-precision real (widened or narrowed to
+the target component); an integer/real scalar assigns to a complex as the real
+part with zero imaginary part, and `complex(4)`/`complex(8)` assignments convert
+across kinds. Fixed-size rank-1/rank-2 complex
 arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
 between array elements, single-element `print`, and whole-array assignment
 with elementwise `+`/`-`/`*`/`/`, whole-array copy, or scalar broadcast
