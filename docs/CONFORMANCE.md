@@ -78,6 +78,49 @@ scripts/conformance_gauntlet.sh --suite fortfront-f90 \
     --ffc "$(find build -name ffc -type f -executable | head -1)"
 ```
 
+## Single-command conformance gate
+
+`scripts/conformance_check.sh` is the documented routine contributors run
+before pushing and after dependency (fortfront, liric) updates. It builds
+ffc, runs every available suite, fails on any FAIL or XPASS, and prints
+the promotable XPASS list.
+
+```bash
+scripts/conformance_check.sh                    # build + all available suites
+scripts/conformance_check.sh --no-build          # skip build, run suites
+scripts/conformance_check.sh --suite fortfront-f90  # single suite
+```
+
+The script auto-detects available suites by checking the suite root
+directories. If a suite root does not exist, it prints a SKIP message and
+continues with the remaining suites. Only `fortfront-f90` and `fortfront-lf`
+run out of the box; `lfortran` and `gfortran-dg` require external checkouts
+(see below).
+
+The script exits 1 when any suite has a FAIL or XPASS record. XPASS records
+indicate manifest drift: the file now passes but is still listed in the xfail
+manifest. Promote by removing the entry from the manifest.
+
+## External corpora
+
+`lfortran` and `gfortran-dg` suites require local checkouts of the external
+repositories. `scripts/fetch_corpora.sh` handles this:
+
+```bash
+scripts/fetch_corpora.sh              # clone missing corpora to sibling dirs
+scripts/fetch_corpora.sh --update     # pull latest upstream
+```
+
+Alternatively, set the environment variables to point at existing checkouts:
+
+| Variable | Default | Suite |
+|---|---|---|
+| `FFC_LFORTRAN_DIR` | `../lfortran` | `lfortran` |
+| `FFC_GFORTRAN_DG_DIR` | `../gcc/gcc/testsuite/gfortran.dg` | `gfortran-dg` |
+
+When the conformance check script finds the directory, it includes the suite
+automatically. When absent, it prints a SKIP message.
+
 ## JSONL output
 
 One record per attempted file:

@@ -384,7 +384,16 @@ echo $?
 
 `docs/CONFORMANCE.md` documents the conformance gauntlet runner that
 drives external Fortran test corpora through the full `ffc` pipeline.
-It produces an xfail-style report with JSONL output.
+
+Single-command gate (build + all suites, fails on FAIL or XPASS):
+```bash
+scripts/conformance_check.sh
+```
+
+Fetch external corpora (lfortran, gfortran-dg):
+```bash
+scripts/fetch_corpora.sh
+```
 
 ## Layout
 
