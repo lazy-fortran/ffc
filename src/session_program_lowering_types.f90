@@ -360,10 +360,14 @@ module session_program_lowering_types
             integer :: specific_count = 0
             character(len=64) :: specific_names(MAX_GENERIC_SPECIFICS) = ''
             integer :: specific_arg_counts(MAX_GENERIC_SPECIFICS) = 0
-            ! Per-specific argument kinds (scalar-only today): position 1 is the first
+            ! Per-specific argument kinds: position 1 is the first
             ! dummy, up to MAX_PROC_ARGS. Unused trailing entries stay VALUE_I32.
             integer :: specific_arg_kinds(MAX_PROC_ARGS, MAX_GENERIC_SPECIFICS) = &
                 VALUE_I32
+            ! Per-specific argument ranks: 0 for scalar, >0 for array rank.
+            ! Populated from declaration metadata so dispatch distinguishes
+            ! same-kind specifics that differ in rank (refs #303).
+            integer :: specific_arg_ranks(MAX_PROC_ARGS, MAX_GENERIC_SPECIFICS) = 0
             ! Return value kind of each specific.
             integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
         end type generic_interface_t

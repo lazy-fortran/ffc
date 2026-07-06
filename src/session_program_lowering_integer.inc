@@ -197,8 +197,9 @@
       integer, allocatable :: copyback_indices(:)
       integer :: intrinsic_id
       character(len=:), allocatable :: call_name
-      integer :: call_arg_count
-      integer :: call_arg_kinds(MAX_PROC_ARGS)
+ integer :: call_arg_count
+       integer :: call_arg_kinds(MAX_PROC_ARGS)
+       integer :: call_arg_ranks(MAX_PROC_ARGS)
 
       if (node%base_expr_index > 0) then
           call lower_derived_component_element_load(arena, node, context, value, &
@@ -218,11 +219,13 @@
           return
       end if
 
-      ! Resolve generic -> specific (#249 B7c).
-      call call_argument_kinds(arena, node, context, VALUE_I32, &
-                              call_arg_count, call_arg_kinds)
-      call_name = degeneric_call_name(context, node%name, &
-          call_arg_count, call_arg_kinds)
+! Resolve generic -> specific (#249 B7c).
+       call call_argument_kinds(arena, node, context, VALUE_I32, &
+                               call_arg_count, call_arg_kinds)
+       call call_argument_ranks(arena, node, context, call_arg_count, &
+                                call_arg_ranks)
+       call_name = degeneric_call_name(context, node%name, &
+           call_arg_count, call_arg_kinds, call_arg_ranks)
 
       if (external_procedure_index(context, node%name) > 0) then
           if (context%external_procedures( &

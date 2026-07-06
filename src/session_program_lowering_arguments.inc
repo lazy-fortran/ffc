@@ -680,8 +680,8 @@
         call set_empty(error_msg)
     end subroutine prepare_identifier_reference_arg
 
-    integer function expression_value_kind(arena, node_index, context, &
-                                           default_kind) result(value_kind)
+integer function expression_value_kind(arena, node_index, context, &
+                                            default_kind) result(value_kind)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
@@ -689,6 +689,7 @@
         integer :: symbol_index
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
+        integer :: call_arg_ranks(MAX_PROC_ARGS)
         character(len=:), allocatable :: id_name, id_err
 
         value_kind = default_kind
@@ -744,8 +745,10 @@
                 if (find_generic(context, node%name) > 0) then
                     call call_argument_kinds(arena, node, context, default_kind, &
                         call_arg_count, call_arg_kinds)
+                    call call_argument_ranks(arena, node, context, call_arg_count, &
+                        call_arg_ranks)
                     value_kind = generic_call_return_kind(context, node%name, &
-                        call_arg_count, call_arg_kinds)
+                        call_arg_count, call_arg_kinds, call_arg_ranks)
                 else if (is_contained_f32_function(context, node%name)) then
                     value_kind = VALUE_F32
                 else if (is_contained_f64_function(context, node%name)) then
@@ -759,8 +762,8 @@
         end select
     end function expression_value_kind
 
-    subroutine call_argument_kinds(arena, node, context, default_kind, &
-                                  arg_count, arg_kinds)
+ subroutine call_argument_kinds(arena, node, context, default_kind, &
+                                   arg_count, arg_kinds)
         ! Expand the actual argument kinds at a call site for generic signature
         ! matching.
         type(ast_arena_t), intent(in) :: arena
@@ -778,9 +781,69 @@
         if (arg_count > MAX_PROC_ARGS) arg_count = MAX_PROC_ARGS
         do i = 1, arg_count
             arg_kinds(i) = expression_value_kind(arena, node%arg_indices(i), &
-                                                context, default_kind)
+                                                 context, default_kind)
         end do
     end subroutine call_argument_kinds
+
+    subroutine call_argument_ranks(arena, node, context, arg_count, arg_ranks)
+        ! Expand the actual argument ranks at a call site for generic signature
+        ! matching. 0 = scalar, >0 = array rank (refs #303).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: arg_count
+        integer, intent(out) :: arg_ranks(MAX_PROC_ARGS)
+        integer :: i
+
+        arg_count = 0
+        arg_ranks = 0
+        if (.not. allocated(node%arg_indices)) return
+        arg_count = size(node%arg_indices)
+        if (arg_count > MAX_PROC_ARGS) arg_count = MAX_PROC_ARGS
+        do i = 1, arg_count
+            arg_ranks(i) = expression_value_rank(arena, node%arg_indices(i), &
+                                                 context)
+        end do
+    end subroutine call_argument_ranks
+
+    integer function expression_value_rank(arena, node_index, context) result(rank)
+        ! Array rank of an expression used as a call argument. 0 for scalar,
+        ! >0 for array. Used by generic dispatch to distinguish same-kind
+        ! specifics that differ in rank (refs #303).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+        character(len=:), allocatable :: id_name, id_err
+
+        rank = 0
+        if (.not. node_exists(arena, node_index)) return
+
+        if (is_literal(arena, node_index)) return
+        if (is_binary_op(arena, node_index)) return
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            if (len_trim(id_err) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_array) then
+                    rank = context%symbols(symbol_index)%array_rank
+                else if (context%symbols(symbol_index)%array_rank > 0) then
+                    rank = context%symbols(symbol_index)%array_rank
+                end if
+            end if
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%is_array_access) then
+                rank = expression_array_access_rank(arena, node, context)
+                return
+            end if
+        end select
+    end function expression_value_rank
 
     subroutine lower_expression_by_kind(arena, node_index, context, value_kind, &
                                         value, error_msg)
@@ -875,3 +938,57 @@
         end do
         call set_empty(error_msg)
     end subroutine copy_back_reference_args
+
+    integer function expression_array_access_rank(arena, node, context) result(rank)
+        ! Rank of an array access expression: 0 for element access (all indices
+        ! are scalar), or the remaining rank for a section (e.g. a(:) keeps rank
+        ! 1 of a rank-1 array).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index, base_rank
+
+        rank = 0
+        if (.not. allocated(node%name)) return
+        if (len_trim(node%name) == 0) return
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) return
+        base_rank = 0
+        if (context%symbols(symbol_index)%is_array) then
+            base_rank = context%symbols(symbol_index)%array_rank
+        else if (context%symbols(symbol_index)%array_rank > 0) then
+            base_rank = context%symbols(symbol_index)%array_rank
+        end if
+        if (base_rank <= 0) return
+        rank = base_rank - count_scalar_indices(arena, node)
+        if (rank < 0) rank = 0
+    end function expression_array_access_rank
+
+    integer function count_scalar_indices(arena, node) result(count)
+        ! Number of scalar indices in an array access. If all indices are scalar,
+        ! the result is a scalar element (rank 0). If some are sections (:), the
+        ! result retains the un-indexed dimensions.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer :: i
+
+        count = 0
+        if (.not. allocated(node%arg_indices)) return
+        do i = 1, size(node%arg_indices)
+            if (.not. is_section_index(arena, node%arg_indices(i))) count = count + 1
+        end do
+    end function count_scalar_indices
+
+    logical function is_section_index(arena, node_index)
+        ! Whether a subscript is a full-section selector (:), which preserves
+        ! the dimension in the result rank.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_section_index = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_literal(arena, node_index)) return
+        if (is_identifier(arena, node_index)) return
+        if (is_binary_op(arena, node_index)) return
+        is_section_index = .true.
+    end function is_section_index
