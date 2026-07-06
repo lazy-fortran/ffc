@@ -210,6 +210,14 @@
                     same_name(call_name, 'all'), handled, value, error_msg)
                 if (handled .or. len_trim(error_msg) > 0) return
             end block
+            if (same_name(call_name, 'all')) then
+                call lower_logical_array_all_intrinsic(arena, node, context, &
+                                                       value, error_msg)
+            else
+                call lower_logical_array_any_intrinsic(arena, node, context, &
+                                                       value, error_msg)
+            end if
+            return
         end if
         if (.not. is_contained_logical_function(context, call_name)) then
             call unsupported_feature_error('scalar logical function call', &

@@ -282,6 +282,21 @@ module session_program_lowering_types
             integer(c_int64_t) :: scalar_indices(2) = 0_c_int64_t
         end type array_section_info_t
 
+        ! One operand of an all/any/count comparison mask (or a bare mask), used
+        ! by the general scalar-result reduction path. mode selects the storage:
+        ! 0 scalar broadcast, 1 whole stored array, 2 array section, 3 array
+        ! constructor of scalar elements. extent is the element count for an
+        ! array-shaped operand and -1 for a scalar.
+        type, public :: reduction_operand_t
+            integer :: mode = 0
+            integer :: sym = 0
+            integer :: scalar_idx = 0
+            integer, allocatable :: flat(:)
+            type(array_section_info_t) :: info
+            integer :: vk = VALUE_I32
+            integer :: extent = -1
+        end type reduction_operand_t
+
         type, public :: derived_type_info_t
             character(len=64) :: name = ''
             integer :: component_count = 0

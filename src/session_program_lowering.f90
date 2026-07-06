@@ -213,6 +213,7 @@ module session_program_lowering
     use session_program_lowering_types, only: lowering_context_t, &
         branch_result_t, symbol_t, &
         array_section_info_t, &
+        reduction_operand_t, &
         derived_type_info_t, &
         module_exports_t, &
         external_procedure_t, &

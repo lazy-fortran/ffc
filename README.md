@@ -56,9 +56,12 @@ arrays assigned to a logical array, e.g. `mask = a > b`, and whole-array
 `matmul`, `transpose`, `reshape` (also as a declaration initializer, with
 integer-source-to-real conversion, and with a `shape(X)` shape argument or
 keyword `source=`/`shape=` form), `lbound`, `ubound`, `count`, `any`, `all`
-(including a whole-array relational comparison of two conforming integer, real,
-or allocatable arrays, an array against a scalar, or an array against an array
-constructor, e.g. `if (any(a /= b))`, `all(a == [1, 2, 3])`, plus dim-wise
+(scalar-result reductions in any context: a bare whole logical array
+(`if (.not. all(l))`), a logical array constructor (`all([.true., .false.])`),
+or a whole-array/section/constructor/scalar elementwise comparison using a
+relational or `.eqv.`/`.neqv.` operator, e.g. `if (any(a /= b))`,
+`all(a == [1, 2, 3])`, `any(a(2:4) /= b(2:4))`, `any(d .neqv. mask)`, plus
+dim-wise
 `sum`/`product`/`count`/`any`/`all` of a rank-2 source into a rank-1 target
 with a compile-time `dim`, e.g. `s = sum(a, 1)`, `m = any(a == b, 2)`),
 and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar

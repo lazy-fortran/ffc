@@ -289,6 +289,13 @@
             return
         end if
 
+        block
+            logical :: handled
+            call try_general_mask_reduction(arena, node, context, 'count', &
+                                            handled, value, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+        end block
+
         ! A comparison-expression mask (count(a > 2)) reduces over the compared
         ! array's elements; an identifier mask names a declared logical array.
         call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
