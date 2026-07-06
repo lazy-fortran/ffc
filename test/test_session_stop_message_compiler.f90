@@ -44,7 +44,7 @@ contains
 
         test_stop_nonzero_code = expect_stderr_and_exit( &
             source, 'STOP 99'//new_line('a'), 99, &
-            '/tmp/ffc_session_stop_code_test')
+            '/tmp/ffc_session_stop_message_nonzero_test')
     end function test_stop_nonzero_code
 
 end program test_session_stop_message_compiler
