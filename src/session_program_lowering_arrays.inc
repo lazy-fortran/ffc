@@ -62,6 +62,47 @@
         is_runtime = len_trim(fold_error) > 0
     end function declaration_is_runtime_rank1
 
+    recursive logical function bound_expr_references_variable(arena, idx, context) &
+            result(has_var)
+        ! True when the bound expression names a runtime variable (a non-parameter
+        ! symbol in scope). A bound built only from literals/parameters is a
+        ! constant expression that must fold at compile time (and be rejected if
+        ! invalid, e.g. a(0/0)); a bare function call is not a runtime-variable
+        ! extent either. Only genuine variable-driven extents are runtime arrays.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+
+        ! Default to runtime (safe: never decline a valid runtime array). Only a
+        ! provably pure-constant bound - a literal, or arithmetic over literals -
+        ! is non-runtime, so it folds at compile time and its errors (a(0/0)) are
+        ! reported. An identifier, an intrinsic call (a(count(mask))), or any
+        ! other form stays runtime.
+        has_var = .true.
+        if (.not. node_exists(arena, idx)) return
+        select type (n => arena%entries(idx)%node)
+        type is (literal_node)
+            has_var = .false.
+        type is (binary_op_node)
+            has_var = bound_expr_references_variable(arena, n%left_index, context) &
+                .or. bound_expr_references_variable(arena, n%right_index, context)
+        type is (range_expression_node)
+            has_var = bound_expr_references_variable(arena, n%end_index, context)
+        end select
+    end function bound_expr_references_variable
+
+    logical function declaration_bound_is_variable_driven(node, context) &
+            result(is_var)
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+
+        is_var = .false.
+        if (.not. allocated(node%dimension_indices)) return
+        if (size(node%dimension_indices) /= 1) return
+        is_var = bound_expr_references_variable(context%arena, &
+                                                node%dimension_indices(1), context)
+    end function declaration_bound_is_variable_driven
+
     logical function declaration_is_runtime_local_array(node, context, value_kind) &
             result(is_local)
         ! A rank-1 explicit-shape local automatic array whose extent is a runtime
@@ -77,6 +118,7 @@
         is_local = .false.
         if (.not. runtime_local_array_kind_ok(value_kind)) return
         if (.not. declaration_is_runtime_rank1(node, context)) return
+        if (.not. declaration_bound_is_variable_driven(node, context)) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do k = 1, size(node%var_names)
                 if (find_symbol(context, node%var_names(k)) > 0) return
