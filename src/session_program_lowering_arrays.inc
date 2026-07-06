@@ -1364,7 +1364,6 @@
         integer(c_int64_t), intent(out) :: constant_value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: param_pos, actual_index
-        character(len=:), allocatable :: actual_name
 
         constant_value = 0_c_int64_t
         error_msg = 'compile-time integer parameter was not declared: '//trim(name)
@@ -1374,14 +1373,14 @@
         call find_call_actual_expr(arena, context%current_proc_name, param_pos, &
                                    actual_index)
         if (actual_index <= 0) return
-        if (is_identifier(arena, actual_index)) then
-            call get_identifier_name(arena, actual_index, actual_name, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (same_name(actual_name, name)) then
-                error_msg = 'compile-time integer parameter was not declared: '// &
-                            trim(name)
-                return
-            end if
+        ! The actual must not reference the dummy being resolved - directly
+        ! (a) or inside a subexpression (a/b). current_proc_name never advances
+        ! to the caller, so folding such an actual re-enters this routine on the
+        ! same name forever (sin_02 stack overflow). Bail as non-constant.
+        if (expr_refs_name(arena, actual_index, name)) then
+            error_msg = 'compile-time integer parameter was not declared: '// &
+                        trim(name)
+            return
         end if
         call eval_i32_constant(arena, actual_index, context, constant_value, &
                                error_msg)
