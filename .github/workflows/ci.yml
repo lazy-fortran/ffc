@@ -35,7 +35,12 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y gfortran cmake ninja-build curl
+          sudo apt-get install -y gfortran-14 gcc-14 g++-14 cmake ninja-build curl
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
+          gcc --version | head -1
+          gfortran --version | head -1
 
       - name: Install fpm
         run: |
@@ -46,6 +51,9 @@ jobs:
 
       - name: Build liric
         working-directory: liric
+        env:
+          CC: gcc-14
+          CXX: g++-14
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j"$(nproc)"
