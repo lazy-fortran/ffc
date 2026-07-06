@@ -69,7 +69,11 @@ back from the descriptor, including `T`/`F` formatting for a logical
 allocatable element or whole array; a fixed-length rank-1
 `character(len=N), allocatable :: a(:)` with `allocate(a(N))`
 blank-filling every slot, element write/read (`a(i) = "text"`), and
-whole-array `print`; and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
+whole-array `print`; a deferred-length rank-1
+`character(len=:), allocatable :: c(:)` whose element length is fixed by a
+compile-time `allocate(character(len=N) :: c(M))` and then behaves like the
+fixed-length allocatable array (element write/read, comparison, `len`, `size`,
+whole-array `print`, `allocated`, `deallocate`); and assumed-shape dummies (`a(:)`, `a(:,:)`) bound to the actual's
 base address, with their extent taken from a whole-array actual of
 compile-time size (including a `dimension(n)` bound naming a caller-scope
 `parameter`), so element read/write, `size(a)`, `size(a, dim)`,

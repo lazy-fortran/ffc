@@ -1055,6 +1055,25 @@
         type(lr_operand_desc_t) :: slot_addr
         integer :: symbol_index
 
+        symbol_index = 0
+        if (allocated(node%name)) symbol_index = find_symbol(context, node%name)
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%is_allocatable) then
+                ! An allocatable character array addresses its element pointer
+                ! slot through its runtime descriptor, not the fixed [N x ptr]
+                ! element_address buffer, so route to the allocatable path.
+                call lower_allocatable_element_address(arena, node, symbol_index, &
+                                                       context, slot_addr, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_ptr_load(context%session, slot_addr, data_ptr, &
+                                        error_msg)) return
+                length = i32_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, c_int64_t))
+                call set_empty(error_msg)
+                return
+            end if
+        end if
+
         call lower_character_array_element_slot(arena, node, context, &
                                                 symbol_index, slot_addr, error_msg)
         if (len_trim(error_msg) > 0) return

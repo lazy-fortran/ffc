@@ -62,7 +62,6 @@ allocate_43.f90
 allocate_44.f90
 allocate_45.f90
 allocate_46.f90
-allocate_47.f90
 allocate_48.f90
 allocate_49.f90
 allocate_51.f90
@@ -175,7 +174,6 @@ arrays_119.f90
 arrays_11_size.f90
 arrays_120.f90
 arrays_123.f90
-arrays_124.f90
 arrays_125.f90
 arrays_126.f90
 arrays_12.f90

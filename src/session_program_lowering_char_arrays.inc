@@ -18,6 +18,14 @@
 
         call set_empty(error_msg)
         if (node%is_allocatable) then
+            call declaration_character_length(context, node, character_length, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (character_length <= 0) then
+                call declare_deferred_char_allocatable_array(node, context, &
+                                                             error_msg)
+                return
+            end if
             call lower_allocatable_declaration(node, context, error_msg)
             return
         end if
@@ -557,3 +565,128 @@
         end do
         call set_empty(error_msg)
     end subroutine emit_character_array_print_items
+
+    subroutine declare_deferred_char_allocatable_array(node, context, error_msg)
+        ! character(len=:), allocatable :: c(:) -- a deferred-length allocatable
+        ! character array. The element length is unknown until an
+        ! allocate(character(len=N) :: c(M)) statement sets it, so declare the
+        ! 40-byte array descriptor now (data = 0, unallocated) and leave
+        ! character_length 0 as the pending marker; the allocate fills in both the
+        ! element length and the storage. Only rank-1 is supported; any other
+        ! form falls back to the existing allocatable path (which declines) so no
+        ! previously accepted case regresses.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: rank, symbol_index, i
+
+        call set_empty(error_msg)
+        rank = 1
+        if (allocated(node%dimension_indices)) rank = size(node%dimension_indices)
+        if (rank /= 1) then
+            call lower_allocatable_declaration(node, context, error_msg)
+            return
+        end if
+
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call declare_allocatable(context, node%var_names(i), 1, &
+                                         VALUE_CHARACTER, error_msg)
+                if (len_trim(error_msg) > 0) return
+                symbol_index = find_symbol(context, node%var_names(i))
+                if (symbol_index > 0) &
+                    context%symbols(symbol_index)%character_length = 0
+            end do
+        else if (allocated(node%var_name)) then
+            call declare_allocatable(context, node%var_name, 1, VALUE_CHARACTER, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, node%var_name)
+            if (symbol_index > 0) &
+                context%symbols(symbol_index)%character_length = 0
+        else
+            error_msg = 'character array declaration did not expose a variable name'
+        end if
+    end subroutine declare_deferred_char_allocatable_array
+
+    subroutine lower_allocate_deferred_char_array(arena, node, context, handled, &
+                                                  error_msg)
+        ! allocate(character(len=N) :: c(M)) for a deferred-length allocatable
+        ! character array: fold the compile-time element length N from the
+        ! type-spec, record it on the symbol, then allocate M pointer slots and
+        ! blank-fill them, exactly like the fixed-length character allocatable
+        ! array path. Declines (handled stays .false.) for any target that is not
+        ! a rank-1 character allocatable array, or a non-constant element length,
+        ! so the existing scalar type-spec allocate paths keep their behaviour.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: spec_lc, len_expr, sub_err
+        integer :: symbol_index, size_index
+        integer(c_int64_t) :: length_const
+        type(call_or_subscript_node) :: target
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%type_spec)) return
+        spec_lc = lowercase_text(trim(adjustl(node%type_spec)))
+        if (len(spec_lc) < 9) return
+        if (spec_lc(1:9) /= 'character') return
+        if (.not. allocated(node%var_indices)) return
+        if (size(node%var_indices) /= 1) return
+        if (.not. node_exists(arena, node%var_indices(1))) return
+
+        select type (v => arena%entries(node%var_indices(1))%node)
+        type is (call_or_subscript_node)
+            target = v
+        class default
+            return
+        end select
+        if (.not. allocated(target%name)) return
+        if (.not. allocated(target%arg_indices)) return
+        if (size(target%arg_indices) /= 1) return
+
+        symbol_index = find_symbol(context, target%name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_allocatable) return
+        if (context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) return
+        if (context%symbols(symbol_index)%array_rank /= 1) return
+
+        call extract_type_spec_len(node%type_spec, len_expr, sub_err)
+        if (len_trim(sub_err) > 0) return
+        length_const = deferred_char_array_len_const(len_expr)
+        if (length_const < 0_c_int64_t) return
+        context%symbols(symbol_index)%character_length = int(length_const)
+
+        size_index = target%arg_indices(1)
+        call lower_allocate_i32_1d(arena, size_index, symbol_index, context, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+        call record_allocatable_static_size(arena, size_index, symbol_index, &
+                                            context)
+        call init_allocatable_character_blanks(context, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        handled = .true.
+    end subroutine lower_allocate_deferred_char_array
+
+    integer(c_int64_t) function deferred_char_array_len_const(len_expr) &
+            result(length_const)
+        ! Fold a character type-spec length expression to a compile-time integer,
+        ! or -1 when it is not a plain non-negative integer literal. A runtime or
+        ! symbolic length is declined so the caller falls through to the existing
+        ! (declining) allocate paths.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        character(len=*), intent(in) :: len_expr
+        character(len=:), allocatable :: expr
+        integer :: ios
+
+        length_const = -1_c_int64_t
+        expr = trim(adjustl(len_expr))
+        if (len_trim(expr) == 0) return
+        if (verify(trim(expr), '0123456789') /= 0) return
+        read (expr, *, iostat=ios) length_const
+        if (ios /= 0) length_const = -1_c_int64_t
+    end function deferred_char_array_len_const

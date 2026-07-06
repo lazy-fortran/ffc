@@ -101,6 +101,16 @@
             return
         end if
 
+        if (allocated(node%type_spec)) then
+            call lower_allocate_deferred_char_array(arena, node, context, &
+                                                    handled, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (handled) then
+                call set_alloc_stat_zero(arena, node, context, error_msg)
+                return
+            end if
+        end if
+
         if (node%mold_expr_index <= 0 .and. node%source_expr_index <= 0) then
             call lower_allocate_array_component(arena, node%var_indices(1), &
                                                 context, handled, error_msg)
