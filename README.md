@@ -32,8 +32,10 @@ whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,
 `ubound`, `size(a[, dim])`, and `sum`; sections, `matmul`, `transpose`, and
 `reshape` stay rank-1/rank-2); fixed-size rank-1 and
 rank-2 `character(len=N)` arrays (character-literal element assignment, element
-`print`, whole-array `print`, and element comparison in `if` conditions such as
-`if (arr(i) /= "A")`); array constructors as
+`print`, whole-array `print`, element comparison in `if` conditions such as
+`if (arr(i) /= "A")`, and compile-time initializers from a literal array
+constructor `character(len=4) :: s(4) = ["sngl", "dble", ...]` or a scalar
+broadcast `character(len=3) :: p(3) = "xy"`, including `parameter` arrays); array constructors as
 whole-array assignment right-hand sides, plain (`[a, b, c]`), typed
 (`[integer :: 1, 2]`, real-to-integer truncation and integer-to-real
 promotion), and integer/real implied-do (`[(i*i, i=1, n)]`); scalar element

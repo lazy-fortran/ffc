@@ -5,7 +5,6 @@
 # Promote entries by removing them from this file when ffc starts passing.
 array_index_brackets_multi.lf
 array_index_brackets_simple.lf
-array_literal_integer.lf
 array_slice_basic.lf
 array_slice_empty_bounds.lf
 array_slice_stride.lf

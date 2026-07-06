@@ -14,6 +14,7 @@
         integer :: array_lower_bound
         integer :: array_size
         integer :: i
+        character(len=:), allocatable :: initial_texts(:)
 
         call set_empty(error_msg)
         if (node%is_allocatable) then
@@ -47,30 +48,132 @@
                 'compile-time character length for character arrays', error_msg)
             return
         end if
-        if (node%has_initializer .and. node%initializer_index > 0) then
-            call unsupported_feature_error('character array declaration', &
-                node%line, node%column, 'direct LIRIC session does not support '// &
-                'character array initializers', error_msg)
-            return
-        end if
         call get_array_bounds(node, context, array_lower_bound, array_size, &
                               error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (node%has_initializer .and. node%initializer_index > 0) then
+            if (node%is_multi_declaration) then
+                call unsupported_feature_error('character array declaration', &
+                    node%line, node%column, 'direct LIRIC session does not '// &
+                    'support character array initializers on multi-declarations', &
+                    error_msg)
+                return
+            end if
+            call fold_character_array_initializer(context, node, &
+                character_length, array_size, initial_texts, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_character_array_symbol(context, node, &
                     node%var_names(i), character_length, array_lower_bound, &
-                    array_size, error_msg)
+                    array_size, initial_texts, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
             call define_character_array_symbol(context, node, node%var_name, &
-                character_length, array_lower_bound, array_size, error_msg)
+                character_length, array_lower_bound, array_size, initial_texts, &
+                error_msg)
         else
             error_msg = 'character array declaration did not expose a variable name'
         end if
     end subroutine lower_character_array_declaration
+
+    ! Fold a compile-time character array initializer (plain array constructor,
+    ! possibly nested, or a scalar literal broadcast) into per-element text
+    ! normalized to the declared length. Any form whose leaves are not
+    ! foldable character literals or // chains is declined the same way the
+    ! prior path declined all initializers, so no previously-accepted case
+    ! regresses. On decline, initial_texts stays unallocated and error_msg set.
+    subroutine fold_character_array_initializer(context, node, character_length, &
+                                                array_size, initial_texts, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: character_length
+        integer, intent(in) :: array_size
+        character(len=:), allocatable, intent(out) :: initial_texts(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: folded_text
+        logical :: ok
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. node_exists(context%arena, node%initializer_index)) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, 'direct LIRIC session does not support '// &
+                'character array initializers', error_msg)
+            return
+        end if
+
+        allocate (character(len=character_length) :: initial_texts(array_size))
+        do i = 1, array_size
+            initial_texts(i) = repeat(' ', character_length)
+        end do
+
+        select type (init => context%arena%entries(node%initializer_index)%node)
+        type is (array_literal_node)
+            if (allocated(init%syntax_style)) then
+                if (init%syntax_style == 'implied_do') then
+                    call decline_character_array_initializer(node, initial_texts, &
+                                                             error_msg)
+                    return
+                end if
+            end if
+            if (.not. allocated(init%element_indices)) then
+                call decline_character_array_initializer(node, initial_texts, &
+                                                         error_msg)
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(context%arena, init%element_indices, &
+                                              flat, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call decline_character_array_initializer(node, initial_texts, &
+                                                         error_msg)
+                return
+            end if
+            if (size(flat) /= array_size) then
+                call decline_character_array_initializer(node, initial_texts, &
+                                                         error_msg)
+                return
+            end if
+            do i = 1, array_size
+                call concat_character_literals(context%arena, flat(i), &
+                                               folded_text, ok)
+                if (.not. ok) then
+                    call decline_character_array_initializer(node, initial_texts, &
+                                                             error_msg)
+                    return
+                end if
+                initial_texts(i) = folded_text
+            end do
+        class default
+            call concat_character_literals(context%arena, &
+                node%initializer_index, folded_text, ok)
+            if (.not. ok) then
+                call decline_character_array_initializer(node, initial_texts, &
+                                                         error_msg)
+                return
+            end if
+            do i = 1, array_size
+                initial_texts(i) = folded_text
+            end do
+        end select
+    end subroutine fold_character_array_initializer
+
+    subroutine decline_character_array_initializer(node, initial_texts, error_msg)
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: initial_texts(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (allocated(initial_texts)) deallocate (initial_texts)
+        call unsupported_feature_error('character array declaration', &
+            node%line, node%column, 'direct LIRIC session does not support '// &
+            'character array initializers', error_msg)
+    end subroutine decline_character_array_initializer
 
     logical function character_array_is_dummy(context, node) result(is_dummy)
         type(lowering_context_t), intent(in) :: context
@@ -85,13 +188,15 @@
     end function character_array_is_dummy
 
     subroutine define_character_array_symbol(context, node, name, character_length, &
-                                             array_lower_bound, array_size, error_msg)
+                                             array_lower_bound, array_size, &
+                                             initial_texts, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
         integer, intent(in) :: character_length
         integer, intent(in) :: array_lower_bound
         integer, intent(in) :: array_size
+        character(len=:), allocatable, intent(in) :: initial_texts(:)
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
         integer :: dim_count
@@ -125,7 +230,49 @@
 
         call init_character_array_blanks(context, index, character_length, &
                                          array_size, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (allocated(initial_texts)) then
+            call store_character_array_initials(context, index, character_length, &
+                                                array_size, initial_texts, error_msg)
+        end if
     end subroutine define_character_array_symbol
+
+    ! Store folded per-element initializer text into the array's pointer slots,
+    ! normalized (padded/truncated) to the declared element length.
+    subroutine store_character_array_initials(context, symbol_index, &
+                                              character_length, array_size, &
+                                              initial_texts, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: character_length
+        integer, intent(in) :: array_size
+        character(len=*), intent(in) :: initial_texts(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: element_text
+        character(len=64) :: string_name
+        type(lr_operand_desc_t) :: index_value
+        type(lr_operand_desc_t) :: slot_addr
+        type(lr_operand_desc_t) :: string_ptr
+        integer :: i
+
+        call set_empty(error_msg)
+        do i = 1, array_size
+            element_text = initial_texts(i)
+            call normalize_character_literal(element_text, character_length)
+            context%string_literal_count = context%string_literal_count + 1
+            string_name = ffc_unit_global_name( &
+                context, 'char.', context%string_literal_count)
+            call materialize_liric_string(context%session, trim(string_name), &
+                                          element_text, string_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            index_value = i32_immediate(context%session, int(i - 1, c_int64_t))
+            if (.not. emit_ptr_array_element_addr(context%session, array_size, &
+                    context%symbols(symbol_index)%element_address, index_value, &
+                    slot_addr, error_msg)) return
+            if (.not. emit_ptr_store(context%session, string_ptr, slot_addr, &
+                                     error_msg)) return
+        end do
+    end subroutine store_character_array_initials
 
     subroutine character_array_fold_dims(context, node, index, dim_count, error_msg)
         type(lowering_context_t), intent(inout) :: context
