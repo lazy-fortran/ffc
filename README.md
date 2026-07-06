@@ -152,7 +152,11 @@ with whole-component assignment from an array constructor (`x%v = [1, 2, 3]`),
 scalar broadcast (`x%v = 7`), whole-component copy (`y%v = x%v`), and reading
 the whole component into a conforming plain array (`a = x%v`)),
 and scalar nested derived components (`type(inner) :: c`, accessed
-as `x%c%field` to any depth), and support single inheritance
+as `x%c%field` to any depth), and fixed-size arrays of derived
+components (`type(inner) :: arr(N)`, an element and its fields reached by
+subscript chain `x%arr(i)%field`, including deep chains
+`obj%w(1)%z(2)%y(3)%leaf` with an allocatable-array leaf and per-element
+default/descriptor initialisation), and support single inheritance
 (`type, extends(parent) :: child`) with parent-first component layout. A
 fixed-length character component supports reading, writing (blank-padded and
 truncated to its declared length), comparison, concatenation, `print`, and

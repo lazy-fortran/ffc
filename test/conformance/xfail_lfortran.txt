@@ -125,7 +125,6 @@ array_indices_array_section_assignment.f90
 array_indices_array_section.f90
 array_init.f90
 arrayitem_01.f90
-arrayitem_02.f90
 array_neg_extent_01.f90
 array_op_03.f90
 array_op_04.f90

@@ -21,6 +21,26 @@
             VALUE_F64) component_slot_width = 2
     end function component_slot_width
 
+    integer function nested_element_count(context, type_index, comp_index)
+        ! Element count of a nested derived component: 1 for a scalar nested
+        ! component, N for a fixed-size array of derived components. The component
+        ! spans element_count * inner-type slots inline, so the count is the
+        ! recorded span divided by one inner instance's slot count.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+        integer :: nested, inner
+
+        nested_element_count = 1
+        nested = context%derived_types(type_index)%component_type_index(comp_index)
+        if (nested <= 0) return
+        inner = total_component_slots(context, nested)
+        if (inner <= 0) return
+        nested_element_count = &
+            context%derived_types(type_index)%component_array_size(comp_index) / inner
+        if (nested_element_count < 1) nested_element_count = 1
+    end function nested_element_count
+
     logical function component_is_alloc_array(context, type_index, comp_index)
         ! True for a rank-1 allocatable array component (inline descriptor).
         type(lowering_context_t), intent(in) :: context
@@ -118,7 +138,7 @@
         integer, intent(in) :: type_index
         integer, intent(in) :: base_slot
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: c, nested, abs_slot
+        integer :: c, nested, abs_slot, e
         type(lr_operand_desc_t) :: addr
 
         call set_empty(error_msg)
@@ -128,9 +148,13 @@
             abs_slot = base_slot + component_start_slot(context, type_index, c)
             nested = context%derived_types(type_index)%component_type_index(c)
             if (nested /= 0) then
-                call store_type_default_slots(context, symbol_index, outer_slots, &
-                                              nested, abs_slot, error_msg)
-                if (len_trim(error_msg) > 0) return
+                do e = 0, nested_element_count(context, type_index, c) - 1
+                    call store_type_default_slots(context, symbol_index, &
+                        outer_slots, nested, &
+                        abs_slot + e * total_component_slots(context, nested), &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
                 cycle
             end if
             if (component_is_alloc_array(context, type_index, c)) then
@@ -199,7 +223,7 @@
         integer, intent(in) :: type_index
         integer, intent(in) :: base_slot
         integer(c_int32_t), intent(inout) :: slots(:)
-        integer :: c, nested, abs_slot
+        integer :: c, nested, abs_slot, e
 
         if (.not. allocated(context%derived_types(type_index)% &
                             component_type_index)) return
@@ -207,7 +231,10 @@
             abs_slot = base_slot + component_start_slot(context, type_index, c)
             nested = context%derived_types(type_index)%component_type_index(c)
             if (nested /= 0) then
-                call fill_type_default_slots(context, nested, abs_slot, slots)
+                do e = 0, nested_element_count(context, type_index, c) - 1
+                    call fill_type_default_slots(context, nested, &
+                        abs_slot + e * total_component_slots(context, nested), slots)
+                end do
                 cycle
             end if
             if (.not. allocated(context%derived_types(type_index)% &
@@ -1889,6 +1916,14 @@
         else
         select type (base => arena%entries(base_index)%node)
         type is (call_or_subscript_node)
+            if (base%base_expr_index > 0) then
+                ! Subscripted nested derived-array component obj%comp(i): the base
+                ! of the subscript is itself a component access. Resolve it to the
+                ! array's start slot, then step in by (i - 1) inner instances.
+                call resolve_subscripted_nested_base(arena, base, context, &
+                    symbol_index, type_index, element_base, error_msg)
+                return
+            end if
             if (.not. allocated(base%name) .or. .not. allocated(base%arg_indices)) &
                 then
                 error_msg = 'array component base requires arr(i) form'
@@ -1977,6 +2012,60 @@
                 error_msg)) return
         call set_empty(error_msg)
     end subroutine resolve_nested_component_base
+
+    recursive subroutine resolve_subscripted_nested_base(arena, node, context, &
+            symbol_index, type_index, element_base, error_msg)
+        ! Resolve a subscripted nested derived-array component obj%comp(i) that is
+        ! the base of a deeper access. node is the call_or_subscript wrapping the
+        ! obj%comp component access. Returns the owning symbol, the element derived
+        ! type, and the slot offset of element i within the flat instance layout.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        integer, intent(out) :: type_index
+        type(lr_operand_desc_t), intent(out) :: element_base
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: array_base, sub_val, zero_based, scaled
+        integer :: inner_slots
+
+        symbol_index = 0
+        type_index = 0
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'nested derived array component requires comp(i) form'
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
+            error_msg = 'only one-dimensional derived array components are supported'
+            return
+        end if
+        if (.not. node_exists(arena, node%base_expr_index)) then
+            error_msg = 'nested derived array component base is not an AST node'
+            return
+        end if
+        select type (acc => arena%entries(node%base_expr_index)%node)
+        type is (component_access_node)
+            call resolve_nested_component_base(arena, acc, context, symbol_index, &
+                                               type_index, array_base, error_msg)
+        class default
+            error_msg = 'nested derived array component requires obj%comp(i) form'
+            return
+        end select
+        if (len_trim(error_msg) > 0) return
+        inner_slots = total_component_slots(context, type_index)
+        call lower_i32_expression(arena, node%arg_indices(1), context, sub_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                i32_immediate(context%session, int(inner_slots, c_int64_t)), &
+                scaled, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, array_base, scaled, &
+                element_base, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine resolve_subscripted_nested_base
 
     subroutine lower_derived_component_address(arena, node, context, &
                                                component_address, error_msg, &
@@ -2155,6 +2244,14 @@
         else
             select type (base => arena%entries(base_index)%node)
             type is (call_or_subscript_node)
+                if (base%base_expr_index > 0) then
+                    ! Subscripted nested derived-array component obj%comp(i): the
+                    ! element type equals the component's declared derived type.
+                    type_index = component_base_type_index(arena, &
+                                                           base%base_expr_index, &
+                                                           context)
+                    return
+                end if
                 if (allocated(base%name)) symbol_index = find_symbol(context, base%name)
             type is (component_access_node)
                 outer_type = component_base_type_index(arena, &

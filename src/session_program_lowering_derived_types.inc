@@ -880,7 +880,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer, intent(in) :: type_index
         integer, intent(in) :: nested_type_index
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, inner_slots
+        integer :: i, inner_slots, element_count, span
 
         if (component%has_initializer) then
             ! A bare inner-type default constructor (`type(inner) :: c =
@@ -897,18 +897,24 @@ subroutine collect_component_declaration(component_index, parent_line, &
             end if
         end if
         inner_slots = total_component_slots(context, nested_type_index)
+        element_count = 1
+        if (component%is_array) then
+            call component_array_count(component, context, element_count, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        span = element_count * inner_slots
         if (component%is_multi_declaration .and. allocated(component%var_names)) then
             do i = 1, size(component%var_names)
                 call add_derived_component(context, type_index, &
                     component%var_names(i), component%line, component%column, &
-                    .false., 0_c_int64_t, inner_slots, VALUE_DERIVED, error_msg, &
+                    .false., 0_c_int64_t, span, VALUE_DERIVED, error_msg, &
                     nested_type_index)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(component%var_name)) then
             call add_derived_component(context, type_index, component%var_name, &
                 component%line, component%column, .false., 0_c_int64_t, &
-                inner_slots, VALUE_DERIVED, error_msg, nested_type_index)
+                span, VALUE_DERIVED, error_msg, nested_type_index)
         else
             error_msg = 'derived type component declaration did not expose a name'
             return
@@ -958,15 +964,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
 
         nested_index = declaration_derived_type_index(context, component)
         if (nested_index > 0) then
-            ! A scalar nested derived component lives inline in the parent's flat
-            ! slot layout. Arrays of derived components and allocatable/pointer
-            ! derived components stay unsupported in this layout.
-            if (component%is_array) then
-                call unsupported_feature_error('derived type array component', &
-                    component%line, component%column, 'arrays of derived '// &
-                    'components are not supported; only scalar nested', error_msg)
-                return
-            end if
+            ! A scalar or fixed-size-array nested derived component lives inline in
+            ! the parent's flat slot layout (an array component spans
+            ! element_count * inner slots). Allocatable and pointer derived
+            ! components stay unsupported in this layout.
             if (component%is_allocatable .or. component%is_pointer) then
                 call unsupported_feature_error('nested derived type component', &
                     component%line, component%column, 'allocatable and pointer '// &
