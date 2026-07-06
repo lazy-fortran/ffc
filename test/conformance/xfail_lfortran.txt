@@ -1367,7 +1367,6 @@ fortuno_01.f90
 func_call_in_decl_01.f90
 func_parameter_type_02.f90
 functions_03.f90
-functions_05.f90
 functions_06.f90
 functions_09.f90
 functions_10.f90
