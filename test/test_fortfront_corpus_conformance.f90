@@ -70,6 +70,12 @@ contains
             print *, 'FAIL[', suite, ']: SUMMARY has nonzero FAIL count'
         end if
 
+        if (index(summary, '"xpass":0') == 0) then
+            failed = failed + 1
+            print *, 'FAIL[', suite, ']: SUMMARY has nonzero XPASS count (manifest drift)'
+            call print_failures(report)
+        end if
+
         write (expected_text, '(A,I0)') '"total":', expected_total
         if (index(summary, trim(expected_text)) == 0) then
             failed = failed + 1
