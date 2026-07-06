@@ -475,6 +475,12 @@
         if (len_trim(error_msg) > 0) return
         call check_bit_intrinsic_arg_ranges(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_scope_nonconstant_bounds(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_scope_class_declarations(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_automatic_storage_association(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)

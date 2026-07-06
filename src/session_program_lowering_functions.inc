@@ -333,17 +333,26 @@
     end function proc_node_has_executable_body
 
     subroutine reconcile_duplicate_procedure(context, existing, node_index, &
-                                             param_count)
+                                             param_count, error_msg)
         ! A procedure name registered twice: an explicit-interface signature and
         ! the real definition. Point the table entry at whichever node carries an
         ! executable body so call-site queries and lowering resolve the real
         ! definition. The declared kind is identical in both, so it is left as is.
+        ! Reconcile only when the interface and the definition agree on the
+        ! function result's rank, base type, and POINTER attribute; a genuine
+        ! signature mismatch (F2018 12.4.2.1) is invalid Fortran and is rejected
+        ! rather than silently merged.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: existing
         integer, intent(in) :: node_index
         integer, intent(in) :: param_count
+        character(len=:), allocatable, intent(out) :: error_msg
 
+        call set_empty(error_msg)
         if (node_index <= 0) return
+        call reject_result_signature_mismatch(context%arena, node_index, &
+            context%function_node_indices(existing), error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. proc_node_has_executable_body(context%arena, node_index)) return
         if (proc_node_has_executable_body(context%arena, &
                                           context%function_node_indices(existing))) &
@@ -351,6 +360,121 @@
         context%function_node_indices(existing) = node_index
         context%function_param_counts(existing) = param_count
     end subroutine reconcile_duplicate_procedure
+
+    subroutine reject_result_signature_mismatch(arena, index_a, index_b, &
+                                                error_msg)
+        ! Reject when two same-named function nodes (an interface body and the
+        ! real definition) declare incompatible result signatures. Only fires
+        ! when BOTH result declarations are determinable; an implicit or missing
+        ! result declaration leaves the pair reconcilable, preserving the
+        ! compatible interface<->definition case.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: index_a, index_b
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: found_a, found_b, ptr_a, ptr_b
+        integer :: rank_a, rank_b
+        character(len=:), allocatable :: type_a, type_b
+
+        call set_empty(error_msg)
+        call function_result_signature(arena, index_a, found_a, rank_a, &
+                                       type_a, ptr_a)
+        call function_result_signature(arena, index_b, found_b, rank_b, &
+                                       type_b, ptr_b)
+        if (.not. found_a .or. .not. found_b) return
+        if (rank_a /= rank_b) then
+            error_msg = 'rank mismatch in function result between interface '// &
+                'and definition'
+            return
+        end if
+        if (len_trim(type_a) > 0 .and. len_trim(type_b) > 0) then
+            if (type_a /= type_b) then
+                error_msg = 'type mismatch in function result between '// &
+                    'interface and definition'
+                return
+            end if
+        end if
+        if (ptr_a .neqv. ptr_b) then
+            error_msg = 'POINTER attribute mismatch in function result '// &
+                'between interface and definition'
+            return
+        end if
+    end subroutine reject_result_signature_mismatch
+
+    subroutine function_result_signature(arena, node_index, found, rank, &
+                                         type_name, is_pointer)
+        ! Result declaration rank, lowercased base type name, and POINTER
+        ! attribute of a function_def_node, read from the body declaration that
+        ! names the result variable (result(x) name, else the function name).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        logical, intent(out) :: found
+        integer, intent(out) :: rank
+        character(len=:), allocatable, intent(out) :: type_name
+        logical, intent(out) :: is_pointer
+        type(function_def_node), pointer :: fn
+        character(len=:), allocatable :: node_type, result_name
+        integer :: i
+
+        found = .false.
+        rank = 0
+        is_pointer = .false.
+        call set_empty(type_name)
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type /= 'function_def_node' .and. node_type /= 'function_def') &
+            return
+        fn => get_node_as_function_def(arena, node_index)
+        if (.not. associated(fn)) return
+        if (.not. allocated(fn%name)) return
+        result_name = trim(fn%name)
+        if (allocated(fn%result_variable)) then
+            if (len_trim(fn%result_variable) > 0) &
+                result_name = trim(fn%result_variable)
+        end if
+        if (.not. allocated(fn%body_indices)) return
+        do i = 1, size(fn%body_indices)
+            if (.not. node_exists(arena, fn%body_indices(i))) cycle
+            select type (decl => arena%entries(fn%body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl_names_result(decl, result_name)) cycle
+                found = .true.
+                if (decl%is_array) then
+                    if (allocated(decl%dimension_indices)) then
+                        rank = size(decl%dimension_indices)
+                    else
+                        rank = 1
+                    end if
+                end if
+                if (allocated(decl%type_name)) &
+                    type_name = trim(lowercase_text(decl%type_name))
+                is_pointer = decl%is_pointer
+                return
+            end select
+        end do
+    end subroutine function_result_signature
+
+    logical function decl_names_result(decl, result_name) result(names)
+        type(declaration_node), intent(in) :: decl
+        character(len=*), intent(in) :: result_name
+        integer :: k
+
+        names = .false.
+        if (allocated(decl%var_name)) then
+            if (same_name(decl%var_name, result_name)) then
+                names = .true.
+                return
+            end if
+        end if
+        if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+            do k = 1, size(decl%var_names)
+                if (same_name(decl%var_names(k), result_name)) then
+                    names = .true.
+                    return
+                end if
+            end do
+        end if
+    end function decl_names_result
 
     subroutine register_internal_subroutine_name(node, context, error_msg, &
                                                  node_index)
@@ -370,7 +494,7 @@
                 if (allocated(node%param_indices)) &
                     new_param_count = size(node%param_indices)
                 call reconcile_duplicate_procedure(context, existing, &
-                    node_index, new_param_count)
+                    node_index, new_param_count, error_msg)
             end if
             return
         end if
@@ -533,7 +657,8 @@
                 if (allocated(node%param_indices)) &
                     new_param_count = size(node%param_indices)
                 call reconcile_duplicate_procedure(context, existing, &
-                    node_index, new_param_count)
+                    node_index, new_param_count, error_msg)
+                return
             end if
             call set_empty(error_msg)
             return

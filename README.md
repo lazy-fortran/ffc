@@ -335,9 +335,17 @@ for `integer :: a(4)`); a named generic interface whose two specific
 procedures share an indistinguishable scalar dummy signature (`ambiguous
 interfaces`, F2018 C1514); a scalar actual (literal or scalar variable)
 passed where a procedure with an explicit interface in the same unit declares
-an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4); and a call passing
+an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4); a call passing
 more actual arguments than that in-unit callee declares dummies (`More actual
-than formal arguments`), each fail with a diagnostic.
+than formal arguments`); a main-program- or module-scope array whose bound is a
+function call (`array with nonconstant bounds`, e.g. `integer :: a(get_n())` or
+`a(command_argument_count())`); a procedure-local automatic array placed in
+`common` or `equivalence` (`cannot appear in COMMON` / `cannot be an
+EQUIVALENCE object`); a main-program- or module-scope `class` entity that is
+neither allocatable nor a pointer (`must be dummy, allocatable or pointer`); and
+an explicit-interface body whose function result rank, base type, or `pointer`
+attribute disagrees with the real definition (`mismatch in function result
+between interface and definition`), each fail with a diagnostic.
 
 ## Build
 

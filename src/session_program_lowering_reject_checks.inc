@@ -729,3 +729,363 @@
         end do
         is_int = .true.
     end function is_integer_text
+
+    ! An array declared at main-program or module scope must have constant
+    ! bounds (F2018 8.5.8.2, C1101): its shape is fixed at compile time because
+    ! there are no dummy arguments to size it and its storage is static. A bound
+    ! built from a function call - a user function such as get_i(), or the
+    ! intrinsic command_argument_count() - is not a constant expression, so the
+    ! array would be an automatic object in a scope that forbids them (gfortran:
+    ! "array with nonconstant bounds"). The runtime-local automatic-array path is
+    ! only legal procedure-locally; this rejects the same shape at the two scopes
+    ! where it is illegal. A procedure-local automatic array (bound from a dummy)
+    ! is left untouched: its declaration lives in a procedure body, never in a
+    ! program body or a module declaration list.
+    subroutine check_scope_nonconstant_bounds(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (program_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                call check_decls_nonconstant_bounds(arena, nd%body_indices, &
+                                                    error_msg)
+            type is (module_node)
+                if (.not. allocated(nd%declaration_indices)) cycle
+                call check_decls_nonconstant_bounds(arena, &
+                    nd%declaration_indices, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_scope_nonconstant_bounds
+
+    subroutine check_decls_nonconstant_bounds(arena, indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, d
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) cycle
+            select type (decl => arena%entries(indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (decl%is_allocatable .or. decl%is_pointer) cycle
+                if (.not. allocated(decl%dimension_indices)) cycle
+                do d = 1, size(decl%dimension_indices)
+                    if (.not. expr_has_illegal_call(arena, &
+                            decl%dimension_indices(d))) cycle
+                    write (location, '(" at line ",I0,", column ",I0)') &
+                        decl%line, decl%column
+                    error_msg = 'array with nonconstant bounds'//trim(location)
+                    return
+                end do
+            end select
+        end do
+    end subroutine check_decls_nonconstant_bounds
+
+    ! True when a bound expression contains a function call that cannot be a
+    ! constant: a call to a user function defined in this program, or the
+    ! intrinsic command_argument_count(). Constant-expression intrinsics such as
+    ! size/kind/len never match, so a legal constant bound is not flagged.
+    recursive function expr_has_illegal_call(arena, idx) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        logical :: found
+        integer :: i, li, ri, ln, cl
+        character(len=:), allocatable :: op, err, cname
+
+        found = .false.
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        if (is_binary_op(arena, idx)) then
+            call get_binary_op_info(arena, idx, op, li, ri, ln, cl, err)
+            if (len_trim(err) > 0) return
+            found = expr_has_illegal_call(arena, li) .or. &
+                    expr_has_illegal_call(arena, ri)
+            return
+        end if
+        select type (nd => arena%entries(idx)%node)
+        type is (call_or_subscript_node)
+            if (.not. nd%is_array_access .and. allocated(nd%name)) then
+                cname = trim(lowercase_text(nd%name))
+                if (cname == 'command_argument_count' .or. &
+                    arena_has_function_def_named(arena, nd%name)) then
+                    found = .true.
+                    return
+                end if
+            end if
+            if (allocated(nd%arg_indices)) then
+                do i = 1, size(nd%arg_indices)
+                    if (expr_has_illegal_call(arena, nd%arg_indices(i))) then
+                        found = .true.
+                        return
+                    end if
+                end do
+            end if
+        type is (range_expression_node)
+            found = expr_has_illegal_call(arena, nd%start_index) .or. &
+                    expr_has_illegal_call(arena, nd%end_index) .or. &
+                    expr_has_illegal_call(arena, nd%stride_index)
+        end select
+    end function expr_has_illegal_call
+
+    logical function arena_has_function_def_named(arena, name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer :: n
+
+        found = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (function_def_node)
+                if (.not. allocated(nd%name)) cycle
+                if (same_name(nd%name, name)) then
+                    found = .true.
+                    return
+                end if
+            end select
+        end do
+    end function arena_has_function_def_named
+
+    ! A polymorphic (CLASS) entity that is neither a dummy argument nor
+    ! allocatable nor a pointer has no way to take on a dynamic type, so the
+    ! standard forbids it (gfortran: "must be dummy, allocatable or pointer",
+    ! F2018 C708). At main-program and module scope there are no dummy arguments,
+    ! so any non-allocatable non-pointer CLASS entity there is invalid.
+    subroutine check_scope_class_declarations(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (program_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                call check_decls_class(arena, nd%body_indices, error_msg)
+            type is (module_node)
+                if (.not. allocated(nd%declaration_indices)) cycle
+                call check_decls_class(arena, nd%declaration_indices, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_scope_class_declarations
+
+    subroutine check_decls_class(arena, indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        character(len=:), allocatable :: low, name
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) cycle
+            select type (decl => arena%entries(indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_allocatable .or. decl%is_pointer) cycle
+                if (.not. allocated(decl%type_name)) cycle
+                low = trim(lowercase_text(decl%type_name))
+                if (len(low) < 6) cycle
+                if (low(1:6) /= 'class(') cycle
+                name = ''
+                if (allocated(decl%var_name)) name = trim(decl%var_name)
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    decl%line, decl%column
+                error_msg = 'CLASS entity '''//name//''' must be dummy, '// &
+                    'allocatable or pointer'//trim(location)
+                return
+            end select
+        end do
+    end subroutine check_decls_class
+
+    ! An automatic array - one whose bounds depend on a dummy argument, so its
+    ! size is known only at run time - has no static storage. It can appear
+    ! neither in a COMMON block (gfortran: "Automatic object ... cannot appear
+    ! in COMMON") nor as an EQUIVALENCE object (gfortran: "Array ... with
+    ! non-constant bounds cannot be an EQUIVALENCE object"). The runtime-local
+    ! path lowers such arrays as dynamic allocations, correct for a plain local
+    ! but wrong once storage association is required; this rejects the two
+    ! storage-association contexts. Constant-bound arrays (x(8)) are untouched.
+    subroutine check_automatic_storage_association(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (function_def_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                if (.not. allocated(nd%param_indices)) cycle
+                call check_proc_automatic_assoc(arena, nd%param_indices, &
+                    nd%body_indices, error_msg)
+            type is (subroutine_def_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                if (.not. allocated(nd%param_indices)) cycle
+                call check_proc_automatic_assoc(arena, nd%param_indices, &
+                    nd%body_indices, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_automatic_storage_association
+
+    subroutine check_proc_automatic_assoc(arena, param_indices, body_indices, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: param_indices(:)
+        integer, intent(in) :: body_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        character(len=:), allocatable :: aname
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (decl%is_allocatable .or. decl%is_pointer) cycle
+                if (.not. allocated(decl%var_name)) cycle
+                if (.not. decl_bound_refs_param(arena, decl, param_indices)) cycle
+                aname = trim(decl%var_name)
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    decl%line, decl%column
+                if (name_in_common(arena, body_indices, aname)) then
+                    error_msg = 'automatic object '''//aname//''' cannot '// &
+                        'appear in COMMON'//trim(location)
+                    return
+                end if
+                if (name_in_equivalence(arena, body_indices, aname)) then
+                    error_msg = 'array '''//aname//''' with nonconstant bounds '// &
+                        'cannot be an EQUIVALENCE object'//trim(location)
+                    return
+                end if
+            end select
+        end do
+    end subroutine check_proc_automatic_assoc
+
+    logical function decl_bound_refs_param(arena, decl, param_indices) &
+            result(refs)
+        type(ast_arena_t), intent(in) :: arena
+        type(declaration_node), intent(in) :: decl
+        integer, intent(in) :: param_indices(:)
+        integer :: d, p
+        character(len=:), allocatable :: pname
+
+        refs = .false.
+        if (.not. allocated(decl%dimension_indices)) return
+        do d = 1, size(decl%dimension_indices)
+            do p = 1, size(param_indices)
+                if (.not. node_exists(arena, param_indices(p))) cycle
+                select type (pn => arena%entries(param_indices(p))%node)
+                type is (parameter_declaration_node)
+                    if (.not. allocated(pn%name)) cycle
+                    pname = trim(pn%name)
+                    if (expr_refs_name(arena, decl%dimension_indices(d), &
+                            pname)) then
+                        refs = .true.
+                        return
+                    end if
+                end select
+            end do
+        end do
+    end function decl_bound_refs_param
+
+    recursive function expr_refs_name(arena, idx, name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=*), intent(in) :: name
+        logical :: found
+        integer :: i, li, ri, ln, cl
+        character(len=:), allocatable :: op, err
+
+        found = .false.
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        if (is_binary_op(arena, idx)) then
+            call get_binary_op_info(arena, idx, op, li, ri, ln, cl, err)
+            if (len_trim(err) > 0) return
+            found = expr_refs_name(arena, li, name) .or. &
+                    expr_refs_name(arena, ri, name)
+            return
+        end if
+        select type (nd => arena%entries(idx)%node)
+        type is (identifier_node)
+            if (allocated(nd%name)) found = same_name(nd%name, name)
+        type is (call_or_subscript_node)
+            if (allocated(nd%arg_indices)) then
+                do i = 1, size(nd%arg_indices)
+                    if (expr_refs_name(arena, nd%arg_indices(i), name)) then
+                        found = .true.
+                        return
+                    end if
+                end do
+            end if
+        type is (range_expression_node)
+            found = expr_refs_name(arena, nd%start_index, name) .or. &
+                    expr_refs_name(arena, nd%end_index, name) .or. &
+                    expr_refs_name(arena, nd%stride_index, name)
+        end select
+    end function expr_refs_name
+
+    logical function name_in_common(arena, body_indices, name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: name
+        integer :: i, k
+
+        found = .false.
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (nd => arena%entries(body_indices(i))%node)
+            type is (common_block_node)
+                if (.not. allocated(nd%member_names)) cycle
+                do k = 1, size(nd%member_names)
+                    if (.not. allocated(nd%member_names(k)%s)) cycle
+                    if (same_name(nd%member_names(k)%s, name)) then
+                        found = .true.
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function name_in_common
+
+    logical function name_in_equivalence(arena, body_indices, name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: group, err, members(:)
+        integer :: i, k, member_count
+
+        found = .false.
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (nd => arena%entries(body_indices(i))%node)
+            type is (comment_node)
+                if (.not. is_equivalence_text(nd%text)) cycle
+                call parse_equivalence_group(nd%text, group, err)
+                if (len_trim(err) > 0) cycle
+                call split_csv(group, members, member_count)
+                do k = 1, member_count
+                    if (same_name(trim(members(k)), name)) then
+                        found = .true.
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function name_in_equivalence
