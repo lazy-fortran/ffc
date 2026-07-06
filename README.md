@@ -185,7 +185,12 @@ a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a
 constructor (`type(t), parameter :: p = t(2, 3)`) is supported at program and
 module scope. A type carrying a `final` binding is usable (finalisation is not
-modelled, so the finaliser never runs). A
+modelled, so the finaliser never runs). A `select type` on a monomorphic
+declared-type selector - a `class(t)` scalar dummy or local whose dynamic type
+is only ever its declared type `t` - resolves statically: the `type is (t)` or
+`class is (t)` arm naming the declared type (else `class default`) is chosen at
+compile time and lowered inline. A construct that discriminates a runtime
+subtype needs a vtable and declines gracefully. A
 contained function may return a fixed-size rank-1 array: the result lowers
 through the sret ABI (the caller passes the destination buffer as a hidden
 result pointer), so `r = vec_fn(...)` and `print *, vec_fn(...)` write the

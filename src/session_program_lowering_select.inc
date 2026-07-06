@@ -822,8 +822,19 @@
             error_msg = 'select type selector was not declared: '//trim(sel_name)
             return
         end if
+        ! A monomorphic declared-type selector (class(t) dummy/local lowered as
+        ! type(t)) resolves statically: the dynamic type is the declared type.
+        if (select_type_selector_is_monomorphic(context, sel_index)) then
+            call lower_select_type_derived(arena, node_index, sel_index, &
+                                           sel_name, assoc_name, context, error_msg)
+            return
+        end if
         if (context%symbols(sel_index)%value_kind /= VALUE_CLASS_STAR) then
-            error_msg = 'select type selector is not class(*): '//trim(sel_name)
+            call unsupported_feature_error('select type statement', 0, 0, &
+                'direct LIRIC session supports select type on a class(*) '// &
+                'selector or a monomorphic declared-type class(t) object; '// &
+                'dynamic dispatch on an allocatable/pointer polymorphic '// &
+                'object needs a runtime vtable', error_msg)
             return
         end if
 

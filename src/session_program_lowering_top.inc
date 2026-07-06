@@ -988,6 +988,7 @@
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_derived_ctor.inc'
+    include 'session_program_lowering_polymorphic.inc'
     include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_submodules.inc'
     include 'session_program_lowering_save.inc'
