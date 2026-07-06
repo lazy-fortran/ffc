@@ -246,6 +246,7 @@ associate_42.f90
 associate_43.f90
 associate_44.f90
 associate_45.f90
+associate_46.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 associate_47.f90
 associate_48.f90
 associate_49.f90
@@ -323,6 +324,7 @@ bind_c_char_11.f90
 bind_c_char_2.f90
 bind_c_char_3.f90
 bind_c_dts_5.f90
+bind_c_optional-1.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 bind_c_optional-2.f90
 bind_c_procs_2.f90
 bind_c_procs_3.f90
@@ -468,6 +470,7 @@ class_array_18.f90
 class_assign_4.f90
 class_dummy_11.f90
 class_dummy_6.f90
+class_dummy_7.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 class_dummy_8.f90
 class_dummy_9.f90
 class_elemental_1.f90
@@ -636,6 +639,7 @@ derived_constructor_comps_3.f90
 derived_constructor_comps_4.f90
 derived_constructor_comps_5.f90
 derived_constructor_comps_7.f90
+derived_external_function_1.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 derived_init_1.f90
 derived_init_2.f90
 derived_init_3.f90
@@ -916,8 +920,10 @@ implied_do_io_8.f90
 implied_do_io_9.f90
 implied_shape_4.f90
 import.f90
+import11.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 import4.f90
 import6.f90
+import7.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 import9.f90
 in_pack_rank7.f90
 include_4.f90
@@ -952,6 +958,7 @@ inquire_internal.f90
 inquire_pre.f90
 inquire_recl_f2018.f90
 inquire_size.f90
+inquiry_type_ref_5.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 int_2.f90
 int_3.f90
 integer_plus.f90
@@ -1637,6 +1644,7 @@ pr94377.f90
 pr94380.f90
 pr95053_2.f90
 pr95104.f90
+pr95338.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 pr95342.f90
 pr95500.f90
 pr95611.f90
@@ -2072,6 +2080,7 @@ use_only_3.f90
 use_only_5.f90
 use_rename_12.f90
 use_rename_13.f90
+use_rename_14.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 use_rename_7.f90
 use_rename_9.f90
 used_dummy_types_1.f90
@@ -2084,6 +2093,7 @@ used_interface_ref.f90
 used_types_1.f90
 used_types_10.f90
 used_types_11.f90
+used_types_12.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end unit split
 used_types_13.f90
 used_types_15.f90
 used_types_16.f90
