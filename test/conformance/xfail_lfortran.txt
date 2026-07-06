@@ -19,10 +19,6 @@ allocatable_polymorphic_assign_01.f90
 allocatable_polymorphic_assign_02.f90
 allocatable_polymorphic_assign_03.f90
 allocatable_polymorphic_mold_01.f90
-allocatable_polymorphic_mold_02_base.f90
-allocatable_polymorphic_mold_02_child.f90
-allocatable_polymorphic_mold_02.f90
-allocatable_string_empty_cli_append_01.f90
 allocatble_c_ptr.f90
 allocate_01.f90
 allocate_02.f90
@@ -291,7 +287,6 @@ array_section_29.f90
 array_section_assign_01.f90
 array_section_is_non_allocatable.f90
 arrays_elemental_15.f90
-arrays_func_result_elemental_01.f90
 array_shape_func_call.f90
 arrays_intrin_02.f90
 arrays_intrin_03.f90
@@ -436,7 +431,6 @@ attr_dim_01.f90
 attr_dim_03.f90
 attr_intrinsic.f90
 automatic_allocation_02.f90
-automatic_struct_array_init_01.f90
 bindc_01.f90
 bindc_02b.f90
 bindc_02.f90
@@ -470,7 +464,6 @@ bindc_51.f90
 bindc5.f90
 bindc6.f90
 bindc_assumed_rank_01.f90
-bindc_cchar_array_intent_in_writeback_01.f90
 bindc_iso_fb_01.f90
 bindc_iso_fb_02.f90
 bindc_iso_fb_03.f90
@@ -622,12 +615,6 @@ class_147.f90
 class_148.f90
 class_149.f90
 class_14.f90
-class_150a.f90
-class_150b.f90
-class_150.f90
-class_151a.f90
-class_151b.f90
-class_151.f90
 class_15.f90
 class_16.f90
 class_17.f90
@@ -723,8 +710,6 @@ class_array_deepcopy_01.f90
 class_optional_01.f90
 class_procedure_args_01.f90
 class_star_pointer_01.f90
-class_tbp_vtable_collision_01.f90
-class_vtable_collision_01.f90
 cmake_minimal_test_01.f90
 cmd_01.f90
 cmd_02.f90
@@ -1087,7 +1072,6 @@ elemental_20.f90
 elemental_21.f90
 elemental_22.f90
 elemental_23.f90
-elemental_char_array_arg_01.f90
 elemental_function_overloaded_compare.f90
 elemental_function_scalar_array_arg.f90
 empty_array_01.f90
@@ -1120,7 +1104,6 @@ enum_04.f90
 enum_06.f90
 enum_07.f90
 enum_07_submodule.f90
-enum_09.f90
 equivalence_01.f90
 equivalence_02.f90
 equivalence_03.f90
@@ -1168,10 +1151,7 @@ expr_13.f90
 expr_17.f90
 expr_19.f90
 expr_21.f90
-external_01.f90
-external_04.f90
 external_05.f90
-external_06.f90
 external_07.f90
 external_08.f90
 external_12.f90
@@ -1267,7 +1247,6 @@ finalization_04.f90
 finalization_05.f90
 finalization_06.f90
 finalization_07.f90
-finalization_pointer_scope_01.f90
 fixed_form_do_name_01.f90
 fixed_form_goto.f90
 fixed_form_io_keyword_02.f90
@@ -1625,12 +1604,7 @@ implicit_interface_01.f90
 implicit_interface_02.f90
 implicit_interface_03.f90
 implicit_interface_04.f90
-implicit_interface_05.f90
-implicit_interface_06.f90
-implicit_interface_07.f90
 implicit_interface_08.f90
-implicit_interface_09.f90
-implicit_interface_11.f90
 implicit_interface_12.f90
 implicit_interface_13.f90
 implicit_interface_15b.f90
@@ -2231,7 +2205,6 @@ lapack_10.f90
 lbound_01.f90
 lbound_02.f90
 legacy_array_sections_02.f90
-legacy_array_sections_03.f90
 legacy_array_sections_04.f90
 legacy_array_sections_05.f90
 legacy_array_sections_06.f90
@@ -2246,7 +2219,6 @@ legacy_array_sections_15.f90
 legacy_array_sections_18.f90
 legacy_array_sections_19.f90
 legacy_array_sections_21.f90
-legacy_array_sections_24.f90
 lfortran_intrinsic_sin.f90
 line_continuation_02.f90
 line_continuation_03.f90
@@ -2383,18 +2355,6 @@ modules_68.f90
 modules_69.f90
 modules_71.f90
 modules_72.f90
-modules_73_base.f90
-modules_73_child.f90
-modules_73.f90
-modules_73_map.f90
-modules_73_table.f90
-modules_74.f90
-modules_75.f90
-modules_76.f90
-modules_76_lexer.f90
-modules_77_config.f90
-modules_77.f90
-modules_78.f90
 modulo_01.f90
 modulo_02.f90
 move_alloc_derived_01.f90
@@ -2606,8 +2566,6 @@ parameter_12.f90
 parameter_13.f90
 parameter_15.f90
 parameter_16.f90
-parent_component_class_operator_01.f90
-parent_component_select_operator_01.f90
 parsing_01.f90
 parsing_02.f90
 pass_array_by_data_01.f90
@@ -2657,8 +2615,6 @@ pointer_14.f90
 pointer_15.f90
 pointer_16.f90
 pointer_17.f90
-pointer_18.f90
-pointer_19.f90
 pointer_to_cptr.f90
 polymorphic_arguments_01.f90
 polymorphic_arguments_02.f90
@@ -2885,7 +2841,6 @@ realloc_lhs_21.f90
 realloc_lhs_23.f90
 realloc_lhs_24.f90
 realloc_lhs_25.f90
-realloc_lhs_char_array_constructor_01.f90
 recursion_02.f90
 recursion_03.f90
 reserved_01.f90
