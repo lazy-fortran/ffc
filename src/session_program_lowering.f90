@@ -294,6 +294,14 @@ module session_program_lowering
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
 
+    ! Reduction kinds for dim-wise whole-array reductions (sum/product/count/
+    ! any/all along one dimension). See lower_dim_reduction_assignment.
+    integer, parameter :: DIM_REDUCE_SUM = 1
+    integer, parameter :: DIM_REDUCE_PROD = 2
+    integer, parameter :: DIM_REDUCE_COUNT = 3
+    integer, parameter :: DIM_REDUCE_ANY = 4
+    integer, parameter :: DIM_REDUCE_ALL = 5
+
     ! Pull-based cursor over a DATA value list. A scalar value yields once; an
     ! implied-do value (e.g. (i*1.0, i=1,2)) unrolls its inner expression,
     ! binding the control variable before each is handed to the consumer.

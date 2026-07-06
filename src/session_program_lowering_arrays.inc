@@ -2469,6 +2469,7 @@
         type(lr_operand_desc_t) :: value, wide_value, narrow_value
         integer :: i
         integer :: array_size
+        logical :: reduction_handled
 
         array_size = context%symbols(symbol_index)%array_size
         if (array_size <= 0) then
@@ -2485,6 +2486,14 @@
                                                         context, error_msg)
                 return
             type is (call_or_subscript_node)
+                ! sum/product/count/any/all(source, dim): reduce a rank-2 source
+                ! along dim into this rank-1 target. Declines (falls through) for
+                ! any form it cannot resolve at compile time.
+                call lower_dim_reduction_assignment(arena, rhs, symbol_index, &
+                                                    context, reduction_handled, &
+                                                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (reduction_handled) return
                 if (allocated(rhs%name)) then
                     if (is_whole_array_intrinsic_name(rhs%name)) then
                         if (context%symbols(symbol_index)%value_kind == &
@@ -4339,25 +4348,78 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
 
+        integer :: source_index, shape_index
+
         if (.not. allocated(rhs%name) .or. .not. same_name(rhs%name, 'reshape')) then
             error_msg = 'reshape requires a reshape intrinsic'
             return
         end if
-        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 2) then
-            error_msg = 'reshape requires a source array and a shape array'
-            return
-        end if
+        call resolve_reshape_args(arena, rhs, source_index, shape_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (context%symbols(symbol_index)%array_rank < 1 .or. &
             context%symbols(symbol_index)%array_rank > 2) then
             error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
             return
         end if
-        call check_reshape_shape(arena, rhs%arg_indices(2), symbol_index, &
+        call check_reshape_shape(arena, shape_index, symbol_index, &
                                  context, error_msg)
         if (len_trim(error_msg) > 0) return
-        call lower_reshape_source(arena, rhs%arg_indices(1), symbol_index, &
+        call lower_reshape_source(arena, source_index, symbol_index, &
                                   context, error_msg)
     end subroutine lower_reshape_call
+
+    ! Resolve reshape's source and shape actuals, accepting positional and
+    ! keyword (source=, shape=) forms. Any pad=/order= keyword is out of scope.
+    subroutine resolve_reshape_args(arena, rhs, source_index, shape_index, &
+                                    error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(out) :: source_index
+        integer, intent(out) :: shape_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: kw_name
+        integer :: i, npos, kw_value
+        integer :: pos_args(2)
+
+        source_index = 0
+        shape_index = 0
+        npos = 0
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%arg_indices)) then
+            error_msg = 'reshape requires a source array and a shape array'
+            return
+        end if
+        do i = 1, size(rhs%arg_indices)
+            call reshape_keyword_arg(arena, rhs%arg_indices(i), kw_name, kw_value)
+            if (len_trim(kw_name) > 0) then
+                if (kw_name == 'source') then
+                    source_index = kw_value
+                else if (kw_name == 'shape') then
+                    shape_index = kw_value
+                else
+                    error_msg = 'reshape only supports source= and shape= '// &
+                                'keyword arguments'
+                    return
+                end if
+            else
+                npos = npos + 1
+                if (npos > 2) then
+                    error_msg = 'reshape only supports source and shape arguments'
+                    return
+                end if
+                pos_args(npos) = rhs%arg_indices(i)
+            end if
+        end do
+        if (source_index == 0 .and. npos >= 1) then
+            source_index = pos_args(1)
+            if (shape_index == 0 .and. npos >= 2) shape_index = pos_args(2)
+        else if (shape_index == 0 .and. npos >= 1) then
+            shape_index = pos_args(1)
+        end if
+        if (source_index == 0 .or. shape_index == 0) then
+            error_msg = 'reshape requires a source array and a shape array'
+        end if
+    end subroutine resolve_reshape_args
 
     subroutine check_reshape_shape(arena, shape_index, symbol_index, context, &
                                    error_msg)
@@ -4395,11 +4457,131 @@
                 end if
             end do
         class default
-            error_msg = 'reshape requires a literal integer shape argument'
+            call check_reshape_shape_from_array(arena, shape_index, symbol_index, &
+                                                context, error_msg)
             return
         end select
         call set_empty(error_msg)
     end subroutine check_reshape_shape
+
+    ! Recognize a keyword actual (name=value) whatever wrapper fortfront keeps
+    ! it in: a keyword assignment_node or a binary '=' expression. kw_name is the
+    ! lowercased keyword, kw_value the value node; kw_name is empty when the arg
+    ! is positional.
+    subroutine reshape_keyword_arg(arena, arg_index, kw_name, kw_value)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        character(len=:), allocatable, intent(out) :: kw_name
+        integer, intent(out) :: kw_value
+        character(len=:), allocatable :: op, id_err
+        integer :: left_index, right_index, ln, col
+
+        call set_empty(kw_name)
+        kw_value = arg_index
+        if (.not. node_exists(arena, arg_index)) return
+        select type (kw => arena%entries(arg_index)%node)
+        type is (assignment_node)
+            if (is_identifier(arena, kw%target_index)) then
+                call get_identifier_name(arena, kw%target_index, kw_name, id_err)
+                if (len_trim(id_err) > 0) then
+                    call set_empty(kw_name)
+                    return
+                end if
+                kw_name = lowercase_text(trim(kw_name))
+                kw_value = kw%value_index
+                return
+            end if
+        end select
+        if (.not. is_binary_op(arena, arg_index)) return
+        call get_binary_op_info(arena, arg_index, op, left_index, right_index, &
+                                ln, col, id_err)
+        if (len_trim(id_err) > 0) return
+        if (op /= '=') return
+        if (.not. is_identifier(arena, left_index)) return
+        call get_identifier_name(arena, left_index, kw_name, id_err)
+        if (len_trim(id_err) > 0) then
+            call set_empty(kw_name)
+            return
+        end if
+        kw_name = lowercase_text(trim(kw_name))
+        kw_value = right_index
+    end subroutine reshape_keyword_arg
+
+    ! Accept a shape argument that is shape(X) on a declared array, or an
+    ! identifier naming a compile-time integer shape array: verify its rank and
+    ! extents match the reshape target's declared shape.
+    subroutine check_reshape_shape_from_array(arena, shape_index, symbol_index, &
+                                              context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: shape_sym, i
+        integer(c_int64_t) :: shape_value
+
+        call resolve_shape_of_symbol(arena, shape_index, context, shape_sym, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (context%symbols(shape_sym)%array_rank /= &
+            context%symbols(symbol_index)%array_rank) then
+            error_msg = 'reshape shape rank does not match the target array'
+            return
+        end if
+        do i = 1, context%symbols(symbol_index)%array_rank
+            shape_value = int(context%symbols(shape_sym)%array_dim_sizes(i), &
+                              c_int64_t)
+            if (shape_value /= &
+                int(context%symbols(symbol_index)%array_dim_sizes(i), c_int64_t)) then
+                error_msg = 'reshape shape does not match the target array'
+                return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine check_reshape_shape_from_array
+
+    ! Bind a shape(X) reshape actual to the array symbol X, whose declared
+    ! extents supply the target shape. Any other shape actual is out of scope.
+    subroutine resolve_shape_of_symbol(arena, shape_index, context, &
+                                       shape_sym, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: shape_sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+
+        shape_sym = 0
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, shape_index)) then
+            error_msg = 'reshape requires a literal integer shape argument'
+            return
+        end if
+        select type (sn => arena%entries(shape_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(sn%name) .and. .not. sn%is_array_access) then
+                if (same_name(sn%name, 'shape')) then
+                    if (allocated(sn%arg_indices)) then
+                        if (size(sn%arg_indices) == 1) then
+                            if (is_identifier(arena, sn%arg_indices(1))) then
+                                call get_identifier_name(arena, sn%arg_indices(1), &
+                                                         arg_name, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                                shape_sym = find_symbol(context, arg_name)
+                                if (shape_sym > 0) then
+                                    if (context%symbols(shape_sym)%is_array) return
+                                end if
+                                shape_sym = 0
+                            end if
+                        end if
+                    end if
+                end if
+            end if
+            error_msg = 'reshape requires a literal integer shape argument'
+        class default
+            error_msg = 'reshape requires a literal integer shape argument'
+        end select
+    end subroutine resolve_shape_of_symbol
 
     subroutine lower_reshape_source(arena, source_index_in, symbol_index, &
                                     context, error_msg)

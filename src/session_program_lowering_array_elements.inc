@@ -2100,3 +2100,389 @@
                                        'integer array subscripts, not '// &
                                        trim(detail), error_msg)
     end subroutine unsupported_array_subscript
+
+    ! sum/product/count/any/all(source, dim) reduced along one dimension of a
+    ! rank-2 source into the rank-1 target symbol. All extents are known at
+    ! compile time, so the reduction unrolls to a fixed sequence of loads and
+    ! accumulations. Declines (handled=.false., no error) for any form outside
+    ! this scope so the caller keeps its existing behaviour.
+    subroutine lower_dim_reduction_assignment(arena, rhs, symbol_index, context, &
+                                              handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: reduce_op, source_arg, dim_arg
+        integer :: src_sym, i, j
+        integer :: cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar
+        integer :: d1, d2, out_size, reduce_extent
+        integer :: source_vk, result_vk, compare_vk, predicate
+        integer(c_int64_t) :: dim_value, lin
+        logical :: is_comparison
+        character(len=:), allocatable :: cmp_op
+        type(lr_operand_desc_t) :: acc, cond, elem
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%name)) return
+        if (rhs%is_array_access) return
+        name = lowercase_text(trim(rhs%name))
+        select case (name)
+        case ('sum'); reduce_op = DIM_REDUCE_SUM
+        case ('product'); reduce_op = DIM_REDUCE_PROD
+        case ('count'); reduce_op = DIM_REDUCE_COUNT
+        case ('any'); reduce_op = DIM_REDUCE_ANY
+        case ('all'); reduce_op = DIM_REDUCE_ALL
+        case default; return
+        end select
+
+        call split_reduction_args(arena, rhs, source_arg, dim_arg)
+        if (source_arg <= 0 .or. dim_arg <= 0) return
+        call eval_i32_constant(arena, dim_arg, context, dim_value, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        if (dim_value /= 1_c_int64_t .and. dim_value /= 2_c_int64_t) return
+
+        ! The target must be a plain rank-1 array of statically known size.
+        if (context%symbols(symbol_index)%is_allocatable) return
+        if (context%symbols(symbol_index)%array_rank /= 1) return
+        result_vk = context%symbols(symbol_index)%value_kind
+
+        ! Resolve the source: either a stored rank-2 array, or an elementwise
+        ! relational comparison whose array operand is rank-2 (for the mask
+        ! reductions count/any/all; the other operand may be a scalar).
+        is_comparison = .false.
+        src_sym = 0
+        cmp_lsym = 0
+        cmp_lscalar = 0
+        cmp_rsym = 0
+        cmp_rscalar = 0
+        call dim_reduction_array_symbol(arena, source_arg, context, src_sym)
+        if (src_sym <= 0) then
+            if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) return
+            call dim_reduction_comparison(arena, source_arg, context, cmp_op, &
+                                          cmp_lsym, cmp_lscalar, cmp_rsym, &
+                                          cmp_rscalar, src_sym, compare_vk, &
+                                          is_comparison)
+            if (.not. is_comparison) return
+        end if
+        if (context%symbols(src_sym)%array_rank /= 2) return
+
+        source_vk = context%symbols(src_sym)%value_kind
+        d1 = context%symbols(src_sym)%array_dim_sizes(1)
+        d2 = context%symbols(src_sym)%array_dim_sizes(2)
+        if (d1 <= 0 .or. d2 <= 0) return
+        if (dim_value == 1_c_int64_t) then
+            reduce_extent = d1
+            out_size = d2
+        else
+            reduce_extent = d2
+            out_size = d1
+        end if
+        if (out_size /= context%symbols(symbol_index)%array_size) return
+
+        ! Numeric sum/product keep the source kind; mask reductions work in i32
+        ! (count -> integer count, any/all -> logical 0/1).
+        if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) then
+            select case (source_vk)
+            case (VALUE_I32, VALUE_F32, VALUE_F64)
+            case default; return
+            end select
+            if (result_vk /= source_vk) return
+        else if (.not. is_comparison) then
+            if (source_vk /= VALUE_LOGICAL) return
+        end if
+        if (reduce_op == DIM_REDUCE_COUNT .and. result_vk /= VALUE_I32) return
+        if ((reduce_op == DIM_REDUCE_ANY .or. reduce_op == DIM_REDUCE_ALL) .and. &
+            result_vk /= VALUE_LOGICAL) return
+
+        if (is_comparison) then
+            select case (compare_vk)
+            case (VALUE_F32, VALUE_F64)
+                call real_compare_predicate(cmp_op, predicate, error_msg)
+            case default
+                call integer_compare_predicate(cmp_op, predicate, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                return
+            end if
+        end if
+
+        do i = 0, out_size - 1
+            call dim_reduction_identity(context, reduce_op, source_vk, acc)
+            do j = 0, reduce_extent - 1
+                if (dim_value == 1_c_int64_t) then
+                    lin = int(j, c_int64_t) + int(i, c_int64_t) * int(d1, c_int64_t)
+                else
+                    lin = int(i, c_int64_t) + int(j, c_int64_t) * int(d1, c_int64_t)
+                end if
+                if (reduce_op == DIM_REDUCE_SUM .or. &
+                    reduce_op == DIM_REDUCE_PROD) then
+                    call load_array_linear_element(context, src_sym, lin, elem, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call dim_reduction_accumulate_numeric(context, reduce_op, &
+                        source_vk, acc, elem, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else
+                    call dim_reduction_mask_element(arena, context, is_comparison, &
+                        cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, src_sym, &
+                        compare_vk, predicate, lin, cond, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call dim_reduction_accumulate_mask(context, reduce_op, acc, &
+                        cond, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            end do
+            call store_array_linear_element(context, symbol_index, &
+                                            int(i, c_int64_t), acc, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine lower_dim_reduction_assignment
+
+    ! Separate a reduction call's actuals into the source (first positional) and
+    ! the dim (second positional or dim= keyword). Zero when absent.
+    subroutine split_reduction_args(arena, rhs, source_arg, dim_arg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(out) :: source_arg
+        integer, intent(out) :: dim_arg
+        character(len=:), allocatable :: kw_name
+        integer :: i, kw_value, npos
+
+        source_arg = 0
+        dim_arg = 0
+        npos = 0
+        if (.not. allocated(rhs%arg_indices)) return
+        do i = 1, size(rhs%arg_indices)
+            call reshape_keyword_arg(arena, rhs%arg_indices(i), kw_name, kw_value)
+            if (len_trim(kw_name) > 0) then
+                if (kw_name == 'dim') dim_arg = kw_value
+            else
+                npos = npos + 1
+                if (npos == 1) then
+                    source_arg = rhs%arg_indices(i)
+                else if (npos == 2 .and. dim_arg == 0) then
+                    dim_arg = rhs%arg_indices(i)
+                end if
+            end if
+        end do
+    end subroutine split_reduction_args
+
+    ! Bind an identifier actual to a stored (non-allocatable) array symbol.
+    subroutine dim_reduction_array_symbol(arena, idx, context, sym)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: sym
+        character(len=:), allocatable :: name, name_err
+        integer :: s
+
+        sym = 0
+        if (.not. is_identifier(arena, idx)) return
+        call get_identifier_name(arena, idx, name, name_err)
+        if (len_trim(name_err) > 0) return
+        s = find_symbol(context, name)
+        if (s <= 0) return
+        if (.not. context%symbols(s)%is_array) return
+        if (context%symbols(s)%is_allocatable) return
+        sym = s
+    end subroutine dim_reduction_array_symbol
+
+    ! Recognize source = lhs .rel. rhs where at least one operand is a stored
+    ! rank-2 array and the other is a conforming rank-2 array or a scalar.
+    ! Returns each side as (sym>0 array | scalar_idx>0 expression), the rank-2
+    ! array symbol that fixes the shape, and the comparison kind.
+    subroutine dim_reduction_comparison(arena, idx, context, op, lsym, lscalar, &
+                                        rsym, rscalar, dims_sym, compare_vk, ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: op
+        integer, intent(out) :: lsym, lscalar, rsym, rscalar
+        integer, intent(out) :: dims_sym, compare_vk
+        logical, intent(out) :: ok
+        integer :: left_idx, right_idx, line, col
+        character(len=:), allocatable :: op_err
+
+        ok = .false.
+        lsym = 0
+        lscalar = 0
+        rsym = 0
+        rscalar = 0
+        dims_sym = 0
+        compare_vk = VALUE_I32
+        if (.not. is_binary_op(arena, idx)) return
+        call get_binary_op_info(arena, idx, op, left_idx, right_idx, line, col, &
+                                op_err)
+        if (len_trim(op_err) > 0) return
+        if (.not. is_relational_operator(op)) return
+        call dim_reduction_array_symbol(arena, left_idx, context, lsym)
+        call dim_reduction_array_symbol(arena, right_idx, context, rsym)
+        if (lsym <= 0) lscalar = left_idx
+        if (rsym <= 0) rscalar = right_idx
+        if (lsym > 0) then
+            dims_sym = lsym
+        else if (rsym > 0) then
+            dims_sym = rsym
+        else
+            return
+        end if
+        if (context%symbols(dims_sym)%array_rank /= 2) return
+        ! A second array operand must conform to the shape-defining one.
+        if (lsym > 0 .and. rsym > 0) then
+            if (context%symbols(lsym)%array_dim_sizes(1) /= &
+                context%symbols(rsym)%array_dim_sizes(1)) return
+            if (context%symbols(lsym)%array_dim_sizes(2) /= &
+                context%symbols(rsym)%array_dim_sizes(2)) return
+        end if
+        if (lsym > 0) then
+            if (.not. supported_reduction_kind( &
+                context%symbols(lsym)%value_kind)) return
+        end if
+        if (rsym > 0) then
+            if (.not. supported_reduction_kind( &
+                context%symbols(rsym)%value_kind)) return
+        end if
+        compare_vk = context%symbols(dims_sym)%value_kind
+        ok = .true.
+    end subroutine dim_reduction_comparison
+
+    ! Seed a reduction accumulator: 0/1 for sum/product, 0 count, 0 (false) any,
+    ! 1 (true) all. Mask accumulators always start in i32.
+    subroutine dim_reduction_identity(context, reduce_op, source_vk, acc)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: reduce_op, source_vk
+        type(lr_operand_desc_t), intent(out) :: acc
+
+        select case (reduce_op)
+        case (DIM_REDUCE_SUM)
+            select case (source_vk)
+            case (VALUE_F32); acc = liric_f32_immediate(context%session, 0.0_c_float)
+            case (VALUE_F64); acc = liric_f64_immediate(context%session, 0.0_c_double)
+            case default; acc = i32_immediate(context%session, 0_c_int64_t)
+            end select
+        case (DIM_REDUCE_PROD)
+            select case (source_vk)
+            case (VALUE_F32); acc = liric_f32_immediate(context%session, 1.0_c_float)
+            case (VALUE_F64); acc = liric_f64_immediate(context%session, 1.0_c_double)
+            case default; acc = i32_immediate(context%session, 1_c_int64_t)
+            end select
+        case (DIM_REDUCE_ALL)
+            acc = i32_immediate(context%session, 1_c_int64_t)
+        case default
+            acc = i32_immediate(context%session, 0_c_int64_t)
+        end select
+    end subroutine dim_reduction_identity
+
+    subroutine dim_reduction_accumulate_numeric(context, reduce_op, source_vk, &
+                                                acc, elem, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: reduce_op, source_vk
+        type(lr_operand_desc_t), intent(inout) :: acc
+        type(lr_operand_desc_t), intent(in) :: elem
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: next
+
+        call set_empty(error_msg)
+        select case (source_vk)
+        case (VALUE_F32)
+            if (reduce_op == DIM_REDUCE_SUM) then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, acc, &
+                                                elem, next, error_msg)) return
+            else
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, acc, &
+                                                elem, next, error_msg)) return
+            end if
+        case (VALUE_F64)
+            if (reduce_op == DIM_REDUCE_SUM) then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, acc, &
+                                                elem, next, error_msg)) return
+            else
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, acc, &
+                                                elem, next, error_msg)) return
+            end if
+        case default
+            if (reduce_op == DIM_REDUCE_SUM) then
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, elem, &
+                                          next, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, elem, &
+                                          next, error_msg)) return
+            end if
+        end select
+        acc = next
+    end subroutine dim_reduction_accumulate_numeric
+
+    ! Produce the i32 0/1 mask element at linear index lin: a compare for the
+    ! relational-source form (each side either a rank-2 array at lin or a
+    ! broadcast scalar), or a direct logical load otherwise.
+    subroutine dim_reduction_mask_element(arena, context, is_comparison, &
+            lsym, lscalar, rsym, rscalar, src_sym, compare_vk, predicate, lin, &
+            cond, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_comparison
+        integer, intent(in) :: lsym, lscalar, rsym, rscalar, src_sym
+        integer, intent(in) :: compare_vk, predicate
+        integer(c_int64_t), intent(in) :: lin
+        type(lr_operand_desc_t), intent(out) :: cond
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lhs, rhs
+        integer, allocatable :: no_flat(:)
+
+        call set_empty(error_msg)
+        if (.not. is_comparison) then
+            call load_array_linear_element(context, src_sym, lin, cond, error_msg)
+            return
+        end if
+        call reduction_side_element(arena, context, lsym, no_flat, lscalar, &
+                                    int(lin), compare_vk, lhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call reduction_side_element(arena, context, rsym, no_flat, rscalar, &
+                                    int(lin), compare_vk, rhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (compare_vk)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_fcmp(context%session, predicate, lhs, rhs, &
+                                          cond, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_fcmp(context%session, predicate, lhs, rhs, &
+                                          cond, error_msg)) return
+        case default
+            if (.not. emit_liric_i32_icmp(context%session, predicate, lhs, rhs, &
+                                          cond, error_msg)) return
+        end select
+    end subroutine dim_reduction_mask_element
+
+    subroutine dim_reduction_accumulate_mask(context, reduce_op, acc, cond, &
+                                             error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: reduce_op
+        type(lr_operand_desc_t), intent(inout) :: acc
+        type(lr_operand_desc_t), intent(in) :: cond
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: next
+
+        call set_empty(error_msg)
+        select case (reduce_op)
+        case (DIM_REDUCE_ANY)
+            if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, cond, next, &
+                                      error_msg)) return
+        case (DIM_REDUCE_ALL)
+            if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, cond, next, &
+                                      error_msg)) return
+        case default
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, cond, next, &
+                                      error_msg)) return
+        end select
+        acc = next
+    end subroutine dim_reduction_accumulate_mask
