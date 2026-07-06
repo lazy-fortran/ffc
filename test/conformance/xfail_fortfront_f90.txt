@@ -19,7 +19,7 @@ f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
 if_multiline_guard.f90
-issue_104_if_condition_identifiers.f90
+issue_104_if_condition_identifiers.f90  # uninitialized vars: nondeterministic output across gfortran versions
 issue_1324_if_inside_do_loop.f90
 issue_1353_class_pointer_declaration.f90
 issue_1570_pure_elemental_preservation.f90
@@ -118,3 +118,6 @@ issue_2848_dimension_statement.f90  # ff#2848 DIMENSION statement -> unsupported
 issue_2850_bare_function_interface.f90  # ff#2850 bare interface: duplicate decl
 issue_2850_bare_subroutine_interface.f90  # ff#2850 bare interface
 issue_2855_external_intrinsic_conflict.f90  # ff#2855 external/intrinsic conflict
+# DATA with implied-DO: output matches gfortran-16 but mismatches gfortran-14
+# (CI runner). gfortran-14 formats the array differently for this construct.
+issue_2349_data_implied_do.f90
