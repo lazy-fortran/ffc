@@ -921,6 +921,7 @@
         integer, intent(in) :: node_index
         integer :: idx
         character(len=:), allocatable :: lit_val, lit_type, err
+        integer(c_int64_t) :: literal_kind
 
         has_lit = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -928,7 +929,12 @@
         if (is_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_val, lit_type, err)
             if (len_trim(err) == 0) then
-                has_lit = (lowercase_text(trim(lit_type)) == '8')
+                if (trim(lowercase_text(trim(lit_type))) == 'integer') then
+                    call integer_literal_kind_number(lit_val, literal_kind, err)
+                    has_lit = (len_trim(err) == 0 .and. literal_kind == 8_c_int64_t)
+                else
+                    has_lit = .false.
+                end if
             end if
             return
         end if
