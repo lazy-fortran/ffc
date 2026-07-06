@@ -450,6 +450,12 @@
                 call lower_f32_call(arena, node, context, value, error_msg)
             end if
         type is (component_access_node)
+            block
+                logical :: matched
+                call lower_complex_component_access_load(arena, node, context, &
+                    .true., value, matched, error_msg)
+                if (matched .or. len_trim(error_msg) > 0) return
+            end block
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real(4) expressions'
@@ -775,6 +781,12 @@
                 call lower_f64_call(arena, node, context, value, error_msg)
             end if
         type is (component_access_node)
+            block
+                logical :: matched
+                call lower_complex_component_access_load(arena, node, context, &
+                    .false., value, matched, error_msg)
+                if (matched .or. len_trim(error_msg) > 0) return
+            end block
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real expressions'

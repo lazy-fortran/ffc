@@ -1197,6 +1197,9 @@ contains
                 end if
             end if
             type is (component_access_node)
+            call try_lower_complex_component_write(arena, node, target, context, &
+                handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
             call lower_derived_component_assignment(arena, node, target, context, &
                 value, error_msg)
             return

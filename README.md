@@ -149,7 +149,9 @@ the double-precision kind aliases. A `cmplx()` component or complex-assignment
 operand may be an integer or a mismatched-precision real (widened or narrowed to
 the target component); an integer/real scalar assigns to a complex as the real
 part with zero imaginary part, and `complex(4)`/`complex(8)` assignments convert
-across kinds. Fixed-size rank-1/rank-2 complex
+across kinds. The `%re`/`%im` complex-part designators read and write a scalar complex or a
+fixed-size complex array element (`x%re = 1`, `x(i)%im = 4`), and `real()`/`aimag()`
+also accept a complex array element (`real(x(i))`). Fixed-size rank-1/rank-2 complex
 arrays support element assignment, element reads, elemental `+`/`-`/`*`/`/`
 between array elements, single-element `print`, and whole-array assignment
 with elementwise `+`/`-`/`*`/`/`, whole-array copy, or scalar broadcast

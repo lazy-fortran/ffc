@@ -757,13 +757,41 @@
         ! real(z, kind) carries a trailing kind selector; aimag takes only z.
         if (name == 'aimag' .and. size(node%arg_indices) /= 1) return
         if (name == 'real' .and. size(node%arg_indices) > 2) return
-        if (.not. is_identifier(arena, node%arg_indices(1))) return
-        call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
-        if (len_trim(err) > 0) return
-        sym = find_symbol(context, arg_name)
-        if (sym <= 0) return
-        matches = context%symbols(sym)%value_kind == want_kind
+        if (is_identifier(arena, node%arg_indices(1))) then
+            call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol(context, arg_name)
+            if (sym <= 0) return
+            if (context%symbols(sym)%is_array) return
+            matches = context%symbols(sym)%value_kind == want_kind
+            return
+        end if
+        matches = is_complex_array_element_arg(arena, node%arg_indices(1), &
+                                               context, want_kind)
     end function is_complex_component_extract
+
+    ! True when node_index is a complex(want_kind) array element access x(i).
+    logical function is_complex_array_element_arg(arena, node_index, context, &
+                                                  want_kind) result(matches)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: want_kind
+        integer :: sym
+
+        matches = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (arg => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (arg%base_expr_index > 0) return
+            if (.not. allocated(arg%name)) return
+            if (.not. allocated(arg%arg_indices)) return
+            sym = find_symbol(context, arg%name)
+            if (sym <= 0) return
+            if (.not. context%symbols(sym)%is_array) return
+            matches = context%symbols(sym)%value_kind == want_kind
+        end select
+    end function is_complex_array_element_arg
 
     ! Lower real(z)/aimag(z) by loading the matching component slot of the
     ! complex symbol. is_f32 selects f32 vs f64 component loads.
@@ -782,6 +810,11 @@
 
         call set_empty(error_msg)
         want_imag = lowercase_text(trim(node%name)) == 'aimag'
+        if (.not. is_identifier(arena, node%arg_indices(1))) then
+            call lower_complex_array_element_extract(arena, node%arg_indices(1), &
+                    context, is_f32, want_imag, value, error_msg)
+            return
+        end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol(context, arg_name)
@@ -798,6 +831,187 @@
                                           error_msg)) return
         end if
     end subroutine lower_complex_component_extract
+
+    ! Lower real(x(i))/aimag(x(i)) for a complex array element by loading the
+    ! wanted component of the element's re/im GEP addresses.
+    subroutine lower_complex_array_element_extract(arena, elem_index, context, &
+                                                   is_f32, want_imag, value, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elem_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_f32, want_imag
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_addr, im_addr, slot
+        integer :: vk
+
+        call set_empty(error_msg)
+        vk = merge(VALUE_C4, VALUE_C8, is_f32)
+        select type (elem => arena%entries(elem_index)%node)
+        type is (call_or_subscript_node)
+            call complex_array_element_addresses(arena, elem, context, vk, &
+                    re_addr, im_addr, error_msg, 'complex array component')
+        class default
+            error_msg = 'complex component extract requires an array element'
+        end select
+        if (len_trim(error_msg) > 0) return
+        if (want_imag) then
+            slot = im_addr
+        else
+            slot = re_addr
+        end if
+        if (is_f32) then
+            if (.not. emit_liric_f32_load(context%session, slot, value, &
+                                          error_msg)) return
+        else
+            if (.not. emit_liric_f64_load(context%session, slot, value, &
+                                          error_msg)) return
+        end if
+    end subroutine lower_complex_array_element_extract
+
+    ! Resolve a complex(4)/complex(8) scalar or fixed-size array-element %re/%im
+    ! component access to the single f32/f64 slot address it names. matched is
+    ! .false. with an empty error_msg when the node is not a complex re/im
+    ! component, so the caller falls through to the derived-type component path.
+    subroutine resolve_complex_component_slot(arena, comp_node, context, &
+                                              is_f32, addr, matched, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: comp_node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: is_f32
+        type(lr_operand_desc_t), intent(out) :: addr
+        logical, intent(out) :: matched
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: cname, base_name
+        logical :: want_imag
+        integer :: sym, vk, base_index
+        type(lr_operand_desc_t) :: re_addr, im_addr
+
+        matched = .false.
+        is_f32 = .true.
+        call set_empty(error_msg)
+        if (.not. allocated(comp_node%component_name)) return
+        cname = lowercase_text(trim(comp_node%component_name))
+        if (cname /= 're' .and. cname /= 'im') return
+        want_imag = cname == 'im'
+        base_index = comp_node%base_expr_index
+        if (base_index <= 0) return
+        if (.not. node_exists(arena, base_index)) return
+
+        if (is_identifier(arena, base_index)) then
+            call get_identifier_name(arena, base_index, base_name, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                return
+            end if
+            sym = find_symbol(context, base_name)
+            if (sym <= 0) return
+            vk = context%symbols(sym)%value_kind
+            if (vk /= VALUE_C4 .and. vk /= VALUE_C8) return
+            if (context%symbols(sym)%is_array) return
+            is_f32 = vk == VALUE_C4
+            ! Scalar complex slots: real part at address, imaginary at
+            ! element_address (mirrors lower_complex_component_extract).
+            if (want_imag) then
+                addr = context%symbols(sym)%element_address
+            else
+                addr = context%symbols(sym)%address
+            end if
+            matched = .true.
+            return
+        end if
+
+        select type (base => arena%entries(base_index)%node)
+        type is (call_or_subscript_node)
+            if (base%base_expr_index > 0) return
+            if (.not. allocated(base%name)) return
+            sym = find_symbol(context, base%name)
+            if (sym <= 0) return
+            vk = context%symbols(sym)%value_kind
+            if (vk /= VALUE_C4 .and. vk /= VALUE_C8) return
+            if (.not. context%symbols(sym)%is_array) return
+            if (.not. allocated(base%arg_indices)) return
+            is_f32 = vk == VALUE_C4
+            call complex_array_element_addresses(arena, base, context, vk, &
+                    re_addr, im_addr, error_msg, 'complex array component')
+            if (len_trim(error_msg) > 0) return
+            if (want_imag) then
+                addr = im_addr
+            else
+                addr = re_addr
+            end if
+            matched = .true.
+        end select
+    end subroutine resolve_complex_component_slot
+
+    ! Load a complex(4)/complex(8) %re/%im component into want_f32-typed value.
+    ! matched=.false. means the caller must fall through to the derived path.
+    subroutine lower_complex_component_access_load(arena, comp_node, context, &
+                                                   want_f32, value, matched, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: comp_node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_f32
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: matched
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr, raw
+        logical :: is_f32
+
+        call resolve_complex_component_slot(arena, comp_node, context, is_f32, &
+                                            addr, matched, error_msg)
+        if (.not. matched .or. len_trim(error_msg) > 0) return
+        if (is_f32) then
+            if (.not. emit_liric_f32_load(context%session, addr, raw, &
+                                          error_msg)) return
+        else
+            if (.not. emit_liric_f64_load(context%session, addr, raw, &
+                                          error_msg)) return
+        end if
+        if (want_f32 .eqv. is_f32) then
+            value = raw
+        else if (want_f32) then
+            if (.not. emit_liric_f64_to_f32(context%session, raw, value, &
+                                            error_msg)) return
+        else
+            if (.not. emit_liric_f32_to_f64(context%session, raw, value, &
+                                            error_msg)) return
+        end if
+    end subroutine lower_complex_component_access_load
+
+    ! Store an assignment RHS into a complex(4)/complex(8) %re/%im component,
+    ! leaving the other component untouched. handled=.false. with an empty
+    ! error_msg means the target is not a complex re/im component.
+    subroutine try_lower_complex_component_write(arena, node, target, context, &
+                                                 handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr, rhs
+        logical :: is_f32
+
+        call resolve_complex_component_slot(arena, target, context, is_f32, &
+                                            addr, handled, error_msg)
+        if (.not. handled .or. len_trim(error_msg) > 0) return
+        if (is_f32) then
+            call lower_real_component_f32(arena, node%value_index, context, rhs, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_store(context%session, rhs, addr, &
+                                           error_msg)) return
+        else
+            call lower_real_component_f64(arena, node%value_index, context, rhs, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_store(context%session, rhs, addr, &
+                                           error_msg)) return
+        end if
+    end subroutine try_lower_complex_component_write
 
     subroutine lower_print_complex4(sym_idx, context, error_msg)
         integer, intent(in) :: sym_idx
