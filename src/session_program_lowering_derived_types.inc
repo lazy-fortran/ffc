@@ -751,6 +751,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
             if (len_trim(error_msg) > 0) return
             nested_type_index = declaration_derived_type_index(context, component)
             if (nested_type_index > 0) then
+                if (component%is_allocatable .and. component%is_array .and. &
+                    .not. component%is_pointer .and. &
+                    component_alloc_array_rank_one(component)) then
+                    call collect_alloc_derived_array_component(component, context, &
+                        type_index, nested_type_index, error_msg)
+                    return
+                end if
                 call collect_nested_derived_component(component, context, &
                     type_index, nested_type_index, error_msg)
                 return
@@ -921,6 +928,42 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end if
     end subroutine collect_nested_derived_component
 
+    subroutine collect_alloc_derived_array_component(component, context, &
+                                                     type_index, elem_type_index, &
+                                                     error_msg)
+        ! Record a rank-1 allocatable array of a derived element type
+        ! (type(inner), allocatable :: c(:)). The component stores an inline
+        ! 16-byte descriptor (four i32 slots: data pointer at byte 0, i64 element
+        ! extent at byte 8), exactly like an intrinsic allocatable array
+        ! component, so is_alloc_array carries the descriptor layout. The element
+        ! type index rides in component_type_index; addressing loads the data
+        ! pointer and steps in by whole inner instances. A component initialiser
+        ! is not valid for an allocatable array, so none is accepted here.
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: elem_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        if (component%is_multi_declaration .and. allocated(component%var_names)) then
+            do i = 1, size(component%var_names)
+                call add_derived_component(context, type_index, &
+                    component%var_names(i), component%line, component%column, &
+                    .false., 0_c_int64_t, 1, VALUE_DERIVED, error_msg, &
+                    elem_type_index, is_alloc_array=.true.)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(component%var_name)) then
+            call add_derived_component(context, type_index, component%var_name, &
+                component%line, component%column, .false., 0_c_int64_t, 1, &
+                VALUE_DERIVED, error_msg, elem_type_index, is_alloc_array=.true.)
+        else
+            error_msg = 'derived type component declaration did not expose a name'
+            return
+        end if
+    end subroutine collect_alloc_derived_array_component
+
     logical function nested_default_constructor_initializer(component, context, &
                                                              nested_type_index)
         ! True when a nested derived component's initialiser is a bare
@@ -966,13 +1009,26 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (nested_index > 0) then
             ! A scalar or fixed-size-array nested derived component lives inline in
             ! the parent's flat slot layout (an array component spans
-            ! element_count * inner slots). Allocatable and pointer derived
-            ! components stay unsupported in this layout.
-            if (component%is_allocatable .or. component%is_pointer) then
+            ! element_count * inner slots). A rank-1 allocatable array of a
+            ! derived element type instead stores an inline 16-byte descriptor and
+            ! reaches its heap elements through a data pointer. Pointer, scalar
+            ! allocatable, and higher-rank allocatable derived components stay
+            ! unsupported.
+            if (component%is_pointer) then
                 call unsupported_feature_error('nested derived type component', &
-                    component%line, component%column, 'allocatable and pointer '// &
-                    'derived components are not supported', error_msg)
+                    component%line, component%column, 'pointer derived '// &
+                    'components are not supported', error_msg)
                 return
+            end if
+            if (component%is_allocatable) then
+                if (.not. component%is_array .or. &
+                    .not. component_alloc_array_rank_one(component)) then
+                    call unsupported_feature_error('nested derived type component', &
+                        component%line, component%column, 'only a rank-1 '// &
+                        'allocatable array of a derived type is supported', &
+                        error_msg)
+                    return
+                end if
             end if
             call set_empty(error_msg)
             return

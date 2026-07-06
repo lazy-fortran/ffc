@@ -284,6 +284,46 @@
         vreg = lr_session_emit(handle, inst, error)
     end function emit_malloc_call
 
+    function emit_calloc_call(handle, args, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(3)
+        type(lr_inst_desc_t) :: inst
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+
+        call to_c_chars('calloc', c_name)
+        symbol_id = lr_session_intern(handle, c_name)
+        if (symbol_id < 0_c_int32_t .or. size(args) /= 2) then
+            call clear_liric_error(error)
+            error%code = 1_c_int
+            return
+        end if
+
+        operands(1) = ptr_global_operand(handle, symbol_id)
+        operands(2) = args(1)
+        operands(3) = args(2)
+
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_ptr_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 3_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_true
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 2_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_calloc_call
+
     function global_operand_from_id(handle, symbol_id) result(operand)
         type(c_ptr), intent(in) :: handle
         integer(c_int32_t), intent(in) :: symbol_id

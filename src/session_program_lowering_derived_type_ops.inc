@@ -147,6 +147,18 @@
         do c = 1, context%derived_types(type_index)%component_count
             abs_slot = base_slot + component_start_slot(context, type_index, c)
             nested = context%derived_types(type_index)%component_type_index(c)
+            if (component_is_alloc_array(context, type_index, c)) then
+                ! Intrinsic and derived allocatable array components both hold an
+                ! inline 16-byte (four-slot) descriptor; null it so the fresh
+                ! instance reads as unallocated. A derived-element array carries a
+                ! nonzero component_type_index, so this check precedes the nested
+                ! recursion below.
+                call null_allocatable_component_slots(context, symbol_index, &
+                                                      outer_slots, abs_slot, 4, &
+                                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             if (nested /= 0) then
                 do e = 0, nested_element_count(context, type_index, c) - 1
                     call store_type_default_slots(context, symbol_index, &
@@ -155,13 +167,6 @@
                         error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
-                cycle
-            end if
-            if (component_is_alloc_array(context, type_index, c)) then
-                call null_allocatable_component_slots(context, symbol_index, &
-                                                      outer_slots, abs_slot, 4, &
-                                                      error_msg)
-                if (len_trim(error_msg) > 0) return
                 cycle
             end if
             if (component_is_allocatable(context, type_index, c)) then
@@ -230,6 +235,11 @@
         do c = 1, context%derived_types(type_index)%component_count
             abs_slot = base_slot + component_start_slot(context, type_index, c)
             nested = context%derived_types(type_index)%component_type_index(c)
+            if (component_is_alloc_array(context, type_index, c)) then
+                ! An allocatable array component's descriptor slots stay zero
+                ! (unallocated); never recurse into a derived element's defaults.
+                cycle
+            end if
             if (nested /= 0) then
                 do e = 0, nested_element_count(context, type_index, c) - 1
                     call fill_type_default_slots(context, nested, &
@@ -1084,6 +1094,21 @@
 
         if (component_access_is_alloc_array(arena, target, context)) then
             value = i32_immediate(context%session, 0_c_int64_t)
+            type_index = component_base_type_index(arena, target%base_expr_index, &
+                                                   context)
+            comp_index = 0
+            if (type_index > 0) comp_index = find_derived_component(context, &
+                type_index, target%component_name)
+            if (comp_index > 0) then
+                if (context%derived_types(type_index)% &
+                        component_type_index(comp_index) > 0) then
+                    call unsupported_feature_error('allocatable derived array '// &
+                        'component assignment', target%line, target%column, &
+                        'whole-array assignment of an allocatable derived array '// &
+                        'component is not supported', error_msg)
+                    return
+                end if
+            end if
             call lower_alloc_array_component_assignment(arena, node, target, &
                                                         context, error_msg)
             return
@@ -1428,11 +1453,12 @@
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: desc_addr, data_ptr, n_i32, n_i64, bytes_i64
-        integer :: comp_kind
+        integer :: comp_kind, base_type, comp_index, inner_bytes
 
         handled = .false.
         call set_empty(error_msg)
         if (.not. node_exists(arena, target_index)) return
+        inner_bytes = 0
         select type (target => arena%entries(target_index)%node)
         type is (call_or_subscript_node)
             if (target%base_expr_index <= 0) return
@@ -1444,6 +1470,14 @@
                 if (.not. component_access_is_alloc_array(arena, base, context)) &
                     return
                 comp_kind = derived_component_access_kind(arena, base, context)
+                base_type = component_base_type_index(arena, base%base_expr_index, &
+                                                      context)
+                if (base_type > 0) then
+                    comp_index = find_derived_component(context, base_type, &
+                                                        base%component_name)
+                    if (comp_index > 0) inner_bytes = &
+                        alloc_derived_inner_bytes(context, base_type, comp_index)
+                end if
             class default
                 return
             end select
@@ -1455,11 +1489,21 @@
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, &
                     error_msg)) return
-            if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, &
-                    i64_immediate(context%session, allocatable_elem_size(comp_kind)), &
-                    bytes_i64, error_msg)) return
-            if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
-                return
+            if (inner_bytes > 0) then
+                ! Allocatable array of a derived element type: zero-initialise so
+                ! every element's inline component descriptors start unallocated.
+                if (.not. emit_calloc(context%session, n_i64, &
+                        i64_immediate(context%session, &
+                            int(inner_bytes, c_int64_t)), data_ptr, error_msg)) &
+                    return
+            else
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, &
+                        i64_immediate(context%session, &
+                            allocatable_elem_size(comp_kind)), bytes_i64, &
+                        error_msg)) return
+                if (.not. emit_malloc(context%session, bytes_i64, data_ptr, &
+                        error_msg)) return
+            end if
             if (.not. emit_ptr_store(context%session, data_ptr, desc_addr, &
                                      error_msg)) return
             if (.not. emit_i64_store_at(context%session, n_i64, desc_addr, &
@@ -1998,6 +2042,11 @@
                 trim(node%component_name)
             return
         end if
+        if (component_is_alloc_array(context, outer_type, component_index)) then
+            error_msg = 'allocatable derived array component needs an element '// &
+                'subscript: '//trim(node%component_name)
+            return
+        end if
         type_index = context%derived_types(outer_type)% &
                      component_type_index(component_index)
         if (type_index <= 0) then
@@ -2067,6 +2116,289 @@
         call set_empty(error_msg)
     end subroutine resolve_subscripted_nested_base
 
+    integer function alloc_derived_inner_bytes(context, type_index, comp_index) &
+            result(bytes)
+        ! Byte span of one heap element of an allocatable derived array
+        ! component: the element type's total i32 slots times four.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+        integer :: elem_type
+
+        bytes = 0
+        elem_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (elem_type <= 0) return
+        bytes = total_component_slots(context, elem_type) * 4
+    end function alloc_derived_inner_bytes
+
+    recursive logical function access_chain_has_heap_hop(arena, node_index, &
+            context) result(hop)
+        ! True when reaching the derived scalar instance denoted by node_index
+        ! passes through an allocatable array component's heap data pointer, so
+        ! the flat-slot resolver cannot express its address and the pointer-based
+        ! path must be used instead. False for every access that existing lowering
+        ! already handled (plain variables, fixed-size nested arrays), keeping
+        ! their generated IR unchanged.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: bt, ci
+
+        hop = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) return
+        select type (base => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (base%base_expr_index <= 0) return
+            if (.not. node_exists(arena, base%base_expr_index)) return
+            select type (acc => arena%entries(base%base_expr_index)%node)
+            type is (component_access_node)
+                bt = component_base_type_index(arena, acc%base_expr_index, context)
+                if (bt > 0) then
+                    ci = find_derived_component(context, bt, acc%component_name)
+                    if (ci > 0) then
+                        if (component_is_alloc_array(context, bt, ci)) then
+                            hop = .true.
+                            return
+                        end if
+                    end if
+                end if
+                hop = access_chain_has_heap_hop(arena, acc%base_expr_index, context)
+            end select
+        type is (component_access_node)
+            hop = access_chain_has_heap_hop(arena, base%base_expr_index, context)
+        end select
+    end function access_chain_has_heap_hop
+
+    recursive subroutine derived_instance_addr(arena, node_index, context, addr, &
+            type_index, error_msg)
+        ! Byte address of the first slot of the derived scalar instance denoted by
+        ! node_index, plus its derived type index. Handles a plain derived
+        ! variable, a derived-array element arr(i), a nested scalar derived
+        ! component x%c, a fixed-size nested derived array element x%c(i), and an
+        ! allocatable derived array element x%c(i) reached through the component's
+        ! heap data pointer. Steps nest arbitrarily.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        integer, intent(out) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index, slots
+        type(lr_operand_desc_t) :: sub_val, zero_based, scaled
+
+        type_index = 0
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'derived instance base is not an AST node'
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) then
+                error_msg = 'component base was not declared: '//trim(id_name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%is_derived) then
+                error_msg = 'component base is not a derived type: '//trim(id_name)
+                return
+            end if
+            type_index = context%symbols(symbol_index)%derived_type_index
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, &
+                    i32_immediate(context%session, 0_c_int64_t), addr, error_msg)) &
+                return
+            call set_empty(error_msg)
+            return
+        end if
+        select type (base => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (base%base_expr_index > 0) then
+                call derived_element_addr(arena, base, context, addr, type_index, &
+                                          error_msg)
+                return
+            end if
+            if (.not. allocated(base%name) .or. &
+                .not. allocated(base%arg_indices)) then
+                error_msg = 'derived array element requires arr(i) form'
+                return
+            end if
+            if (size(base%arg_indices) /= 1) then
+                error_msg = 'only one-dimensional derived arrays are supported'
+                return
+            end if
+            symbol_index = find_symbol(context, base%name)
+            if (symbol_index <= 0) then
+                error_msg = 'component base was not declared: '//trim(base%name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%is_derived .or. &
+                .not. context%symbols(symbol_index)%is_array) then
+                error_msg = 'component base is not a derived array: '// &
+                    trim(base%name)
+                return
+            end if
+            type_index = context%symbols(symbol_index)%derived_type_index
+            slots = total_component_slots(context, type_index)
+            call lower_i32_expression(arena, base%arg_indices(1), context, sub_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                    i32_immediate(context%session, int(slots, c_int64_t)), scaled, &
+                    error_msg)) return
+            if (.not. emit_i32_array_element_addr(context%session, &
+                    context%symbols(symbol_index)%array_size, &
+                    context%symbols(symbol_index)%element_address, scaled, addr, &
+                    error_msg)) return
+            call set_empty(error_msg)
+        type is (component_access_node)
+            call nested_scalar_component_addr(arena, base, context, addr, &
+                                              type_index, error_msg)
+        class default
+            error_msg = 'nested component access is not supported'
+        end select
+    end subroutine derived_instance_addr
+
+    recursive subroutine derived_element_addr(arena, node, context, addr, &
+            type_index, error_msg)
+        ! Address of obj%c(i) where c is a derived array component: a fixed-size
+        ! nested array steps within the parent's flat slots; an allocatable
+        ! derived array loads the component's heap data pointer and steps in by
+        ! whole inner instances. type_index returns the element derived type.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        integer, intent(out) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: base_addr, desc_addr, data_ptr
+        type(lr_operand_desc_t) :: sub_val, zero_based, slot, slot64, byte_off
+        integer :: base_type, comp_index, elem_type, start, inner_slots
+
+        type_index = 0
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'nested derived array element requires comp(i) form'
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
+            error_msg = 'only one-dimensional derived array components are supported'
+            return
+        end if
+        if (.not. node_exists(arena, node%base_expr_index)) then
+            error_msg = 'nested derived array element base is not an AST node'
+            return
+        end if
+        select type (acc => arena%entries(node%base_expr_index)%node)
+        type is (component_access_node)
+            call derived_instance_addr(arena, acc%base_expr_index, context, &
+                                       base_addr, base_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            comp_index = find_derived_component(context, base_type, &
+                                                acc%component_name)
+            if (comp_index <= 0) then
+                error_msg = 'component is not declared for type '// &
+                    trim(context%derived_types(base_type)%name)//': '// &
+                    trim(acc%component_name)
+                return
+            end if
+            elem_type = context%derived_types(base_type)% &
+                        component_type_index(comp_index)
+            if (elem_type <= 0) then
+                error_msg = 'component is not a derived array: '// &
+                    trim(acc%component_name)
+                return
+            end if
+            start = component_start_slot(context, base_type, comp_index)
+            call lower_i32_expression(arena, node%arg_indices(1), context, sub_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                    error_msg)) return
+            if (component_is_alloc_array(context, base_type, comp_index)) then
+                if (.not. emit_ptr_offset(context%session, base_addr, &
+                        int(start * 4, c_int64_t), desc_addr, error_msg)) return
+                if (.not. emit_ptr_load(context%session, desc_addr, data_ptr, &
+                        error_msg)) return
+                if (.not. emit_liric_i32_to_i64(context%session, zero_based, &
+                        slot64, error_msg)) return
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, slot64, &
+                        i64_immediate(context%session, &
+                            int(alloc_derived_inner_bytes(context, base_type, &
+                                comp_index), c_int64_t)), byte_off, error_msg)) &
+                    return
+                if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_off, &
+                        addr, error_msg)) return
+            else
+                inner_slots = total_component_slots(context, elem_type)
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                        i32_immediate(context%session, &
+                            int(inner_slots, c_int64_t)), slot, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, slot, &
+                        i32_immediate(context%session, int(start, c_int64_t)), &
+                        slot, error_msg)) return
+                if (.not. emit_liric_i32_to_i64(context%session, slot, slot64, &
+                        error_msg)) return
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, slot64, &
+                        i64_immediate(context%session, 4_c_int64_t), byte_off, &
+                        error_msg)) return
+                if (.not. emit_ptr_offset_dyn(context%session, base_addr, &
+                        byte_off, addr, error_msg)) return
+            end if
+            type_index = elem_type
+            call set_empty(error_msg)
+        class default
+            error_msg = 'nested derived array element requires obj%comp(i) form'
+        end select
+    end subroutine derived_element_addr
+
+    recursive subroutine nested_scalar_component_addr(arena, node, context, addr, &
+            type_index, error_msg)
+        ! Address of a nested scalar derived component x%c used as a base: the
+        ! parent instance address offset by the component's start slot.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        integer, intent(out) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: base_addr
+        integer :: base_type, comp_index, start
+
+        type_index = 0
+        call derived_instance_addr(arena, node%base_expr_index, context, &
+                                   base_addr, base_type, error_msg)
+        if (len_trim(error_msg) > 0) return
+        comp_index = find_derived_component(context, base_type, node%component_name)
+        if (comp_index <= 0) then
+            error_msg = 'component is not declared for type '// &
+                trim(context%derived_types(base_type)%name)//': '// &
+                trim(node%component_name)
+            return
+        end if
+        if (component_is_alloc_array(context, base_type, comp_index)) then
+            error_msg = 'allocatable derived array component needs an element '// &
+                'subscript: '//trim(node%component_name)
+            return
+        end if
+        type_index = context%derived_types(base_type)%component_type_index(comp_index)
+        if (type_index <= 0) then
+            error_msg = 'component is not a derived type: '// &
+                trim(node%component_name)
+            return
+        end if
+        start = component_start_slot(context, base_type, comp_index)
+        if (.not. emit_ptr_offset(context%session, base_addr, &
+                int(start * 4, c_int64_t), addr, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine nested_scalar_component_addr
+
     subroutine lower_derived_component_address(arena, node, context, &
                                                component_address, error_msg, &
                                                feature)
@@ -2079,7 +2411,32 @@
         integer :: component_index
         integer :: symbol_index
         integer :: type_index
-        type(lr_operand_desc_t) :: element_base, slot
+        integer :: base_type
+        type(lr_operand_desc_t) :: element_base, slot, element_ptr
+
+        if (access_chain_has_heap_hop(arena, node%base_expr_index, context)) then
+            call derived_instance_addr(arena, node%base_expr_index, context, &
+                                       element_ptr, base_type, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error(feature, node%line, node%column, &
+                                               trim(error_msg), error_msg)
+                return
+            end if
+            component_index = find_derived_component(context, base_type, &
+                                                     node%component_name)
+            if (component_index <= 0) then
+                call unsupported_feature_error(feature, node%line, node%column, &
+                    'component is not declared for type '// &
+                    trim(context%derived_types(base_type)%name)//': '// &
+                    trim(node%component_name), error_msg)
+                return
+            end if
+            if (.not. emit_ptr_offset(context%session, element_ptr, &
+                    int(component_start_slot(context, base_type, component_index) &
+                        * 4, c_int64_t), component_address, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
 
         call resolve_component_base(arena, node%base_expr_index, context, &
                                     symbol_index, type_index, element_base, &

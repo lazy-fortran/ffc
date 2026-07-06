@@ -50,7 +50,6 @@ allocate_30.f90
 allocate_31.f90
 allocate_32.f90
 allocate_33.f90
-allocate_34.f90
 allocate_35.f90
 allocate_36.f90
 allocate_38.f90
@@ -699,7 +698,6 @@ class_allocate_05.f90
 class_allocate_06.f90
 class_allocate_07.f90
 class_allocate_08.f90
-class_allocate_09.f90
 class_array_deepcopy_01.f90
 class_optional_01.f90
 class_procedure_args_01.f90

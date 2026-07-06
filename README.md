@@ -183,7 +183,19 @@ type (`integer, allocatable :: v(:)`) holds an inline 16-byte descriptor (data
 pointer plus i64 element extent) that starts null; `allocate(x%v(n))` with a
 runtime extent, element read/write `x%v(i)`, `allocated(x%v)`, `size(x%v)`, and
 `deallocate(x%v)` manage it (whole-component assignment, whole-component reads,
-and passing the component as an actual argument stay unsupported). A
+and passing the component as an actual argument stay unsupported). A rank-1
+allocatable array of a derived element type (`type(inner), allocatable :: c(:)`)
+holds the same inline 16-byte descriptor; `allocate(x%c(n))` `calloc`s n
+zero-initialised inner instances (so each element's own allocatable component
+descriptors start unallocated), and element component access `x%c(i)%field`
+loads the component data pointer, steps in by whole inner instances, and adds
+the field slot. `allocated(x%c)`, `size(x%c)`, and `deallocate(x%c)` manage the
+descriptor. These stack: an inner element may itself hold an allocatable derived
+array or intrinsic allocatable array component, so `obj%z(i)%arr(j)%arr(k)`
+reaches through several heap indirections. Non-zero scalar component defaults on
+heap elements, whole-component assignment, and allocatable derived array dummy
+arguments stay unsupported; genuinely polymorphic `class` forms (e.g.
+`allocate(..., source=)` of a differing dynamic type) still decline. A
 nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a

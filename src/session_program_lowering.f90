@@ -76,7 +76,7 @@ module session_program_lowering
         emit_i64_load, emit_ptr_load, &
         emit_i64_store, &
         emit_i64_binary, emit_i64_alloca, &
-        emit_alloca_bytes, emit_malloc, &
+        emit_alloca_bytes, emit_malloc, emit_calloc, &
         emit_free, emit_ptr_store, &
         emit_memcpy, emit_i64_load_at, &
         emit_i64_store_at, &
