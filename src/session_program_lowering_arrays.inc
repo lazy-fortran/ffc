@@ -532,14 +532,17 @@
                                            name, dim_count, extents, ok)
         if (.not. ok) then
             ! No compile-time-foldable actual: fall back to the hidden i64
-            ! runtime extent argument already loaded for this dummy (rank-1
-            ! only) by bind_hidden_extent_params before this declaration ran.
+            ! runtime extent arguments already loaded for this dummy (one per
+            ! dimension, rank-1 or rank-2) by bind_hidden_extent_params before
+            ! this declaration ran.
             index = find_symbol(context, name)
-            if (dim_count == 1 .and. index > 0) then
-                if (context%symbols(index)%has_runtime_dim_size(1)) then
+            if (dim_count >= 1 .and. dim_count <= 2 .and. index > 0) then
+                if (all(context%symbols(index)%has_runtime_dim_size(1:dim_count))) &
+                        then
                     call define_declared_array_symbol(context, node, name, 1, 0, &
                                                        value_kind, error_msg, &
-                                                       assumed_extents=[0])
+                                                       assumed_extents=spread(0, 1, &
+                                                                             dim_count))
                     return
                 end if
             end if
@@ -2902,6 +2905,7 @@
         integer :: source_index
         integer :: nargs
         integer(c_int64_t) :: dim_val
+        type(lr_operand_desc_t) :: total_size
 
         nargs = 0
         if (allocated(node%arg_indices)) nargs = size(node%arg_indices)
@@ -2949,7 +2953,17 @@
         end if
         if (nargs == 1) then
             if (context%symbols(source_index)%has_runtime_dim_size(1)) then
+                ! A runtime-extent assumed-shape dummy: total = product of the
+                ! per-dimension runtime extents (rank 1 or 2).
                 value = context%symbols(source_index)%runtime_dim_size(1)
+                if (context%symbols(source_index)%array_rank == 2 .and. &
+                    context%symbols(source_index)%has_runtime_dim_size(2)) then
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                            context%symbols(source_index)%runtime_dim_size(1), &
+                            context%symbols(source_index)%runtime_dim_size(2), &
+                            total_size, error_msg)) return
+                    value = total_size
+                end if
                 call set_empty(error_msg)
                 return
             end if
@@ -2967,11 +2981,13 @@
             error_msg = 'size dim out of range for: '//trim(array_name)
             return
         end if
-        if (dim_val == 1_c_int64_t .and. &
-            context%symbols(source_index)%has_runtime_dim_size(1)) then
-            value = context%symbols(source_index)%runtime_dim_size(1)
-            call set_empty(error_msg)
-            return
+        if (dim_val >= 1_c_int64_t .and. dim_val <= 2_c_int64_t) then
+            if (context%symbols(source_index)%has_runtime_dim_size(int(dim_val))) &
+                    then
+                value = context%symbols(source_index)%runtime_dim_size(int(dim_val))
+                call set_empty(error_msg)
+                return
+            end if
         end if
         value = i32_immediate(context%session, &
                     int(context%symbols(source_index)%array_dim_sizes(int(dim_val)), &

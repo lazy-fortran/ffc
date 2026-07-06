@@ -77,22 +77,26 @@
             error_msg = 'ubound dim out of range'
             return
         end if
-        if (dim_val == 1_c_int64_t .and. &
-            context%symbols(sym)%has_runtime_dim_size(1)) then
-            ! Runtime extent: ubound = lower + extent - 1. An assumed-shape dummy
-            ! has lower bound 1 (extent); a runtime-sized local array a(L:n)
-            ! carries a constant lower bound L in array_dim_lowers(1).
-            lower = context%symbols(sym)%array_dim_lowers(1)
-            if (lower == 1) then
-                value = context%symbols(sym)%runtime_dim_size(1)
-            else
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                        context%symbols(sym)%runtime_dim_size(1), &
-                        i32_immediate(context%session, &
-                        int(lower - 1, c_int64_t)), value, error_msg)) return
+        ! dim_val is guarded to 1..2 in a separate test because a rank-N fixed
+        ! array (rank up to 7) would index the two-slot has_runtime_dim_size out
+        ! of bounds; .and. does not short-circuit in Fortran.
+        if (dim_val >= 1_c_int64_t .and. dim_val <= 2_c_int64_t) then
+            if (context%symbols(sym)%has_runtime_dim_size(int(dim_val))) then
+                ! Runtime extent: ubound = lower + extent - 1. An assumed-shape
+                ! dummy has lower bound 1 (extent); a runtime-sized local array
+                ! a(L:n) carries a constant lower bound L in array_dim_lowers.
+                lower = context%symbols(sym)%array_dim_lowers(int(dim_val))
+                if (lower == 1) then
+                    value = context%symbols(sym)%runtime_dim_size(int(dim_val))
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            context%symbols(sym)%runtime_dim_size(int(dim_val)), &
+                            i32_immediate(context%session, &
+                            int(lower - 1, c_int64_t)), value, error_msg)) return
+                end if
+                call set_empty(error_msg)
+                return
             end if
-            call set_empty(error_msg)
-            return
         end if
         lower = context%symbols(sym)%array_dim_lowers(int(dim_val))
         size_d = context%symbols(sym)%array_dim_sizes(int(dim_val))

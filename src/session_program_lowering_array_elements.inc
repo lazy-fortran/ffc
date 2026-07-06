@@ -1885,6 +1885,12 @@
             return
         end if
 
+        if (context%symbols(symbol_index)%has_runtime_dim_size(1)) then
+            call lower_runtime_element_linear_index(arena, node, context, &
+                symbol_index, rank, linear_index, error_msg)
+            return
+        end if
+
         stride = 1_c_int64_t
         do k = 1, rank
             call validate_i32_array_subscript(arena, node%arg_indices(k), context, &
@@ -1926,6 +1932,81 @@
         linear_index = acc_op
         call set_empty(error_msg)
     end subroutine lower_array_element_linear_index
+
+    subroutine lower_runtime_element_linear_index(arena, node, context, &
+                                                  symbol_index, rank, linear_index, &
+                                                  error_msg)
+        !! Column-major linear element index of a subscripted array whose extents
+        !! are only known at run time (an assumed-shape dummy bound through the
+        !! hidden i64 extent ABI). Same formula as the compile-time path,
+        !! sum_k (idx_k - lower_k) * prod_{j<k} extent_j, but each leading extent
+        !! is the runtime_dim_size operand rather than a compile-time immediate.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: rank
+        type(lr_operand_desc_t), intent(out) :: linear_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k
+        integer(c_int64_t) :: lower_k
+        type(lr_operand_desc_t) :: idx_op, off_op, term_op, acc_op, next_acc
+        type(lr_operand_desc_t) :: stride_op, next_stride, extent_k
+
+        stride_op = i32_immediate(context%session, 1_c_int64_t)
+        do k = 1, rank
+            call validate_i32_array_subscript(arena, node%arg_indices(k), context, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i32_expression(arena, node%arg_indices(k), context, idx_op, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            lower_k = int(context%symbols(symbol_index)%array_dim_lowers(k), &
+                          c_int64_t)
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, idx_op, &
+                    i32_immediate(context%session, lower_k), off_op, error_msg)) then
+                error_msg = 'rt_arr_index_sub: '//error_msg
+                return
+            end if
+            if (k == 1) then
+                term_op = off_op
+                acc_op = off_op
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, off_op, &
+                        stride_op, term_op, error_msg)) then
+                    error_msg = 'rt_arr_index_mul: '//error_msg
+                    return
+                end if
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc_op, &
+                        term_op, next_acc, error_msg)) then
+                    error_msg = 'rt_arr_index_add: '//error_msg
+                    return
+                end if
+                acc_op = next_acc
+            end if
+            if (k < rank) then
+                if (context%symbols(symbol_index)%has_runtime_dim_size(k)) then
+                    extent_k = context%symbols(symbol_index)%runtime_dim_size(k)
+                else
+                    extent_k = i32_immediate(context%session, &
+                        int(context%symbols(symbol_index)%array_dim_sizes(k), &
+                            c_int64_t))
+                end if
+                if (k == 1) then
+                    stride_op = extent_k
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                            stride_op, extent_k, next_stride, error_msg)) then
+                        error_msg = 'rt_arr_stride_mul: '//error_msg
+                        return
+                    end if
+                    stride_op = next_stride
+                end if
+            end if
+        end do
+        linear_index = acc_op
+        call set_empty(error_msg)
+    end subroutine lower_runtime_element_linear_index
 
     subroutine lower_array_element_address_for_kind(arena, node, context, vk, &
                                                     element_address, error_msg, &

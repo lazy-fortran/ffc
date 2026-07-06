@@ -128,12 +128,12 @@
                     arg_indices(i), context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
-                     .and. callee_dummy_assumed_shape_rank1(arena, callee_name, &
+                     .and. callee_dummy_assumed_shape_runtime(arena, callee_name, &
                                             call_arg_param_pos(i, sp))) then
-                ! Allocatable array actual to a rank-1 assumed-shape dummy: pass
-                ! the descriptor's runtime data pointer (the W2 runtime-extent
-                ! ABI); its element count travels separately as a hidden i64
-                ! argument appended below.
+                ! Allocatable array actual to a rank-1/rank-2 assumed-shape dummy:
+                ! pass the descriptor's runtime data pointer (the W2 runtime-extent
+                ! ABI); its per-dimension extents travel separately as hidden i64
+                ! arguments appended below.
                 call allocatable_array_actual_data_address(arena, arg_indices(i), &
                     context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return

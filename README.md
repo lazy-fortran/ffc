@@ -90,11 +90,13 @@ program-contained and module procedures. The actual may also be a contiguous
 rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
 whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
 the section and whose first-element address binds the dummy in place. A rank-1
-assumed-shape dummy of a
-subroutine also accepts a rank-1 allocatable actual of runtime-only extent:
-the extent travels as a hidden argument, so `size(a)`, `ubound(a, 1)`,
-element read/write, a `do` loop bound by `size(a)`, and integer `sum(a)`
-all work against the caller's runtime allocation. An assumed-size dummy
+or rank-2 assumed-shape dummy of a
+subroutine also accepts an allocatable actual of runtime-only extent:
+the per-dimension extents travel as hidden arguments, so `size(a)`,
+`size(a, dim)`, `ubound(a, dim)`, element read/write (rank-2 uses the runtime
+leading extent as the column-major stride), and a `do` loop bound by
+`size(a, dim)` all work against the caller's runtime allocation; rank-1 also
+supports integer `sum(a)`. An assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write
 and `lbound(a, dim)` work; the trailing dimension carries no extent, so

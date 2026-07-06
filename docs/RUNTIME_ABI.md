@@ -217,30 +217,36 @@ contents; the next call through `fp` picks up the new address.
 
 ### Assumed-shape runtime extent (W2)
 
-A rank-1 assumed-shape dummy `a(:)` whose actual has no compile-time-foldable
-shape (an allocatable actual) carries its element count as a hidden `i64`
-argument, passed by reference like every other scalar reference argument: the
-caller allocates an `i64` stack slot, stores the extent, and passes the
-slot's address. The hidden argument is appended after all of the subroutine's
-visible pointer parameters, one per such dummy, in dummy declaration order.
-The callee loads and truncates it to `i32` once at entry and reuses that
-value everywhere the dummy's extent is needed.
+A rank-1 or rank-2 assumed-shape dummy (`a(:)` or `a(:,:)`) whose actual has no
+compile-time-foldable shape (an allocatable actual) carries its per-dimension
+extents as hidden `i64` arguments, passed by reference like every other scalar
+reference argument: the caller allocates an `i64` stack slot per extent, stores
+the extent, and passes the slot's address. The hidden arguments are appended
+after all of the subroutine's visible pointer parameters, `rank` per such dummy
+(one for a rank-1 dummy, two for a rank-2 dummy, in dimension order), and dummies
+are taken in declaration order. The callee loads and truncates each to `i32`
+once at entry and reuses those values everywhere the dummy's extents are needed.
+The rank-2 extents come from the actual's descriptor bounds: dimension 1 from
+offsets (8, 16), dimension 2 from offsets (24, 32).
 
 The existing whole-arena compile-time fold (a whole-array actual with a
 literal or caller-scope-parameter extent) stays the fast path: it is tried
-first, and only a dummy for which that fold fails gets a hidden parameter, so
+first, and only a dummy for which that fold fails gets hidden parameters, so
 an already-working compile-time-resolved assumed-shape dummy keeps its
-original signature and no hidden argument.
+original signature and no hidden arguments.
 
-This slice covers: `size(a)` (no `dim`, and `dim=1`), `ubound(a, 1)`, element
-read and write `a(i)` (extent-independent for rank-1, so it needs no ABI
-change), a `do` loop bound by `size(a)`, and `sum(a)` for `integer` elements
-(a genuine runtime loop, since there is no compile-time extent to unroll
-over). Rank-2 assumed-shape dummies, function (not subroutine) dummies,
-array-section and array-constructor actuals, and `sum`/`product`/`maxval`/
-`minval` over non-integer runtime-extent elements are not yet covered and
+This slice covers, for a rank-1 or rank-2 runtime-extent dummy: `size(a)`
+(no `dim`; rank-2 returns the product of both runtime extents), `size(a, d)`
+and `ubound(a, d)` for each dimension, element read and write `a(i)` / `a(i, j)`
+(rank-2 column-major addressing uses the runtime leading extent as the stride),
+and a `do` loop bound by `size(a, d)`. `sum(a)` for `integer` elements uses a
+genuine runtime loop (rank-1 only). Function (not subroutine) dummies,
+array-section and array-constructor actuals, `sum`/`product`/`maxval`/`minval`
+over non-integer or rank-2 runtime-extent elements, and rank-2 whole-array
+operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a
-whole-array actual of compile-time size" diagnostic.
+whole-array actual of compile-time size" diagnostic (or the relevant
+whole-array diagnostic).
 
 `call obj%method(args)` (a type-bound subroutine call) inserts the passed-object
 receiver ahead of the explicit `args` at the callee's passed-object dummy
