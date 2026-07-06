@@ -288,18 +288,92 @@
         end do
     end subroutine lower_program_contained_functions
 
+    logical function proc_node_has_executable_body(arena, node_index) &
+                                                   result(has_body)
+        ! True when a function/subroutine node carries an executable body (any
+        ! body statement that is not a plain declaration). An explicit-interface
+        ! signature declares only its dummies, so it reports no executable body
+        ! and never displaces a real definition in the procedure table.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, allocatable :: body_indices(:)
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer :: i
+
+        has_body = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (.not. allocated(fn_node%body_indices)) return
+            body_indices = fn_node%body_indices
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (.not. allocated(sb_node%body_indices)) return
+            body_indices = sb_node%body_indices
+        else
+            return
+        end if
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (n => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                cycle
+            class default
+                has_body = .true.
+                return
+            end select
+        end do
+    end function proc_node_has_executable_body
+
+    subroutine reconcile_duplicate_procedure(context, existing, node_index, &
+                                             param_count)
+        ! A procedure name registered twice: an explicit-interface signature and
+        ! the real definition. Point the table entry at whichever node carries an
+        ! executable body so call-site queries and lowering resolve the real
+        ! definition. The declared kind is identical in both, so it is left as is.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: existing
+        integer, intent(in) :: node_index
+        integer, intent(in) :: param_count
+
+        if (node_index <= 0) return
+        if (.not. proc_node_has_executable_body(context%arena, node_index)) return
+        if (proc_node_has_executable_body(context%arena, &
+                                          context%function_node_indices(existing))) &
+            return
+        context%function_node_indices(existing) = node_index
+        context%function_param_counts(existing) = param_count
+    end subroutine reconcile_duplicate_procedure
+
     subroutine register_internal_subroutine_name(node, context, error_msg, &
                                                  node_index)
         type(subroutine_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer, intent(in), optional :: node_index
-        integer :: next_index
+        integer :: next_index, existing, new_param_count
 
         call set_empty(error_msg)
         if (.not. allocated(node%name)) return
         call grow_function_names(context)
-        if (contained_function_kind(context, node%name) /= 0) return
+        existing = find_function_index(context, node%name)
+        if (existing /= 0) then
+            if (present(node_index)) then
+                new_param_count = 0
+                if (allocated(node%param_indices)) &
+                    new_param_count = size(node%param_indices)
+                call reconcile_duplicate_procedure(context, existing, &
+                    node_index, new_param_count)
+            end if
+            return
+        end if
         next_index = context%function_count + 1
         context%function_names(next_index) = trim(node%name)
         context%function_value_kinds(next_index) = VALUE_SUBROUTINE
@@ -441,14 +515,27 @@
         integer :: next_index
         integer :: value_kind
         integer :: derived_type_index
+        integer :: existing, new_param_count
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-       call grow_function_names(context)
-         if (contained_function_kind(context, node%name) /= 0) then
-            error_msg = 'duplicate contained function: '//trim(node%name)
+        call grow_function_names(context)
+        ! A name seen twice is an explicit-interface signature paired with the
+        ! real external/module definition (or a FortFront hoisting artefact),
+        ! not two rival definitions. Reconcile so the entry keeps the
+        ! body-bearing definition rather than hard-erroring.
+        existing = find_function_index(context, node%name)
+        if (existing /= 0) then
+            if (present(node_index)) then
+                new_param_count = 0
+                if (allocated(node%param_indices)) &
+                    new_param_count = size(node%param_indices)
+                call reconcile_duplicate_procedure(context, existing, &
+                    node_index, new_param_count)
+            end if
+            call set_empty(error_msg)
             return
         end if
         call function_value_kind(node, context, value_kind, derived_type_index, &

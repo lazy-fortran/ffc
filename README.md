@@ -226,6 +226,11 @@ separate `module procedure` form lower under the parent's mangled symbol, so a
 `use m` call resolves regardless of which submodule holds the body. A parent
 generic interface whose specific is a module-procedure interface body dispatches
 a call through the generic name to the submodule body implementing that specific.
+A plain explicit `interface` block that declares the signature of an external
+top-level function (or a module function) whose real definition also appears in
+the file reconciles the signature with the definition instead of colliding as a
+duplicate, so the call resolves to the real symbol for every scalar result kind
+(integer, real, logical).
 The `associate` construct binds scalar selectors, a rank-1 unit-stride
 array-section selector (`associate (x => a(lo:hi))`, reindexed to lower
 bound 1), and a derived-type component selector (`associate (s => a%comp)`);
