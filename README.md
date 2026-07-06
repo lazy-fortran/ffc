@@ -106,7 +106,14 @@ constructor initializer) instead takes its extent from the initializer's
 element count. A scalar
 `integer`/`real`/`logical, allocatable` variable
 supports `allocate`/`deallocate` and `allocate(x, source=<expr>)`/`mold=<expr>`
-with any source expression; a rank-1/rank-2 allocatable array dummy argument
+with any source expression. A scalar allocatable derived variable
+(`type(t), allocatable :: x`) starts unassociated with no storage; `allocate(x)`
+(bare or `allocate(t :: x)`) `malloc`s one instance and runs its default
+initialisation, then component read/write (`x%field`), `allocated(x)`,
+whole-scalar copy (`y = x`), auto-allocation on assignment to an unallocated
+target (`x = t(...)`), `move_alloc(x, y)`, and `deallocate(x)` manage it; the
+heap instance may itself hold allocatable array components
+(`allocate(x%c(n))`). A rank-1/rank-2 allocatable array dummy argument
 aliases the caller's own descriptor, so `allocate`/`deallocate`/element writes
 inside the callee are visible to the caller. A single `allocate` or
 `deallocate` may list several targets at once

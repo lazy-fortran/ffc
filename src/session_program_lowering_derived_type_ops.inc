@@ -286,6 +286,14 @@
                                            error_msg)
             return
         end if
+        ! type(t), allocatable :: x (scalar): storage is deferred until allocate,
+        ! so record the symbol as unassociated derived rather than reserving a
+        ! stack instance.
+        if (node%is_allocatable .and. .not. node%is_array) then
+            call declare_scalar_allocatable_derived(context, node, &
+                                                    derived_type_index, error_msg)
+            return
+        end if
         if (node%is_array) then
             call lower_derived_array_declaration(node, context, &
                                                  derived_type_index, error_msg)

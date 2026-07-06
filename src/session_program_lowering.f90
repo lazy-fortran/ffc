@@ -1272,6 +1272,15 @@ contains
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then
+            ! Assignment to an unallocated scalar allocatable derived target
+            ! auto-allocates it first (F2018 10.2.1.3), giving the whole-derived
+            ! copy a heap instance to write into.
+            if (context%symbols(symbol_index)%is_allocatable .and. &
+                context%symbols(symbol_index)%array_rank == 0 .and. &
+                .not. context%symbols(symbol_index)%has_address) then
+                call lower_allocate_scalar_derived(symbol_index, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (is_derived_result_call(arena, node%value_index, context)) then
                 call lower_derived_result_call(arena, node%value_index, &
                     symbol_index, context, error_msg)

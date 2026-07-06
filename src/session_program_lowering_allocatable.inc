@@ -409,10 +409,15 @@
             end if
         end if
 
-        ! Otherwise treat the type-spec as a derived type name. A scalar
-        ! allocatable derived variable already received its storage at
-        ! declaration (define_derived_symbol), so the allocate just establishes
-        ! the allocated state; the existing storage is reused.
+        ! Otherwise treat the type-spec as a derived type name: allocate(t :: x)
+        ! mallocs one instance and default-inits it, identical to the bare
+        ! allocate(x) form for a scalar allocatable derived variable.
+        if (context%symbols(symbol_index)%is_derived .and. &
+            context%symbols(symbol_index)%is_allocatable .and. &
+            context%symbols(symbol_index)%array_rank == 0) then
+            call lower_allocate_scalar_derived(symbol_index, context, error_msg)
+            return
+        end if
         if (context%symbols(symbol_index)%is_derived) then
             call set_empty(error_msg)
             return
@@ -1292,6 +1297,24 @@
         if (to_sym <= 0 .or. .not. context%symbols(to_sym)%is_allocatable) then
             error_msg = 'move_alloc: to argument is not an allocatable: '// &
                         trim(to_name)
+            return
+        end if
+
+        ! Scalar allocatable derived: the association state is a compile-time
+        ! folded heap pointer (element_address + has_address), not a runtime
+        ! descriptor. move_alloc hands the instance over and unassociates from.
+        if (context%symbols(from_sym)%is_derived .and. &
+            context%symbols(from_sym)%array_rank == 0 .and. &
+            context%symbols(to_sym)%is_derived .and. &
+            context%symbols(to_sym)%array_rank == 0) then
+            context%symbols(to_sym)%element_address = &
+                context%symbols(from_sym)%element_address
+            context%symbols(to_sym)%array_size = &
+                context%symbols(from_sym)%array_size
+            context%symbols(to_sym)%has_address = &
+                context%symbols(from_sym)%has_address
+            context%symbols(from_sym)%has_address = .false.
+            call set_empty(error_msg)
             return
         end if
 

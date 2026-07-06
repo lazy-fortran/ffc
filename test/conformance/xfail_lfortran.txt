@@ -13,7 +13,6 @@ allocatable_component_unnamed_unallocated_01.f90
 allocatable_derived_array_01.f90
 allocatable_dummy_descriptor_01.f90
 allocatable_lhs_finalization_01.f90
-allocatable_nested_types_01.f90
 allocatable_oob_01.f90
 allocatable_polymorphic_assign_01.f90
 allocatable_polymorphic_assign_02.f90
@@ -957,7 +956,6 @@ derived_types_62.f90
 derived_types_63.f90
 derived_types_64.f90
 derived_types_65.f90
-derived_types_66.f90
 derived_types_67.f90
 derived_types_69.f90
 derived_types_70.f90
@@ -1399,7 +1397,6 @@ functions_49.f90
 functions_50.f90
 functions_51.f90
 functions_52.f90
-functions_53.f90
 functions_54.f90
 functions_55.f90
 functions_56.f90
@@ -2382,7 +2379,6 @@ nested_15.f90
 nested_16.f90
 nested_17.f90
 nested_18.f90
-nested_19.f90
 nested_20.f90
 nested_21.f90
 nested_22.f90
