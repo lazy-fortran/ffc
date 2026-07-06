@@ -28,7 +28,6 @@ PR96726.f90
 PR96727.f90
 PR96728.f90
 PR97046.f90
-abstract_type_10.f90
 access_spec_3.f90
 achar_1.f90
 achar_2.f90
@@ -233,7 +232,6 @@ associate_16.f90
 associate_17.f90
 associate_22.f90
 associate_23.f90
-associate_24.f90
 associate_25.f90
 associate_27.f90
 associate_28.f90
@@ -670,7 +668,6 @@ do_pointer_1.f90
 dot_product_4.f90
 dtio_1.f90
 dtio_10.f90
-dtio_11.f90
 dtio_12.f90
 dtio_14.f90
 dtio_15.f90
@@ -979,9 +976,7 @@ interface_10.f90
 interface_12.f90
 interface_13.f90
 interface_16.f90
-interface_19.f90
 interface_25.f90
-interface_29.f90
 interface_32.f90
 interface_4.f90
 interface_41.f90
@@ -991,7 +986,6 @@ interface_54.f90
 interface_59.f90
 interface_62.f90
 interface_63.f90
-interface_7.f90
 interface_9.f90
 interface_abstract_5.f90
 interface_assignment_1.f90
@@ -1054,7 +1048,6 @@ iso_fortran_env_1.f90
 iso_fortran_env_2.f90
 iso_fortran_env_3.f90
 iso_fortran_env_8.f90
-keyword_symbol_1.f90
 large_recl.f90
 large_unit_2.f90
 largeequiv_1.f90
@@ -1651,7 +1644,6 @@ pr95611.f90
 pr95614_1.f90
 pr95614_2.f90
 pr95614_4.f90
-pr95710.f90
 pr95829.f90
 pr95880.f90
 pr95882_1.f90
@@ -1754,7 +1746,6 @@ proc_ptr_comp_53.f90
 proc_ptr_comp_54.f90
 proc_ptr_comp_6.f90
 proc_ptr_comp_7.f90
-proc_ptr_comp_8.f90
 proc_ptr_comp_9.f90
 proc_ptr_comp_pass_1.f90
 proc_ptr_comp_pass_2.f90
@@ -1853,7 +1844,6 @@ reshape_2.f90
 reshape_6.f90
 reshape_pad_1.f90
 reshape_rank7.f90
-reshape_transpose_1.f90
 reshape_zerosize_1.f90
 reshape_zerosize_3.f90
 reshape_zerosize_4.f90
@@ -2097,7 +2087,6 @@ used_types_12.f90 # re-listed: ffc lowering gap exposed by fortfront bare-end un
 used_types_13.f90
 used_types_15.f90
 used_types_16.f90
-used_types_17.f90
 used_types_2.f90
 used_types_20.f90
 used_types_21.f90
