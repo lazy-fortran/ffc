@@ -2032,6 +2032,9 @@
                 value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
                 if (.not. emit_ret_void(context%session, error_msg)) return
+            else if (value_kind == VALUE_I64) then
+                value = context%symbols(result_index)%value
+                if (.not. emit_ret_i64_operand(context%session, value, error_msg)) return
             else
                 value = context%symbols(result_index)%value
                 if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
