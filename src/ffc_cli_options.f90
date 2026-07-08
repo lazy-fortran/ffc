@@ -16,6 +16,7 @@ module ffc_cli_options
         character(len=:), allocatable :: error_message
         logical :: show_version = .false.
         logical :: show_help = .false.
+        logical :: json_diagnostics = .false.
         integer :: backend = 0
         integer :: opt_level = 0
     end type cli_options_t
@@ -45,6 +46,8 @@ contains
                 opts%show_version = .true.
             case ('--help', '-h')
                 opts%show_help = .true.
+            case ('--json')
+                opts%json_diagnostics = .true.
             case ('-c')
                 opts%emit_object = .true.
             case ('-o')

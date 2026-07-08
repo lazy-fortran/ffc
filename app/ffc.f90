@@ -1,4 +1,5 @@
 program ffc_main
+    use, intrinsic :: iso_fortran_env, only: error_unit
     use ffc_module_artefact, only: FFC_FMOD_VERSION
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, &
@@ -23,7 +24,7 @@ program ffc_main
     nargs = command_argument_count()
     if (nargs < 1) then
         call print_usage()
-        stop 1
+        stop 1, quiet=.true.
     end if
 
     allocate (argv(nargs))
@@ -40,8 +41,7 @@ program ffc_main
         stop 0
     end if
     if (opts%error) then
-        print '(A)', opts%error_message
-        stop 1
+        call report_failure(opts%error_message)
     end if
 
     output_file = opts%output_file
@@ -121,9 +121,108 @@ contains
 
     subroutine report_failure(message)
         character(len=*), intent(in) :: message
-        print '(A)', trim(message)
-        stop 1
+        character(len=:), allocatable :: text
+        character(len=:), allocatable :: file
+        integer :: line
+        integer :: column
+
+        call split_diagnostic(message, line, column, text)
+        file = trim(opts%input_file)
+        if (len_trim(file) == 0) file = 'ffc'
+
+        if (opts%json_diagnostics) then
+            write (error_unit, '(A)') '[{"file":"'//json_escape(file)// &
+                '","line":'//int_text(line)//',"column":'// &
+                int_text(column)//',"severity":"error","message":"'// &
+                json_escape(text)//'"}]'
+        else
+            write (error_unit, '(A)') trim(file)//':'//int_text(line)// &
+                ':'//int_text(column)//': error: '//trim(text)
+        end if
+        stop 1, quiet=.true.
     end subroutine report_failure
+
+    subroutine split_diagnostic(message, line, column, text)
+        character(len=*), intent(in) :: message
+        integer, intent(out) :: line
+        integer, intent(out) :: column
+        character(len=:), allocatable, intent(out) :: text
+        character(len=*), parameter :: LINE_MARKER = ' at line '
+        character(len=*), parameter :: COLUMN_MARKER = ', column '
+        integer :: line_pos
+        integer :: column_pos
+        integer :: after_column
+        integer :: colon_pos
+        integer :: io_stat
+
+        line = 1
+        column = 1
+        text = trim(message)
+        line_pos = index(text, LINE_MARKER)
+        if (line_pos == 0) return
+        column_pos = index(text, COLUMN_MARKER)
+        if (column_pos <= line_pos) return
+        read (text(line_pos + len(LINE_MARKER):column_pos - 1), *, &
+            iostat=io_stat) line
+        if (io_stat /= 0) then
+            line = 1
+            return
+        end if
+        after_column = column_pos + len(COLUMN_MARKER)
+        colon_pos = index(text(after_column:), ':')
+        if (colon_pos == 0) return
+        read (text(after_column:after_column + colon_pos - 2), *, &
+            iostat=io_stat) column
+        if (io_stat /= 0) then
+            column = 1
+            return
+        end if
+        if (after_column + colon_pos <= len(text)) then
+            text = trim(text(:line_pos - 1))//': '// &
+                adjustl(text(after_column + colon_pos:))
+        else
+            text = trim(text(:line_pos - 1))
+        end if
+    end subroutine split_diagnostic
+
+    function int_text(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=32) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function int_text
+
+    function json_escape(value) result(text)
+        character(len=*), intent(in) :: value
+        character(len=:), allocatable :: text
+        integer :: i
+        character(len=1) :: ch
+
+        text = ''
+        do i = 1, len_trim(value)
+            ch = value(i:i)
+            select case (ch)
+            case ('"')
+                text = text//'\"'
+            case ('\')
+                text = text//'\\'
+            case (new_line('a'))
+                text = text//'\n'
+            case (achar(9))
+                text = text//'\t'
+            case (achar(13))
+                text = text//'\r'
+            case default
+                if (iachar(ch) < 32) then
+                    text = text//' '
+                else
+                    text = text//ch
+                end if
+            end select
+        end do
+    end function json_escape
 
     ! True when a standard-mode failure is an undeclared-variable signal, i.e.
     ! the source is a lazy fragment whose variables fortfront can infer. Genuine
@@ -157,6 +256,7 @@ contains
             'searched for .fmod)'
         print '(A)', '  --backend <b> Codegen backend: default|isel|'// &
             'copy-patch|llvm'
+        print '(A)', '  --json        Emit diagnostics as JSON'
         print '(A)', '  --version     Print version and exit'
         print '(A)', '  --help, -h    Print this help and exit'
     end subroutine print_usage

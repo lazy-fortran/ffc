@@ -5,6 +5,7 @@ program test_cli_version_help
     call check_version()
     call check_help()
     call check_help_short()
+    call check_json_parse()
     call check_normal_parse()
 
     print *, 'PASS'
@@ -71,6 +72,28 @@ contains
             stop 1
         end if
     end subroutine check_help_short
+
+    subroutine check_json_parse()
+        type(cli_options_t) :: opts
+        character(len=CLI_PATH_LEN) :: argv(2)
+
+        argv(1) = '--json'
+        argv(2) = 'bad.f90'
+        call parse_arguments(argv, opts)
+        if (opts%error) then
+            print *, 'FAIL [json]: ', opts%error_message
+            stop 1
+        end if
+        if (.not. opts%json_diagnostics) then
+            print *, 'FAIL [json]: json_diagnostics not set'
+            stop 1
+        end if
+        if (trim(opts%input_file) /= 'bad.f90') then
+            print *, 'FAIL [json]: input_file should be bad.f90, got ', &
+                trim(opts%input_file)
+            stop 1
+        end if
+    end subroutine check_json_parse
 
     subroutine check_normal_parse()
         type(cli_options_t) :: opts

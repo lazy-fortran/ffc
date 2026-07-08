@@ -56,6 +56,8 @@ Today the CLI accepts:
 - `-c`: emit an object file instead of an executable.
 - `-I <dir>`: append a module search directory. Repeatable. Used to
   locate `.fmod` artefacts on `use`.
+- `--backend default|isel|copy-patch|llvm`: select the LIRIC backend.
+- `--json`: emit failed compiler diagnostics as JSON on stderr.
 
 ## Supported direct-session subset
 
