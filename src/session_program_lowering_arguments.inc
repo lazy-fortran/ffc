@@ -90,6 +90,11 @@
                     ': scalar actual passed to array dummy argument'
                 return
             end if
+            call check_explicit_shape_actual_size(arena, arg_indices(i), context, &
+                                                  callee_name, &
+                                                  call_arg_param_pos(i, sp), &
+                                                  error_msg)
+            if (len_trim(error_msg) > 0) return
             ! A character actual passed to a character(len=*) dummy is a single
             ! reference parameter pointing at a {data, length} descriptor. Use
             ! that ABI only when the callee actually declares the dummy as
@@ -175,6 +180,431 @@
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    subroutine check_explicit_shape_actual_size(arena, actual_index, context, &
+                                                callee_name, param_pos, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: actual_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: dummy_count
+        integer(c_int64_t) :: actual_count
+        logical :: dummy_known
+        logical :: actual_known
+
+        call callee_dummy_explicit_element_count(arena, context, callee_name, &
+                                                 param_pos, dummy_count, &
+                                                 dummy_known, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. dummy_known) return
+
+        call actual_available_element_count(arena, actual_index, context, &
+                                            actual_count, actual_known, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. actual_known) return
+
+        if (actual_count < dummy_count) then
+            error_msg = 'Actual argument contains too few elements in call to '// &
+                        trim(callee_name)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine check_explicit_shape_actual_size
+
+    subroutine callee_dummy_explicit_element_count(arena, context, callee_name, &
+                                                   param_pos, element_count, known, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        call registered_dummy_explicit_element_count(context, callee_name, param_pos, &
+                                                     element_count, known, &
+                                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (known) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos < 1) return
+                if (param_pos > size(sb_node%param_indices)) return
+                call parameter_name(arena, sb_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_explicit_element_count(arena, context, &
+                                                  sb_node%body_indices, name, &
+                                                  element_count, known, error_msg)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos < 1) return
+                if (param_pos > size(fn_node%param_indices)) return
+                call parameter_name(arena, fn_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_explicit_element_count(arena, context, &
+                                                  fn_node%body_indices, name, &
+                                                  element_count, known, error_msg)
+                return
+            end if
+        end do
+    end subroutine callee_dummy_explicit_element_count
+
+    subroutine registered_dummy_explicit_element_count(context, callee_name, &
+                                                       param_pos, element_count, &
+                                                       known, error_msg)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: node_idx
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        do i = 1, context%function_count
+            if (.not. same_name(context%function_names(i), callee_name)) cycle
+            node_idx = context%function_node_indices(i)
+            if (node_idx <= 0) return
+            if (.not. node_exists(context%arena, node_idx)) return
+            node_type = get_node_type_at(context%arena, node_idx)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(context%arena, node_idx)
+                if (.not. associated(sb_node)) return
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos < 1) return
+                if (param_pos > size(sb_node%param_indices)) return
+                call parameter_name(context%arena, sb_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_explicit_element_count(context%arena, context, &
+                                                  sb_node%body_indices, name, &
+                                                  element_count, known, error_msg)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(context%arena, node_idx)
+                if (.not. associated(fn_node)) return
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos < 1) return
+                if (param_pos > size(fn_node%param_indices)) return
+                call parameter_name(context%arena, fn_node%param_indices(param_pos), &
+                                    name, name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_explicit_element_count(context%arena, context, &
+                                                  fn_node%body_indices, name, &
+                                                  element_count, known, error_msg)
+                return
+            end if
+        end do
+    end subroutine registered_dummy_explicit_element_count
+
+    subroutine dummy_explicit_element_count(arena, context, body_indices, &
+                                            param_name, element_count, known, &
+                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: lower_bound
+        integer :: array_size
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (decl%is_allocatable) cycle
+                if (.not. declaration_names_var(decl, param_name)) cycle
+                if (declaration_is_assumed_shape(decl, context)) return
+                if (declaration_is_assumed_rank(decl, context)) return
+                if (declaration_is_assumed_size(decl, context)) return
+                call get_array_bounds(decl, context, lower_bound, array_size, &
+                                      error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call set_empty(error_msg)
+                    return
+                end if
+                element_count = int(array_size, c_int64_t)
+                known = .true.
+                return
+            end select
+        end do
+    end subroutine dummy_explicit_element_count
+
+    subroutine actual_available_element_count(arena, node_index, context, &
+                                              element_count, known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+        integer, allocatable :: flat(:)
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) return
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) return
+            if (.not. context%symbols(symbol_index)%is_array) return
+            element_count = int(context%symbols(symbol_index)%array_size, &
+                                c_int64_t)
+            known = .true.
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call section_available_element_count(arena, node, context, &
+                                                 element_count, known, error_msg)
+        type is (call_or_subscript_node)
+            call call_actual_available_element_count(arena, node, context, &
+                                                     element_count, known, &
+                                                     error_msg)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            element_count = int(size(flat), c_int64_t)
+            known = .true.
+        end select
+    end subroutine actual_available_element_count
+
+    subroutine section_available_element_count(arena, node, context, element_count, &
+                                               known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        integer(c_int64_t) :: first_linear
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call describe_array_section(arena, node, context, info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (info%result_rank == 0) then
+            first_linear = array_section_source_linear_index(info, 0_c_int64_t)
+            element_count = int(context%symbols(info%source_index)%array_size, &
+                                c_int64_t) - first_linear
+        else
+            element_count = array_section_total_elements(info)
+        end if
+        if (element_count < 0_c_int64_t) element_count = 0_c_int64_t
+        known = .true.
+        call set_empty(error_msg)
+    end subroutine section_available_element_count
+
+    subroutine call_actual_available_element_count(arena, node, context, &
+                                                   element_count, known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: is_element_ref
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (call_is_reshape(node)) then
+            call reshape_actual_element_count(arena, node, context, element_count, &
+                                              known, error_msg)
+            return
+        end if
+
+        is_element_ref = node%is_array_access
+        if (.not. is_element_ref) is_element_ref = &
+            is_declared_array_element_ref(node, context)
+        if (.not. is_element_ref) return
+        call array_element_available_count(arena, node, context, element_count, &
+                                           known, error_msg)
+    end subroutine call_actual_available_element_count
+
+    logical function call_is_reshape(node)
+        type(call_or_subscript_node), intent(in) :: node
+
+        call_is_reshape = .false.
+        if (.not. allocated(node%name)) return
+        call_is_reshape = same_name(node%name, 'reshape')
+    end function call_is_reshape
+
+    subroutine reshape_actual_element_count(arena, node, context, element_count, &
+                                            known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: source_index
+        integer :: shape_index
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call resolve_reshape_args(arena, node, source_index, shape_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call reshape_shape_element_count(arena, shape_index, context, &
+                                         element_count, known, error_msg)
+    end subroutine reshape_actual_element_count
+
+    subroutine reshape_shape_element_count(arena, shape_index, context, &
+                                           element_count, known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        integer :: shape_sym
+        integer(c_int64_t) :: shape_value
+
+        element_count = 1_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, shape_index)) return
+
+        select type (shape_node => arena%entries(shape_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(shape_node%element_indices)) return
+            do i = 1, size(shape_node%element_indices)
+                call eval_i32_constant(arena, shape_node%element_indices(i), &
+                                       context, shape_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                element_count = element_count * shape_value
+            end do
+            known = .true.
+        class default
+            call resolve_shape_of_symbol(arena, shape_index, context, shape_sym, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                element_count = 0_c_int64_t
+                return
+            end if
+            if (shape_sym <= 0) then
+                element_count = 0_c_int64_t
+                return
+            end if
+            do i = 1, context%symbols(shape_sym)%array_rank
+                element_count = element_count * &
+                    int(context%symbols(shape_sym)%array_dim_sizes(i), c_int64_t)
+            end do
+            known = .true.
+        end select
+    end subroutine reshape_shape_element_count
+
+    subroutine array_element_available_count(arena, node, context, element_count, &
+                                             known, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: element_count
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        integer :: rank
+        integer :: arg_count
+        integer :: k
+        integer(c_int64_t) :: idx
+        integer(c_int64_t) :: lower_k
+        integer(c_int64_t) :: extent_k
+        integer(c_int64_t) :: stride
+        integer(c_int64_t) :: linear_index
+
+        element_count = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%name)) return
+        if (.not. allocated(node%arg_indices)) return
+        symbol_index = find_symbol(context, node%name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_array) return
+        rank = context%symbols(symbol_index)%array_rank
+        arg_count = size(node%arg_indices)
+        if (arg_count /= rank) return
+
+        linear_index = 0_c_int64_t
+        stride = 1_c_int64_t
+        do k = 1, rank
+            call eval_i32_constant(arena, node%arg_indices(k), context, idx, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                return
+            end if
+            lower_k = int(context%symbols(symbol_index)%array_dim_lowers(k), &
+                          c_int64_t)
+            extent_k = int(context%symbols(symbol_index)%array_dim_sizes(k), &
+                           c_int64_t)
+            linear_index = linear_index + (idx - lower_k) * stride
+            stride = stride * extent_k
+        end do
+
+        element_count = int(context%symbols(symbol_index)%array_size, c_int64_t) - &
+                        linear_index
+        if (element_count < 0_c_int64_t) element_count = 0_c_int64_t
+        known = .true.
+        call set_empty(error_msg)
+    end subroutine array_element_available_count
 
     logical function actual_is_character(arena, node_index, context)
         ! Whether an actual argument evaluates to a character value.

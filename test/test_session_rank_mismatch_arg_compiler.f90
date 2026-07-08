@@ -10,6 +10,14 @@ program test_session_rank_mismatch_arg_compiler
     if (.not. test_scalar_var_to_array_dummy_rejected()) all_passed = .false.
     if (.not. test_literal_to_array_dummy_rejected()) all_passed = .false.
     if (.not. test_array_to_array_dummy_accepted()) all_passed = .false.
+    if (.not. test_short_whole_array_to_explicit_shape_rejected()) all_passed = .false.
+    if (.not. test_short_old_style_multi_array_rejected()) all_passed = .false.
+    if (.not. test_short_explicit_interface_array_rejected()) all_passed = .false.
+    if (.not. test_short_dimension_attribute_dummy_rejected()) all_passed = .false.
+    if (.not. test_short_section_to_explicit_shape_rejected()) all_passed = .false.
+    if (.not. test_short_array_element_to_explicit_shape_rejected()) all_passed = .false.
+    if (.not. test_short_reshape_to_explicit_shape_rejected()) all_passed = .false.
+    if (.not. test_array_element_with_enough_storage_accepted()) all_passed = .false.
     if (.not. test_scalar_to_scalar_dummy_accepted()) all_passed = .false.
     if (.not. test_scalar_to_assumed_rank_accepted()) all_passed = .false.
 
@@ -74,6 +82,142 @@ contains
         test_array_to_array_dummy_accepted = expect_exit_status( &
             source, 0, '/tmp/ffc_session_rank_array_ok')
     end function test_array_to_array_dummy_accepted
+
+    logical function test_short_whole_array_to_explicit_shape_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: a(3)'//new_line('a')// &
+            '  call s(a)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s(x)'//new_line('a')// &
+            '    integer :: x(4)'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_short_whole_array_to_explicit_shape_rejected = expect_error_contains( &
+            source, 'contains too few elements', '/tmp/ffc_session_arg_short_array')
+    end function test_short_whole_array_to_explicit_shape_rejected
+
+    logical function test_short_old_style_multi_array_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    subroutine s(x)'//new_line('a')// &
+            '      integer :: x(4)'//new_line('a')// &
+            '    end subroutine'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  integer a(3), b(5)'//new_line('a')// &
+            '  call s(a)'//new_line('a')// &
+            'end program p'
+
+        test_short_old_style_multi_array_rejected = expect_error_contains( &
+            source, 'contains too few elements', &
+            '/tmp/ffc_session_arg_short_old_multi')
+    end function test_short_old_style_multi_array_rejected
+
+    logical function test_short_explicit_interface_array_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    subroutine s(x)'//new_line('a')// &
+            '      integer :: x(4)'//new_line('a')// &
+            '    end subroutine'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  integer :: a(3)'//new_line('a')// &
+            '  call s(a)'//new_line('a')// &
+            'end program p'
+
+        test_short_explicit_interface_array_rejected = expect_error_contains( &
+            source, 'contains too few elements', &
+            '/tmp/ffc_session_arg_short_interface')
+    end function test_short_explicit_interface_array_rejected
+
+    logical function test_short_dimension_attribute_dummy_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    subroutine s(x)'//new_line('a')// &
+            '      integer, dimension(4) :: x'//new_line('a')// &
+            '    end subroutine'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            '  integer :: a(3)'//new_line('a')// &
+            '  call s(a)'//new_line('a')// &
+            'end program p'
+
+        test_short_dimension_attribute_dummy_rejected = expect_error_contains( &
+            source, 'contains too few elements', &
+            '/tmp/ffc_session_arg_short_dimension_attr')
+    end function test_short_dimension_attribute_dummy_rejected
+
+    logical function test_short_section_to_explicit_shape_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: b(5)'//new_line('a')// &
+            '  call s(b(1:5:2))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s(x)'//new_line('a')// &
+            '    integer :: x(4)'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_short_section_to_explicit_shape_rejected = expect_error_contains( &
+            source, 'contains too few elements', '/tmp/ffc_session_arg_short_section')
+    end function test_short_section_to_explicit_shape_rejected
+
+    logical function test_short_array_element_to_explicit_shape_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: b(5)'//new_line('a')// &
+            '  call s(b(3))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s(x)'//new_line('a')// &
+            '    integer :: x(4)'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_short_array_element_to_explicit_shape_rejected = expect_error_contains( &
+            source, 'contains too few elements', '/tmp/ffc_session_arg_short_element')
+    end function test_short_array_element_to_explicit_shape_rejected
+
+    logical function test_short_reshape_to_explicit_shape_rejected()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: a(3)'//new_line('a')// &
+            '  call s(reshape(a(1:3), [2, 1]))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s(x)'//new_line('a')// &
+            '    integer :: x(4)'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_short_reshape_to_explicit_shape_rejected = expect_error_contains( &
+            source, 'contains too few elements', '/tmp/ffc_session_arg_short_reshape')
+    end function test_short_reshape_to_explicit_shape_rejected
+
+    logical function test_array_element_with_enough_storage_accepted()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: b(5)'//new_line('a')// &
+            '  b = [1, 2, 3, 4, 5]'//new_line('a')// &
+            '  call s(b(2))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s(x)'//new_line('a')// &
+            '    integer :: x(4)'//new_line('a')// &
+            '    if (sum(x) /= 14) stop 1'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program p'
+
+        test_array_element_with_enough_storage_accepted = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_arg_element_ok')
+    end function test_array_element_with_enough_storage_accepted
 
     logical function test_scalar_to_scalar_dummy_accepted()
         ! A scalar actual to a scalar dummy is valid and must still run.

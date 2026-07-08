@@ -123,7 +123,7 @@ success. A rank-2 allocatable also supports whole-array scalar broadcast
 (`m = 9`) once allocated to a compile-time-constant shape. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
 `associated(p)`, and `nullify(p)` is supported. Rank-1 and rank-2 fixed-size
-integer, real, logical, and complex `pointer`/`target` arrays support whole-
+`integer`/`real`/`logical`/`complex` `pointer`/`target` arrays support whole-
 array `p => t` aliasing, so element read/write, `lbound`/`ubound`, and
 `print` through `p` reach `t`'s storage, as are constant-folded
 `selected_int_kind` and `selected_real_kind`. Compile-time integer folding
@@ -170,7 +170,7 @@ a contained logical function's result, including the one-line
 `if (cond) stmt` form without `then`. An empty or behavioral-only type
 (no data components, a bare `type :: t; end type` or a type with only a
 `contains` type-bound-procedure block) registers with a hidden placeholder
-slot, so declarations, dispatch, allocation, and extension resolve against it.
+slot, so declarations plus dispatch/allocation/extension resolve against it.
 Derived types take scalar
 integer, real, logical, `c_ptr`, and fixed-length character
 (`character(len=N)`) components, fixed-size rank-1 integer,
@@ -344,7 +344,9 @@ for `integer :: a(4)`); a named generic interface whose two specific
 procedures share an indistinguishable scalar dummy signature (`ambiguous
 interfaces`, F2018 C1514); a scalar actual (literal or scalar variable)
 passed where a procedure with an explicit interface in the same unit declares
-an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4); a call passing
+an array dummy (`Rank mismatch in argument`, F2018 15.5.2.4); a nonallocatable
+actual with statically fewer available elements than an explicit-shape dummy
+(`Actual argument contains too few elements`); a call passing
 more actual arguments than that in-unit callee declares dummies (`More actual
 than formal arguments`); a main-program- or module-scope array whose bound is a
 function call (`array with nonconstant bounds`, e.g. `integer :: a(get_n())` or
