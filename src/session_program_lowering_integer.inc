@@ -119,7 +119,8 @@
           else if (node%base_expr_index > 0) then
               call lower_derived_component_element_load(arena, node, context, &
                                                         value, error_msg)
-          else if (node%is_array_access) then
+          else if (node%is_array_access .and. &
+              .not. is_contained_function_reference(node, context)) then
               call lower_i32_array_element(arena, node, context, value, error_msg)
           else if (is_allocatable_element_ref(node, context)) then
               call lower_i32_array_element(arena, node, context, value, error_msg)

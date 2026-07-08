@@ -127,10 +127,11 @@
             if (node%base_expr_index > 0) then
                 call lower_derived_component_element_load(arena, node, context, &
                                                           value, error_msg)
-            else if ((node%is_array_access .and. &
-                 array_access_value_kind(node, context) == VALUE_LOGICAL) .or. &
-                is_allocatable_element_ref(node, context) .or. &
-                is_declared_array_element_ref(node, context)) then
+            else if (.not. is_contained_function_reference(node, context) .and. &
+                ((node%is_array_access .and. &
+                  array_access_value_kind(node, context) == VALUE_LOGICAL) .or. &
+                 is_allocatable_element_ref(node, context) .or. &
+                 is_declared_array_element_ref(node, context))) then
                 ! Logical array element occupies an i32 slot; the load yields the
                 ! 0/1 value the logical-context callers expect. Allocatable
                 ! logical refs reuse the same i32-slot load.
@@ -160,7 +161,8 @@
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
 
-        if (node%is_array_access) then
+        if (node%is_array_access .and. &
+            .not. is_contained_function_reference(node, context)) then
             call unsupported_feature_error('array expression', &
                                            node%line, node%column, &
                                            'direct LIRIC session does not '// &
@@ -480,8 +482,9 @@
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
 
-        if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
-            .or. is_declared_array_element_ref(node, context)) then
+        if (.not. is_contained_function_reference(node, context) .and. &
+            (node%is_array_access .or. is_allocatable_element_ref(node, context) &
+             .or. is_declared_array_element_ref(node, context))) then
             call lower_array_element_address_for_kind(arena, node, context, &
                 VALUE_F32, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
@@ -641,8 +644,9 @@
                     end if
                     return
                 end if
-                if (node%is_array_access .or. &
-                    is_declared_array_element_ref(node, context)) then
+                if (.not. is_contained_function_reference(node, context) .and. &
+                    (node%is_array_access .or. &
+                     is_declared_array_element_ref(node, context))) then
                     symbol_index = find_symbol(context, node%name)
                     if (symbol_index > 0) then
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
@@ -815,8 +819,9 @@
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
 
-        if (node%is_array_access .or. is_allocatable_element_ref(node, context) &
-            .or. is_declared_array_element_ref(node, context)) then
+        if (.not. is_contained_function_reference(node, context) .and. &
+            (node%is_array_access .or. is_allocatable_element_ref(node, context) &
+             .or. is_declared_array_element_ref(node, context))) then
             call lower_array_element_address_for_kind(arena, node, context, &
                 VALUE_F64, element_addr, error_msg, 'array expression')
             if (len_trim(error_msg) > 0) return
@@ -1089,8 +1094,9 @@
                     end if
                     return
                 end if
-                if (node%is_array_access .or. &
-                    is_declared_array_element_ref(node, context)) then
+                if (.not. is_contained_function_reference(node, context) .and. &
+                    (node%is_array_access .or. &
+                     is_declared_array_element_ref(node, context))) then
                     symbol_index = find_symbol(context, node%name)
                     if (symbol_index > 0) then
                         is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
@@ -1143,6 +1149,7 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (node%base_expr_index > 0) return
+            if (is_contained_function_reference(node, context)) return
             if (.not. (node%is_array_access .or. &
                        is_declared_array_element_ref(node, context))) return
             operand_has_value_kind = &
@@ -1271,6 +1278,7 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (node%base_expr_index <= 0 .and. &
+                .not. is_contained_function_reference(node, context) .and. &
                 (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context))) then
                 call lower_i64_array_element(arena, node, context, value, error_msg)
@@ -1480,6 +1488,7 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (node%base_expr_index <= 0 .and. &
+                .not. is_contained_function_reference(node, context) .and. &
                 (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context))) then
                 call lower_i8_array_element(arena, node, context, value, error_msg)
@@ -1612,6 +1621,7 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (node%base_expr_index <= 0 .and. &
+                .not. is_contained_function_reference(node, context) .and. &
                 (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context))) then
                 call lower_i16_array_element(arena, node, context, value, error_msg)

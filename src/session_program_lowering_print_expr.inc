@@ -227,7 +227,8 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_allocatable_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_CHARACTER) then
                 if (is_allocatable_element_ref(node, context)) then
@@ -239,7 +240,8 @@
                 end if
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_allocatable_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_LOGICAL) then
                 call lower_logical_expression(arena, node_index, context, value, &
@@ -248,16 +250,17 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
-            if (is_contained_complex_function(context, node%name)) then
-                call lower_print_complex_result_call(arena, node_index, context, &
-                                                     error_msg)
-                return
-            end if
-            if (.not. node%is_array_access .and. &
-                is_contained_array_function(context, node%name)) then
-                call lower_print_array_result_call(arena, node_index, context, &
-                                                   error_msg)
-                return
+            if (allocated(node%name)) then
+                if (is_contained_complex_function(context, node%name)) then
+                    call lower_print_complex_result_call(arena, node_index, &
+                                                         context, error_msg)
+                    return
+                end if
+                if (is_contained_array_function(context, node%name)) then
+                    call lower_print_array_result_call(arena, node_index, &
+                                                       context, error_msg)
+                    return
+                end if
             end if
             ! any()/all() return LOGICAL and print as T/F (intrinsic agent).
             if (is_logical_reduction_call(arena, node_index, context)) then
@@ -267,7 +270,7 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
-            if (.not. node%is_array_access .and. allocated(node%name)) then
+            if (allocated(node%name)) then
                 if (is_contained_logical_function(context, node%name)) then
                     call lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)
@@ -292,7 +295,7 @@
                                                value, error_msg)) return
                 return
             end if
-            if (.not. node%is_array_access .and. allocated(node%name)) then
+            if (allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then
                     call lower_print_deferred_char_call(arena, node, context, &
                         error_msg)
@@ -537,7 +540,8 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_allocatable_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_CHARACTER) then
                 if (is_allocatable_element_ref(node, context)) then
@@ -549,16 +553,17 @@
                 end if
                 return
             end if
-            if (is_contained_complex_function(context, node%name)) then
-                call lower_print_complex_result_call(arena, node_index, context, &
-                                                     error_msg)
-                return
-            end if
-            if (.not. node%is_array_access .and. &
-                is_contained_array_function(context, node%name)) then
-                call lower_print_array_result_call(arena, node_index, context, &
-                                                   error_msg)
-                return
+            if (allocated(node%name)) then
+                if (is_contained_complex_function(context, node%name)) then
+                    call lower_print_complex_result_call(arena, node_index, &
+                                                         context, error_msg)
+                    return
+                end if
+                if (is_contained_array_function(context, node%name)) then
+                    call lower_print_array_result_call(arena, node_index, &
+                                                       context, error_msg)
+                    return
+                end if
             end if
             ! any()/all() return LOGICAL and print as T/F (intrinsic agent).
             if (is_logical_reduction_call(arena, node_index, context)) then
@@ -574,7 +579,7 @@
                                                          context, error_msg)
                 return
             end if
-            if (.not. node%is_array_access .and. allocated(node%name)) then
+            if (allocated(node%name)) then
                 if (is_contained_logical_function(context, node%name)) then
                     call lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)
@@ -599,7 +604,8 @@
                                                      value, error_msg)) return
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context) .or. &
                  is_allocatable_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_LOGICAL) then
@@ -610,7 +616,8 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_I64) then
                 call lower_i64_array_element(arena, node, context, value, error_msg)
@@ -620,7 +627,8 @@
                                                      value, error_msg)) return
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_I8) then
                 call lower_i8_array_element(arena, node, context, value, error_msg)
@@ -630,7 +638,8 @@
                                                     value, error_msg)) return
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_I16) then
                 call lower_i16_array_element(arena, node, context, value, error_msg)
@@ -640,7 +649,8 @@
                                                      value, error_msg)) return
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_C4) then
                 call load_complex_array_element(arena, node, context, VALUE_C4, &
@@ -650,7 +660,8 @@
                                                    im_val, error_msg)) return
                 return
             end if
-            if ((node%is_array_access .or. &
+            if (.not. is_contained_function_reference(node, context) .and. &
+                (node%is_array_access .or. &
                  is_declared_array_element_ref(node, context)) .and. &
                 array_access_value_kind(node, context) == VALUE_C8) then
                 call load_complex_array_element(arena, node, context, VALUE_C8, &
@@ -660,7 +671,7 @@
                                                    im_val, error_msg)) return
                 return
             end if
-            if (.not. node%is_array_access .and. allocated(node%name)) then
+            if (allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then
                     call lower_print_deferred_char_call(arena, node, context, &
                         error_msg)

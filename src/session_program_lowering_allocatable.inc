@@ -1349,6 +1349,7 @@
         is_ref = .false.
         if (.not. allocated(node%name)) return
         if (.not. allocated(node%arg_indices)) return
+        if (is_contained_function_reference(node, context)) return
         nargs = size(node%arg_indices)
         if (nargs < 1 .or. nargs > 2) return
         symbol_index = find_symbol(context, node%name)
@@ -1373,6 +1374,7 @@
         is_ref = .false.
         if (.not. allocated(node%name)) return
         if (.not. allocated(node%arg_indices)) return
+        if (is_contained_function_reference(node, context)) return
         nargs = size(node%arg_indices)
         if (nargs < 1 .or. nargs > 2) return
         symbol_index = find_symbol(context, node%name)

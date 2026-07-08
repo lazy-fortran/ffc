@@ -1505,6 +1505,16 @@
         end do
    end function contained_function_kind
 
+    logical function is_contained_function_reference(node, context) result(is_ref)
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+
+        is_ref = .false.
+        if (node%base_expr_index > 0) return
+        if (.not. allocated(node%name)) return
+        is_ref = contained_function_kind(context, node%name) /= 0
+    end function is_contained_function_reference
+
     logical function is_contained_deferred_char_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name

@@ -11,6 +11,8 @@ program test_session_module_array_variable_compiler
     if (.not. test_parameter_sized_size_inquiry()) all_passed = .false.
     if (.not. test_constructor_initializer()) all_passed = .false.
     if (.not. test_host_association_fill()) all_passed = .false.
+    if (.not. test_contained_function_shadows_module_array()) &
+        all_passed = .false.
     if (.not. test_real_whole_array()) all_passed = .false.
     if (.not. test_only_clause_import()) all_passed = .false.
 
@@ -96,6 +98,33 @@ contains
         test_host_association_fill = expect_exit_status( &
             source, 30, '/tmp/ffc_session_modarr_host')
     end function test_host_association_fill
+
+    logical function test_contained_function_shadows_module_array()
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  real :: x(3) = [1.5, 2.5, 3.5]'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s'//new_line('a')// &
+            '    if (x(2) == 2.5) stop 1'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    function x(n, m)'//new_line('a')// &
+            '      integer, optional :: m'//new_line('a')// &
+            '      if (present(m)) then'//new_line('a')// &
+            '        x = real(n)**m'//new_line('a')// &
+            '      else'//new_line('a')// &
+            '        x = 0.0'//new_line('a')// &
+            '      end if'//new_line('a')// &
+            '    end function x'//new_line('a')// &
+            '  end subroutine s'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  call s'//new_line('a')// &
+            'end program main'
+
+        test_contained_function_shadows_module_array = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_modarr_fn_shadow')
+    end function test_contained_function_shadows_module_array
 
     logical function test_real_whole_array()
         ! A real(8) module array printed whole-array after assignment.
