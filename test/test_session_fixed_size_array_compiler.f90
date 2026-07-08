@@ -10,6 +10,7 @@ program test_session_fixed_size_array_compiler
     if (.not. test_simple_array()) all_passed = .false.
     if (.not. test_array_parameter_bound()) all_passed = .false.
     if (.not. test_array_explicit_bounds()) all_passed = .false.
+    if (.not. test_zero_size_array_inquiry()) all_passed = .false.
     if (.not. test_array_negative_lower_bound()) all_passed = .false.
     if (.not. test_array_with_loop()) all_passed = .false.
     if (.not. test_array_variable_subscript()) all_passed = .false.
@@ -114,6 +115,18 @@ contains
             source, '           9'//new_line('a'), &
             '/tmp/ffc_session_array_explicit_bounds_test')
     end function test_array_explicit_bounds
+
+    logical function test_zero_size_array_inquiry()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(0)'//new_line('a')// &
+            '  integer :: b(3:1)'//new_line('a')// &
+            '  stop size(a) + size(b)'//new_line('a')// &
+            'end program main'
+
+        test_zero_size_array_inquiry = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_array_zero_size')
+    end function test_zero_size_array_inquiry
 
     logical function test_array_negative_lower_bound()
         character(len=*), parameter :: source = &

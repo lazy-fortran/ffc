@@ -581,6 +581,7 @@
                 error_msg = 'malformed dimension literal: '//trim(dim%value)
                 return
             end if
+            if (dim_size < 0) dim_size = 0
         class default
             error_msg = 'unsupported dimension expression (must be constant)'
         end select

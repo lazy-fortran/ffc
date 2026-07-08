@@ -1,5 +1,5 @@
 program test_session_block_data_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -12,6 +12,7 @@ program test_session_block_data_compiler
     if (.not. test_common_assignment_writes_through()) all_passed = .false.
     if (.not. test_common_declared_after_common_statement()) all_passed = .false.
     if (.not. test_common_array_shared_across_units()) all_passed = .false.
+    if (.not. test_zero_size_common_array()) all_passed = .false.
     if (.not. test_do_loop_over_common_variable()) all_passed = .false.
     if (.not. test_whole_array_data_statement()) all_passed = .false.
 
@@ -149,6 +150,23 @@ contains
         test_common_array_shared_across_units = expect_output( &
             source, expected, '/tmp/ffc_session_block_data_array_shared')
     end function test_common_array_shared_across_units
+
+    logical function test_zero_size_common_array()
+        character(len=*), parameter :: source = &
+            'subroutine test()'//new_line('a')// &
+            '  integer(4) :: n'//new_line('a')// &
+            '  real :: arr'//new_line('a')// &
+            '  parameter(n = 0)'//new_line('a')// &
+            '  common /cname/ arr(n)'//new_line('a')// &
+            '  if (n /= 0) error stop'//new_line('a')// &
+            'end subroutine test'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  call test()'//new_line('a')// &
+            'end program main'
+
+        test_zero_size_common_array = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_common_zero_size')
+    end function test_zero_size_common_array
 
     logical function test_do_loop_over_common_variable()
         ! A COMMON-bound scalar used as a counted DO loop induction variable

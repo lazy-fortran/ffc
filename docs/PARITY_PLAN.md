@@ -165,15 +165,13 @@ Current feature and correctness issues:
 - #291 negative-test acceptance.
 - #295 `gfortran.dg` compile regressions.
 - #297 separate-file submodules.
-- #304 module-array/function shadowing.
-- #305 zero-size array declarations.
 - #306 illegal-context array rejection.
 - #307, #308, #309, #310 architecture foundations.
 - #311 gauntlet worktree path resolution.
 
 Closed or stale entries removed from the active blocker list:
 
-- ffc #257, #258, #260, #294, #296, #298, #300, #303.
+- ffc #257, #258, #260, #294, #296, #298, #300, #303-#305.
 - FortFront #2840-#2842, #2844, #2846, #2848-#2858, #2868-#2871.
 - LIRIC #520-#522.
 - fo #88.

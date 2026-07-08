@@ -9,6 +9,7 @@ program test_session_module_array_variable_compiler
     all_passed = .true.
     if (.not. test_fixed_size_element_rw()) all_passed = .false.
     if (.not. test_parameter_sized_size_inquiry()) all_passed = .false.
+    if (.not. test_zero_size_module_array()) all_passed = .false.
     if (.not. test_constructor_initializer()) all_passed = .false.
     if (.not. test_host_association_fill()) all_passed = .false.
     if (.not. test_contained_function_shadows_module_array()) &
@@ -58,6 +59,20 @@ contains
         test_parameter_sized_size_inquiry = expect_exit_status( &
             source, 3, '/tmp/ffc_session_modarr_size')
     end function test_parameter_sized_size_inquiry
+
+    logical function test_zero_size_module_array()
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  integer :: a(0)'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  stop size(a)'//new_line('a')// &
+            'end program main'
+
+        test_zero_size_module_array = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_modarr_zero_size')
+    end function test_zero_size_module_array
 
     logical function test_constructor_initializer()
         ! An array-constructor initialiser folds into the global's static bytes;

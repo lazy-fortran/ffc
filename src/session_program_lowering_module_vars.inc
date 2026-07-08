@@ -160,7 +160,7 @@
                 error_msg = 'module array extent must be a compile-time constant'
                 return
             end if
-            if (array_size <= 0) then
+            if (array_size < 0) then
                 error_msg = 'module array has a non-positive extent'
                 return
             end if

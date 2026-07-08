@@ -10,8 +10,8 @@ program test_session_array_unsupported_diagnostics
 
     all_passed = .true.
     if (.not. test_array_rank8_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_array_zero_extent_diagnostic()) all_passed = .false.
-    if (.not. test_array_reversed_extent_diagnostic()) all_passed = .false.
+    if (.not. test_array_zero_extent_declaration()) all_passed = .false.
+    if (.not. test_array_reversed_extent_declaration()) all_passed = .false.
     if (.not. test_noninteger_array_declaration_diagnostic()) &
         all_passed = .false.
     if (.not. test_array_assignment_target_diagnostic()) all_passed = .false.
@@ -24,8 +24,8 @@ program test_session_array_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_whole_array_argument_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_rank8_declaration_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_zero_extent_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_reversed_extent_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_zero_extent_declaration()) all_passed = .false.
+    if (.not. test_cli_array_reversed_extent_declaration()) all_passed = .false.
     if (.not. test_cli_noninteger_array_declaration_diagnostic()) &
         all_passed = .false.
     if (.not. test_cli_array_assignment_target_diagnostic()) all_passed = .false.
@@ -53,27 +53,27 @@ contains
             '/tmp/ffc_session_array_diagnostic_test')
     end function test_array_rank8_declaration_diagnostic
 
-    logical function test_array_zero_extent_diagnostic()
+    logical function test_array_zero_extent_declaration()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  integer :: values(0)'//new_line('a')// &
             'end program main'
 
-        test_array_zero_extent_diagnostic = expect_error_contains( &
-            source, 'non-positive extent', &
+        test_array_zero_extent_declaration = expect_no_error( &
+            source, &
             '/tmp/ffc_session_array_zero_test')
-    end function test_array_zero_extent_diagnostic
+    end function test_array_zero_extent_declaration
 
-    logical function test_array_reversed_extent_diagnostic()
+    logical function test_array_reversed_extent_declaration()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(2:1)'//new_line('a')// &
+            '  integer :: values(3:1)'//new_line('a')// &
             'end program main'
 
-        test_array_reversed_extent_diagnostic = expect_error_contains( &
-            source, 'non-positive extent', &
+        test_array_reversed_extent_declaration = expect_no_error( &
+            source, &
             '/tmp/ffc_session_array_reversed_test')
-    end function test_array_reversed_extent_diagnostic
+    end function test_array_reversed_extent_declaration
 
     logical function test_noninteger_array_declaration_diagnostic()
         ! real(4) arrays are now supported; verify no diagnostic.
@@ -209,27 +209,27 @@ contains
             '/tmp/ffc_cli_array_diagnostic_test')
     end function test_cli_array_rank8_declaration_diagnostic
 
-    logical function test_cli_array_zero_extent_diagnostic()
+    logical function test_cli_array_zero_extent_declaration()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  integer :: values(0)'//new_line('a')// &
             'end program main'
 
-        test_cli_array_zero_extent_diagnostic = expect_cli_error_contains( &
-            source, 'non-positive extent', &
+        test_cli_array_zero_extent_declaration = expect_cli_no_error( &
+            source, &
             '/tmp/ffc_cli_array_zero_test')
-    end function test_cli_array_zero_extent_diagnostic
+    end function test_cli_array_zero_extent_declaration
 
-    logical function test_cli_array_reversed_extent_diagnostic()
+    logical function test_cli_array_reversed_extent_declaration()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(2:1)'//new_line('a')// &
+            '  integer :: values(3:1)'//new_line('a')// &
             'end program main'
 
-        test_cli_array_reversed_extent_diagnostic = expect_cli_error_contains( &
-            source, 'non-positive extent', &
+        test_cli_array_reversed_extent_declaration = expect_cli_no_error( &
+            source, &
             '/tmp/ffc_cli_array_reversed_test')
-    end function test_cli_array_reversed_extent_diagnostic
+    end function test_cli_array_reversed_extent_declaration
 
     logical function test_cli_noninteger_array_declaration_diagnostic()
         ! real(4) arrays are now supported; verify no diagnostic.

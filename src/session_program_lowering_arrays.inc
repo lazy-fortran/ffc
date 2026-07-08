@@ -357,12 +357,7 @@
                 lower_value = 1_c_int64_t
                 extent = upper_value
             end select
-            if (extent <= 0_c_int64_t) then
-                call unsupported_feature_error('array declaration', node%line, &
-                    node%column, 'array bounds produce a non-positive extent', &
-                    error_msg)
-                return
-            end if
+            if (extent < 0_c_int64_t) extent = 0_c_int64_t
             if (i == 1) array_lower_bound = int(lower_value)
         end do
     end subroutine get_assumed_size_leading_bounds
@@ -1080,10 +1075,7 @@
                 lower_value = 1_c_int64_t
                 extent = upper_value
             end select
-            if (extent <= 0_c_int64_t) then
-                error_msg = 'actual array has a non-positive extent'
-                return
-            end if
+            if (extent < 0_c_int64_t) extent = 0_c_int64_t
             if (i == 1) lower_bound = int(lower_value)
             extents(i) = int(extent)
             total = total * int(extent)
@@ -1157,13 +1149,7 @@
                 extent = upper_value
             end select
 
-            if (extent <= 0_c_int64_t) then
-                call unsupported_feature_error('array declaration', node%line, &
-                                               node%column, &
-                                               'array bounds produce a '// &
-                                               'non-positive extent', error_msg)
-                return
-            end if
+            if (extent < 0_c_int64_t) extent = 0_c_int64_t
 
             if (i == 1) then
                 array_lower_bound = int(lower_value)
@@ -1972,13 +1958,15 @@
                     if (len_trim(error_msg) > 0) return
                     context%symbols(index)%array_dim_lowers(i) = int(lower_value)
                     extent = upper_value - lower_value + 1_c_int64_t
+                    if (extent < 0_c_int64_t) extent = 0_c_int64_t
                     context%symbols(index)%array_dim_sizes(i) = int(extent)
                 class default
                     context%symbols(index)%array_dim_lowers(i) = 1
                     call eval_i32_constant(context%arena, dim_index, context, &
                                            upper_value, error_msg)
                     if (len_trim(error_msg) > 0) return
-                    context%symbols(index)%array_dim_sizes(i) = int(upper_value)
+                    context%symbols(index)%array_dim_sizes(i) = &
+                        int(max(upper_value, 0_c_int64_t))
                 end select
             end do
         end if
