@@ -19,7 +19,7 @@ program test_conformance_gauntlet_smoke
         ROOT_REPORT, ROOT_REPORT)) all_passed = .false.
     if (.not. run_smoke('repo="$PWD"; cd /tmp && timeout 120 bash '// &
         '"$repo/'//SCRIPT//'" --suite fortfront-f90 --max-files 20 '// &
-        '--ffc "$repo/build/fo/bin/ffc" --report '//TMP_CWD_REPORT, &
+        '--report '//TMP_CWD_REPORT, &
         TMP_CWD_REPORT)) all_passed = .false.
 
     if (.not. all_passed) stop 1

@@ -46,10 +46,12 @@ find_ffc() {
         return 0
     fi
     local candidate
+    local build_dir
+    build_dir="${PROJECT_DIR:-.}/build"
     # Pick the most recently built ffc. Several may coexist (build/fo/bin/ffc
     # from the fo backend, build/gfortran_*/app/ffc from fpm); an arbitrary
     # head -1 can return a stale one whose lowering predates recent fixes.
-    candidate=$(find build -name ffc -type f -executable -printf '%T@ %p\n' \
+    candidate=$(find "$build_dir" -name ffc -type f -executable -printf '%T@ %p\n' \
         2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
     if [ -n "$candidate" ]; then
         echo "$candidate"
