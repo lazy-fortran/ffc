@@ -977,9 +977,10 @@
             ! INTRINSIC only marks names as intrinsic procedures; no code.
             call set_empty(error_msg)
         case ('include_statement')
-            ! FortFront preserves INCLUDE lines in the AST without textual
-            ! expansion; there is nothing to lower at this stage.
-            call set_empty(error_msg)
+            call unsupported_feature_error('include statement', line, column, &
+                                           'direct LIRIC session does not '// &
+                                           'expand source include files', &
+                                           error_msg)
         case ('use_statement')
             call unsupported_feature_error('use statement', line, column, &
                                            'direct LIRIC session does not '// &

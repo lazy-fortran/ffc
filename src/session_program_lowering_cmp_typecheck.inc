@@ -66,6 +66,10 @@
             return
         end if
         if (is_literal(arena, node_index)) then
+            if (is_hollerith_literal(arena, node_index)) then
+                cls = CMP_CLASS_CHAR
+                return
+            end if
             if (is_logical_literal(arena, node_index)) then
                 cls = CMP_CLASS_LOGICAL
             else if (is_character_literal(arena, node_index)) then
@@ -100,3 +104,21 @@
             cls = CMP_CLASS_UNKNOWN
         end select
     end function comparison_value_kind_class
+
+    logical function is_hollerith_literal(arena, node_index) result(is_holl)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err, text
+        integer :: h_pos, n, count, ios
+
+        is_holl = .false.
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        text = trim(adjustl(value))
+        h_pos = index(lowercase_text(text), 'h')
+        if (h_pos <= 1) return
+        read (text(1:h_pos - 1), *, iostat=ios) count
+        if (ios /= 0 .or. count <= 0) return
+        n = len_trim(text)
+        is_holl = n - h_pos >= count
+    end function is_hollerith_literal

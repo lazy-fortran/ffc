@@ -11,6 +11,8 @@ program test_session_comparison_typecheck_compiler
     if (.not. test_character_vs_integer_rejected()) all_passed = .false.
     if (.not. test_integer_vs_logical_rejected()) all_passed = .false.
     if (.not. test_logical_vs_character_rejected()) all_passed = .false.
+    if (.not. test_hollerith_vs_integer_rejected()) all_passed = .false.
+    if (.not. test_integer_vs_hollerith_rejected()) all_passed = .false.
     if (.not. test_integer_comparison_still_runs()) all_passed = .false.
     if (.not. test_real_comparison_still_runs()) all_passed = .false.
     if (.not. test_character_comparison_still_runs()) all_passed = .false.
@@ -75,6 +77,30 @@ contains
         test_logical_vs_character_rejected = expect_error_contains( &
             source, 'mismatched types', '/tmp/ffc_cmp_logical_char')
     end function test_logical_vs_character_rejected
+
+    logical function test_hollerith_vs_integer_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  i = 1'//new_line('a')// &
+            '  if (4HABCD == i) stop 1'//new_line('a')// &
+            'end program main'
+
+        test_hollerith_vs_integer_rejected = expect_error_contains( &
+            source, 'mismatched types', '/tmp/ffc_cmp_hollerith_int')
+    end function test_hollerith_vs_integer_rejected
+
+    logical function test_integer_vs_hollerith_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  i = 1'//new_line('a')// &
+            '  if (i /= 4HABCD) stop 1'//new_line('a')// &
+            'end program main'
+
+        test_integer_vs_hollerith_rejected = expect_error_contains( &
+            source, 'mismatched types', '/tmp/ffc_cmp_int_hollerith')
+    end function test_integer_vs_hollerith_rejected
 
     logical function test_integer_comparison_still_runs()
         character(len=*), parameter :: source = &

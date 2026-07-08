@@ -30,6 +30,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_deallocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_include_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_unassigned_character_print_diagnostic()) &
         all_passed = .false.
@@ -56,6 +57,7 @@ program test_session_unsupported_diagnostics
     if (.not. test_cli_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_deallocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_cli_include_statement_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: unsupported direct-session features emit diagnostics'
@@ -337,6 +339,18 @@ contains
             '/tmp/ffc_session_return_test')
     end function test_return_statement_diagnostic
 
+    logical function test_include_statement_diagnostic()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  include "missing.inc"'//new_line('a')// &
+            'end program main'
+
+        test_include_statement_diagnostic = expect_error_contains( &
+            source, &
+            'unsupported include statement', &
+            '/tmp/ffc_session_include_test')
+    end function test_include_statement_diagnostic
+
     logical function test_cli_character_expression_diagnostic()
         ! A substring target keeps the unsupported diagnostic; // concatenation
         ! into a fixed-length scalar is now lowered (see the fixed-concat test).
@@ -607,5 +621,17 @@ contains
             'unsupported return statement', &
             '/tmp/ffc_cli_return_test')
     end function test_cli_return_statement_diagnostic
+
+    logical function test_cli_include_statement_diagnostic()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  include "missing.inc"'//new_line('a')// &
+            'end program main'
+
+        test_cli_include_statement_diagnostic = expect_cli_error_contains( &
+            source, &
+            'unsupported include statement', &
+            '/tmp/ffc_cli_include_test')
+    end function test_cli_include_statement_diagnostic
 
 end program test_session_unsupported_diagnostics
