@@ -189,6 +189,7 @@ module session_program_lowering
     use session_lowering_ops, only: integer_compare_predicate, &
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
+    use ast_arena_source_text, only: get_source_text
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
         get_type_for_node, mono_type_t, &
         TINT, TREAL, TCHAR, TLOGICAL, TARRAY, TCOMPLEX, TDOUBLE, TDERIVED, &
@@ -624,11 +625,11 @@ contains
         do n = 1, context%arena%size
             if (.not. node_exists(context%arena, n)) cycle
             select type (other => context%arena%entries(n)%node)
-            type is (declaration_node)
+                type is (declaration_node)
                 if (.not. declaration_is_bare_dimension(other)) cycle
                 if (.not. allocated(other%var_name)) cycle
                 if (.not. same_name(trim(other%var_name), &
-                                    trim(node%var_name))) cycle
+                    trim(node%var_name))) cycle
                 if (.not. allocated(other%dimension_indices)) return
                 node%is_array = .true.
                 node%dimension_indices = other%dimension_indices

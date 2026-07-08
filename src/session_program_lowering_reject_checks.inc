@@ -855,6 +855,137 @@
         end do
     end function arena_has_function_def_named
 
+    subroutine check_derived_type_names_not_intrinsic(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        call check_intrinsic_type_stmt_source(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (derived_type_node)
+                if (.not. allocated(nd%name)) cycle
+                if (.not. derived_type_name_is_intrinsic(nd%name)) cycle
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    nd%line, nd%column
+                error_msg = 'derived type name '''//trim(nd%name)// &
+                    ''' cannot be the same as an intrinsic type'//trim(location)
+                return
+            end select
+        end do
+    end subroutine check_derived_type_names_not_intrinsic
+
+    subroutine check_intrinsic_type_stmt_source(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source, line, name
+        logical :: found
+        integer :: pos, line_no, next_nl, col
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        pos = 1
+        line_no = 1
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            call intrinsic_type_stmt_name(line, name, col)
+            if (len_trim(name) > 0) then
+                write (location, '(" at line ",I0,", column ",I0)') line_no, col
+                error_msg = 'derived type name '''//trim(name)// &
+                    ''' cannot be the same as an intrinsic type'//trim(location)
+                return
+            end if
+            line_no = line_no + 1
+        end do
+    end subroutine check_intrinsic_type_stmt_source
+
+    subroutine intrinsic_type_stmt_name(line, name, column)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: name
+        integer, intent(out) :: column
+        character(len=:), allocatable :: lower, rest, word
+        integer :: comment_pos, word_len, i, first_nonblank, name_start, dc_pos
+
+        call set_empty(name)
+        column = 1
+        comment_pos = index(line, '!')
+        if (comment_pos > 0) then
+            if (comment_pos == 1) then
+                lower = ''
+            else
+                lower = lowercase_text(line(:comment_pos - 1))
+            end if
+        else
+            lower = lowercase_text(line)
+        end if
+        first_nonblank = verify(lower, ' '//char(9))
+        if (first_nonblank == 0) return
+        if (len_trim(lower(first_nonblank:)) <= 4) return
+        if (lower(first_nonblank:first_nonblank + 3) /= 'type') return
+        i = first_nonblank + 4
+        if (i > len(lower)) return
+        if (lower(i:i) /= ' ' .and. lower(i:i) /= char(9) .and. &
+            lower(i:i) /= ',' .and. lower(i:i) /= ':') return
+        name_start = i
+        do while (name_start <= len(lower))
+            if (lower(name_start:name_start) /= ' ' .and. &
+                lower(name_start:name_start) /= char(9)) exit
+            name_start = name_start + 1
+        end do
+        rest = adjustl(lower(name_start:))
+        if (len_trim(rest) == 0) return
+        if (rest(1:1) == '(') return
+        dc_pos = index(rest, '::')
+        if (dc_pos > 0) then
+            name_start = name_start + dc_pos + 1
+            do while (name_start <= len(lower))
+                if (lower(name_start:name_start) /= ' ' .and. &
+                    lower(name_start:name_start) /= char(9)) exit
+                name_start = name_start + 1
+            end do
+            rest = adjustl(lower(name_start:))
+            if (len_trim(rest) == 0) return
+        else if (rest(1:1) == ':' .or. rest(1:1) == ',') then
+            return
+        end if
+        word_len = scan(rest, ' '//char(9))
+        if (word_len == 0) then
+            word = trim(rest)
+        else
+            word = trim(rest(:word_len - 1))
+        end if
+        if (.not. derived_type_name_is_intrinsic(word)) return
+        name = word
+        column = name_start
+    end subroutine intrinsic_type_stmt_name
+
+    logical function derived_type_name_is_intrinsic(name) result(is_intrinsic)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: lowered
+
+        lowered = trim(lowercase_text(name))
+        select case (lowered)
+        case ('integer', 'real', 'complex', 'character', 'logical', &
+              'doubleprecision', 'doublecomplex')
+            is_intrinsic = .true.
+        case default
+            is_intrinsic = .false.
+        end select
+    end function derived_type_name_is_intrinsic
+
     ! A polymorphic (CLASS) entity that is neither a dummy argument nor
     ! allocatable nor a pointer has no way to take on a dynamic type, so the
     ! standard forbids it (gfortran: "must be dummy, allocatable or pointer",
