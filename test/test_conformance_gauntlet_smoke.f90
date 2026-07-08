@@ -4,79 +4,105 @@ program test_conformance_gauntlet_smoke
     integer, parameter :: RUN_TIMEOUT_SECONDS = 120
     character(len=*), parameter :: SCRIPT = &
         'scripts/conformance_gauntlet.sh'
-    character(len=*), parameter :: REPORT = &
-        '/tmp/ffc_gauntlet_smoke.jsonl'
+    character(len=*), parameter :: ROOT_REPORT = &
+        '/tmp/ffc_gauntlet_smoke_root.jsonl'
+    character(len=*), parameter :: TMP_CWD_REPORT = &
+        '/tmp/ffc_gauntlet_smoke_tmpcwd.jsonl'
 
-    integer :: exit_stat
-    integer :: unit
-    integer :: io_stat
-    character(len=4096) :: line
-    character(len=:), allocatable :: cmd
-    logical :: has_summary
-    logical :: has_zero_fail_summary
-    logical :: report_exists
+    logical :: all_passed
 
     print *, '=== conformance gauntlet smoke test ==='
 
-    ! Build the command string at runtime
-    cmd = 'timeout 120 bash ' // SCRIPT // &
-        ' --suite fortfront-f90 --max-files 20' // &
-        ' --report ' // REPORT
+    all_passed = .true.
+    if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+        ' --suite fortfront-f90 --max-files 20 --report '// &
+        ROOT_REPORT, ROOT_REPORT)) all_passed = .false.
+    if (.not. run_smoke('repo="$PWD"; cd /tmp && timeout 120 bash '// &
+        '"$repo/'//SCRIPT//'" --suite fortfront-f90 --max-files 20 '// &
+        '--ffc "$repo/build/fo/bin/ffc" --report '//TMP_CWD_REPORT, &
+        TMP_CWD_REPORT)) all_passed = .false.
 
-    call execute_command_line(cmd, exitstat=exit_stat)
-
-    if (exit_stat > 126) then
-        print *, 'FAIL: gauntlet timed out or killed'
-        stop 1
-    end if
-
-    if (exit_stat /= 0) then
-        print *, 'FAIL: gauntlet exited with ', exit_stat
-        stop 1
-    end if
-
-    inquire(file=REPORT, exist=report_exists)
-    if (.not. report_exists) then
-        print *, 'FAIL: no report file at ', trim(adjustl(REPORT))
-        stop 1
-    end if
-
-    has_summary = .false.
-    has_zero_fail_summary = .false.
-    open(newunit=unit, file=REPORT, status='old', action='read', &
-        iostat=io_stat)
-    if (io_stat /= 0) then
-        print *, 'FAIL: cannot open report ', trim(adjustl(REPORT))
-        stop 1
-    end if
-
-    do
-        read(unit, '(A)', iostat=io_stat) line
-        if (io_stat /= 0) exit
-        if (is_blank_or_comment(line)) cycle
-        if (index(line, '"status":"SUMMARY"') > 0) then
-            has_summary = .true.
-            if (index(line, '"fail":0') > 0) then
-                has_zero_fail_summary = .true.
-            end if
-            exit
-        end if
-    end do
-    close(unit)
-
-    if (.not. has_summary) then
-        print *, 'FAIL: no SUMMARY record in report'
-        stop 1
-    end if
-
-    if (.not. has_zero_fail_summary) then
-        print *, 'FAIL: SUMMARY record has nonzero fail count'
-        stop 1
-    end if
-
+    if (.not. all_passed) stop 1
     print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
 
 contains
+
+    logical function run_smoke(cmd, report) result(ok)
+        character(len=*), intent(in) :: cmd
+        character(len=*), intent(in) :: report
+        integer :: exit_stat
+        integer :: unit
+        integer :: io_stat
+        character(len=4096) :: line
+        logical :: has_summary
+        logical :: has_zero_fail_summary
+        logical :: has_expected_total
+        logical :: report_exists
+
+        ok = .false.
+        call execute_command_line('rm -f '//report)
+        call execute_command_line(cmd, exitstat=exit_stat)
+
+        if (exit_stat > 126) then
+            print *, 'FAIL: gauntlet timed out or killed'
+            return
+        end if
+
+        if (exit_stat /= 0) then
+            print *, 'FAIL: gauntlet exited with ', exit_stat
+            return
+        end if
+
+        inquire(file=report, exist=report_exists)
+        if (.not. report_exists) then
+            print *, 'FAIL: no report file at ', trim(adjustl(report))
+            return
+        end if
+
+        has_summary = .false.
+        has_zero_fail_summary = .false.
+        has_expected_total = .false.
+        open(newunit=unit, file=report, status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: cannot open report ', trim(adjustl(report))
+            return
+        end if
+
+        do
+            read(unit, '(A)', iostat=io_stat) line
+            if (io_stat /= 0) exit
+            if (is_blank_or_comment(line)) cycle
+            if (index(line, '"status":"SUMMARY"') > 0) then
+                has_summary = .true.
+                if (index(line, '"fail":0') > 0) then
+                    has_zero_fail_summary = .true.
+                end if
+                if (index(line, '"total":20') > 0) then
+                    has_expected_total = .true.
+                end if
+                exit
+            end if
+        end do
+        close(unit)
+
+        if (.not. has_summary) then
+            print *, 'FAIL: no SUMMARY record in report'
+            return
+        end if
+
+        if (.not. has_zero_fail_summary) then
+            print *, 'FAIL: SUMMARY record has nonzero fail count'
+            return
+        end if
+
+        if (.not. has_expected_total) then
+            print *, 'FAIL: SUMMARY record does not include total 20'
+            return
+        end if
+
+        ok = .true.
+    end function run_smoke
 
     logical function is_blank_or_comment(line)
         character(len=*), intent(in) :: line

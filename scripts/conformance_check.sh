@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
 
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PRIMARY_REPO_ROOT="$(resolve_primary_checkout_root "$PROJECT_DIR")"
+CORPUS_PARENT="$(dirname "$PRIMARY_REPO_ROOT")"
 GAUNTLET="$SCRIPT_DIR/conformance_gauntlet.sh"
 
 # Defaults
@@ -51,10 +53,10 @@ else
     SUITES=""
     for s in $ALL_SUITES; do
         case "$s" in
-            fortfront-f90) root="${FFC_FORTFRONT_DIR:-../fortfront}/examples/f90" ;;
-            fortfront-lf)  root="${FFC_FORTFRONT_DIR:-../fortfront}/examples/lf" ;;
-            lfortran)      root="${FFC_LFORTRAN_DIR:-../lfortran}/integration_tests" ;;
-            gfortran-dg)   root="${FFC_GFORTRAN_DG_DIR:-../gcc/gcc/testsuite/gfortran.dg}" ;;
+            fortfront-f90) root="${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/f90" ;;
+            fortfront-lf)  root="${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/lf" ;;
+            lfortran)      root="${FFC_LFORTRAN_DIR:-$CORPUS_PARENT/lfortran}/integration_tests" ;;
+            gfortran-dg)   root="${FFC_GFORTRAN_DG_DIR:-$CORPUS_PARENT/gcc/gcc/testsuite/gfortran.dg}" ;;
         esac
         if [ -d "$root" ]; then
             SUITES="$SUITES $s"

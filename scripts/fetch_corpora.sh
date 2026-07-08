@@ -18,7 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib_conformance.sh"
+REPO_ROOT="$(resolve_primary_checkout_root "$(dirname "$SCRIPT_DIR")")"
 PARENT="$(dirname "$REPO_ROOT")"
 
 LFORTRAN_URL="https://github.com/lfortran/lfortran"

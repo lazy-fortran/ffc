@@ -14,6 +14,31 @@
 
 set -uo pipefail
 
+resolve_primary_checkout_root() {
+    local fallback="$1"
+    local common_dir
+    local top
+
+    common_dir=$(git -C "$fallback" rev-parse --path-format=absolute \
+        --git-common-dir 2>/dev/null) || {
+        cd "$fallback" && pwd
+        return
+    }
+
+    if [ "$(basename "$common_dir")" = ".git" ]; then
+        dirname "$common_dir"
+        return
+    fi
+
+    top=$(git -C "$fallback" rev-parse --path-format=absolute \
+        --show-toplevel 2>/dev/null) || true
+    if [ -n "$top" ]; then
+        echo "$top"
+    else
+        cd "$fallback" && pwd
+    fi
+}
+
 # Resolve the ffc binary. Priority: --ffc arg > FFC_BIN env > build/ tree > PATH.
 find_ffc() {
     if [ -n "${FFC_BIN:-}" ]; then

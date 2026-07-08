@@ -28,6 +28,9 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PRIMARY_REPO_ROOT="$(resolve_primary_checkout_root "$PROJECT_DIR")"
+CORPUS_PARENT="$(dirname "$PRIMARY_REPO_ROOT")"
 
 # Defaults
 SUITES="fortfront-f90 fortfront-lf lfortran gfortran-dg"
@@ -79,13 +82,13 @@ mkdir -p "$(dirname "$REPORT")"
 resolve_suite_root() {
     case "$SUITE" in
         fortfront-f90)
-            echo "${FFC_FORTFRONT_DIR:-../fortfront}/examples/f90" ;;
+            echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/f90" ;;
         fortfront-lf)
-            echo "${FFC_FORTFRONT_DIR:-../fortfront}/examples/lf" ;;
+            echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/lf" ;;
         lfortran)
-            echo "${FFC_LFORTRAN_DIR:-../lfortran}/integration_tests" ;;
+            echo "${FFC_LFORTRAN_DIR:-$CORPUS_PARENT/lfortran}/integration_tests" ;;
         gfortran-dg)
-            echo "${FFC_GFORTRAN_DG_DIR:-../gcc/gcc/testsuite/gfortran.dg}" ;;
+            echo "${FFC_GFORTRAN_DG_DIR:-$CORPUS_PARENT/gcc/gcc/testsuite/gfortran.dg}" ;;
     esac
 }
 
@@ -93,13 +96,13 @@ resolve_suite_root() {
 resolve_xfail_manifest() {
     local safe_suite
     safe_suite=${SUITE//-/_}
-    echo "test/conformance/xfail_${safe_suite}.txt"
+    echo "$PROJECT_DIR/test/conformance/xfail_${safe_suite}.txt"
 }
 
 resolve_skip_manifest() {
     local safe_suite
     safe_suite=${SUITE//-/_}
-    echo "test/conformance/skip_${safe_suite}.txt"
+    echo "$PROJECT_DIR/test/conformance/skip_${safe_suite}.txt"
 }
 
 # File extension for single-extension suites.
