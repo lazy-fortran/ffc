@@ -252,6 +252,165 @@
         end select
     end function cmp_class_name
 
+    subroutine check_gcc_calling_convention_assignments(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, parameter :: max_attrs = 128
+        character(len=64) :: names(max_attrs)
+        character(len=16) :: conventions(max_attrs)
+        character(len=:), allocatable :: lhs_name, rhs_name, lhs_conv, rhs_conv
+        character(len=:), allocatable :: attr_name, attr_conv, err
+        character(len=64) :: location
+        integer :: attr_count, n, line, col
+
+        call set_empty(error_msg)
+        attr_count = 0
+        names = ''
+        conventions = ''
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (comment_node)
+                call parse_gcc_calling_convention_comment(nd%text, attr_name, &
+                                                          attr_conv)
+                if (len_trim(attr_name) > 0) then
+                    call add_gcc_calling_convention(names, conventions, &
+                        attr_count, attr_name, attr_conv)
+                end if
+            end select
+        end do
+        if (attr_count == 0) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (pointer_assignment_node)
+                if (.not. is_identifier(arena, nd%pointer_index)) cycle
+                if (.not. is_identifier(arena, nd%target_index)) cycle
+                call get_identifier_name(arena, nd%pointer_index, lhs_name, err)
+                if (len_trim(err) > 0) cycle
+                call get_identifier_name(arena, nd%target_index, rhs_name, err)
+                if (len_trim(err) > 0) cycle
+                lhs_conv = gcc_calling_convention_for_name(names, conventions, &
+                                                           attr_count, lhs_name)
+                rhs_conv = gcc_calling_convention_for_name(names, conventions, &
+                                                           attr_count, rhs_name)
+                if (lhs_conv /= rhs_conv) then
+                    line = get_node_line(arena, n)
+                    col = get_node_column(arena, n)
+                    if (line > 0 .and. col > 0) then
+                        write (location, '(" at line ",I0,", column ",I0)') &
+                            line, col
+                    else
+                        location = ''
+                    end if
+                    error_msg = 'mismatch in the calling convention'// &
+                        trim(location)
+                    return
+                end if
+            end select
+        end do
+    end subroutine check_gcc_calling_convention_assignments
+
+    subroutine parse_gcc_calling_convention_comment(text, name, convention)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: name, convention
+        character(len=:), allocatable :: line, rest, list_text, items(:)
+        integer :: sep, item_count
+
+        call set_empty(name)
+        call set_empty(convention)
+        line = trim(adjustl(lowercase_text(text)))
+        if (len(line) < 5) return
+        if (line(1:5) /= '!gcc$') return
+        rest = adjustl(line(6:))
+        if (.not. starts_with_word(rest, 'attributes')) return
+        if (len(rest) <= len('attributes')) return
+        rest = adjustl(rest(len('attributes') + 1:))
+        if (starts_with_word(rest, 'cdecl')) then
+            convention = 'cdecl'
+        else if (starts_with_word(rest, 'stdcall')) then
+            convention = 'stdcall'
+        else if (starts_with_word(rest, 'fastcall')) then
+            convention = 'fastcall'
+        else
+            call set_empty(convention)
+            return
+        end if
+        sep = index(rest, '::')
+        if (sep <= 0) then
+            call set_empty(convention)
+            return
+        end if
+        list_text = adjustl(rest(sep + 2:))
+        call split_csv(list_text, items, item_count)
+        if (item_count <= 0) then
+            call set_empty(convention)
+            return
+        end if
+        name = leading_identifier(items(1))
+        if (len_trim(name) == 0) call set_empty(convention)
+    end subroutine parse_gcc_calling_convention_comment
+
+    subroutine add_gcc_calling_convention(names, conventions, attr_count, &
+                                          name, convention)
+        character(len=64), intent(inout) :: names(:)
+        character(len=16), intent(inout) :: conventions(:)
+        integer, intent(inout) :: attr_count
+        character(len=*), intent(in) :: name, convention
+        integer :: i
+
+        do i = 1, attr_count
+            if (same_name(names(i), name)) then
+                conventions(i) = convention
+                return
+            end if
+        end do
+        if (attr_count >= size(names)) return
+        attr_count = attr_count + 1
+        names(attr_count) = trim(name)
+        conventions(attr_count) = trim(convention)
+    end subroutine add_gcc_calling_convention
+
+    function gcc_calling_convention_for_name(names, conventions, attr_count, &
+                                             name) result(convention)
+        character(len=64), intent(in) :: names(:)
+        character(len=16), intent(in) :: conventions(:)
+        integer, intent(in) :: attr_count
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: convention
+        integer :: i
+
+        call set_empty(convention)
+        do i = 1, attr_count
+            if (same_name(names(i), name)) then
+                convention = trim(conventions(i))
+                return
+            end if
+        end do
+    end function gcc_calling_convention_for_name
+
+    function leading_identifier(text) result(name)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: name
+        integer :: i, start_pos, end_pos
+
+        call set_empty(name)
+        start_pos = verify(text, ' '//char(9))
+        if (start_pos == 0) return
+        end_pos = start_pos - 1
+        do i = start_pos, len_trim(text)
+            if (.not. is_fortran_identifier_char(text(i:i))) exit
+            end_pos = i
+        end do
+        if (end_pos >= start_pos) name = text(start_pos:end_pos)
+    end function leading_identifier
+
+    logical function is_fortran_identifier_char(ch) result(ok)
+        character(len=1), intent(in) :: ch
+
+        ok = scan(ch, 'abcdefghijklmnopqrstuvwxyz0123456789_') > 0
+    end function is_fortran_identifier_char
+
     ! A BOZ-literal-constant is not one of the ac-value forms an array
     ! constructor may hold: it is only valid as a DATA-statement constant, an
     ! actual argument to INT/REAL/DBLE/CMPLX, or (as a gfortran extension) the

@@ -1,8 +1,25 @@
 program test_session_pointer_proc
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
 
     print *, '=== direct session procedure pointer compiler test ==='
+
+    if (.not. expect_error_contains( &
+        'program main'//new_line('a')// &
+        'interface'//new_line('a')// &
+        '  subroutine c_target()'//new_line('a')// &
+        '    !GCC$ ATTRIBUTES CDECL :: c_target'//new_line('a')// &
+        '  end subroutine c_target'//new_line('a')// &
+        '  subroutine std_target()'//new_line('a')// &
+        '    !GCC$ ATTRIBUTES STDCALL :: std_target'//new_line('a')// &
+        '  end subroutine std_target'//new_line('a')// &
+        'end interface'//new_line('a')// &
+        '!GCC$ ATTRIBUTES CDECL :: fp'//new_line('a')// &
+        'procedure(), pointer :: fp'//new_line('a')// &
+        'fp => std_target'//new_line('a')// &
+        'end program main', &
+        'calling convention', &
+        '/tmp/ffc_proc_ptr_callconv_mismatch_test')) stop 1
 
     ! B3d: procedure pointer to a contained integer function; call through it
     ! and verify the result via stop code.

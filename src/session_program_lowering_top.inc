@@ -487,6 +487,8 @@
         if (len_trim(error_msg) > 0) return
         call check_derived_type_names_not_intrinsic(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_gcc_calling_convention_assignments(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call check_scope_class_declarations(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_automatic_storage_association(arena, error_msg)
