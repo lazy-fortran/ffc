@@ -1,5 +1,5 @@
 program test_session_derived_empty_type_compiler
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_exit_status
     implicit none
 
     logical :: all_passed

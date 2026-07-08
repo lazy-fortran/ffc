@@ -1,216 +1,280 @@
 # Corpus Parity Plan
 
-Goal: 100% corpus parity with gfortran and lfortran on **compile and runtime
-correctness**, plus tracked compile/runtime performance, across the lfortran
-`integration_tests`, `gfortran.dg`, and FortFront example corpora. Standard
-Fortran is prioritized over lazy extensions. Fixes are authorized across ffc,
-FortFront, LIRIC, and fo.
+Goal: 100% parity for standard Fortran programs that are in scope for `ffc`:
+compile success, correct rejection of invalid programs, runtime output matching
+`gfortran -w`, and tracked compile/runtime performance. The measured corpora are
+FortFront examples, LFortran `integration_tests`, and the conformant runnable
+part of GCC `gfortran.dg`.
 
-Live scoreboard: issue #299 (pass rates + performance, updated each session).
-This document is the durable overview of every open issue and the phased plan
-to close them. Update it when the issue set or phase boundaries change.
+OpenMP, OpenACC, vendor extensions, compiler-flag tests, and directive-harness
+tests are not parity targets. ISO Fortran parallel features are in scope for
+full standard parity, including coarrays and image-control semantics, but they
+are late runtime work because they need single-image and multi-image semantics.
 
-## Status snapshot
+Live scoreboard: issue #299. This file is the durable architecture and issue
+map. Update it when issue state, manifest counts, standard scope, or phase
+boundaries change.
 
-| Suite | PASS | FAIL | XFAIL / remaining | TOTAL |
-|-------|-----:|-----:|------------------:|------:|
-| fortfront-f90 | 324 | 0 | 102 | 426 |
-| fortfront-lf  | 196 | 0 | 67  | 263 |
-| lfortran      | 751 | 1 | 3519 | 4280 |
-| gfortran-dg   | 1143 | 256 | 2159 (+2371 excluded) | 5938 |
+## Current State
 
-Distance to 100% (files still failing or expected-fail, the real backlog):
-lfortran ~3520, gfortran-dg ~2415 conformant, fortfront 102 f90 + 67 lf.
-`gfortran.dg` is not a 100% target: 2371 files are error-detection, deprecated,
-or vendor-extension tests excluded per `docs/CONFORMANCE.md`; the goal is its
-runnable conformant subset plus correct rejection of its negative tests.
+Current checked-in manifest counts in this checkout:
 
-Two correctness debts tracked separately from feature coverage:
-- **Negative-test acceptance (#291):** ffc accepts ~240 `gfortran.dg` invalid
-  programs it should reject. This grows as features land and must be reversed
-  by rejection diagnostics.
-- **Silent miscompiles (#280):** a full scan finds ~186 xfailed lfortran files
-  that compile and run but print output differing from gfortran (many print
-  nothing where gfortran prints a result). These are the highest-severity bugs.
+| Suite | XFAIL entries | SKIP entries |
+|-------|--------------:|-------------:|
+| fortfront-f90 | 103 | 0 |
+| fortfront-lf  | 60  | 0 |
+| lfortran      | 3425 | 0 |
+| gfortran-dg   | 2121 | 2371 |
 
-## Open-issue inventory
+Latest recorded full-dashboard state in #299 after wave 14:
 
-### ffc (this repo)
+| Suite | PASS | Notes |
+|-------|-----:|-------|
+| fortfront-f90 | 336 | Near complete; one local/CI gfortran-version XPASS can appear. |
+| fortfront-lf  | 204 | No gfortran oracle for lazy syntax. |
+| lfortran      | 837 | Remaining backlog is mostly feature stacking and architecture. |
+| gfortran-dg   | 1176 | Positive gains are offset by invalid-program acceptance debt. |
 
-Umbrella and epics (the compliance spine, #272):
-- **#272** path to F95/2003 + 100% corpus (umbrella).
-- **#262** E1 lower FortFront-inferred (lazy/implicit) declarations.
-- **#263** E2 module system and separate compilation.
-- **#264** E3 array lowering coverage.
-- **#265** E4 derived-type coverage.
-- **#266** E5 procedure results, dummies, argument passing.
-- **#267** E6 scalar type coverage.
-- **#268** E7 Fortran runtime library (`ffc/runtime/`) and I/O.
-- **#269** E8 numeric precision parity and intrinsic breadth.
-- **#270** E9 control flow and remaining statement nodes.
-- **#271** E10 drive corpora to 100% and gate in CI.
+Local verification command:
 
-Feature gaps (each a bucket of xfailed files):
-- **#273** runtime polymorphism: SELECT TYPE, class(T), class allocatable
-  (needs vtables - hard frontier).
-- **#274** separate-file modules: emit/consume `.fmod`, resolve external USE.
-- **#275** top-level external procedures as program units.
-- **#276** remaining array forms: char/derived element arrays, rank-2 sections,
-  vector subscripts, multi-dim/runtime allocatable.
-- **#277** remaining control flow: computed goto, EQUIVALENCE, directives.
-- **#278** remaining I/O: E/EN descriptors, formatted read, scratch, complex(4).
-- **#279** remaining intrinsics: uint, string, array intrinsics.
-- **#281** lazy-Fortran support: inference, walrus, global scope, monomorphization.
-- **#284** separate compilation: duplicate runtime-helper symbols.
-- **#286** file:line:col diagnostics on stderr plus `--json`.
-- **#294** mixed-kind generic dispatch per call-site argument kinds.
-- **#303** generic dispatch rank tracking: same-kind specifics distinguished by
-  argument rank (scalar vs array), resolved in PR #312.
-- **#297** separate-file submodules from `.fmod`.
+```bash
+LIBRARY_PATH=/path/to/liric/build fpm test
+```
 
-Correctness bugs:
-- **#257** real(8) function dummy arguments not lowered as real.
-- **#258** nested real intrinsic argument (is_f32 misses intrinsic results).
-- **#260** libm float32/64 precision mismatch.
-- **#280** compiles-but-mismatches-gfortran (the ~186 silent miscompiles).
-- **#290** ICE "allocate already allocated: context" (31 dg files).
-- **#291** negative-test acceptance (~240 dg files, missing rejections).
-- **#295** 13 dg compile regressions on pre-baseline files.
-- **#296** bind(c) module scalars break host association.
-- **#298** latent module-export memory corruption (needs asan).
-- **#300** real scalar reduction in a DO loop kept only the last term - FIXED
-  this session; keep as a template for the #280 silent-miscompile class.
+passed, including `test_session_integer8_function_compiler`.
 
-Process/triage: **#261** conformance drift detection, **#282** harden prior
-work + re-land lazy-procedure cluster, **#283** lfortran corpus triage,
-**#299** parity dashboard (living).
+## Requirements
 
-### FortFront (parser/AST gaps that block ffc corpus files)
+- **REQ-001 Correct positive behavior:** every valid in-scope corpus file
+  either compiles and runs with output/exit matching `gfortran -w`, or is listed
+  in an xfail manifest with an owned issue.
+- **REQ-002 Correct negative behavior:** invalid standard programs reject with a
+  source diagnostic. Negative `gfortran.dg` acceptance is a correctness bug, not
+  feature progress.
+- **REQ-003 No silent partial lowering:** unsupported constructs must stop with
+  diagnostics, never compile to wrong output.
+- **REQ-004 Architecture before breadth:** descriptor, scope, module-artifact,
+  procedure-ABI, runtime, and diagnostic foundations land before more
+  per-feature patches that would duplicate those mechanisms.
+- **REQ-005 Fast iteration:** `fo` remains the normal loop. Native `ffc`
+  backends optimize compile latency; LLVM/LIRIC performance work must not slow
+  the default edit-test cycle.
+- **REQ-006 Issue quality:** every open implementation issue is PR-sized,
+  tagged by difficulty, and contains requirements, files, scaffolding, positive
+  and negative tests, non-goals, and copy-pasteable verification.
 
-Each blocks whole clusters and must be fixed upstream (route root-cause work to
-a strong model in a FortFront worktree):
-- **#2848** old-style DIMENSION statement parsed as a bare identifier.
-- **#2849** DO CONCURRENT rejects the F2018 type-spec index form.
-- **#2850** multi-unit split duplicates a program_node.
-- **#2851** implicit-typing synthesis skips procedure bodies.
-- **#2852** COMMON block named "block" loses its name.
-- **#2853** BLOCK DATA not terminated by a bare END.
-- **#2854** uppercase INTERFACE/MODULE PROCEDURE hide a generic interface.
-- **#2855** EXTERNAL statement dropped from a program body.
-- **#2856** function-statement integer kind dropped.
-- **#2857** interface-body-form specifics dropped.
-- **#2858** double-precision-function parses to a placeholder node.
-- Infra: **#2840-2842** arena deep-copy/clone, **#2844** LSP reparse budget,
-  **#2846** formatter drops inline comments.
+## In-Scope Standard Surface
 
-### LIRIC (backend)
+Full parity covers these standard Fortran families, ordered by likely substrate
+dependency rather than by standard year:
 
-- **#520** backend C-API coordination for the compliance path.
-- **#521** x86-64 ICMP-to-memory miscompile (ffc works around via select_value;
-  removing the workaround depends on this).
-- **#522** LLVM session backend is JIT-only + emits a duplicate `snprintf`
-  declaration - blocks the LLVM-backend leg of the performance comparison.
+- Source forms and legacy standard features: fixed/free form, continuation,
+  labels, `FORMAT`, `DATA`, `COMMON`, `EQUIVALENCE`, `BLOCK DATA`, arithmetic
+  IF, assigned/computed GOTO, and standard-era Hollerith where valid.
+- Program units and scoping: main programs, external procedures, internal
+  procedures, modules, submodules, host/use association, `import`,
+  accessibility, renaming, and intrinsic/non-intrinsic module distinction.
+- Declarations and typing: implicit rules, `implicit none(type, external)`,
+  attributes, parameters, named constants, kind/len selectors, enums, and BOZ.
+- Scalars and expressions: integer, real, complex, logical, character, standard
+  operators and precedence, conversions, constant folding, and type/kind/rank
+  checks.
+- Arrays: explicit, assumed, deferred, assumed-size, assumed-rank, rank 0-15
+  semantics, lower bounds, sections, vector subscripts, constructors,
+  implied-DO, `WHERE`, `FORALL`, whole-array ops, and elemental semantics.
+- Allocation and descriptors: allocatable scalars, arrays, components, results,
+  dummies, pointer association/remapping, automatic/runtime arrays, and
+  `allocate` with `source`, `mold`, `stat`, and `errmsg`.
+- Derived types and OOP: constructors, defaults, nested/array/allocatable/
+  pointer components, PDTs, extension, `class`, `select type`,
+  type-bound procedures, generic bindings, and finalizers.
+- Procedures and interfaces: explicit and abstract interfaces, generic
+  resolution, optional/keyword arguments, procedure pointers, elemental/pure/
+  recursive procedures, result variables, and external procedure units.
+- Control flow: `if`, `select case`, `select rank`, `select type`, `do`,
+  `do concurrent`, `block`, `associate`, `exit`, `cycle`, `stop`, `error stop`,
+  and `return`.
+- I/O: list-directed, formatted read/write/print, internal I/O, files, units,
+  scratch, `inquire`, namelist, stream/asynchronous/wait/flush, and full edit
+  descriptors.
+- Intrinsics and intrinsic modules: full intrinsic set, `iso_c_binding`,
+  `iso_fortran_env`, IEEE modules, kind inquiry, array/string/bit/math
+  intrinsics.
+- C interop: `bind(c)`, interoperable types/procedures/enums, C pointers,
+  procedure pointers, `value`, and name rules.
+- ISO parallel features: coarrays, image control, collectives, atomics, teams,
+  and events. Keep this isolated behind a runtime plan.
 
-### fo (build tool)
+Lazy/LFortran scope from `../standard`:
 
-Parity-relevant: **#88** transient parallel-build race (occasionally inflates
-gauntlet FAIL). Adjacent: **#55-57** fortfront link / LSP / `.lf` support,
-**#59-62** deep lint/fmt and fortrun retirement. Not in parity scope:
-**#1-7** the store/capsule/HPC backlog.
+- LFortran standard defaults: implicit typing off, implicit interfaces off,
+  bounds checks on, default `real(8)`, default `intent(in)`, predefined `dp`.
+- Infer mode: top-level script/global scope, `:=`, first-assignment inference,
+  inferred arrays/derived/scalars, and automatic array reallocation.
+- Generics/templates: Fortran 2028 `TEMPLATE`, `REQUIREMENT`, `REQUIRE(S)`,
+  `INSTANTIATE`, deferred type/constant/procedure declarations.
+- LFortran extensions: inline instantiation syntaxes and trait syntax including
+  `implements`, `sealed`, and `initial`.
+- Monomorphization across modules and infer-mode scopes with stable ABI names.
 
-## Gap analysis (what the remaining backlog actually is)
+## Architecture Foundations
 
-From per-file triage (re-run `scratchpad/triage.py <suite>` after each wave;
-first-error clustering is a coarse proxy - probe files for the real gap):
+These issues should be treated as architecture work. Prefer hard-model review,
+small child issues, and zero-regression gates.
 
-- **scalar-type bucket (~250):** heterogeneous - derived types with
-  allocatable/pointer components, class(T), complex arrays. Needs feature
-  stacking; single features land as foundations without clearing files.
-- **function-call bucket (~365):** a grab-bag - calls to module/top-level/
-  statement functions, array-valued results, transfer, elemental dispatch.
-- **array bucket (~150):** assumed-shape runtime bounds, runtime-sized locals,
-  vector subscripts, rank-2 sections.
-- **character bucket (~200):** deferred/assumed-length, char arrays as dummies.
-- **derived bucket (~130):** allocatable-array + pointer components, arrays of
-  derived, deferred-length char components.
-- **separate compilation (~31):** `separate_compilation_*b` files need #274.
-- **silent miscompiles (~186, #280)** and **negative-accept (~240, #291).**
+| Issue | Difficulty | Foundation | Why it blocks parity |
+|-------|------------|------------|----------------------|
+| #307 | hard | Unified array descriptor ABI | Required for runtime bounds, assumed/deferred/assumed-rank, sections, vector subscripts, pointer arrays, allocatables, and class arrays. |
+| #308 | hard | Two-pass symbol/scope resolution | Required for reliable host/use/block scope, forward spec expressions, shadowing, and negative diagnostics. |
+| #309 | hard | General array-expression engine | Required for runtime-shaped whole-array ops, reductions, `WHERE`, `FORALL`, constructors, elemental intrinsics, and alias-safe assignment. |
+| #310 | hard | Character/string descriptor subsystem | Required for runtime/deferred/assumed-length character variables, procedure interfaces, expression lowering, and I/O. |
+| #274/#297 | hard | Rich `.fmod` and submodule ABI | Required for separate compilation, external `use`, generics, derived layouts, dummy names, result specs, submodule parents, and module variables. |
+| #273 | hard | Polymorphism/vtable ABI | Required for dynamic `class`, runtime `select type`, overridden type-bound procedures, class allocatables, and finalization policy. |
+| #268/#278 | hard | Fortran runtime and I/O | Required to replace ad hoc `printf`/libc lowering with standard I/O, formatted records, file units, and runtime-backed intrinsics. |
+| #286/#291/#306 | medium-hard | Diagnostic and rejection gate | Required so broader positive support does not accept invalid programs silently. |
 
-## Multi-week phased plan
+Difficulty labels:
 
-Delivery is by cost-tiered agent **waves** (see Execution mechanics). Each
-phase has a measurable exit target. Phases overlap: correctness (C) runs
-alongside features (B) every wave.
+- `difficulty:easy`: local feature or rejection class, no ABI change, one or
+  two files plus tests.
+- `difficulty:medium`: subsystem work that touches several lowering paths but
+  keeps existing ABI.
+- `difficulty:hard`: ABI, architecture, cross-repo dependency, or broad
+  migration strategy.
 
-**Phase A - measurement + infrastructure. DONE.**
-Baseline all suites; `--backend {isel,copy-patch,llvm}` flag; `perf_compare.py`
-+ benchmarks; dashboard #299; per-file triage tooling. Exit: baseline recorded,
-perf table published, tracker live. (Complete.)
+## Current Open ffc Work
 
-**Phase B - feature waves (weeks 1-3).** Close corpus xfail buckets by probe-
-first waves, biggest verified levers first: derived allocatable-array/pointer
-components, function-call breadth, runtime/assumed-shape arrays, character
-breadth, array/scalar intrinsics. Interleave FortFront parser fixes
-(#2848-2858), which unblock whole clusters. Exit target: lfortran ≥ 1500 PASS,
-fortfront-f90 ≥ 360, FortFront parser blockers closed.
-Milestones: +50 lfortran files/wave early, tapering as the deep frontier is
-reached; feature-stacking waves (combine landed primitives) to clear
-multi-feature files.
+Umbrellas and epics: #263 through #272 remain the compliance spine. #262 is
+implemented; the follow-up integer(8) argument-width regression is covered by
+`test_session_integer8_function_compiler`.
 
-**Phase C - correctness hardening (weeks 1-4, continuous).**
-- **#280 silent miscompiles:** drive the ~186 wrong-output files to zero, one
-  root-cause cluster per wave (the #300 real-loop and bare-`print` fixes are the
-  template). Highest severity; front-loaded.
-- **#291 negative-test rejection:** add rejection diagnostics class by class
-  (type/kind/rank mismatch, bad kinds, duplicate declarations), gated on zero
-  valid-program regression, until dg negative-accept → 0.
-- **#295, #296, #298, #290, #260, #257, #258** individual bug fixes.
-Exit target: #280 wrong-output = 0, dg negative-accept < 20, all listed bugs
-closed or root-caused upstream.
+Current feature and correctness issues:
 
-**Phase D - hard frontiers (weeks 3-5).**
-- **#273** polymorphism/vtables (SELECT TYPE, class(T)).
-- **#274/#297** separate-file modules and submodules (`.fmod`).
-- Runtime-bound/automatic arrays, vector subscripts (#276).
-- **#294** mixed-kind generic dispatch.
-- **LIRIC #521/#522** removed workaround + working LLVM backend.
-Exit target: separate compilation and basic polymorphism land; LLVM perf leg
-measured.
+- #273 runtime polymorphism.
+- #274 separate-file modules.
+- #275 top-level external procedures.
+- #276 remaining array forms.
+- #277 remaining control flow and statements.
+- #278 remaining I/O.
+- #279 remaining intrinsics.
+- #280 compiles-but-mismatches-gfortran.
+- #281 Lazy Fortran support.
+- #284 duplicate runtime-helper symbols in separate compilation.
+- #286 structured diagnostics.
+- #290 contained-function ICE.
+- #291 negative-test acceptance.
+- #295 `gfortran.dg` compile regressions.
+- #297 separate-file submodules.
+- #304 module-array/function shadowing.
+- #305 zero-size array declarations.
+- #306 illegal-context array rejection.
+- #307, #308, #309, #310 architecture foundations.
+- #311 gauntlet worktree path resolution.
 
-**Phase E - convergence + CI gate (week 5-6).**
-Drive each gated suite to its 100% target, wire the gate in CI (#271), close
-the epic umbrellas (#272 and E1-E10), and keep the perf table green. Exit:
-CI-gated 100% conformant subset, umbrellas closed.
+Closed or stale entries removed from the active blocker list:
 
-**Phase F - performance parity (continuous).** Keep ffc(native) and, once
-LIRIC #522 lands, ffc(llvm) compile-time and runtime competitive with
-gfortran/lfortran; file LIRIC perf issues as they surface. Current: ffc
-compiles ~10x faster than gfortran, runs at gfortran -O0 class.
+- ffc #257, #258, #260, #294, #296, #298, #300, #303.
+- FortFront #2840-#2842, #2844, #2846, #2848-#2858, #2868-#2871.
+- LIRIC #520-#522.
+- fo #88.
 
-## Execution mechanics
+## Dependency State
 
-- **Waves:** a Workflow spawns N worktree-isolated agents, one per cluster,
-  cost-tiered (opus for hard/ambiguous, sonnet for mechanical, fable/gpt for
-  deep FortFront root-cause). Each probes ~8 sample files, implements the
-  dominant sub-gap, adds a behavioral test, keeps `fo test` green, and commits
-  a `wave<N>/<key>` branch without pushing.
-- **Harvest:** cherry-pick each branch onto main; resolve `SUPPORT_CONTRACT.md`
-  row conflicts with `scratchpad/rowmerge.py` (hand-merge README prose);
-  `fo clean` rebuild (delete `*lowering*.o` - `.inc` content is not hashed);
-  `fo test`; run the four gauntlets with no concurrent builds; verify the
-  stable dg positive-FAIL set (16); promote XPASS by trimming the manifest;
-  commit and push per wave.
-- **Gates:** never weaken/skip a test; a new lowering path must decline
-  gracefully, never hard-error a case a prior path accepted; every rejection
-  must re-verify valid near-misses still compile.
-- **Disk:** ~3.5 GB per worktree build tree; cap ~6-8 concurrent worktrees and
-  `git worktree remove --force` + `git worktree prune` promptly.
+### FortFront
 
-## Known-hard / blocked
+No live FortFront blocker is open for the parser/AST issues previously listed
+here. Future FortFront work should focus on public compiler queries rather than
+new ffc private-arena reach-ins:
 
-- Polymorphism (#273) needs a vtable ABI decision (coordinate via LIRIC #520).
-- Separate-file modules (#274/#297) need `.fmod` to record dummy names and a
-  mutable dummy-binding path (arena is currently `intent(in)` through lowering).
-- #298 needs asan to fix safely (layout-sensitive OOB write on module_exports).
-- Some lfortran files are blocked on the FortFront parser gaps above; ffc waves
-  cannot fix them until the upstream fix lands.
+- scopes and host/use association;
+- declarations, attributes, and inferred types;
+- procedure signatures, dummy/result metadata, generics;
+- module export/import metadata;
+- source spans and diagnostics.
+
+### LIRIC
+
+Current live blocker:
+
+- #523: LLVM backend verifier failure for `integer(8)` print (`zext` does not
+  dominate `printf` use).
+
+Closed blockers #520-#522 unblocked LLVM AOT and the performance leg. Native
+isel/copy-patch remain the fast-compile default.
+
+### fo
+
+Current parity-relevant blocker:
+
+- #98: stale object reuse after path dependency or `.inc` changes. This can
+  hide or invent failures during architecture work.
+
+Adjacent but not immediate parity blockers: #55-#57 and #59-#62.
+
+## Phased Plan
+
+### Phase 0: queue hygiene
+
+- Keep only active branches. Finished work is merged; stale worker branches are
+  deleted.
+- Every open issue is atomic or a real bug. Trackers are closed after child
+  issues are filed.
+- Apply `difficulty:*` labels in each repository.
+
+### Phase 1: architecture first
+
+1. #308 symbol/scope collection and lookup.
+2. #307 descriptor ABI for arrays and descriptor-passing calls.
+3. #310 character descriptor.
+4. #274/#297 `.fmod` schema and separate compilation.
+5. #309 array-expression engine on descriptors.
+6. #268/#278 runtime and I/O surface.
+7. #273 polymorphism/vtable ABI.
+
+Each foundation should be split into small BDD child issues. Do not land a
+large, all-at-once rewrite.
+
+### Phase 2: correctness gates in parallel
+
+- Drive #291 and #306 by diagnostic class. Every class needs invalid fixtures
+  and valid near-misses.
+- Drive #280 by wrong-output cluster. Each fix compares combined stdout/stderr
+  and exit status against `gfortran -w`.
+- Close #290, #295, #304, #305 with focused behavioral tests.
+
+### Phase 3: feature families
+
+With the foundations in place, clear feature buckets:
+
+- arrays and descriptors (#264/#276);
+- derived/OOP (#265/#273);
+- procedure ABI and generics (#266/#274/#297);
+- scalar kinds and intrinsics (#267/#269/#279);
+- runtime/I/O (#268/#278);
+- control flow and legacy forms (#270/#277);
+- Lazy/LFortran and Fortran 2028 generic features (#281).
+
+### Phase 4: full gates
+
+- Promote XPASS manifests after every wave.
+- Gate FortFront examples, LFortran integration tests, and the conformant
+  `gfortran.dg` subset in CI.
+- Keep skip reasons explicit.
+- Keep performance tracking for native fast-compile and LLVM optimized paths.
+
+## Issue Template Requirements
+
+Each implementation issue should contain:
+
+- `REQ-001`, `REQ-002`, ... requirements in BDD form.
+- Exact files to edit.
+- Syntax or behavior to implement, with a valid example.
+- Scaffold naming actual routines and data structures.
+- Positive fixtures with expected output.
+- Negative fixtures with diagnostic class.
+- Non-goals.
+- Copy-pasteable verification commands.
+- `difficulty:easy`, `difficulty:medium`, or `difficulty:hard`.
+
+Hard foundation issues should describe strategy and migration steps rather than
+pretending to be a single 300-line patch.

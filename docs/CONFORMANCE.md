@@ -121,6 +121,24 @@ Alternatively, set the environment variables to point at existing checkouts:
 When the conformance check script finds the directory, it includes the suite
 automatically. When absent, it prints a SKIP message.
 
+## Current checked-in manifests
+
+The manifest files are the local gate's source of truth. As of this checkout
+they contain these normalized entry counts, ignoring comments and blank lines:
+
+| Manifest | Entries |
+|---|---:|
+| `test/conformance/xfail_fortfront_f90.txt` | 103 |
+| `test/conformance/xfail_fortfront_lf.txt` | 60 |
+| `test/conformance/xfail_lfortran.txt` | 3425 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2121 |
+| `test/conformance/skip_lfortran.txt` | 0 |
+| `test/conformance/skip_gfortran_dg.txt` | 2371 |
+
+Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
+snapshot. The seed baselines below are historical starting points, not current
+scoreboard values.
+
 ## JSONL output
 
 One record per attempted file:

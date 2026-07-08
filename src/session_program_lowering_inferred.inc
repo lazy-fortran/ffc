@@ -141,6 +141,13 @@
                 end do
             end if
         type is (function_def_node)
+            if (allocated(node%name) .and. len_trim(node%name) > 0) then
+                call add_explicit_decl_name(context, node%name)
+            end if
+            if (allocated(node%result_variable) .and. &
+                len_trim(node%result_variable) > 0) then
+                call add_explicit_decl_name(context, node%result_variable)
+            end if
             if (allocated(node%body_indices)) then
                 do i = 1, size(node%body_indices)
                     call mark_explicit_declarations(arena, node%body_indices(i), &
@@ -148,6 +155,9 @@
                 end do
             end if
         type is (subroutine_def_node)
+            if (allocated(node%name) .and. len_trim(node%name) > 0) then
+                call add_explicit_decl_name(context, node%name)
+            end if
             if (allocated(node%body_indices)) then
                 do i = 1, size(node%body_indices)
                     call mark_explicit_declarations(arena, node%body_indices(i), &

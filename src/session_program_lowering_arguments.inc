@@ -8,6 +8,15 @@
         case (VALUE_I32, VALUE_LOGICAL)
             if (.not. emit_i32_store(context%session,  &
                 value, context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_I64)
+            if (.not. emit_i64_store(context%session, value, &
+                context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_I8)
+            if (.not. emit_i8_store(context%session, value, &
+                context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_I16)
+            if (.not. emit_i16_store(context%session, value, &
+                context%symbols(symbol_index)%address, error_msg)) return
         case (VALUE_F32)
             if (.not. emit_liric_f32_store( &
                 context%session, value, context%symbols(symbol_index)%address, &
@@ -862,6 +871,12 @@ integer function expression_value_kind(arena, node_index, context, &
         case (VALUE_LOGICAL)
             call lower_logical_expression(arena, node_index, context, value, &
                                           error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, value, error_msg)
         case default
             call lower_i32_expression(arena, node_index, context, value, error_msg)
         end select
@@ -929,6 +944,15 @@ integer function expression_value_kind(arena, node_index, context, &
                                               error_msg)) return
             case (VALUE_I32, VALUE_LOGICAL)
                 if (.not. emit_i32_load(context%session, args(i), value, &
+                                                        error_msg)) return
+            case (VALUE_I64)
+                if (.not. emit_i64_load(context%session, args(i), value, &
+                                                        error_msg)) return
+            case (VALUE_I8)
+                if (.not. emit_i8_load(context%session, args(i), value, &
+                                                        error_msg)) return
+            case (VALUE_I16)
+                if (.not. emit_i16_load(context%session, args(i), value, &
                                                         error_msg)) return
             case default
                 error_msg = 'direct LIRIC session cannot copy back this argument'
