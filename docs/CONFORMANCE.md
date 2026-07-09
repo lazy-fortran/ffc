@@ -195,11 +195,12 @@ Fields:
 | `ffc_exit` | int | ffc exit code (0 = built and ran) |
 | `ref_exit` | int | gfortran exit code (0 = built and ran) |
 | `note` | string | Human-readable explanation |
+| `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
 
 A final SUMMARY record closes the file:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"total":21}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21}
 ```
 
 ## Disposition states
@@ -224,6 +225,9 @@ The `skip` summary count is the number of files listed in
 `test/conformance/skip_<suite>.txt`. Skip lines use the format
 `basename.f90 # reason`. They are explicit entries, not silent drops.
 
+The `warning_unchecked` count is the number of warning-only gfortran.dg files
+whose compile or run disposition was checked without matching warning text.
+
 ## FortFront corpus gate
 
 The fpm test `test_fortfront_corpus_conformance` runs the full
@@ -240,9 +244,9 @@ Current xfail manifests:
 ## gfortran.dg testsuite
 
 The `gfortran-dg` suite reads `$FFC_GFORTRAN_DG_DIR/*.f90` from a local
-GCC checkout. The runner evaluates each file with `ffc -c` (compile) or
-checks rejection of negative tests (`dg-error`/`dg-warning`). Files that
-use `dg-do run` build, execute, and compare output against `gfortran -w`.
+GCC checkout. The runner evaluates each file with `ffc -c` (compile), checks
+rejection of `dg-error` tests, or executes `dg-do run` files and compares their
+output against `gfortran -w`.
 
 ### Local checkout
 
@@ -257,7 +261,8 @@ The runner models these gfortran.dg directives:
 
 - `dg-do compile` (default): compile with `ffc -c`
 - `dg-do run`: build, execute, and compare stdout and exit status against `gfortran -w`
-- `dg-error` / `dg-warning`: negative tests; ffc must reject compilation
+- `dg-error`: negative test; `ffc -c` must reject compilation
+- `dg-warning` without `dg-error`: follow `dg-do`; warning text remains unchecked
 - `dg-additional-sources`: multifile tests (skipped)
 - `dg-options` / `dg-add-options`: compiler flag tests (skipped)
 - `dg-require`, `dg-skip-if`, `dg-final`, `dg-prune-output`,
@@ -265,6 +270,12 @@ The runner models these gfortran.dg directives:
 
 Files with unlisted skip reasons are marked FAIL until added to the skip
 manifest.
+
+`dg-error` takes precedence when a file also contains `dg-warning`. A
+warning-only file records `"warning_expectation":"unchecked"`, increments
+`warning_unchecked`, and otherwise uses the normal compile or run disposition.
+Successful compilation is not accepted-invalid behavior. This accounting does
+not claim warning-text parity.
 
 ### Skip manifest
 
