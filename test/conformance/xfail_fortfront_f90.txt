@@ -18,7 +18,6 @@ external_tool_example.f90
 f2003_abstract_interface.f90
 f2003_block_construct.f90
 f2003_type_bound_array_call.f90
-if_multiline_guard.f90
 # Uninitialized vars: output matches gfortran-14 but mismatches gfortran-16 (local).
 # Kept in xfail so local dev does not FAIL; produces XPASS on CI gfortran-14.
 issue_104_if_condition_identifiers.f90
