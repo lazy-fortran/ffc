@@ -198,9 +198,10 @@ contents; the next call through `fp` picks up the new address.
   hidden argument (no copy). This mirrors the deferred-length character result
   ABI. The size is known at compile time, so no runtime allocation is needed.
 - Subroutines return LIRIC `void`; explicit `CALL` statements emit `void` calls.
-- Names are emitted as source names for the current single-file subset. A
-  deterministic mangling scheme is still required before broader procedure and
-  module support.
+- Contained procedures use source names. Module procedures use
+  `__<module>_MOD_<name>`, matching gfortran's symbol convention. A using unit
+  loaded from `.fmod` calls that symbol as an external reference; the separately
+  compiled module object supplies the definition.
 - A character dummy argument, fixed-length (`character(len=N)`) or
   assumed-length (`character(len=*)`), is bound through the same stack
   {data pointer, i64 length} descriptor the caller builds for the actual
@@ -212,8 +213,9 @@ contents; the next call through `fp` picks up the new address.
   gfortran's fixed-length dummy association. Character function results are
   supported for the deferred-length (`character(len=:), allocatable`) case;
   see "Deferred-length character" below.
-- External procedures, modules, and separate compilation are unsupported; #54
-  owns symbol mangling and link behavior.
+- Separate compilation covers module subroutines and integer functions whose
+  dummies are supported by-reference integer, real, or logical scalars. General
+  top-level external-procedure signatures remain outside this ABI slice.
 
 ### Assumed-shape runtime extent (W2)
 
@@ -260,6 +262,9 @@ through a type-bound call resolves the correct actual.
 
 ## Runtime Calls
 
+- Each object prefixes its per-unit `.ffc.*` string, format, and character
+  content globals with a hash of the output path. Objects compiled separately
+  therefore keep distinct literals when linked into one executable.
 - Scalar `print` lowers to external C `printf`/`snprintf` calls.
 - List-directed record layout: one separating blank is written before every
   value. The first blank is the record's carriage control. No
@@ -410,11 +415,19 @@ components = [
   scalar type token), and the literal `value`.
 - Each `[[derived_type]]` is a type definition with its `components`, each a
   `{ name, kind }` pair.
+- Each `[[variable]]` records a module variable's Fortran `name`, scalar `kind`,
+  and optional mangled `c_name`.
+- Each `[[procedure]]` records an exportable module procedure's `name`, result
+  `kind` (or `subroutine`), `nargs`, and space-separated scalar `arg_kinds`.
+- Each `[[generic]]` records a generic `name` and the space-separated specific
+  procedure names it resolves to.
 - `kind` is `integer`, `real`, `logical`, `character`, or `type(<name>)`.
-- Module variables and module procedures are not yet exported.
+- A later unit reads these tables on `use`, emits external references to module
+  variables and mangled procedures, and links them against the module object.
 
 ## Unsupported ABI Work
 
 - #53: array descriptors, allocatables, and pointer representation.
-- #54: module and external symbol mangling.
+- Broader external-procedure signatures and descriptor-bearing `.fmod`
+  procedure entries.
 - #55: runtime I/O beyond the current scalar `printf` shim.
