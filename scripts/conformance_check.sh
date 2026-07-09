@@ -5,11 +5,13 @@
 # and prints the promotable XPASS list.
 #
 # Usage:
-#   scripts/conformance_check.sh [--no-build] [--suite SUITE]
+#   scripts/conformance_check.sh [--no-build] [--suite SUITE] [SELECTION]
 #
 # Options:
 #   --no-build   skip build step (use existing ffc binary)
 #   --suite S    run only one suite instead of all available suites
+#   --file PATH  forward one suite-relative file (repeatable)
+#   --files-from PATH  forward a named-file list (repeatable)
 #
 # This script is the documented routine contributors run before pushing
 # and after dependency (fortfront, liric) updates.
@@ -28,6 +30,7 @@ GAUNTLET="$SCRIPT_DIR/conformance_gauntlet.sh"
 NO_BUILD=0
 SINGLE_SUITE=""
 TIMEOUT=5
+NAMED_ARGS=()
 
 # Argument parsing
 while [ $# -gt 0 ]; do
@@ -36,12 +39,29 @@ while [ $# -gt 0 ]; do
             NO_BUILD=1; shift ;;
         --suite)
             SINGLE_SUITE="$2"; shift 2 ;;
+        --file)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --file requires a path" >&2; exit 1
+            fi
+            NAMED_ARGS+=("--file" "$2"); shift 2 ;;
+        --files-from)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --files-from requires a path" >&2; exit 1
+            fi
+            list_path="$2"
+            case "$list_path" in /*) ;; *) list_path="$PWD/$list_path" ;; esac
+            NAMED_ARGS+=("--files-from" "$list_path"); shift 2 ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
         *)
             echo "ERROR: unknown option $1" >&2; exit 1 ;;
     esac
 done
+
+if [ "${#NAMED_ARGS[@]}" -gt 0 ] && [ -z "$SINGLE_SUITE" ]; then
+    echo "ERROR: --file and --files-from require --suite" >&2
+    exit 1
+fi
 
 # Determine suites to run
 ALL_SUITES="fortfront-f90 fortfront-lf lfortran gfortran-dg"
@@ -106,12 +126,17 @@ for SUITE in $SUITES; do
 
     rm -f "$REPORT" "$LOG"
 
-    bash "$GAUNTLET" --suite "$SUITE" --ffc "$FFC_BIN" \
-        --report "$REPORT" --timeout "$TIMEOUT" > "$LOG" 2>&1
-    suite_exit=$?
+    gauntlet_args=(--suite "$SUITE" --ffc "$FFC_BIN" \
+        --report "$REPORT" --timeout "$TIMEOUT")
+    gauntlet_args+=("${NAMED_ARGS[@]}")
+    if bash "$GAUNTLET" "${gauntlet_args[@]}" > "$LOG" 2>&1; then
+        suite_exit=0
+    else
+        suite_exit=$?
+    fi
 
     # Print the log (summary line and any FAIL/XPASS)
-    grep -E '(===|PASS=|FAIL:|XPASS:)' "$LOG" || true
+    grep -E '(===|PASS=|FAIL:|XPASS:|ERROR:)' "$LOG" || true
     echo ""
 
     # Parse summary

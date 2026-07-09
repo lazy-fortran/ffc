@@ -62,6 +62,8 @@ Options:
 | `--suite SUITE` | Required. One of `fortfront-f90`, `fortfront-lf`, `lfortran`, `gfortran-dg` |
 | `--ffc PATH` | Path to the `ffc` binary. Auto-discovered from `build/` or `PATH` if omitted. |
 | `--report PATH` | JSONL report path. Defaults to `/tmp/ffc_gauntlet_<suite>.jsonl`. |
+| `--file PATH` | Select one suite-relative file. Repeat to select more files. |
+| `--files-from PATH` | Read suite-relative files from a list. Repeat to read more lists. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
 
@@ -78,6 +80,37 @@ scripts/conformance_gauntlet.sh --suite fortfront-f90 \
     --ffc "$(find build -name ffc -type f -executable | head -1)"
 ```
 
+### Named files
+
+Run one external regression without scanning the full corpus:
+
+```bash
+scripts/conformance_gauntlet.sh --suite fortfront-f90 \
+    --file ast_coverage_control_flow.f90 \
+    --report /tmp/ffc-one.jsonl
+```
+
+A list contains one suite-relative path per line. Leading and trailing
+whitespace is ignored. Blank lines and lines whose first nonblank character is
+`#` are ignored.
+
+```text
+# scope regressions
+ast_coverage_control_flow.f90
+ast_coverage_io_statements.f90
+```
+
+```bash
+scripts/conformance_gauntlet.sh --suite fortfront-f90 \
+    --files-from /tmp/ffc-scope-files.txt
+```
+
+`--file` and `--files-from` entries accumulate in command order. Duplicate,
+unknown, absolute, and parent-traversal paths are errors. Named selection is
+applied before `--max-files`, so `--max-files 1` runs the first named entry.
+The report contains one file record per selected entry followed by a SUMMARY
+whose `total` is the number of entries run.
+
 ## Single-command conformance gate
 
 `scripts/conformance_check.sh` is the documented routine contributors run
@@ -89,7 +122,12 @@ the promotable XPASS list.
 scripts/conformance_check.sh                    # build + all available suites
 scripts/conformance_check.sh --no-build          # skip build, run suites
 scripts/conformance_check.sh --suite fortfront-f90  # single suite
+scripts/conformance_check.sh --no-build --suite fortfront-f90 \
+    --file ast_coverage_control_flow.f90
 ```
+
+Named selection requires `--suite`; the check forwards all `--file` and
+`--files-from` options to that suite.
 
 The script auto-detects available suites by checking the suite root
 directories. If a suite root does not exist, it prints a SKIP message and
