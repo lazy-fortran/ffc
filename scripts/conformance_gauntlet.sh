@@ -163,7 +163,7 @@ dg_skip_reason() {
 
 dg_test_kind() {
     local source="$1"
-    if grep -Eq 'dg-(error|warning)' "$source"; then
+    if grep -Eq 'dg-error' "$source"; then
         echo "negative"
         return
     fi
@@ -173,6 +173,11 @@ dg_test_kind() {
         *"dg-do run"*) echo "run" ;;
         *) echo "compile" ;;
     esac
+}
+
+dg_warning_only() {
+    local source="$1"
+    grep -Eq 'dg-warning' "$source" && ! grep -Eq 'dg-error' "$source"
 }
 
 # Resolve ffc
@@ -189,6 +194,17 @@ normalize_manifest() {
     sed 's/#.*$//' "$src" | \
         sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
         awk 'NF' > "$dst"
+}
+
+write_result_record() {
+    local file="$1" result_status="$2" compiler_exit="$3" reference_exit="$4"
+    local result_note="$5" warning_expectation="$6" warning_json=""
+    if [ -n "$warning_expectation" ]; then
+        warning_json=',"warning_expectation":"unchecked"'
+    fi
+    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s}\n' \
+        "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
+        "$reference_exit" "$(json_escape "$result_note")" "$warning_json" >> "$REPORT"
 }
 
 # Setup
@@ -211,6 +227,7 @@ XPASS_COUNT=0
 FAIL_COUNT=0
 NOREF_COUNT=0
 SKIP_COUNT=0
+WARNING_UNCHECKED_COUNT=0
 TOTAL_COUNT=0
 
 # Clear report
@@ -219,8 +236,9 @@ TOTAL_COUNT=0
 # Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
+        "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
@@ -286,8 +304,9 @@ fi
 FILE_COUNT=$(wc -l < "$FILE_LIST")
 if [ "$FILE_COUNT" -eq 0 ]; then
     echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
+        "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
     exit 0
 fi
 
@@ -348,9 +367,14 @@ while IFS= read -r full_path <&3; do
     ref_exit=-1
     status=""
     note=""
+    warning_expectation=""
 
     if [ "$SUITE" = "gfortran-dg" ]; then
         dg_kind=$(dg_test_kind "$full_path")
+        if dg_warning_only "$full_path"; then
+            warning_expectation="unchecked"
+            WARNING_UNCHECKED_COUNT=$((WARNING_UNCHECKED_COUNT + 1))
+        fi
         if [ "$dg_kind" = "compile" ]; then
             if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
@@ -378,13 +402,13 @@ while IFS= read -r full_path <&3; do
                     echo "  FAIL: $rel_path (ffc -c failed)"
                 fi
             fi
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             continue
         fi
 
         if [ "$dg_kind" = "negative" ]; then
-            if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN"; then
+            if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
             else
                 ffc_exit=1
@@ -413,8 +437,8 @@ while IFS= read -r full_path <&3; do
                     echo "  FAIL: $rel_path (negative test accepted)"
                 fi
             fi
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             continue
         fi
     fi
@@ -468,16 +492,16 @@ while IFS= read -r full_path <&3; do
             status="XFAIL"
             note="listed in xfail manifest"
             XFAIL_COUNT=$((XFAIL_COUNT + 1))
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             continue
         else
             status="FAIL"
             note="ffc compilation failed"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             echo "  FAIL: $rel_path (ffc failed)"
             continue
         fi
@@ -498,16 +522,16 @@ while IFS= read -r full_path <&3; do
             status="XFAIL"
             note="listed in xfail manifest (runtime failure)"
             XFAIL_COUNT=$((XFAIL_COUNT + 1))
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             continue
         else
             status="FAIL"
             note="ffc runtime failed (exit $ffc_exit)"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
-            printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
             echo "  FAIL: $rel_path (runtime exit $ffc_exit)"
             continue
         fi
@@ -525,8 +549,8 @@ while IFS= read -r full_path <&3; do
             note="lazy suite, ffc ran successfully"
             PASS_COUNT=$((PASS_COUNT + 1))
         fi
-        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
         continue
     fi
 
@@ -551,8 +575,8 @@ while IFS= read -r full_path <&3; do
             note="gfortran rejects; ffc runs (NO-REF)"
             PASS_COUNT=$((PASS_COUNT + 1))
         fi
-        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
         continue
     fi
 
@@ -572,8 +596,8 @@ while IFS= read -r full_path <&3; do
             note="output matches gfortran"
             PASS_COUNT=$((PASS_COUNT + 1))
         fi
-        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
         continue
     fi
 
@@ -594,8 +618,8 @@ while IFS= read -r full_path <&3; do
             note="numeric structure matches nondeterministic gfortran"
             PASS_COUNT=$((PASS_COUNT + 1))
         fi
-        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
         continue
     fi
 
@@ -604,8 +628,8 @@ while IFS= read -r full_path <&3; do
         status="XFAIL"
         note="output mismatch listed in xfail manifest"
         XFAIL_COUNT=$((XFAIL_COUNT + 1))
-        printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
         continue
     fi
 
@@ -613,19 +637,20 @@ while IFS= read -r full_path <&3; do
     note="stdout or exit mismatch with gfortran"
     FAIL_COUNT=$((FAIL_COUNT + 1))
     HAS_FAIL=1
-    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"}\n' \
-        "$SUITE" "$(json_escape "$rel_path")" "$status" "$ffc_exit" "$ref_exit" "$(json_escape "$note")" >> "$REPORT"
+    write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+        "$note" "$warning_expectation"
     echo "  FAIL: $rel_path (output mismatch)"
 
 done 3< "$FILE_LIST"
 
 # Summary
-printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"total":%d}\n' \
-    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" "$NOREF_COUNT" "$SKIP_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
+    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
+    "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
 
 echo ""
 echo "=== $SUITE summary ==="
-echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  TOTAL=$TOTAL_COUNT"
+echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  WARNING_UNCHECKED=$WARNING_UNCHECKED_COUNT  TOTAL=$TOTAL_COUNT"
 echo "  Report: $REPORT"
 
 # Exit nonzero only if non-xfail FAILs occurred

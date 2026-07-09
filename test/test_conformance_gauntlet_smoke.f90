@@ -22,6 +22,12 @@ program test_conformance_gauntlet_smoke
         '/tmp/ffc_gauntlet_smoke_forward_files.txt'
     character(len=*), parameter :: FAILURE_LOG = &
         '/tmp/ffc_gauntlet_smoke_failure.log'
+    character(len=*), parameter :: DG_FIXTURE_DIR = &
+        '/tmp/ffc_gauntlet_dg_fixtures'
+    character(len=*), parameter :: DG_REPORT = &
+        '/tmp/ffc_gauntlet_dg_warning.jsonl'
+    character(len=*), parameter :: DG_NEGATIVE_REPORT = &
+        '/tmp/ffc_gauntlet_dg_negative.jsonl'
 
     logical :: all_passed
 
@@ -87,6 +93,8 @@ program test_conformance_gauntlet_smoke
     if (.not. run_failure('bash scripts/conformance_check.sh --no-build'// &
         ' --suite fortfront-f90 --file missing_named_file.f90', &
         'unknown selected file')) all_passed = .false.
+
+    call run_dg_directive_smoke(all_passed)
 
     if (.not. all_passed) stop 1
     print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
@@ -243,6 +251,81 @@ contains
         write(unit, '(A)') 'ast_coverage_io_statements.f90'
         close(unit)
     end subroutine write_selection_list
+
+    subroutine run_dg_directive_smoke(passed)
+        logical, intent(inout) :: passed
+
+        call write_dg_fixtures()
+        if (.not. run_smoke('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
+            ' timeout 120 bash '//SCRIPT//' --suite gfortran-dg'// &
+            ' --file warning_compile.f90 --file warning_run.f90'// &
+            ' --file true_error.f90 --report '//DG_REPORT, DG_REPORT, 3)) &
+            passed = .false.
+        if (.not. file_contains(DG_REPORT, &
+            '"file":"warning_compile.f90","status":"PASS","ffc_exit":0,'// &
+            '"ref_exit":-1,"note":"ffc -c succeeded",'// &
+            '"warning_expectation":"unchecked"')) passed = .false.
+        if (.not. file_contains(DG_REPORT, &
+            '"file":"warning_run.f90","status":"PASS","ffc_exit":0,'// &
+            '"ref_exit":0,"note":"output matches gfortran",'// &
+            '"warning_expectation":"unchecked"')) passed = .false.
+        if (.not. file_contains(DG_REPORT, &
+            '"file":"true_error.f90","status":"PASS"')) passed = .false.
+        if (.not. file_contains(DG_REPORT, &
+            '"warning_unchecked":2,"total":3}')) &
+            passed = .false.
+        if (.not. run_failure('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
+            ' bash '//SCRIPT//' --suite gfortran-dg'// &
+            ' --file no_main_accepted.f90 --report '//DG_NEGATIVE_REPORT, &
+            'negative test accepted')) passed = .false.
+        if (.not. file_contains(DG_NEGATIVE_REPORT, &
+            '"file":"no_main_accepted.f90","status":"FAIL",'// &
+            '"ffc_exit":0')) &
+            passed = .false.
+    end subroutine run_dg_directive_smoke
+
+    subroutine write_dg_fixtures()
+        integer :: unit
+
+        call execute_command_line('rm -rf '//DG_FIXTURE_DIR)
+        call execute_command_line('mkdir -p '//DG_FIXTURE_DIR)
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/warning_compile.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') '! { dg-do compile }'
+        write(unit, '(A)') 'program warning_compile'
+        write(unit, '(A)') 'integer :: value ! { dg-warning "unchecked" }'
+        write(unit, '(A)') 'value = 1'
+        write(unit, '(A)') 'end program warning_compile'
+        close(unit)
+
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/warning_run.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') '! { dg-do run }'
+        write(unit, '(A)') 'program warning_run'
+        write(unit, '(A)') 'integer :: value ! { dg-warning "unchecked" }'
+        write(unit, '(A)') 'value = 1'
+        write(unit, '(A)') 'if (value /= 1) stop 1'
+        write(unit, '(A)') 'end program warning_run'
+        close(unit)
+
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/true_error.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') '! { dg-do compile }'
+        write(unit, '(A)') 'program true_error'
+        write(unit, '(A)') 'integer :: value'
+        write(unit, '(A)') 'value = @'
+        write(unit, '(A)') '! { dg-error "invalid expression" }'
+        write(unit, '(A)') '! { dg-warning "secondary expectation" }'
+        write(unit, '(A)') 'end program true_error'
+        close(unit)
+
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/no_main_accepted.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') 'subroutine no_main_accepted'
+        write(unit, '(A)') '! { dg-error "synthetic accepted case" }'
+        write(unit, '(A)') 'end subroutine no_main_accepted'
+        close(unit)
+    end subroutine write_dg_fixtures
 
     logical function is_blank_or_comment(line)
         character(len=*), intent(in) :: line
