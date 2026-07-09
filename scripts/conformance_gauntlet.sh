@@ -14,6 +14,8 @@
 #   --suite SUITE       required
 #   --ffc PATH          path to ffc binary (auto-discovered if omitted)
 #   --report PATH       JSONL report path (default: /tmp/ffc_gauntlet_<suite>.jsonl)
+#   --file PATH         select one suite-relative file (repeatable)
+#   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
 #   --timeout N         per-file timeout in seconds (default: 5)
 #
@@ -39,6 +41,13 @@ REPORT=""
 MAX_FILES=""
 TIMEOUT=5
 HAS_FAIL=0
+SELECTOR_KINDS=()
+SELECTOR_VALUES=()
+
+fail() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
 
 # Argument parsing
 SUITE=""
@@ -50,12 +59,22 @@ while [ $# -gt 0 ]; do
             FFC_BIN="$2"; shift 2 ;;
         --report)
             REPORT="$2"; shift 2 ;;
+        --file)
+            if [ $# -lt 2 ]; then fail "--file requires a path"; fi
+            SELECTOR_KINDS+=("file")
+            SELECTOR_VALUES+=("$2")
+            shift 2 ;;
+        --files-from)
+            if [ $# -lt 2 ]; then fail "--files-from requires a path"; fi
+            SELECTOR_KINDS+=("list")
+            SELECTOR_VALUES+=("$2")
+            shift 2 ;;
         --max-files)
             MAX_FILES="$2"; shift 2 ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
         *)
-            echo "ERROR: unknown option $1" >&2; exit 1 ;;
+            fail "unknown option $1" ;;
     esac
 done
 
@@ -206,13 +225,58 @@ if [ ! -d "$SUITE_ROOT" ]; then
 fi
 
 # Collect files.
+ALL_FILE_LIST="$TMPDIR_WORK/all_files.txt"
 FILE_LIST="$TMPDIR_WORK/files.txt"
 case "$SUITE" in
     fortfront-lf)
-        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | sort > "$FILE_LIST" ;;
+        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | sort > "$ALL_FILE_LIST" ;;
     *)
-        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$FILE_LIST" ;;
+        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$ALL_FILE_LIST" ;;
 esac
+
+SELECTED_LOOKUP="$TMPDIR_WORK/selected_files.txt"
+: > "$SELECTED_LOOKUP"
+
+add_selected_file() {
+    local rel_path="$1"
+    case "$rel_path" in
+        "") fail "selected file path must not be empty" ;;
+        /*) fail "selected file must be suite-relative: $rel_path" ;;
+        ..|../*|*/../*|*/..) fail "selected file contains parent traversal: $rel_path" ;;
+    esac
+    if grep -Fqx -- "$rel_path" "$SELECTED_LOOKUP"; then
+        fail "duplicate selected file: $rel_path"
+    fi
+    if ! grep -Fqx -- "$SUITE_ROOT/$rel_path" "$ALL_FILE_LIST"; then
+        fail "unknown selected file: $rel_path"
+    fi
+    printf '%s\n' "$rel_path" >> "$SELECTED_LOOKUP"
+    printf '%s\n' "$SUITE_ROOT/$rel_path" >> "$FILE_LIST"
+}
+
+if [ "${#SELECTOR_KINDS[@]}" -gt 0 ]; then
+    : > "$FILE_LIST"
+    for selector_index in "${!SELECTOR_KINDS[@]}"; do
+        selector_kind=${SELECTOR_KINDS[$selector_index]}
+        selector_value=${SELECTOR_VALUES[$selector_index]}
+        if [ "$selector_kind" = "file" ]; then
+            add_selected_file "$selector_value"
+            continue
+        fi
+        if [ ! -f "$selector_value" ]; then
+            fail "files-from path does not exist: $selector_value"
+        fi
+        while IFS= read -r selected_line || [ -n "$selected_line" ]; do
+            selected_line=$(printf '%s\n' "$selected_line" | \
+                sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            [ -z "$selected_line" ] && continue
+            case "$selected_line" in \#*) continue ;; esac
+            add_selected_file "$selected_line"
+        done < "$selector_value"
+    done
+else
+    cp "$ALL_FILE_LIST" "$FILE_LIST"
+fi
 
 if [ "$MAX_FILES" -gt 0 ] 2>/dev/null; then
     head -n "$MAX_FILES" "$FILE_LIST" > "$TMPDIR_WORK/files_limited.txt"
