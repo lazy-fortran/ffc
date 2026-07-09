@@ -28,6 +28,14 @@ program test_conformance_gauntlet_smoke
         '/tmp/ffc_gauntlet_dg_warning.jsonl'
     character(len=*), parameter :: DG_NEGATIVE_REPORT = &
         '/tmp/ffc_gauntlet_dg_negative.jsonl'
+    character(len=*), parameter :: UNDEFINED_REPORT = &
+        '/tmp/ffc_gauntlet_undefined_output.jsonl'
+    character(len=*), parameter :: UNDEFINED_NEGATIVE_REPORT = &
+        '/tmp/ffc_gauntlet_undefined_negative.jsonl'
+    character(len=*), parameter :: UNDEFINED_FIXTURE_ROOT = &
+        '/tmp/ffc_gauntlet_undefined_fortfront'
+    character(len=*), parameter :: UNDEFINED_MANIFEST = &
+        '/tmp/ffc_gauntlet_undefined_manifest.txt'
 
     logical :: all_passed
 
@@ -95,6 +103,7 @@ program test_conformance_gauntlet_smoke
         'unknown selected file')) all_passed = .false.
 
     call run_dg_directive_smoke(all_passed)
+    call run_undefined_output_smoke(all_passed)
 
     if (.not. all_passed) stop 1
     print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
@@ -326,6 +335,88 @@ contains
         write(unit, '(A)') 'end subroutine no_main_accepted'
         close(unit)
     end subroutine write_dg_fixtures
+
+    subroutine run_undefined_output_smoke(passed)
+        logical, intent(inout) :: passed
+
+        if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+            ' --suite fortfront-f90'// &
+            ' --file issue_104_if_condition_identifiers.f90'// &
+            ' --file undefined_var_segfault.f90'// &
+            ' --file issue_2349_data_implied_do.f90'// &
+            ' --report '//UNDEFINED_REPORT, UNDEFINED_REPORT, 3)) &
+            passed = .false.
+        if (count_lines_with(UNDEFINED_REPORT, &
+            '"status":"PASS"', 'undefined reference output') /= 3) &
+            passed = .false.
+
+        call write_undefined_output_fixture()
+        if (.not. run_failure('FFC_FORTFRONT_DIR='//UNDEFINED_FIXTURE_ROOT// &
+            ' FFC_UNDEFINED_OUTPUT_MANIFEST='//UNDEFINED_MANIFEST// &
+            ' bash '//SCRIPT//' --suite fortfront-f90'// &
+            ' --file undefined_nonzero.f90 --report '// &
+            UNDEFINED_NEGATIVE_REPORT, &
+            'undefined-output execution failed')) passed = .false.
+        if (.not. file_contains(UNDEFINED_NEGATIVE_REPORT, &
+            '"file":"undefined_nonzero.f90","status":"FAIL",'// &
+            '"ffc_exit":1,"ref_exit":1')) &
+            passed = .false.
+
+        call write_undefined_manifest('ast_coverage_control_flow.f90')
+        if (.not. run_failure('FFC_UNDEFINED_OUTPUT_MANIFEST='// &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
+            'both xfail and undefined-output')) passed = .false.
+        call write_undefined_manifest('20231103-1.f90')
+        if (.not. run_failure('FFC_UNDEFINED_OUTPUT_MANIFEST='// &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite gfortran-dg', &
+            'both skip and undefined-output')) passed = .false.
+    end subroutine run_undefined_output_smoke
+
+    subroutine write_undefined_output_fixture()
+        integer :: unit
+
+        call execute_command_line('rm -rf '//UNDEFINED_FIXTURE_ROOT)
+        call execute_command_line('mkdir -p '//UNDEFINED_FIXTURE_ROOT// &
+            '/examples/f90')
+        open(newunit=unit, file=UNDEFINED_FIXTURE_ROOT// &
+            '/examples/f90/undefined_nonzero.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') 'program undefined_nonzero'
+        write(unit, '(A)') 'stop 1'
+        write(unit, '(A)') 'end program undefined_nonzero'
+        close(unit)
+        call write_undefined_manifest('undefined_nonzero.f90')
+    end subroutine write_undefined_output_fixture
+
+    subroutine write_undefined_manifest(entry)
+        character(len=*), intent(in) :: entry
+        integer :: unit
+
+        open(newunit=unit, file=UNDEFINED_MANIFEST, status='replace', &
+            action='write')
+        write(unit, '(A)') entry
+        close(unit)
+    end subroutine write_undefined_manifest
+
+    integer function count_lines_with(path, first, second) result(count)
+        character(len=*), intent(in) :: path
+        character(len=*), intent(in) :: first
+        character(len=*), intent(in) :: second
+        integer :: unit
+        integer :: io_stat
+        character(len=4096) :: line
+
+        count = 0
+        open(newunit=unit, file=path, status='old', action='read', iostat=io_stat)
+        if (io_stat /= 0) return
+        do
+            read(unit, '(A)', iostat=io_stat) line
+            if (io_stat /= 0) exit
+            if (index(line, first) > 0 .and. index(line, second) > 0) &
+                count = count + 1
+        end do
+        close(unit)
+    end function count_lines_with
 
     logical function is_blank_or_comment(line)
         character(len=*), intent(in) :: line

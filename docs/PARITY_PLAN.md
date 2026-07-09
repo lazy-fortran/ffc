@@ -21,7 +21,7 @@ Current checked-in manifest counts in this checkout:
 
 | Suite | XFAIL entries | SKIP entries |
 |-------|--------------:|-------------:|
-| fortfront-f90 | 103 | 0 |
+| fortfront-f90 | 100 | 0 |
 | fortfront-lf  | 60  | 0 |
 | lfortran      | 3425 | 0 |
 | gfortran-dg   | 2121 | 2371 |
@@ -30,7 +30,7 @@ Latest recorded full-dashboard state in #299 after wave 14:
 
 | Suite | PASS | Notes |
 |-------|-----:|-------|
-| fortfront-f90 | 336 | Near complete; one local/CI gfortran-version XPASS can appear. |
+| fortfront-f90 | 339 | Three undefined-output cases use a version-independent completion oracle. |
 | fortfront-lf  | 204 | No gfortran oracle for lazy syntax. |
 | lfortran      | 837 | Remaining backlog is mostly feature stacking and architecture. |
 | gfortran-dg   | 1176 | Positive gains are offset by invalid-program acceptance debt. |
