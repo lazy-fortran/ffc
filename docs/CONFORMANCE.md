@@ -8,7 +8,7 @@ source, and writes an xfail-style report.
 ## No-vendoring rule
 
 The runner never copies source files from external suites into this
-repository. Only xfail manifests live here. External checkouts are
+repository. Only conformance manifests live here. External checkouts are
 referenced by path.
 
 ## Suites
@@ -166,8 +166,9 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 103 |
+| `test/conformance/xfail_fortfront_f90.txt` | 100 |
 | `test/conformance/xfail_fortfront_lf.txt` | 60 |
+| `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
 | `test/conformance/xfail_lfortran.txt` | 3425 |
 | `test/conformance/xfail_gfortran_dg.txt` | 2121 |
 | `test/conformance/skip_lfortran.txt` | 0 |
@@ -240,6 +241,12 @@ Current xfail manifests:
 
 - `test/conformance/xfail_fortfront_f90.txt`
 - `test/conformance/xfail_fortfront_lf.txt`
+
+`test/conformance/undefined_output_fortfront_f90.txt` lists programs whose
+printed values depend on uninitialized data. Both ffc and gfortran must build
+and terminate with exit zero. The runner ignores stdout only for those named
+files; compilation, control flow, and termination remain enforced.
+Undefined-output entries must not also appear in an xfail or skip manifest.
 
 ## gfortran.dg testsuite
 

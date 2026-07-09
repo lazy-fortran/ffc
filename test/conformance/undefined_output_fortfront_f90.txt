@@ -1,0 +1,4 @@
+# Runtime values are undefined; both compilers must build and terminate normally.
+issue_104_if_condition_identifiers.f90
+issue_2349_data_implied_do.f90
+undefined_var_segfault.f90

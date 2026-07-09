@@ -124,6 +124,12 @@ resolve_skip_manifest() {
     echo "$PROJECT_DIR/test/conformance/skip_${safe_suite}.txt"
 }
 
+resolve_undefined_output_manifest() {
+    local safe_suite
+    safe_suite=${SUITE//-/_}
+    echo "${FFC_UNDEFINED_OUTPUT_MANIFEST:-$PROJECT_DIR/test/conformance/undefined_output_${safe_suite}.txt}"
+}
+
 # File extension for single-extension suites.
 file_extension() {
     case "$SUITE" in
@@ -212,13 +218,24 @@ export FFC_COMPILE_TIMEOUT="$TIMEOUT"
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
 SKIP_MANIFEST=$(resolve_skip_manifest)
+UNDEFINED_OUTPUT_MANIFEST=$(resolve_undefined_output_manifest)
 EXT=$(file_extension)
 TMPDIR_WORK=$(mktemp -d /tmp/ffc_gauntlet_XXXXXX)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
 SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"
+UNDEFINED_OUTPUT_LOOKUP="$TMPDIR_WORK/undefined_output_lookup.txt"
 normalize_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP"
 normalize_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP"
+normalize_manifest "$UNDEFINED_OUTPUT_MANIFEST" "$UNDEFINED_OUTPUT_LOOKUP"
+manifest_overlap=$(grep -Fxf "$XFAIL_LOOKUP" "$UNDEFINED_OUTPUT_LOOKUP" || true)
+if [ -n "$manifest_overlap" ]; then
+    fail "files cannot be both xfail and undefined-output: $manifest_overlap"
+fi
+manifest_overlap=$(grep -Fxf "$SKIP_LOOKUP" "$UNDEFINED_OUTPUT_LOOKUP" || true)
+if [ -n "$manifest_overlap" ]; then
+    fail "files cannot be both skip and undefined-output: $manifest_overlap"
+fi
 
 # Counters
 PASS_COUNT=0
@@ -564,6 +581,16 @@ while IFS= read -r full_path <&3; do
 
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
     if [ "$ref_exit" -ne 0 ]; then
+        if check_xfail "$UNDEFINED_OUTPUT_LOOKUP" "$rel_path"; then
+            status="FAIL"
+            note="undefined-output reference failed to compile"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            HAS_FAIL=1
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
+            echo "  FAIL: $rel_path (undefined-output reference failed)"
+            continue
+        fi
         NOREF_COUNT=$((NOREF_COUNT + 1))
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
@@ -583,6 +610,25 @@ while IFS= read -r full_path <&3; do
     # Step 7: run gfortran reference
     run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
     ref_exit=$?
+
+    if check_xfail "$UNDEFINED_OUTPUT_LOOKUP" "$rel_path"; then
+        if [ "$ffc_exit" -eq 0 ] && [ "$ref_exit" -eq 0 ]; then
+            status="PASS"
+            note="undefined reference output; both executions completed"
+            PASS_COUNT=$((PASS_COUNT + 1))
+            write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+                "$note" "$warning_expectation"
+            continue
+        fi
+        status="FAIL"
+        note="undefined-output execution did not terminate normally"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
+        echo "  FAIL: $rel_path (undefined-output execution failed)"
+        continue
+    fi
 
     # Step 8: compare outputs.
     if compare_outputs "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
