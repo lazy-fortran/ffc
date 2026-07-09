@@ -12,12 +12,15 @@ program test_fortfront_corpus_conformance
         '/tmp/ffc_fortfront_f90_corpus.out'
     character(len=*), parameter :: LF_LOG = &
         '/tmp/ffc_fortfront_lf_corpus.out'
+    character(len=*), parameter :: SYNTHETIC_XPASS_REPORT = &
+        '/tmp/ffc_fortfront_synthetic_xpass.jsonl'
 
     integer :: failed
 
     print *, '=== fortfront corpus conformance test ==='
 
     failed = 0
+    call verify_xpass_rejection(failed)
     call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 439, failed)
     call run_suite('fortfront-lf', LF_REPORT, LF_LOG, 264, failed)
 
@@ -34,10 +37,7 @@ contains
         integer, intent(inout) :: failed
         character(len=:), allocatable :: cmd
         character(len=32) :: timeout_text
-        character(len=32) :: expected_text
-        character(len=4096) :: summary
         integer :: exit_stat
-        logical :: has_summary
 
         write (timeout_text, '(I0)') RUN_TIMEOUT_SECONDS
         call execute_command_line('rm -f '//report//' '//log_path)
@@ -56,6 +56,19 @@ contains
             return
         end if
 
+        call validate_report(suite, report, expected_total, failed)
+    end subroutine run_suite
+
+    subroutine validate_report(suite, report, expected_total, failed)
+        character(len=*), intent(in) :: suite
+        character(len=*), intent(in) :: report
+        integer, intent(in) :: expected_total
+        integer, intent(inout) :: failed
+        character(len=32) :: expected_text
+        character(len=4096) :: summary
+        logical :: has_summary
+        logical :: rejects_report
+
         call read_summary(report, summary, has_summary)
         if (.not. has_summary) then
             failed = failed + 1
@@ -65,22 +78,59 @@ contains
 
         print *, trim(suite)//' summary: '//trim(summary)
 
+        rejects_report = .false.
         if (index(summary, '"fail":0') == 0) then
-            failed = failed + 1
+            rejects_report = .true.
             print *, 'FAIL[', suite, ']: SUMMARY has nonzero FAIL count'
         end if
 
         if (index(summary, '"xpass":0') == 0) then
+            rejects_report = .true.
+            print *, 'FAIL[', suite, ']: SUMMARY has nonzero XPASS count'
+        end if
+
+        if (rejects_report) then
+            failed = failed + 1
             call print_failures(report)
         end if
 
-        write (expected_text, '(A,I0)') '"total":', expected_total
+        write (expected_text, '(A,I0,A)') '"total":', expected_total, '}'
         if (index(summary, trim(expected_text)) == 0) then
             failed = failed + 1
             print *, 'FAIL[', suite, ']: SUMMARY total differs from ', &
                 expected_total
         end if
-    end subroutine run_suite
+    end subroutine validate_report
+
+    subroutine verify_xpass_rejection(failed)
+        integer, intent(inout) :: failed
+        integer :: synthetic_failures
+
+        call write_synthetic_xpass_report()
+        synthetic_failures = 0
+        call validate_report('synthetic-xpass', SYNTHETIC_XPASS_REPORT, 1, &
+            synthetic_failures)
+        if (synthetic_failures /= 1) then
+            failed = failed + 1
+            print *, 'FAIL: synthetic XPASS did not fail report validation'
+        end if
+    end subroutine verify_xpass_rejection
+
+    subroutine write_synthetic_xpass_report()
+        integer :: unit
+
+        open(newunit=unit, file=SYNTHETIC_XPASS_REPORT, status='replace', &
+            action='write')
+        write(unit, '(A)') &
+            '{"suite":"synthetic-xpass","file":"stale.f90",'// &
+            '"status":"XPASS","ffc_exit":0,"ref_exit":0,'// &
+            '"note":"synthetic stale manifest entry"}'
+        write(unit, '(A)') &
+            '{"suite":"synthetic-xpass","status":"SUMMARY",'// &
+            '"pass":0,"xfail":0,"xpass":1,"fail":0,'// &
+            '"noref":0,"skip":0,"warning_unchecked":0,"total":1}'
+        close(unit)
+    end subroutine write_synthetic_xpass_report
 
     subroutine print_failures(report)
         character(len=*), intent(in) :: report
