@@ -9,6 +9,7 @@ program test_session_generic_interface_compiler
     all_passed = .true.
     if (.not. test_generic_integer_specific()) all_passed = .false.
     if (.not. test_generic_real_specific()) all_passed = .false.
+    if (.not. test_generic_real_result()) all_passed = .false.
     if (.not. test_generic_subroutine()) all_passed = .false.
     if (.not. test_generic_full_signature_dispatch()) all_passed = .false.
     if (.not. test_generic_rank_dispatch()) all_passed = .false.
@@ -77,6 +78,32 @@ contains
         test_generic_real_specific = expect_exit_status( &
             source, 23, '/tmp/ffc_session_generic_real')
     end function test_generic_real_specific
+
+    logical function test_generic_real_result()
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface add_values'//new_line('a')// &
+            '    module procedure add_integers, add_reals'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function add_integers(a, b)'//new_line('a')// &
+            '    integer, intent(in) :: a, b'//new_line('a')// &
+            '    add_integers = a + b'//new_line('a')// &
+            '  end function add_integers'//new_line('a')// &
+            '  real function add_reals(a, b)'//new_line('a')// &
+            '    real, intent(in) :: a, b'//new_line('a')// &
+            '    add_reals = a + b'//new_line('a')// &
+            '  end function add_reals'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  stop int(add_values(5.0, 3.0))'//new_line('a')// &
+            'end program main'
+
+        test_generic_real_result = expect_exit_status( &
+            source, 8, '/tmp/ffc_session_generic_real_result')
+    end function test_generic_real_result
 
     logical function test_generic_subroutine()
         ! B7c: generic subroutine interface dispatches by first arg type.

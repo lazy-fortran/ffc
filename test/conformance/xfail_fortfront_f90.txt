@@ -31,7 +31,6 @@ issue_1614_character_module_variable.f90
 issue_1615_target_attribute.f90
 issue_1619_nested_types_complex.f90
 issue_1621_intent_out_array_shape.f90
-issue_1705_real_literal_generic.f90
 issue_1738_derived_type_allocatable.f90
 issue_1740_optional_keyword_arguments.f90
 issue_1744_operator_interface.f90
