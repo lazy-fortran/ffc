@@ -43,7 +43,7 @@ module session_program_lowering
         is_binary_op, get_binary_op_info, &
         is_literal, get_literal_info, &
         is_identifier, get_identifier_name, &
-        is_declaration_node, is_module_node, is_program_node, &
+        is_module_node, is_program_node, &
         declaration_binding_t, resolve_name_at_node, &
         resolve_identifier_binding, BINDING_NAMED_CONSTANT, &
         ASSOCIATION_DIRECT
