@@ -60,7 +60,9 @@ keyword `source=`/`shape=` form), `lbound`, `ubound`, `count`, `any`, `all`
 (`if (.not. all(l))`), a logical array constructor (`all([.true., .false.])`),
 or a whole-array/section/constructor/scalar elementwise comparison using a
 relational or `.eqv.`/`.neqv.` operator, e.g. `if (any(a /= b))`,
-`all(a == [1, 2, 3])`, `any(a(2:4) /= b(2:4))`, `any(d .neqv. mask)`, plus
+`all(a == [1, 2, 3])`, `any(a(2:4) /= b(2:4))`, `any(d .neqv. mask)`; a
+real array operand may use elemental `abs`, e.g.
+`if (any(abs(samples) > tolerance))`, and
 dim-wise
 `sum`/`product`/`count`/`any`/`all` of a rank-2 source into a rank-1 target
 with a compile-time `dim`, e.g. `s = sum(a, 1)`, `m = any(a == b, 2)`),

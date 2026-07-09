@@ -208,7 +208,7 @@
 
     ! Classify one comparison operand into a reduction_operand_t. ok=.false.
     ! (with no error) rejects forms the general path does not handle.
-    subroutine classify_mask_side(arena, context, idx, side, ok)
+    recursive subroutine classify_mask_side(arena, context, idx, side, ok)
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: idx
@@ -223,6 +223,7 @@
         side%scalar_idx = idx
         side%vk = VALUE_I32
         side%extent = -1
+        side%apply_abs = .false.
         if (.not. node_exists(arena, idx)) return
 
         select type (n => arena%entries(idx)%node)
@@ -252,6 +253,25 @@
             side%extent = size(side%flat)
             ok = .true.
             return
+        type is (call_or_subscript_node)
+            if (is_contained_function_reference(n, context)) return
+            if (.not. n%is_intrinsic) return
+            if (.not. allocated(n%name)) return
+            if (.not. same_name(n%name, 'abs')) return
+            if (.not. allocated(n%arg_indices)) return
+            if (size(n%arg_indices) /= 1) return
+            call classify_mask_side(arena, context, n%arg_indices(1), side, ok)
+            if (.not. ok) return
+            if (side%extent <= 0) then
+                ok = .false.
+                return
+            end if
+            if (side%vk /= VALUE_F32 .and. side%vk /= VALUE_F64) then
+                ok = .false.
+                return
+            end if
+            side%apply_abs = .true.
+            return
         end select
 
         if (is_identifier(arena, idx)) then
@@ -273,8 +293,8 @@
             end if
         end if
 
-        ! A bare function/intrinsic call may return an array (index(a, c),
-        ! abs(arr), ...) that this path cannot evaluate elementwise. Decline it
+        ! Another bare function/intrinsic call may return an array that this
+        ! path cannot evaluate elementwise. Decline it
         ! rather than misread it as a broadcast scalar, which would compare a
         ! garbage scalar against every element of the other operand.
         if (is_unhandled_call_operand(arena, idx)) return
@@ -373,6 +393,9 @@
             if (native_vk == VALUE_LOGICAL) native_vk = VALUE_I32
             call coerce_reduction_operand(context, raw, native_vk, compare_vk, &
                                           value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (side%apply_abs) call mask_real_abs(context, compare_vk, value, &
+                                                  error_msg)
         case (2)
             call lower_array_section_element_from_info(side%info, &
                     int(i, c_int64_t), context, raw, error_msg)
@@ -381,6 +404,9 @@
             if (native_vk == VALUE_LOGICAL) native_vk = VALUE_I32
             call coerce_reduction_operand(context, raw, native_vk, compare_vk, &
                                           value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (side%apply_abs) call mask_real_abs(context, compare_vk, value, &
+                                                  error_msg)
         case (3)
             expr_idx = side%flat(i + 1)
             call mask_scalar_element(arena, expr_idx, context, compare_vk, &
@@ -390,6 +416,32 @@
                                      compare_vk, is_equiv, value, error_msg)
         end select
     end subroutine mask_side_element
+
+    subroutine mask_real_abs(context, value_kind, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(inout) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: zero, nonnegative, negative, absolute
+
+        call set_empty(error_msg)
+        if (value_kind == VALUE_F64) then
+            zero = liric_f64_immediate(context%session, 0.0_c_double)
+            if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, value, &
+                    zero, nonnegative, error_msg)) return
+            if (.not. emit_liric_f64_binary(context%session, LR_OP_FSUB, zero, &
+                    value, negative, error_msg)) return
+        else
+            zero = liric_f32_immediate(context%session, 0.0_c_float)
+            if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, value, &
+                    zero, nonnegative, error_msg)) return
+            if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, &
+                    value, negative, error_msg)) return
+        end if
+        call select_value(context, nonnegative, value, negative, absolute, &
+                          error_msg)
+        if (len_trim(error_msg) == 0) value = absolute
+    end subroutine mask_real_abs
 
     subroutine mask_scalar_element(arena, expr_idx, context, compare_vk, &
                                    is_equiv, value, error_msg)

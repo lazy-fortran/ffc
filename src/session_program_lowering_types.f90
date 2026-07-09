@@ -296,6 +296,7 @@ module session_program_lowering_types
             type(array_section_info_t) :: info
             integer :: vk = VALUE_I32
             integer :: extent = -1
+            logical :: apply_abs = .false.
         end type reduction_operand_t
 
         type, public :: derived_type_info_t
