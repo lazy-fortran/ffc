@@ -167,7 +167,7 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 | Manifest | Entries |
 |---|---:|
 | `test/conformance/xfail_fortfront_f90.txt` | 100 |
-| `test/conformance/xfail_fortfront_lf.txt` | 60 |
+| `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
 | `test/conformance/xfail_lfortran.txt` | 3425 |
 | `test/conformance/xfail_gfortran_dg.txt` | 2121 |
@@ -236,6 +236,9 @@ The fpm test `test_fortfront_corpus_conformance` runs the full
 reports under `/tmp`. Passing files need no manifest entry. A new
 FortFront example fails the ffc test until ffc supports it or its
 basename is added to the matching xfail manifest.
+
+The maintained fpm test rejects both FAIL and XPASS records. An XPASS is a
+stale manifest entry and must be promoted before merging.
 
 Current xfail manifests:
 

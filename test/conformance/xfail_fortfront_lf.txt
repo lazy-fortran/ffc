@@ -26,7 +26,6 @@ issue_1814_nested_lazy_function.lf
 issue_1816_multiple_return_values.lf
 issue_1816_multiple_returns.lf
 issue_1968_lazy_function_result.lf
-issue_1973_empty_typed_array_constructor.lf
 issue_2012_subroutine_local_not_inferred.lf
 issue_2062_nested_do_missing_var_type_mismatch.lf
 issue_2063_deferred_char_function_syntax.lf
