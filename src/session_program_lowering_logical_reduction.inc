@@ -254,6 +254,8 @@
             ok = .true.
             return
         type is (call_or_subscript_node)
+            if (is_contained_function_reference(n, context)) return
+            if (.not. n%is_intrinsic) return
             if (.not. allocated(n%name)) return
             if (.not. same_name(n%name, 'abs')) return
             if (.not. allocated(n%arg_indices)) return
