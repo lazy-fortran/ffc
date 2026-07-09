@@ -22,7 +22,7 @@
         end if
     end subroutine lower_scalar_pointer_target
 
-    subroutine lower_pointer_target_array(node, context, error_msg)
+    subroutine lower_pointer_target_array(node, context, value_kind, error_msg)
         ! Rank-1/rank-2 fixed-size integer/real/logical/complex POINTER/TARGET
         ! arrays (#245 B3a). A target array gets ordinary explicit-shape
         ! storage; a deferred-shape pointer array (p(:) or p(:,:)) starts
@@ -32,8 +32,9 @@
         ! unsupported diagnostic.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: value_kind, dim_count, array_lower_bound, array_size, i
+        integer :: dim_count, array_lower_bound, array_size, i
 
         if (node%is_allocatable) then
             call unsupported_pointer_target_array(node, error_msg)
@@ -46,8 +47,6 @@
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
-        call declaration_value_kind(node, value_kind, error_msg, context)
-        if (len_trim(error_msg) > 0) return
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
             value_kind /= VALUE_C4 .and. value_kind /= VALUE_C8) then

@@ -345,6 +345,7 @@
         ! bounds that name this variable fold to a compile-time constant.
         context%symbols(var_sym)%has_i32_constant = .true.
         context%symbols(var_sym)%i32_constant = int(iv, c_int64_t)
+        context%symbols(var_sym)%is_transient_i32_constant = .true.
         if (context%symbols(var_sym)%has_address .and. &
             context%symbols(var_sym)%is_reference) then
             call store_reference_value(context, var_sym, value, error_msg)

@@ -383,7 +383,8 @@
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
-            call parse_f64_literal(lit_value, context, literal_value_f64, error_msg)
+            call parse_f64_literal(lit_value, context, literal_value_f64, &
+                                   error_msg, node_index)
             if (len_trim(error_msg) > 0) return
             literal_value_f32 = real(literal_value_f64, c_float)
             value = liric_f32_immediate(context%session, literal_value_f32)
@@ -599,7 +600,7 @@
                 block
                     character(len=:), allocatable :: lv, lt, le
                     call get_literal_info(arena, node_index, lv, lt, le)
-                    is_f32 = .not. literal_is_f64(lv, context)
+                    is_f32 = .not. literal_is_f64(lv, context, node_index)
                 end block
             end if
             return
@@ -723,7 +724,8 @@
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
-            call parse_f64_literal(lit_value, context, literal_value, error_msg)
+            call parse_f64_literal(lit_value, context, literal_value, error_msg, &
+                                   node_index)
             if (len_trim(error_msg) > 0) return
             value = liric_f64_immediate(context%session, literal_value)
             return
@@ -1057,7 +1059,7 @@
                 block
                     character(len=:), allocatable :: lv, lt, le
                     call get_literal_info(arena, node_index, lv, lt, le)
-                    is_f64 = literal_is_f64(lv, context)
+                    is_f64 = literal_is_f64(lv, context, node_index)
                 end block
             end if
             return

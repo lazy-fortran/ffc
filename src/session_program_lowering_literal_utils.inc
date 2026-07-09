@@ -165,7 +165,7 @@
         if (.not. node_exists(arena, arg_idx)) return
         if (is_real_literal(arena, arg_idx)) then
             call get_literal_info(arena, arg_idx, lv, lt, le)
-            if (literal_is_f64(lv, context)) then
+            if (literal_is_f64(lv, context, arg_idx)) then
                 kind_num = 8
             else
                 kind_num = 4
@@ -400,7 +400,7 @@
         end if
     end function logical_i32_value
 
-    logical function literal_is_f64(text, context)
+    logical function literal_is_f64(text, context, reference_index)
         ! Returns true when a real literal is explicitly f64 — i.e. its numeric
         ! part carries a 'd'/'D' exponent, or it carries a _8 / _real64 /
         ! _c_double / _c_long_double kind suffix, or a suffix naming a
@@ -412,15 +412,20 @@
         ! mistake) cannot misfire.
         character(len=*), intent(in) :: text
         type(lowering_context_t), intent(in) :: context
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: lo, numeric_part, suffix
         integer :: uscore
 
         lo = lowercase_text(trim(text))
         uscore = scan(lo, '_')
-        if (uscore > 1 .and. scan(lo(uscore - 1:uscore - 1), '0123456789.de') > 0) &
-            then
-            numeric_part = lo(1:uscore - 1)
-            suffix = lo(uscore + 1:)
+        if (uscore > 1) then
+            if (scan(lo(uscore - 1:uscore - 1), '0123456789.de') > 0) then
+                numeric_part = lo(1:uscore - 1)
+                suffix = lo(uscore + 1:)
+            else
+                numeric_part = lo
+                call set_empty(suffix)
+            end if
         else
             numeric_part = lo
             call set_empty(suffix)
@@ -437,35 +442,39 @@
         case ('')
             literal_is_f64 = .false.
         case default
-            literal_is_f64 = named_kind_suffix_is_f64(suffix, context)
+            literal_is_f64 = named_kind_suffix_is_f64(suffix, context, &
+                                                      reference_index)
         end select
     end function literal_is_f64
 
-    logical function named_kind_suffix_is_f64(suffix, context) result(is_f64)
-        !! Resolve a real-literal kind suffix that names a PARAMETER (e.g. the
-        !! `dp` in `1.0_dp`) to its folded compile-time integer value and
-        !! report whether that value is the f64 kind number (8). Falls back to
-        !! the conventional dp/wp double-precision names when the parameter
-        !! cannot be folded (declared in an unreachable scope, etc.), matching
-        !! real_kind_is_f64's declaration-side convention.
+    logical function named_kind_suffix_is_f64(suffix, context, reference_index) &
+        result(is_f64)
         character(len=*), intent(in) :: suffix
         type(lowering_context_t), intent(in) :: context
+        integer, intent(in), optional :: reference_index
         integer :: sym
         integer(c_int64_t) :: folded
         character(len=:), allocatable :: fold_error
+        logical :: found
 
+        if (present(reference_index)) then
+            call fold_scoped_i32_name(context%arena, context, reference_index, &
+                                      suffix, folded, found, fold_error)
+            if (len_trim(fold_error) == 0) then
+                is_f64 = folded == 8_c_int64_t
+                return
+            end if
+            if (found) then
+                is_f64 = .false.
+                return
+            end if
+        end if
         sym = find_symbol(context, suffix)
         if (sym > 0) then
             if (context%symbols(sym)%has_i32_constant) then
                 is_f64 = context%symbols(sym)%i32_constant == 8_c_int64_t
                 return
             end if
-        end if
-        call fold_named_constant_from_arena(context%arena, context, suffix, &
-                                            folded, fold_error)
-        if (len_trim(fold_error) == 0) then
-            is_f64 = folded == 8_c_int64_t
-            return
         end if
         select case (trim(suffix))
         case ('dp', 'wp')
@@ -475,11 +484,12 @@
         end select
     end function named_kind_suffix_is_f64
 
-    subroutine parse_f64_literal(text, context, value, error_msg)
+    subroutine parse_f64_literal(text, context, value, error_msg, reference_index)
         character(len=*), intent(in) :: text
         type(lowering_context_t), intent(in) :: context
         real(c_double), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: clean
         integer :: io_stat, uscore
         integer(c_int64_t) :: int_value
@@ -501,7 +511,7 @@
         ! rounds to single precision first, and only that rounded value widens
         ! to f64, matching gfortran (e.g. 1.05 -> 1.0499999523162842d0, not the
         ! double-precision-accurate 1.05d0).
-        if (literal_is_f64(text, context)) then
+        if (literal_is_f64(text, context, reference_index)) then
             read (clean, *, iostat=io_stat) value
         else
             read (clean, *, iostat=io_stat) single_value

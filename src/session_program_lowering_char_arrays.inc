@@ -26,7 +26,8 @@
                                                              error_msg)
                 return
             end if
-            call lower_allocatable_declaration(node, context, error_msg)
+            call lower_allocatable_declaration(node, context, error_msg, &
+                                               VALUE_CHARACTER)
             return
         end if
         if (node%is_save) then
@@ -584,7 +585,8 @@
         rank = 1
         if (allocated(node%dimension_indices)) rank = size(node%dimension_indices)
         if (rank /= 1) then
-            call lower_allocatable_declaration(node, context, error_msg)
+            call lower_allocatable_declaration(node, context, error_msg, &
+                                               VALUE_CHARACTER)
             return
         end if
 

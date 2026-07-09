@@ -643,7 +643,8 @@
                 call get_literal_info(arena, node_index, lit_value, lit_type, &
                                       error_msg)
                 if (len_trim(error_msg) > 0) return
-                call parse_f64_literal(lit_value, context, lit_f64, error_msg)
+                call parse_f64_literal(lit_value, context, lit_f64, error_msg, &
+                                       node_index)
                 if (len_trim(error_msg) > 0) return
                 value = liric_f32_immediate(context%session, real(lit_f64, c_float))
                 return

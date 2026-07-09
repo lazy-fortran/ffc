@@ -230,6 +230,7 @@ module session_program_lowering_types
             logical :: is_array_result = .false.
             logical :: has_i32_constant = .false.
             integer(c_int64_t) :: i32_constant = 0_c_int64_t
+            logical :: is_transient_i32_constant = .false.
             logical :: is_deferred_character = .false.
             type(lr_operand_desc_t) :: deferred_data
             type(lr_operand_desc_t) :: deferred_length

@@ -43,7 +43,10 @@ module session_program_lowering
         is_binary_op, get_binary_op_info, &
         is_literal, get_literal_info, &
         is_identifier, get_identifier_name, &
-        is_declaration_node, is_module_node, is_program_node
+        is_declaration_node, is_module_node, is_program_node, &
+        declaration_binding_t, resolve_name_at_node, &
+        resolve_identifier_binding, BINDING_NAMED_CONSTANT, &
+        ASSOCIATION_DIRECT
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
@@ -379,11 +382,15 @@ contains
             end if
         end if
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
-            call lower_pointer_target_array(node, context, error_msg)
+            call declaration_value_kind(node, value_kind, error_msg, context, &
+                node_index)
+            if (len_trim(error_msg) > 0) return
+            call lower_pointer_target_array(node, context, value_kind, error_msg)
             return
         end if
         if (node%is_pointer .or. node%is_target) then
-            call declaration_value_kind(node, value_kind, error_msg, context)
+            call declaration_value_kind(node, value_kind, error_msg, context, &
+                node_index)
             if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
@@ -406,7 +413,8 @@ contains
                     'scalar integer, real, and logical locals only', error_msg)
                 return
             end if
-            call declaration_value_kind(node, value_kind, error_msg, context)
+            call declaration_value_kind(node, value_kind, error_msg, context, &
+                node_index)
             if (len_trim(error_msg) > 0) return
             if (value_kind == VALUE_CHARACTER) then
                 call lower_character_array_declaration(node, context, error_msg)
@@ -426,7 +434,8 @@ contains
                 return
             end if
             if (node%is_allocatable) then
-                call lower_allocatable_declaration(node, context, error_msg)
+                call lower_allocatable_declaration(node, context, error_msg, &
+                    value_kind)
                 return
             end if
             ! Complex arrays store real and imaginary parts in two parallel
@@ -527,7 +536,7 @@ contains
             end if
             return
         end if
-        call declaration_value_kind(node, value_kind, error_msg, context)
+        call declaration_value_kind(node, value_kind, error_msg, context, node_index)
         if (len_trim(error_msg) > 0) return
         if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER .and. &
             value_kind /= VALUE_CLASS_STAR) then

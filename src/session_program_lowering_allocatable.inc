@@ -1,12 +1,19 @@
-    subroutine lower_allocatable_declaration(node, context, error_msg)
+    subroutine lower_allocatable_declaration(node, context, error_msg, &
+                                             value_kind_override)
         ! integer/real/logical/character, allocatable :: a(:) or a(:,:)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: value_kind_override
         integer :: i, rank, value_kind, character_length, symbol_index
 
-        call declaration_value_kind(node, value_kind, error_msg, context)
-        if (len_trim(error_msg) > 0) return
+        if (present(value_kind_override)) then
+            value_kind = value_kind_override
+            call set_empty(error_msg)
+        else
+            call declaration_value_kind(node, value_kind, error_msg, context)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
             value_kind /= VALUE_CHARACTER) then

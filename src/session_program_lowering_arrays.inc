@@ -83,13 +83,46 @@
         select type (n => arena%entries(idx)%node)
         type is (literal_node)
             has_var = .false.
+        type is (identifier_node)
+            has_var = bound_identifier_references_variable(arena, idx, context)
         type is (binary_op_node)
-            has_var = bound_expr_references_variable(arena, n%left_index, context) &
-                .or. bound_expr_references_variable(arena, n%right_index, context)
+            has_var = bound_expr_references_variable(arena, n%left_index, context)
+            if (.not. has_var) then
+                has_var = bound_expr_references_variable(arena, n%right_index, &
+                                                         context)
+            end if
         type is (range_expression_node)
             has_var = bound_expr_references_variable(arena, n%end_index, context)
         end select
     end function bound_expr_references_variable
+
+    logical function bound_identifier_references_variable(arena, idx, context) &
+        result(has_var)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: id_name
+        character(len=:), allocatable :: error_msg
+        integer(c_int64_t) :: kind_value
+        integer :: symbol_index
+
+        has_var = .true.
+        call resolve_identifier_binding(arena, idx, binding, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (binding%found) then
+            if (binding%binding_kind == BINDING_NAMED_CONSTANT) has_var = .false.
+            return
+        end if
+        call get_identifier_name(arena, idx, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol(context, id_name)
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%has_i32_constant) has_var = .false.
+            return
+        end if
+        if (iso_c_binding_kind_value(id_name, kind_value)) has_var = .false.
+    end function bound_identifier_references_variable
 
     logical function declaration_bound_is_variable_driven(node, context) &
             result(is_var)
@@ -1175,6 +1208,7 @@
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
+        logical :: scoped_found
 
         constant_value = 0_c_int64_t
         if (.not. node_exists(arena, node_index)) then
@@ -1247,27 +1281,31 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
+            call fold_scoped_i32_name(arena, context, node_index, id_name, &
+                                      constant_value, scoped_found, error_msg)
+            if (len_trim(error_msg) == 0) return
             symbol_index = find_symbol(context, id_name)
             if (symbol_index > 0) then
-                if (context%symbols(symbol_index)%has_i32_constant) then
+                if (context%symbols(symbol_index)%has_i32_constant .and. &
+                    context%symbols(symbol_index)%is_transient_i32_constant) then
                     constant_value = context%symbols(symbol_index)%i32_constant
                     call set_empty(error_msg)
                     return
                 end if
-            else
+            end if
+            if (.not. scoped_found) then
+                if (symbol_index > 0) then
+                    if (context%symbols(symbol_index)%has_i32_constant) then
+                        constant_value = context%symbols(symbol_index)%i32_constant
+                        call set_empty(error_msg)
+                        return
+                    end if
+                end if
                 if (iso_c_binding_kind_value(id_name, constant_value)) then
                     call set_empty(error_msg)
                     return
                 end if
             end if
-            ! The identifier is not a compile-time constant in the current scope.
-            ! When resolving an assumed-shape dummy's extent from a caller's actual
-            ! declared with a named-constant bound (dimension(n)), that constant
-            ! lives in the caller's scope, not the callee's. Fold it from its
-            ! PARAMETER declaration anywhere in the unit.
-            call fold_named_constant_from_arena(arena, context, id_name, &
-                                                constant_value, error_msg)
-            if (len_trim(error_msg) == 0) return
             ! Still unresolved: id_name may itself be a dummy argument of the
             ! procedure being lowered (an adjustable-array bound such as
             ! `real :: a(n)`). Recover its value from the single call site's
@@ -1275,14 +1313,8 @@
             call fold_i32_constant_from_call_site(arena, context, id_name, &
                                                   constant_value, error_msg)
             if (len_trim(error_msg) == 0) return
-            ! Last resort: a host/module-associated variable (not a dummy
-            ! argument, not a PARAMETER) used directly as an array bound, e.g.
-            ! `integer :: nx = 4` at module scope and `real, dimension(nx) ::`
-            ! in a USE'd subroutine. Approximate with its declared initial
-            ! value, matching the common case of a value set once and never
-            ! reassigned before the bound is used.
-            call fold_initialized_variable_from_arena(arena, context, id_name, &
-                                                      constant_value, error_msg)
+            error_msg = 'compile-time integer parameter was not declared: '// &
+                        trim(id_name)
             return
         end if
 
@@ -1305,36 +1337,88 @@
         end select
     end subroutine eval_i32_constant
 
-    recursive subroutine fold_named_constant_from_arena(arena, context, name, &
-                                                        constant_value, error_msg)
-        ! Fold an integer named constant by finding its PARAMETER declaration
-        ! anywhere in the unit and evaluating its initializer. Used when the
-        ! constant is not in the current lowering scope, e.g. a caller-scope
-        ! parameter naming an assumed-shape actual's declared extent.
+    recursive subroutine fold_scoped_i32_name(arena, context, reference_index, &
+                                              name, constant_value, found, &
+                                              error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: reference_index
         character(len=*), intent(in) :: name
         integer(c_int64_t), intent(out) :: constant_value
+        logical, intent(out) :: found
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: n
+        type(declaration_binding_t) :: binding
 
         constant_value = 0_c_int64_t
-        do n = 1, arena%size
-            if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (declaration_node)
-                if (.not. node%is_parameter) cycle
-                if (.not. node%has_initializer) cycle
-                if (node%initializer_index <= 0) cycle
-                if (.not. allocated(node%var_name)) cycle
-                if (trim(node%var_name) /= trim(name)) cycle
-                call eval_i32_constant(arena, node%initializer_index, context, &
-                                       constant_value, error_msg)
-                return
-            end select
-        end do
-        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
-    end subroutine fold_named_constant_from_arena
+        found = .false.
+        call resolve_name_at_node(arena, reference_index, name, binding, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. binding%found) then
+            error_msg = 'compile-time integer parameter was not declared: '// &
+                        trim(name)
+            return
+        end if
+        found = .true.
+        call fold_i32_binding(arena, context, binding, constant_value, error_msg)
+    end subroutine fold_scoped_i32_name
+
+    recursive subroutine fold_i32_binding(arena, context, binding, constant_value, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        constant_value = 0_c_int64_t
+        if (.not. node_exists(arena, binding%node_index)) then
+            error_msg = 'compile-time integer parameter was not declared: '// &
+                        trim(binding%name)
+            return
+        end if
+        select type (node => arena%entries(binding%node_index)%node)
+        type is (declaration_node)
+            call fold_i32_declaration_binding(arena, context, binding, node, &
+                                              constant_value, error_msg)
+        class default
+            error_msg = 'compile-time integer parameter was not declared: '// &
+                        trim(binding%name)
+        end select
+    end subroutine fold_i32_binding
+
+    recursive subroutine fold_i32_declaration_binding(arena, context, binding, &
+                                                      node, constant_value, &
+                                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        type(declaration_node), intent(in) :: node
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        constant_value = 0_c_int64_t
+        if (node%is_parameter) then
+            if (node%has_initializer) then
+                if (node%initializer_index > 0) then
+                    call eval_i32_constant(arena, node%initializer_index, context, &
+                                           constant_value, error_msg)
+                    return
+                end if
+            end if
+        else if (binding%association /= ASSOCIATION_DIRECT) then
+            if (.not. node%is_array) then
+                if (node%has_initializer) then
+                    if (node%initializer_index > 0) then
+                        call eval_i32_constant(arena, node%initializer_index, &
+                                               context, constant_value, error_msg)
+                        return
+                    end if
+                end if
+            end if
+        end if
+        error_msg = 'compile-time integer parameter was not declared: '// &
+                    trim(binding%name)
+    end subroutine fold_i32_declaration_binding
 
     recursive subroutine fold_i32_constant_from_call_site(arena, context, name, &
                                                            constant_value, &
@@ -1371,39 +1455,6 @@
         call eval_i32_constant(arena, actual_index, context, constant_value, &
                                error_msg)
     end subroutine fold_i32_constant_from_call_site
-
-    recursive subroutine fold_initialized_variable_from_arena(arena, context, &
-                                                              name, &
-                                                              constant_value, &
-                                                              error_msg)
-        ! Fold a plain (non-PARAMETER) scalar variable's declared initial
-        ! value, for a host/module-associated array bound that names an
-        ! ordinary variable rather than a named constant or dummy argument.
-        type(ast_arena_t), intent(in) :: arena
-        type(lowering_context_t), intent(in) :: context
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer :: n
-
-        constant_value = 0_c_int64_t
-        do n = 1, arena%size
-            if (.not. node_exists(arena, n)) cycle
-            select type (node => arena%entries(n)%node)
-            type is (declaration_node)
-                if (node%is_array) cycle
-                if (node%is_parameter) cycle
-                if (.not. node%has_initializer) cycle
-                if (node%initializer_index <= 0) cycle
-                if (.not. allocated(node%var_name)) cycle
-                if (trim(node%var_name) /= trim(name)) cycle
-                call eval_i32_constant(arena, node%initializer_index, context, &
-                                       constant_value, error_msg)
-                return
-            end select
-        end do
-        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
-    end subroutine fold_initialized_variable_from_arena
 
     ! Constant-fold selected_int_kind / selected_real_kind so they may appear
     ! in a compile-time integer parameter initializer (kind selection).
@@ -1622,7 +1673,7 @@
         else if (is_real_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (literal_is_f64(lit_value, context)) then
+            if (literal_is_f64(lit_value, context, node_index)) then
                 k = 8_c_int64_t
             else
                 k = 4_c_int64_t
@@ -2234,7 +2285,8 @@
             if (index(lit_value, '.') > 0 .or. index(lit_value, 'e') > 0 .or. &
                 index(lit_value, 'E') > 0 .or. index(lit_value, 'd') > 0 .or. &
                 index(lit_value, 'D') > 0) then
-                call parse_f64_literal(lit_value, context, rval, error_msg)
+                call parse_f64_literal(lit_value, context, rval, error_msg, &
+                                       node_index)
                 if (len_trim(error_msg) > 0) return
                 value = i32_immediate(context%session, int(rval, c_int64_t))
                 call set_empty(error_msg)
@@ -2368,6 +2420,7 @@
             end if
             saved_sym = context%symbols(vsym)
             context%symbols(vsym)%has_i32_constant = .true.
+            context%symbols(vsym)%is_transient_i32_constant = .true.
             context%symbols(vsym)%value_kind = VALUE_I32
             ival = lo
             do while ((step > 0 .and. ival <= hi) .or. (step < 0 .and. ival >= hi))

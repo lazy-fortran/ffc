@@ -664,7 +664,7 @@
             return
         end if
         call function_value_kind(node, context, value_kind, derived_type_index, &
-                                 error_msg)
+                                 error_msg, node_index)
         if (len_trim(error_msg) > 0) return
 
         next_index = context%function_count + 1
@@ -685,11 +685,12 @@
     end subroutine register_internal_function_name
 
   subroutine function_value_kind(node, context, value_kind, derived_type_index, &
-                                   error_msg)
+                                   error_msg, reference_index)
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
         integer, intent(out) :: derived_type_index
+        integer, intent(in), optional :: reference_index
         integer :: char_len, paren, rparen
         character(len=:), allocatable :: derived_name, base_type, kind_spec
         character(len=:), allocatable, intent(out) :: error_msg
@@ -762,13 +763,14 @@
                 end if
             else
                 call integer_kind_to_value_kind(kind_spec, node%line, &
-                                                node%column, value_kind, error_msg)
+                                                node%column, value_kind, error_msg, &
+                                                context, reference_index)
                 if (len_trim(error_msg) > 0) return
                 if (value_kind /= VALUE_I64) value_kind = VALUE_I32
             end if
         case ('real')
             ! Classify by kind: bare real and real(4) are f32; real(8) is f64.
-            if (real_kind_is_f64(kind_spec)) then
+            if (real_kind_is_f64(kind_spec, context, reference_index)) then
                 value_kind = VALUE_F64
             else if (len_trim(kind_spec) == 0 .and. &
                      result_var_body_decl_is_f64(node, context)) then
@@ -785,7 +787,7 @@
             value_kind = VALUE_F64
         case ('complex')
             ! Bare complex and complex(4) are two f32s; complex(8) is two f64s.
-            if (complex_kind_is_c8(kind_spec)) then
+            if (complex_kind_is_c8(kind_spec, context, reference_index)) then
                 value_kind = VALUE_C8
             else
                 value_kind = VALUE_C4
@@ -855,9 +857,10 @@
             type is (declaration_node)
                 if (decl%is_array) cycle
                 if (allocated(decl%var_name)) then
-                    if (trim(decl%var_name) == result_name) then
-                        call resolve_result_decl_kind(decl, context, value_kind, &
-                            derived_index, is_array, decl_err)
+                        if (trim(decl%var_name) == result_name) then
+                            call resolve_result_decl_kind(decl, context, value_kind, &
+                                derived_index, is_array, decl_err, &
+                                node%body_indices(i))
                         if (len_trim(decl_err) == 0 .and. .not. is_array .and. &
                             value_kind == VALUE_F64) is_f64 = .true.
                         if (is_f64) return
@@ -867,7 +870,8 @@
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == result_name) then
                             call resolve_result_decl_kind(decl, context, &
-                                value_kind, derived_index, is_array, decl_err)
+                                value_kind, derived_index, is_array, decl_err, &
+                                node%body_indices(i))
                             if (len_trim(decl_err) == 0 .and. .not. is_array .and. &
                                 value_kind == VALUE_F64) is_f64 = .true.
                             if (is_f64) return
@@ -900,7 +904,8 @@
             select type (decl => context%arena%entries(node%body_indices(i))%node)
             type is (declaration_node)
                 if (decl%is_array) cycle
-                call declaration_value_kind(decl, decl_kind, decl_err, context)
+                call declaration_value_kind(decl, decl_kind, decl_err, context, &
+                                            node%body_indices(i))
                 if (len_trim(decl_err) == 0 .and. decl_kind == VALUE_I64) then
                     has_i64 = .true.
                     return
@@ -988,7 +993,8 @@
                     if (allocated(decl%var_name)) then
                         if (trim(decl%var_name) == result_name) then
                             call resolve_result_decl_kind(decl, context, &
-                                value_kind, derived_type_index, is_array, error_msg)
+                                value_kind, derived_type_index, is_array, error_msg, &
+                                node%body_indices(i))
                             if (.not. is_array) then
                                 call remap_scalar_char_result_kind(context, decl, &
                                                                    value_kind)
@@ -1001,7 +1007,7 @@
                             if (trim(decl%var_names(k)) == result_name) then
                                 call resolve_result_decl_kind(decl, context, &
                                     value_kind, derived_type_index, is_array, &
-                                    error_msg)
+                                    error_msg, node%body_indices(i))
                                 if (.not. is_array) then
                                     call remap_scalar_char_result_kind(context, &
                                                                        decl, &
@@ -1083,13 +1089,15 @@
     end subroutine remap_scalar_char_result_kind
 
     subroutine resolve_result_decl_kind(decl, context, value_kind, &
-                                        derived_type_index, is_array, error_msg)
+                                        derived_type_index, is_array, error_msg, &
+                                        reference_index)
         type(declaration_node), intent(in) :: decl
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
         integer, intent(out) :: derived_type_index
         logical, intent(out) :: is_array
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
 
         value_kind = VALUE_I32
         derived_type_index = 0
@@ -1102,7 +1110,8 @@
             value_kind = VALUE_DERIVED
             return
         end if
-        call declaration_value_kind(decl, value_kind, error_msg, context)
+        call declaration_value_kind(decl, value_kind, error_msg, context, &
+                                    reference_index)
     end subroutine resolve_result_decl_kind
 
     logical function result_var_is_fixed_array(node, context) result(is_fixed)
@@ -1192,9 +1201,10 @@
             select type (decl => context%arena%entries(node%body_indices(i))%node)
             type is (declaration_node)
                 if (allocated(decl%var_name)) then
-                    if (trim(decl%var_name) == result_name) then
-                        call classify_alloc_array_decl(decl, context, is_alloc, &
-                                                       elem_kind, rank, decl_err)
+                        if (trim(decl%var_name) == result_name) then
+                            call classify_alloc_array_decl(decl, context, is_alloc, &
+                                                       elem_kind, rank, decl_err, &
+                                                       node%body_indices(i))
                         if (is_alloc) return
                     end if
                 end if
@@ -1202,7 +1212,8 @@
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == result_name) then
                             call classify_alloc_array_decl(decl, context, is_alloc, &
-                                                           elem_kind, rank, decl_err)
+                                                           elem_kind, rank, decl_err, &
+                                                           node%body_indices(i))
                             if (is_alloc) return
                         end if
                     end do
@@ -1212,7 +1223,7 @@
     end subroutine alloc_array_result_info
 
     subroutine classify_alloc_array_decl(decl, context, is_alloc, elem_kind, rank, &
-                                         decl_err)
+                                         decl_err, reference_index)
         ! An allocatable rank-1/2 declaration of an intrinsic element kind.
         type(declaration_node), intent(in) :: decl
         type(lowering_context_t), intent(in) :: context
@@ -1220,6 +1231,7 @@
         integer, intent(out) :: elem_kind
         integer, intent(out) :: rank
         character(len=:), allocatable, intent(out) :: decl_err
+        integer, intent(in), optional :: reference_index
 
         is_alloc = .false.
         elem_kind = VALUE_I32
@@ -1237,7 +1249,8 @@
             rank = 0
             return
         end if
-        call declaration_value_kind(decl, elem_kind, decl_err, context)
+        call declaration_value_kind(decl, elem_kind, decl_err, context, &
+                                    reference_index)
         if (len_trim(decl_err) > 0) then
             rank = 0
             return
@@ -1467,7 +1480,8 @@
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == result_name) then
                         call declaration_value_kind(decl, element_kind, &
-                                                    error_msg, context)
+                                                    error_msg, context, &
+                                                    fn_node%body_indices(i))
                         if (len_trim(error_msg) > 0) return
                         call get_array_bounds(decl, context, lower_bound, &
                                               array_size, error_msg)
@@ -1478,7 +1492,8 @@
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == result_name) then
                             call declaration_value_kind(decl, element_kind, &
-                                                        error_msg, context)
+                                                        error_msg, context, &
+                                                        fn_node%body_indices(i))
                             if (len_trim(error_msg) > 0) return
                             call get_array_bounds(decl, context, lower_bound, &
                                                   array_size, error_msg)
@@ -1923,6 +1938,8 @@
         integer :: result_derived_index
         integer :: alloc_elem_kind
         integer :: alloc_rank
+        integer :: function_index
+        integer :: function_node_index
         logical :: terminated
         logical :: result_is_alloc_array
         character(len=:), allocatable :: result_name
@@ -1932,8 +1949,18 @@
             error_msg = 'direct LIRIC session function requires a name'
             return
         end if
-        call function_value_kind(node, parent_context, value_kind, &
-                                 result_derived_index, error_msg)
+        function_node_index = 0
+        function_index = find_function_index(parent_context, node%name)
+        if (function_index > 0) &
+            function_node_index = parent_context%function_node_indices(function_index)
+        if (function_node_index > 0) then
+            call function_value_kind(node, parent_context, value_kind, &
+                                     result_derived_index, error_msg, &
+                                     function_node_index)
+        else
+            call function_value_kind(node, parent_context, value_kind, &
+                                     result_derived_index, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         result_name = trim(node%name)
         if (allocated(node%result_variable)) then

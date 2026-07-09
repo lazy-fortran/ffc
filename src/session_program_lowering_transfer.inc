@@ -88,7 +88,7 @@
         if (is_real_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lv, lt, le)
             if (len_trim(le) > 0) return
-            if (literal_is_f64(lv, context)) then
+            if (literal_is_f64(lv, context, node_index)) then
                 kind = VALUE_F64
             else
                 kind = VALUE_F32

@@ -42,14 +42,16 @@
                 return
             end if
             if (is_real_literal(arena, node_index)) then
-                if (literal_is_f64(lit_value, context)) then
-                    call parse_f64_literal(lit_value, context, real_value, error_msg)
+                if (literal_is_f64(lit_value, context, node_index)) then
+                    call parse_f64_literal(lit_value, context, real_value, &
+                                           error_msg, node_index)
                     if (len_trim(error_msg) > 0) return
                     value = liric_f64_immediate(context%session, real_value)
                     if (.not. emit_liric_print_f64(context%session, &
                                                    value, error_msg)) return
                 else
-                    call parse_f64_literal(lit_value, context, real_value, error_msg)
+                    call parse_f64_literal(lit_value, context, real_value, &
+                                           error_msg, node_index)
                     if (len_trim(error_msg) > 0) return
                     real_value_f32 = real(real_value, c_float)
                     value = liric_f32_immediate(context%session, real_value_f32)
@@ -355,14 +357,16 @@
                 return
             end if
             if (is_real_literal(arena, node_index)) then
-                if (literal_is_f64(lit_value, context)) then
-                    call parse_f64_literal(lit_value, context, real_value, error_msg)
+                if (literal_is_f64(lit_value, context, node_index)) then
+                    call parse_f64_literal(lit_value, context, real_value, &
+                                           error_msg, node_index)
                     if (len_trim(error_msg) > 0) return
                     value = liric_f64_immediate(context%session, real_value)
                     if (.not. emit_liric_print_f64_value(context%session, &
                                                          value, error_msg)) return
                 else
-                    call parse_f64_literal(lit_value, context, real_value, error_msg)
+                    call parse_f64_literal(lit_value, context, real_value, &
+                                           error_msg, node_index)
                     if (len_trim(error_msg) > 0) return
                     real_value_f32 = real(real_value, c_float)
                     value = liric_f32_immediate(context%session, real_value_f32)
