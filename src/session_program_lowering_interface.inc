@@ -329,8 +329,7 @@
             select type (decl => context%arena%entries(body_indices(i))%node)
             type is (declaration_node)
                 if (.not. allocated(decl%type_name)) cycle
-                if (.not. allocated(decl%var_name)) cycle
-                if (.not. same_name(decl%var_name, param_name)) cycle
+                if (.not. declaration_names_var(decl, param_name)) cycle
                 if (declaration_derived_type_index(context, decl) > 0) then
                     kind = VALUE_DERIVED
                     return
@@ -385,8 +384,7 @@
             if (.not. node_exists(context%arena, body_indices(i))) cycle
             select type (decl => context%arena%entries(body_indices(i))%node)
             type is (declaration_node)
-                if (.not. allocated(decl%var_name)) cycle
-                if (.not. same_name(decl%var_name, param_name)) cycle
+                if (.not. declaration_names_var(decl, param_name)) cycle
                 if (decl%is_array .and. allocated(decl%dimension_indices)) then
                     rank = size(decl%dimension_indices)
                 end if

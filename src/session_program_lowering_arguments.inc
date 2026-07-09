@@ -1219,8 +1219,18 @@ integer function expression_value_kind(arena, node_index, context, &
         arg_count = size(node%arg_indices)
         if (arg_count > MAX_PROC_ARGS) arg_count = MAX_PROC_ARGS
         do i = 1, arg_count
-            arg_kinds(i) = expression_value_kind(arena, node%arg_indices(i), &
-                                                 context, default_kind)
+            ! Generic matching uses a real literal's source kind before the
+            ! selected procedure applies any contextual conversion.
+            if (is_real_literal(arena, node%arg_indices(i))) then
+                if (is_f32_expression(arena, node%arg_indices(i), context)) then
+                    arg_kinds(i) = VALUE_F32
+                else
+                    arg_kinds(i) = VALUE_F64
+                end if
+            else
+                arg_kinds(i) = expression_value_kind(arena, &
+                    node%arg_indices(i), context, default_kind)
+            end if
         end do
     end subroutine call_argument_kinds
 
