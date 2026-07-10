@@ -11,6 +11,8 @@ if [ "$#" -gt 0 ]; then
 else
     MANIFESTS=("$PROJECT_DIR"/test/conformance/xfail_*.txt)
     MANIFESTS+=("$PROJECT_DIR"/test/conformance/skip_*.txt)
+    MANIFESTS+=("$PROJECT_DIR"/test/conformance/fail_owners_*.txt)
+    MANIFESTS+=("$PROJECT_DIR"/test/conformance/scopes_*.txt)
 fi
 
 TMPDIR_WORK=$(mktemp -d /tmp/ffc_manifest_audit_XXXXXX)

@@ -1,0 +1,4 @@
+issue_2285_openmp_directives.f90 # scope=OpenMP; reason=dashboard scope registry
+issue_2286_openacc_internal.f90 # scope=OpenACC; reason=dashboard scope registry
+issue_2449_openacc_clauses.f90 # scope=OpenACC; reason=dashboard scope registry
+issue_2449_openacc_directives.f90 # scope=OpenACC; reason=dashboard scope registry

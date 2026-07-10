@@ -94,7 +94,7 @@ contains
             call print_failures(report)
         end if
 
-        write (expected_text, '(A,I0,A)') '"total":', expected_total, '}'
+        write (expected_text, '(A,I0,A)') '"total":', expected_total, ','
         if (index(summary, trim(expected_text)) == 0) then
             failed = failed + 1
             print *, 'FAIL[', suite, ']: SUMMARY total differs from ', &
@@ -128,7 +128,8 @@ contains
         write(unit, '(A)') &
             '{"suite":"synthetic-xpass","status":"SUMMARY",'// &
             '"pass":0,"xfail":0,"xpass":1,"fail":0,'// &
-            '"noref":0,"skip":0,"warning_unchecked":0,"total":1}'
+            '"noref":0,"skip":0,"warning_unchecked":0,"total":1,'// &
+            '"schema_version":1}'
         close(unit)
     end subroutine write_synthetic_xpass_report
 

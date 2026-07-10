@@ -9,10 +9,101 @@
 #   compile_with_gfortran  compile a source file with gfortran -w
 #   run_capture            run an executable with timeout, capture stdout+stderr
 #   compare_outputs        compare stdout files and exit statuses
+#   ffc_source_sha256      hash compiler source inputs deterministically
+#   parity_manifest_sha256 hash dashboard input manifests deterministically
 #   build_module_index     map sibling module/submodule names to their files
 #   resolve_prerequisites  order the sibling files a source needs compiled first
 
 set -uo pipefail
+
+ffc_source_sha256() {
+    local root="$1"
+    (
+        cd "$root" || exit 1
+        {
+            find src app -type f -print
+            printf '%s\n' fpm.toml
+        } | LC_ALL=C sort | while IFS= read -r path; do
+            printf '%s\0' "$path"
+            sha256sum "$path" | cut -d ' ' -f 1
+        done
+    ) | sha256sum | cut -d ' ' -f 1
+}
+
+ffc_revision_source_sha256() {
+    local root="$1" revision="$2"
+    (
+        cd "$root" || exit 1
+        {
+            git ls-tree -r --name-only "$revision" -- src app
+            printf '%s\n' fpm.toml
+        } | LC_ALL=C sort | while IFS= read -r path; do
+            printf '%s\0' "$path"
+            git show "$revision:$path" | sha256sum | cut -d ' ' -f 1
+        done
+    ) | sha256sum | cut -d ' ' -f 1
+}
+
+parity_manifest_sha256() {
+    local root="$1"
+    (
+        cd "$root" || exit 1
+        find . -maxdepth 1 -type f \( \
+            -name 'xfail_*.txt' -o -name 'skip_*.txt' -o \
+            -name 'fail_owners_*.txt' -o -name 'scopes_*.txt' -o \
+            -name 'undefined_output_*.txt' -o \
+            -name 'owner_subsystems.txt' \) -print | LC_ALL=C sort | \
+            while IFS= read -r path; do
+                printf '%s\0' "$path"
+                sha256sum "$path" | cut -d ' ' -f 1
+            done
+    ) | sha256sum | cut -d ' ' -f 1
+}
+
+parity_scope_count() {
+    local root="$1"
+    awk '!/^[[:space:]]*(#|$)/ { count++ } END { print count + 0 }' \
+        "$root"/scopes_*.txt
+}
+
+require_clean_git_tree() {
+    local root="$1" label="$2"
+    shift 2
+    local status
+    status=$(git -C "$root" status --porcelain --untracked-files=all -- "$@") || {
+        printf 'ERROR: cannot inspect %s Git tree\n' "$label" >&2
+        return 1
+    }
+    if [ -n "$status" ]; then
+        printf 'ERROR: dirty %s Git tree\n' "$label" >&2
+        return 1
+    fi
+}
+
+git_tree_revision() {
+    git -C "$1" rev-parse 'HEAD^{tree}' 2>/dev/null
+}
+
+require_compiler_inputs_older_than_binary() {
+    local binary="$1" project="$2" fortfront="$3" liric="$4"
+    local root path label
+    local -a paths
+    while IFS=$'\t' read -r root label; do
+        case "$label" in
+            ffc) paths=(src app fpm.toml) ;;
+            FortFront) paths=(src fpm.toml) ;;
+            LIRIC) paths=(src include CMakeLists.txt) ;;
+        esac
+        while IFS= read -r -d '' path; do
+            if [ "$root/$path" -nt "$binary" ]; then
+                printf 'ERROR: compiler binary predates %s input: %s\n' \
+                    "$label" "$path" >&2
+                return 1
+            fi
+        done < <(git -C "$root" ls-files -z -- "${paths[@]}")
+    done < <(printf '%s\t%s\n' "$project" ffc "$fortfront" FortFront \
+        "$liric" LIRIC)
+}
 
 resolve_primary_checkout_root() {
     local fallback="$1"

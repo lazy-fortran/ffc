@@ -334,7 +334,6 @@ bound_3.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations 
 bound_4.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 bound_5.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 bound_6.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-bounds_check_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 bounds_check_27.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 bounds_check_29.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 boz_11.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
@@ -889,7 +888,6 @@ implicit_derived_type_1.f90 # owner=lazy-fortran/ffc#449; reason=lower plain sca
 implied_do_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 implied_do_3.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 implied_do_io_2.f90 # owner=lazy-fortran/ffc#434; reason=read A and L fixed-width fields
-implied_do_io_5.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 implied_do_io_7.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 implied_do_io_8.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 implied_do_io_9.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
@@ -914,7 +912,6 @@ initialization_22.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scala
 initialization_26.f90 # owner=lazy-fortran/ffc#412; reason=fold the named array initialization expression
 initialization_27.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 initialization_29.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-inline_matmul_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 inline_matmul_21.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 inline_matmul_22.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 inline_sum_3.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
@@ -2001,7 +1998,6 @@ unlimited_polymorphic_7.f90 # owner=lazy-fortran/ffc#457; reason=register resolv
 unpack_mask_1.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 unpack_zerosize_1.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 unreferenced_use_assoc_1.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
-unsigned_write_2.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 use_10.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 use_13.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 use_17.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
