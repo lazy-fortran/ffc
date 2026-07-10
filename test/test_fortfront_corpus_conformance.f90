@@ -21,7 +21,7 @@ program test_fortfront_corpus_conformance
 
     failed = 0
     call verify_xpass_rejection(failed)
-    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 439, failed)
+    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 440, failed)
     call run_suite('fortfront-lf', LF_REPORT, LF_LOG, 264, failed)
 
     if (failed > 0) stop 1

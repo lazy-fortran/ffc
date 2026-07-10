@@ -1,26 +1,26 @@
 schema	1
-revision	ffc	e96b0e75bf8752eecb23a6780076752a70f227d9
-revision	FortFront	ee1f2c5345ceb8d768fa5c836cae96a66131f5f6
+revision	ffc	4dba8031f5ebb8c067a09a172d8e2e5ced38622e
+revision	FortFront	57ee8066e73f12459fa00c4cc1b0cce1d1ac5b2b
 revision	LIRIC	f1625993341f2f3e9188de959a5dbc0cf942a20f
 revision	LFortran	caf87b660f803148f000046392a5da803f9fc630
 revision	GCC	395e3d8131c189cd58e8c8061cdc77d1c44e3822
-tree	FortFront	6ae78aa0ff72dc8dee8c65d1b68acf6163962d5c
+tree	FortFront	d73b0004f421fc4f61a1996713ae53b88f9564c5
 tree	LIRIC	d1db3853e802084de4c9bfee80dc4940a744d94b
 tree	LFortran	e897890bb477aa1b7d0ef895485171ee040004ac
 tree	GCC	43ca6c437d1e7063fdb7425cc3ebc3462a0a476f
-corpus-files	fortfront-f90	c3fc45de8d17dac7c97d563f38c8048d5beca6382b6e3f909b26985a20fa0247
+corpus-files	fortfront-f90	d41928abdb201d0ba8351cad2d1421e8d37c89a6ab665754d043d637758e8e55
 corpus-files	fortfront-lf	df205c98116c5baab25311d89fc07f79fb6dc72f51968b8a1d9c3f4f78e9008a
 corpus-files	lfortran	3ade5f5dff08cf108011fa147ef345a7e970076f76d63dba155eb7c0718ca388
 corpus-files	gfortran-dg	92c68be4f4fedb223725a1676066bd80f78e5b3b2d6766b26ddaeb1ec7faf75d
-digest	ffc-source	da344934f0ad9978f11aa2afc1405c3f9b4d5e216fe6b7b03705bc389110be09
-digest	ffc-binary	2283f8d305cd988068b789b08fab72c3ea761246095f450c1d200f8554b66145
+digest	ffc-source	6d65c2e00874a458026370b2c36b0ec08c8607df08042aff0757a995269f1608
+digest	ffc-binary	d6519514b5c0cadd1cfe87a957e2289fcbf80c4fba12b78f5aa7d53f646a7673
 digest	manifests	388175ca7b14be0f2c07fa5d8af75b74747dcf4612125ff3a2b13f3ff51202e2
-suite	fortfront-f90	439	339	100	0	0	94	0
+suite	fortfront-f90	440	340	100	0	0	94	0
 suite	fortfront-lf	264	205	59	0	0	0	0
 suite	lfortran	4280	848	3421	0	11	145	0
 suite	gfortran-dg	5938	1175	2132	0	333	1	2298
-view	All	10921	2567	5712	0	344	240	2298
-view	Scoped	10396	2467	5495	0	343	229	2091
+view	All	10922	2568	5712	0	344	240	2298
+view	Scoped	10397	2468	5495	0	343	229	2091
 excluded	Scoped	525	100	217	0	1	11	207
 owner	fortfront-f90	XFAIL	modules-scope	owner=lazy-fortran/ffc#297	2
 owner	fortfront-f90	XFAIL	modules-scope	owner=lazy-fortran/ffc#327	1
