@@ -188,9 +188,9 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
 | `test/conformance/xfail_lfortran.txt` | 3425 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2121 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2141 |
 | `test/conformance/skip_lfortran.txt` | 0 |
-| `test/conformance/skip_gfortran_dg.txt` | 2371 |
+| `test/conformance/skip_gfortran_dg.txt` | 2298 |
 
 Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
 snapshot. The seed baselines below are historical starting points, not current
@@ -292,7 +292,8 @@ The runner models these gfortran.dg directives:
 - `dg-error`: negative test; `ffc -c` must reject compilation
 - `dg-warning` without `dg-error`: follow `dg-do`; warning text remains unchecked
 - `dg-additional-sources`: multifile tests (skipped)
-- `dg-options` / `dg-add-options`: compiler flag tests (skipped)
+- `dg-options` / `dg-add-options`: tests requesting nonempty compiler flags
+  (skipped); empty directives continue through the declared compile or run path
 - `dg-require`, `dg-skip-if`, `dg-final`, `dg-prune-output`,
   `dg-excess-errors`, `dg-shouldfail`: directive tests (skipped)
 
@@ -318,6 +319,12 @@ Full run against local GCC checkout: `PASS=1173`, `XFAIL=0`,
 `XPASS=0`, `FAIL=2395`, `NOREF=0`, `SKIP=2299`, `TOTAL=5867`.
 The xfail manifest (`test/conformance/xfail_gfortran_dg.txt`) is seeded
 from the FAIL records of this run.
+
+### Current pinned measurement
+
+At GCC revision `395e3d8131c189cd58e8c8061cdc77d1c44e3822`, the post-cleanup
+summary is `PASS=1170`, `XFAIL=2132`, `XPASS=5`, `FAIL=333`, `NOREF=4`,
+`SKIP=2298`, `WARNING_UNCHECKED=75`, `TOTAL=5938`.
 
 ## LFortran integration tests
 

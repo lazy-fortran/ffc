@@ -268,7 +268,10 @@ contains
         if (.not. run_smoke('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
             ' timeout 120 bash '//SCRIPT//' --suite gfortran-dg'// &
             ' --file warning_compile.f90 --file warning_run.f90'// &
-            ' --file true_error.f90 --report '//DG_REPORT, DG_REPORT, 3)) &
+            ' --file true_error.f90 --file empty_options.f90'// &
+            ' --file blank_options.f90 --file omitted_options.f90'// &
+            ' --file empty_add_options.f90 --file spaced_run.f90'// &
+            ' --report '//DG_REPORT, DG_REPORT, 8)) &
             passed = .false.
         if (.not. file_contains(DG_REPORT, &
             '"file":"warning_compile.f90","status":"PASS","ffc_exit":0,'// &
@@ -281,8 +284,18 @@ contains
         if (.not. file_contains(DG_REPORT, &
             '"file":"true_error.f90","status":"PASS"')) passed = .false.
         if (.not. file_contains(DG_REPORT, &
-            '"warning_unchecked":2,"total":3}')) &
+            '"warning_unchecked":2,"total":8}')) &
             passed = .false.
+        if (count_lines_with(DG_REPORT, 'options.f90","status":"PASS"', &
+            'ffc -c succeeded') /= 4) passed = .false.
+        if (.not. file_contains(DG_REPORT, &
+            '"file":"spaced_run.f90","status":"PASS","ffc_exit":0,'// &
+            '"ref_exit":0,"note":"output matches gfortran"')) &
+            passed = .false.
+        if (.not. run_failure('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
+            ' bash '//SCRIPT//' --suite gfortran-dg'// &
+            ' --file nonempty_options.f90', &
+            'unlisted skip: flags')) passed = .false.
         if (.not. run_failure('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
             ' bash '//SCRIPT//' --suite gfortran-dg'// &
             ' --file no_main_accepted.f90 --report '//DG_NEGATIVE_REPORT, &
@@ -334,7 +347,40 @@ contains
         write(unit, '(A)') '! { dg-error "synthetic accepted case" }'
         write(unit, '(A)') 'end subroutine no_main_accepted'
         close(unit)
+
+        call write_options_fixture('empty_options.f90', &
+            '! { dg-options "" }')
+        call write_options_fixture('blank_options.f90', &
+            '! { dg-options " " }')
+        call write_options_fixture('omitted_options.f90', &
+            '! { dg-options }')
+        call write_options_fixture('empty_add_options.f90', &
+            '! { dg-add-options "" }')
+        call write_options_fixture('nonempty_options.f90', &
+            '! { dg-options "-O2" }')
+
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/spaced_run.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') '! { dg-do  run }'
+        write(unit, '(A)') '! { dg-options "" }'
+        write(unit, '(A)') 'program spaced_run'
+        write(unit, '(A)') 'print *, 42'
+        write(unit, '(A)') 'end program spaced_run'
+        close(unit)
     end subroutine write_dg_fixtures
+
+    subroutine write_options_fixture(filename, directive)
+        character(len=*), intent(in) :: filename
+        character(len=*), intent(in) :: directive
+        integer :: unit
+
+        open(newunit=unit, file=DG_FIXTURE_DIR//'/'//filename, &
+            status='replace', action='write')
+        write(unit, '(A)') directive
+        write(unit, '(A)') 'subroutine noop_options'
+        write(unit, '(A)') 'end subroutine noop_options'
+        close(unit)
+    end subroutine write_options_fixture
 
     subroutine run_undefined_output_smoke(passed)
         logical, intent(inout) :: passed

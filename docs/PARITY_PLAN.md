@@ -24,7 +24,7 @@ Current checked-in manifest counts in this checkout:
 | fortfront-f90 | 100 | 0 |
 | fortfront-lf  | 59  | 0 |
 | lfortran      | 3425 | 0 |
-| gfortran-dg   | 2121 | 2371 |
+| gfortran-dg   | 2141 | 2298 |
 
 Latest recorded full-dashboard state in #299 after wave 14:
 

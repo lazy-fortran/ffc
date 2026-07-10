@@ -151,7 +151,7 @@ dg_skip_reason() {
         echo "multifile"
         return 0
     fi
-    if grep -Eq 'dg-(options|add-options)' "$source"; then
+    if dg_has_nonempty_options "$source"; then
         echo "flags"
         return 0
     fi
@@ -160,11 +160,26 @@ dg_skip_reason() {
         return 0
     fi
     local dg_do
-    dg_do=$(grep -E 'dg-do[[:space:]]+' "$source" | head -1) || true
+    dg_do=$(dg_do_mode "$source")
     case "$dg_do" in
-        *"dg-do run"*|*"dg-do compile"*|"") return 1 ;;
+        run|compile|"") return 1 ;;
         *) echo "directive"; return 0 ;;
     esac
+}
+
+dg_has_nonempty_options() {
+    local source="$1" payload normalized
+    while IFS= read -r payload; do
+        normalized=$(printf '%s\n' "$payload" | tr -d '[:space:]"')
+        if [ -n "$normalized" ]; then
+            return 0
+        fi
+    done < <(sed -n 's/.*dg-\(add-\)\?options\([^}]*\)}.*/\2/p' "$source")
+    return 1
+}
+
+dg_do_mode() {
+    sed -n 's/.*dg-do[[:space:]]\+\([[:alnum:]_-]\+\).*/\1/p' "$1" | head -1
 }
 
 dg_test_kind() {
@@ -174,9 +189,9 @@ dg_test_kind() {
         return
     fi
     local dg_do
-    dg_do=$(grep -E 'dg-do[[:space:]]+' "$source" | head -1) || true
+    dg_do=$(dg_do_mode "$source")
     case "$dg_do" in
-        *"dg-do run"*) echo "run" ;;
+        run) echo "run" ;;
         *) echo "compile" ;;
     esac
 }
