@@ -19,6 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ffc
+          fetch-depth: 0
 
       - name: Read corpus pins
         id: corpus_pins

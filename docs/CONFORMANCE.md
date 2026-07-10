@@ -400,14 +400,16 @@ scope, owner, and subsystem. It contacts no external service.
 A full generation writes the compact
 `test/conformance/parity_dashboard.tsv` snapshot and renders
 `docs/PARITY_STATUS.md` from it. The snapshot-only check is the fast test gate;
-it compares the snapshot with the current compiler binary, source, dependency
-trees, corpus trees and file lists, and all dashboard manifests. Snapshot
-validation also reconciles suite, all-view, scoped-view, and owner totals. The
-full-report check detects the same drift before rendering. The dashboard
-reports suite totals, scoped totals, rates, and subsystem ownership for
-non-passing results. The scoped view excludes only `coarray`, `OpenMP`,
-`OpenACC`, and `GPU` tags. A scoped passing file is excluded from both numerator
-and denominator.
+it requires the recorded compiler commit to be an available ancestor and
+verifies its source digest. It also compares the recorded dependency trees,
+corpus trees and file lists, and all dashboard manifests with the current
+inputs. Snapshot validation reconciles suite, all-view, scoped-view, and owner
+totals. Full-report validation applies the same identity checks and requires
+all reports to agree on the exact compiler binary used. The dashboard reports
+suite totals, scoped totals, rates, and subsystem ownership for non-passing
+results. The scoped view excludes only `coarray`, `OpenMP`, `OpenACC`, and
+`GPU` tags. A scoped passing file is excluded from both numerator and
+denominator.
 
 ### Seed baseline
 
