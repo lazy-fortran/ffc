@@ -506,7 +506,6 @@ data_array_1.f90
 data_array_4.f90
 data_array_7.f90
 data_components_1.f90
-data_derived_1.f90
 data_implied_do_1.f90
 data_initialized_3.f90
 data_initialized_4.f90
@@ -941,7 +940,6 @@ int_2.f90
 int_3.f90
 integer_plus.f90
 intent_decl_1.f90
-intent_out_12.f90
 intent_out_14.f90
 intent_out_16.f90
 intent_out_17.f90
@@ -1405,7 +1403,6 @@ pr114021.f90
 pr114304-2.f90
 pr114304.f90
 pr114535d.f90
-pr114618.f90
 pr114739.f90
 pr114874_1.f90
 pr117077.f90
@@ -2107,6 +2104,29 @@ zero_sized_4.f90
 zero_sized_5.f90
 zero_sized_7.f90
 zero_sized_9.f90
+associate_contained_func_typebound.f90
+associate_contained_func_typebound_2.f90
+associate_infer_program_type.f90
+assumed_charlen_dummy.f90
+auto_char_len_1.f90
+auto_char_len_2.f90
+automatic_char_len_1.f90
+bind_c_usage_32.f90
+bound_simplification_1.f90
+dec_exp_3.f90
+dec_io_3.f90
+dec_static_3.f90
+erfc_scaled_1.f90
+fmt_error_6.f90
+fmt_t_2.f90
+implicit_16.f90
+initialization_9.f90
+integer_exponentiation_2.f90
+intrinsic_actual_4.f90
+oldstyle_3.f90
+stfunc_8.f90
+stmt_func_1.f90
+string_4.f90
 associate_80.f90 # new corpus file since 2026-06 seed
 associate_81.f90 # new corpus file since 2026-06 seed
 associate_82.f90 # new corpus file since 2026-06 seed
