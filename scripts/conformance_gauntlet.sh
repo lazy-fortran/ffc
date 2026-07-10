@@ -30,6 +30,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
+source "$SCRIPT_DIR/lib_expected_manifest.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PRIMARY_REPO_ROOT="$(resolve_primary_checkout_root "$PROJECT_DIR")"
 CORPUS_PARENT="$(dirname "$PRIMARY_REPO_ROOT")"
@@ -115,13 +116,13 @@ resolve_suite_root() {
 resolve_xfail_manifest() {
     local safe_suite
     safe_suite=${SUITE//-/_}
-    echo "$PROJECT_DIR/test/conformance/xfail_${safe_suite}.txt"
+    echo "${FFC_XFAIL_MANIFEST:-$PROJECT_DIR/test/conformance/xfail_${safe_suite}.txt}"
 }
 
 resolve_skip_manifest() {
     local safe_suite
     safe_suite=${SUITE//-/_}
-    echo "$PROJECT_DIR/test/conformance/skip_${safe_suite}.txt"
+    echo "${FFC_SKIP_MANIFEST:-$PROJECT_DIR/test/conformance/skip_${safe_suite}.txt}"
 }
 
 resolve_undefined_output_manifest() {
@@ -240,8 +241,8 @@ trap 'rm -rf "$TMPDIR_WORK"' EXIT
 XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
 SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"
 UNDEFINED_OUTPUT_LOOKUP="$TMPDIR_WORK/undefined_output_lookup.txt"
-normalize_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP"
-normalize_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP"
+validate_expected_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP" || exit 1
+validate_expected_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP" || exit 1
 normalize_manifest "$UNDEFINED_OUTPUT_MANIFEST" "$UNDEFINED_OUTPUT_LOOKUP"
 manifest_overlap=$(grep -Fxf "$XFAIL_LOOKUP" "$UNDEFINED_OUTPUT_LOOKUP" || true)
 if [ -n "$manifest_overlap" ]; then
