@@ -20,6 +20,52 @@ jobs:
         with:
           path: ffc
 
+      - name: Read corpus pins
+        id: corpus_pins
+        working-directory: ffc
+        run: scripts/fetch_corpora.sh --print-pins >> "$GITHUB_OUTPUT"
+
+      - name: Restore LFortran corpus
+        id: lfortran_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/lfortran
+          key: corpus-v1-${{ runner.os }}-lfortran-${{ steps.corpus_pins.outputs.lfortran_sha }}
+
+      - name: Restore gfortran.dg corpus
+        id: gcc_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ github.workspace }}/gcc
+          key: corpus-v1-${{ runner.os }}-gcc-gfortran-dg-${{ steps.corpus_pins.outputs.gcc_sha }}
+
+      - name: Fetch and verify pinned corpora
+        working-directory: ffc
+        env:
+          FFC_LFORTRAN_DIR: ${{ github.workspace }}/lfortran
+          FFC_GFORTRAN_DG_DIR: ${{ github.workspace }}/gcc/gcc/testsuite/gfortran.dg
+        run: scripts/fetch_corpora.sh
+
+      - name: Test corpus verifier
+        working-directory: ffc
+        env:
+          FFC_LFORTRAN_DIR: ${{ github.workspace }}/lfortran
+        run: test/test_fetch_corpora.sh
+
+      - name: Save LFortran corpus
+        if: steps.lfortran_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/lfortran
+          key: corpus-v1-${{ runner.os }}-lfortran-${{ steps.corpus_pins.outputs.lfortran_sha }}
+
+      - name: Save gfortran.dg corpus
+        if: steps.gcc_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ github.workspace }}/gcc
+          key: corpus-v1-${{ runner.os }}-gcc-gfortran-dg-${{ steps.corpus_pins.outputs.gcc_sha }}
+
       - name: Checkout fortfront (sibling path)
         uses: actions/checkout@v4
         with:
@@ -70,3 +116,15 @@ jobs:
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
         run: fpm test
+
+      - name: Run pinned corpus buckets
+        working-directory: ffc
+        env:
+          LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          FFC_LFORTRAN_DIR: ${{ github.workspace }}/lfortran
+          FFC_GFORTRAN_DG_DIR: ${{ github.workspace }}/gcc/gcc/testsuite/gfortran.dg
+        run: |
+          scripts/conformance_check.sh --no-build --suite lfortran \
+            --files-from test/conformance/ci_lfortran.txt
+          scripts/conformance_check.sh --no-build --suite gfortran-dg \
+            --files-from test/conformance/ci_gfortran_dg.txt

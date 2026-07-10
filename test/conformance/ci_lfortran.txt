@@ -1,0 +1,2 @@
+# COMMON regression from issue #305
+common_39.f90
