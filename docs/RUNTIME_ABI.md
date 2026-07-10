@@ -342,6 +342,10 @@ are rejected.
 
 ## Deferred-length character
 
+The canonical runtime descriptor for new character interfaces is specified in
+`CHARACTER_DESCRIPTOR_ABI.md`. Current lowering paths use the following
+16-byte representation until their descriptor migration issues land.
+
 A `character(len=:), allocatable` variable (and the `character(:), allocatable`
 synonym) is a 16-byte descriptor split across two 8-byte stack slots:
 
