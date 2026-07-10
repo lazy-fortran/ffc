@@ -1,2 +1,2 @@
 # lfortran integration_tests entries skipped by the gauntlet.
-# Format: basename.f90 # reason
+# Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text

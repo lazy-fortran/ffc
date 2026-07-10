@@ -187,8 +187,8 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 | `test/conformance/xfail_fortfront_f90.txt` | 100 |
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
-| `test/conformance/xfail_lfortran.txt` | 3425 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2141 |
+| `test/conformance/xfail_lfortran.txt` | 3421 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2136 |
 | `test/conformance/skip_lfortran.txt` | 0 |
 | `test/conformance/skip_gfortran_dg.txt` | 2298 |
 
@@ -241,8 +241,8 @@ records are `PASS` unless the file is still listed in the xfail manifest,
 in which case they are `XPASS`.
 
 The `skip` summary count is the number of files listed in
-`test/conformance/skip_<suite>.txt`. Skip lines use the format
-`basename.f90 # reason`. They are explicit entries, not silent drops.
+`test/conformance/skip_<suite>.txt`. They are explicit entries, not silent
+drops.
 
 The `warning_unchecked` count is the number of warning-only gfortran.dg files
 whose compile or run disposition was checked without matching warning text.
@@ -309,9 +309,33 @@ not claim warning-text parity.
 ### Skip manifest
 
 `test/conformance/skip_gfortran_dg.txt` lists files the runner skips.
-Lines use the format `basename.f90 # reason`. Reasons are `multifile`,
-`flags`, or `directive`. The runner exits nonzero for files that trigger
-a skip reason but are not listed in the manifest.
+The runner exits nonzero for files that trigger a skip reason but are not
+listed in the manifest.
+
+### Expected-disposition metadata
+
+Every xfail and skip entry names either one implementation issue or one
+excluded scope and gives a reason:
+
+```text
+basename.f90 # owner=ORG/REPO#123; reason=nonempty text
+basename.f90 # scope=OpenMP; reason=nonempty text
+```
+
+Allowed scope values are `coarray`, `OpenMP`, `OpenACC`, `GPU`, `vendor`,
+`legacy`, `compiler-flags`, and `harness`. The last two cover tests whose result
+depends on unmodeled compiler options or DejaGNU behavior rather than the source alone.
+Owner syntax and metadata are validated offline during every gauntlet run. The
+ordinary runner does not contact GitHub. Use the explicit liveness audit to
+require every referenced issue to be open:
+
+```bash
+scripts/audit_manifest_owners.sh
+```
+
+Duplicate paths and malformed entries fail with the manifest path and line
+number. Undefined-output manifests remain plain filename lists because they
+describe the comparison oracle, not an expected failure or skip.
 
 ### Seed baseline
 
@@ -323,7 +347,7 @@ from the FAIL records of this run.
 ### Current pinned measurement
 
 At GCC revision `395e3d8131c189cd58e8c8061cdc77d1c44e3822`, the post-cleanup
-summary is `PASS=1170`, `XFAIL=2132`, `XPASS=5`, `FAIL=333`, `NOREF=4`,
+summary is `PASS=1175`, `XFAIL=2132`, `XPASS=0`, `FAIL=333`, `NOREF=1`,
 `SKIP=2298`, `WARNING_UNCHECKED=75`, `TOTAL=5938`.
 
 ## LFortran integration tests
@@ -346,6 +370,10 @@ are:
 Seed baseline from lfortran commit `5e3229bd6`: `PASS=123`,
 `XFAIL=4134`, `XPASS=0`, `FAIL=0`, `NOREF=72`, `SKIP=0`,
 `TOTAL=4257`.
+
+At LFortran revision `caf87b660f803148f000046392a5da803f9fc630`, the current
+summary is `PASS=848`, `XFAIL=3421`, `XPASS=0`, `FAIL=11`, `NOREF=145`,
+`SKIP=0`, `TOTAL=4280`.
 
 ## Separate compilation
 
