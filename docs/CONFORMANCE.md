@@ -22,16 +22,25 @@ referenced by path.
 
 ## Fetching corpora
 
-`scripts/fetch_corpora.sh` clones the external corpora to the default
-sibling paths: a shallow lfortran clone and a blobless sparse checkout
-of `gcc/testsuite/gfortran.dg` from the GCC mirror. Existing checkouts
-are left untouched; `--update` pulls the latest upstream. A corpus
-argument (`lfortran`, `gfortran-dg`) restricts the fetch.
+`scripts/fetch_corpora.sh` checks out reviewed external corpus revisions at
+the default sibling paths: a shallow LFortran clone and a blobless sparse GCC
+checkout containing `gcc/testsuite/gfortran.dg`. Existing checkouts must
+already match the detached pins; the script never repairs a stale or corrupt
+cache. A corpus argument (`lfortran`, `gfortran-dg`) restricts the operation.
 
 ```bash
-scripts/fetch_corpora.sh              # fetch anything missing
-scripts/fetch_corpora.sh --update     # pull latest upstream
+scripts/fetch_corpora.sh               # fetch or verify both pins
+scripts/fetch_corpora.sh --verify-only # verify without fetching
 ```
+
+| Corpus | Pinned revision |
+|---|---|
+| LFortran | `caf87b660f803148f000046392a5da803f9fc630` |
+| GCC gfortran.dg | `395e3d8131c189cd58e8c8061cdc77d1c44e3822` |
+
+Update a pin by changing its full SHA in `scripts/fetch_corpora.sh` and
+reviewing the resulting corpus reports. CI cache keys include that SHA and do
+not use prefix restore keys, so another revision cannot satisfy the cache.
 
 ## Environment variables
 
@@ -145,8 +154,8 @@ manifest. Promote by removing the entry from the manifest.
 repositories. `scripts/fetch_corpora.sh` handles this:
 
 ```bash
-scripts/fetch_corpora.sh              # clone missing corpora to sibling dirs
-scripts/fetch_corpora.sh --update     # pull latest upstream
+scripts/fetch_corpora.sh               # fetch or verify pinned revisions
+scripts/fetch_corpora.sh --verify-only # verify exact revisions only
 ```
 
 Alternatively, set the environment variables to point at existing checkouts:
@@ -158,6 +167,15 @@ Alternatively, set the environment variables to point at existing checkouts:
 
 When the conformance check script finds the directory, it includes the suite
 automatically. When absent, it prints a SKIP message.
+
+CI restores and verifies separate exact-revision caches, then runs these named
+buckets through `conformance_check.sh`:
+
+- `test/conformance/ci_lfortran.txt`: `common_39.f90`
+- `test/conformance/ci_gfortran_dg.txt`: `host_assoc_function_3.f90`
+
+The expected selected total is one for each suite. Cache misses fetch and verify the
+same detached revisions before saving; cache hits run the identical verifier.
 
 ## Current checked-in manifests
 

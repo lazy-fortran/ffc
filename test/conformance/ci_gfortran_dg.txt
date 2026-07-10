@@ -1,0 +1,2 @@
+# Host-association regression from issue #304
+host_assoc_function_3.f90
