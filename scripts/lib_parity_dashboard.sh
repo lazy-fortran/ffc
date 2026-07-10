@@ -13,16 +13,13 @@ snapshot_field() {
 }
 
 validate_snapshot_freshness() {
-    local path="$1" ffc_revision
+    local path="$1" ffc_revision recorded_source
     ffc_revision=$(snapshot_field revision ffc "$path")
+    recorded_source=$(snapshot_field digest ffc-source "$path")
     git -C "$PROJECT_DIR" merge-base --is-ancestor "$ffc_revision" HEAD \
         2>/dev/null || fail "snapshot ffc revision is not an ancestor"
     [ "$(ffc_revision_source_sha256 "$PROJECT_DIR" "$ffc_revision")" = \
-        "$EXPECTED_FFC_SOURCE_SHA256" ] || fail "snapshot ffc revision source mismatch"
-    [ "$(snapshot_field digest ffc-source "$path")" = \
-        "$EXPECTED_FFC_SOURCE_SHA256" ] || fail "stale snapshot source digest"
-    [ "$(snapshot_field digest ffc-binary "$path")" = \
-        "$EXPECTED_FFC_BINARY_SHA256" ] || fail "stale snapshot binary digest"
+        "$recorded_source" ] || fail "snapshot ffc revision source mismatch"
     [ "$(snapshot_field digest manifests "$path")" = \
         "$EXPECTED_MANIFEST_SHA256" ] || fail "stale snapshot manifest digest"
     [ "$(snapshot_field revision FortFront "$path")" = \

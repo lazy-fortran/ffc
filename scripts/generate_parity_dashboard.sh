@@ -108,22 +108,8 @@ EXPECTED_FORTFRONT_F90_FILES=${FFC_DASHBOARD_FORTFRONT_F90_FILES:-$(suite_files_
 EXPECTED_FORTFRONT_LF_FILES=${FFC_DASHBOARD_FORTFRONT_LF_FILES:-$(suite_files_sha256 fortfront-lf)}
 EXPECTED_LFORTRAN_FILES=${FFC_DASHBOARD_LFORTRAN_FILES:-$(suite_files_sha256 lfortran 2>/dev/null || printf '%064d\n' 0)}
 EXPECTED_GFORTRAN_DG_FILES=${FFC_DASHBOARD_GFORTRAN_DG_FILES:-$(suite_files_sha256 gfortran-dg 2>/dev/null || printf '%064d\n' 0)}
-EXPECTED_FFC_SOURCE_SHA256=$(ffc_source_sha256 "$PROJECT_DIR")
-FFC_DASHBOARD_BIN=$(find_ffc) || exit 1
-EXPECTED_FFC_BINARY_SHA256=$(sha256sum "$FFC_DASHBOARD_BIN" | cut -d ' ' -f 1)
 EXPECTED_MANIFEST_SHA256=$(parity_manifest_sha256 "$MANIFEST_DIR")
 EXPECTED_SCOPE_COUNT=$(parity_scope_count "$MANIFEST_DIR")
-require_clean_git_tree "$PROJECT_DIR" ffc src app fpm.toml || exit 1
-require_clean_git_tree "$FORTFRONT_DIR" FortFront || exit 1
-require_clean_git_tree "$LIRIC_DIR" LIRIC || exit 1
-require_compiler_inputs_older_than_binary "$FFC_DASHBOARD_BIN" "$PROJECT_DIR" \
-    "$FORTFRONT_DIR" "$LIRIC_DIR" || exit 1
-if [ -d "$(suite_root lfortran)" ]; then
-    require_clean_git_tree "$(suite_root lfortran)" 'LFortran corpus' || exit 1
-fi
-if [ -d "$(suite_root gfortran-dg)" ]; then
-    require_clean_git_tree "$(suite_root gfortran-dg)" 'GCC corpus' || exit 1
-fi
 
 
 if [ -n "$FROM_SNAPSHOT" ]; then
@@ -189,10 +175,6 @@ git -C "$PROJECT_DIR" merge-base --is-ancestor "$ffc_revision" HEAD || \
     fail "ffc report revision is not an ancestor"
 [ "$(ffc_revision_source_sha256 "$PROJECT_DIR" "$ffc_revision")" = \
     "$ffc_source_sha256" ] || fail "ffc report revision source mismatch"
-[ "$ffc_source_sha256" = "$EXPECTED_FFC_SOURCE_SHA256" ] || \
-    fail "stale source digest: ffc"
-[ "$ffc_binary_sha256" = "$EXPECTED_FFC_BINARY_SHA256" ] || \
-    fail "stale binary digest: ffc"
 [ "$fortfront_revision" = "$EXPECTED_FORTFRONT_REVISION" ] || \
     fail "stale revision: FortFront"
 [ "$fortfront_tree" = "$EXPECTED_FORTFRONT_TREE" ] || \

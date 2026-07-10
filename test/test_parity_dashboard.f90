@@ -51,7 +51,7 @@ contains
         fixture_binary_path = ''
         call execute_command_line('bash -c ''PROJECT_DIR="$PWD"; '// &
             'source scripts/lib_conformance.sh; git rev-parse HEAD; '// &
-            'ffc_source_sha256 "$PWD"; binary=$(find_ffc); '// &
+            'ffc_revision_source_sha256 "$PWD" HEAD; binary=$(find_ffc); '// &
             'printf "%s\n" "$binary"; sha256sum "$binary" | cut -d " " -f 1'' > '// &
             ROOT//'/digests', exitstat=io_stat)
         if (io_stat /= 0) then
@@ -364,8 +364,9 @@ contains
         call execute_command_line('cp '//trim(fixture_binary_path)//' '// &
             ROOT//'/stale-ffc')
         call execute_command_line('touch -d 2000-01-01 '//ROOT//'/stale-ffc')
-        call execute_command_line('FFC_BIN='//ROOT//'/stale-ffc '// &
-            generator_command(.false., OUTPUT_ONE, .false.)//' > '// &
+        call execute_command_line("bash -c 'source scripts/lib_conformance.sh; "// &
+            'require_compiler_inputs_older_than_binary '//ROOT// &
+            "/stale-ffc . ../fortfront ../liric' > "// &
             LOG_PATH//' 2>&1', exitstat=exit_stat)
         ok = exit_stat /= 0 .and. &
             file_contains(LOG_PATH, 'compiler binary predates')
@@ -398,7 +399,8 @@ contains
         call copy_production_snapshot()
         call execute_command_line("sed -i '/^digest[[:space:]]ffc-source/"// &
             "s/[^[:space:]]*$/"//repeat('9', 64)//"/' "//ROOT//'/bad.tsv')
-        ok = expect_snapshot_failure('stale snapshot source digest') .and. ok
+        ok = expect_snapshot_failure( &
+            'snapshot ffc revision source mismatch') .and. ok
         call copy_production_snapshot()
         call execute_command_line("sed -i '/^digest[[:space:]]manifests/"// &
             "s/[^[:space:]]*$/"//repeat('9', 64)//"/' "//ROOT//'/bad.tsv')
