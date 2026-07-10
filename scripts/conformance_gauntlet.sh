@@ -18,6 +18,7 @@
 #   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
 #   --timeout N         per-file timeout in seconds (default: 5)
+#   --require-provenance require clean inputs and a freshly built compiler
 #
 # Environment variables (suite roots):
 #   FFC_FORTFRONT_DIR   default: ../fortfront
@@ -41,6 +42,7 @@ FFC_BIN=""
 REPORT=""
 MAX_FILES=""
 TIMEOUT=5
+REQUIRE_PROVENANCE=0
 HAS_FAIL=0
 SELECTOR_KINDS=()
 SELECTOR_VALUES=()
@@ -74,6 +76,8 @@ while [ $# -gt 0 ]; do
             MAX_FILES="$2"; shift 2 ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
+        --require-provenance)
+            REQUIRE_PROVENANCE=1; shift ;;
         *)
             fail "unknown option $1" ;;
     esac
@@ -203,7 +207,11 @@ dg_warning_only() {
 }
 
 # Resolve ffc
-if [ -z "$FFC_BIN" ]; then
+if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
+    [ -z "$FFC_BIN" ] || fail "--require-provenance cannot be combined with --ffc"
+    (cd "$PROJECT_DIR" && fo build) || fail "provenance build failed"
+    FFC_BIN="$PROJECT_DIR/build/fo/bin/ffc"
+elif [ -z "$FFC_BIN" ]; then
     FFC_BIN=$(find_ffc) || exit 1
 fi
 
@@ -220,13 +228,22 @@ normalize_manifest() {
 
 write_result_record() {
     local file="$1" result_status="$2" compiler_exit="$3" reference_exit="$4"
-    local result_note="$5" warning_expectation="$6" warning_json=""
+    local result_note="$5" warning_expectation="$6" warning_json="" noref_json=""
     if [ -n "$warning_expectation" ]; then
         warning_json=',"warning_expectation":"unchecked"'
     fi
-    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s}\n' \
+    if [ "$IS_NOREF_RECORD" -eq 1 ]; then
+        noref_json=',"noref":true'
+    fi
+    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s}\n' \
         "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
-        "$reference_exit" "$(json_escape "$result_note")" "$warning_json" >> "$REPORT"
+        "$reference_exit" "$(json_escape "$result_note")" "$warning_json" \
+        "$noref_json" >> "$REPORT"
+}
+
+git_revision() {
+    git -C "$1" rev-parse HEAD 2>/dev/null || \
+        printf '%040d\n' 0
 }
 
 # Setup
@@ -262,6 +279,33 @@ NOREF_COUNT=0
 SKIP_COUNT=0
 WARNING_UNCHECKED_COUNT=0
 TOTAL_COUNT=0
+IS_NOREF_RECORD=0
+
+FFC_REVISION=$(git_revision "$PROJECT_DIR")
+FFC_SOURCE_SHA256=$(ffc_source_sha256 "$PROJECT_DIR")
+FFC_BINARY_SHA256=$(sha256sum "$FFC_BIN" | cut -d ' ' -f 1)
+FORTFRONT_REVISION=$(git_revision "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}")
+LIRIC_REVISION=$(git_revision "${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}")
+CORPUS_REVISION=$(git_revision "$SUITE_ROOT")
+FORTFRONT_TREE=$(git_tree_revision "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}" || printf '%040d\n' 0)
+LIRIC_TREE=$(git_tree_revision "${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}" || printf '%040d\n' 0)
+CORPUS_TREE=$(git_tree_revision "$SUITE_ROOT" || printf '%040d\n' 0)
+CORPUS_FILES_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+PROVENANCE_VERIFIED=false
+FULL_RUN=true
+if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
+    FULL_RUN=false
+fi
+
+write_summary() {
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s"}\n' \
+        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
+        "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
+        "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
+        "$FFC_SOURCE_SHA256" "$FFC_BINARY_SHA256" "$FORTFRONT_REVISION" \
+        "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE" \
+        "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" >> "$REPORT"
+}
 
 # Clear report
 > "$REPORT"
@@ -269,10 +313,20 @@ TOTAL_COUNT=0
 # Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
-        "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    write_summary
     exit 0
+fi
+
+if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
+    FORTFRONT_DIR=${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}
+    LIRIC_DIR=${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}
+    require_clean_git_tree "$PROJECT_DIR" ffc src app fpm.toml || exit 1
+    require_clean_git_tree "$FORTFRONT_DIR" FortFront || exit 1
+    require_clean_git_tree "$LIRIC_DIR" LIRIC || exit 1
+    require_clean_git_tree "$SUITE_ROOT" "$SUITE corpus" || exit 1
+    require_compiler_inputs_older_than_binary "$FFC_BIN" "$PROJECT_DIR" \
+        "$FORTFRONT_DIR" "$LIRIC_DIR" || exit 1
+    PROVENANCE_VERIFIED=true
 fi
 
 # Collect files.
@@ -284,6 +338,8 @@ case "$SUITE" in
     *)
         find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$ALL_FILE_LIST" ;;
 esac
+CORPUS_FILES_SHA256=$(sed "s#^$SUITE_ROOT/##" "$ALL_FILE_LIST" | \
+    sha256sum | cut -d ' ' -f 1)
 
 SELECTED_LOOKUP="$TMPDIR_WORK/selected_files.txt"
 : > "$SELECTED_LOOKUP"
@@ -337,9 +393,7 @@ fi
 FILE_COUNT=$(wc -l < "$FILE_LIST")
 if [ "$FILE_COUNT" -eq 0 ]; then
     echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
-        "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
-        "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+    write_summary
     exit 0
 fi
 
@@ -362,6 +416,7 @@ echo "Running $SUITE: $FILE_COUNT files, timeout=${TIMEOUT}s, ffc=$FFC_BIN"
 while IFS= read -r full_path <&3; do
     [ -z "$full_path" ] && continue
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
+    IS_NOREF_RECORD=0
 
     basename_file=$(basename "$full_path")
     # Suite-relative path is the basename for single-depth search
@@ -608,6 +663,7 @@ while IFS= read -r full_path <&3; do
             continue
         fi
         NOREF_COUNT=$((NOREF_COUNT + 1))
+        IS_NOREF_RECORD=1
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest; gfortran rejects but ffc runs"
@@ -706,9 +762,7 @@ while IFS= read -r full_path <&3; do
 done 3< "$FILE_LIST"
 
 # Summary
-printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d}\n' \
-    "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
-    "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" >> "$REPORT"
+write_summary
 
 echo ""
 echo "=== $SUITE summary ==="

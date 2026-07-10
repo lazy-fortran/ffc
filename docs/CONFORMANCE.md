@@ -75,6 +75,7 @@ Options:
 | `--files-from PATH` | Read suite-relative files from a list. Repeat to read more lists. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
+| `--require-provenance` | Build ffc with `fo`, require clean compiler/dependency/corpus inputs, and record exact tree and file-list identities. |
 
 Smoke run (20 files, auto-discovers ffc):
 
@@ -188,9 +189,15 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
 | `test/conformance/xfail_lfortran.txt` | 3421 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2136 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2132 |
 | `test/conformance/skip_lfortran.txt` | 0 |
 | `test/conformance/skip_gfortran_dg.txt` | 2298 |
+| `test/conformance/fail_owners_lfortran.txt` | 11 |
+| `test/conformance/fail_owners_gfortran_dg.txt` | 333 |
+| `test/conformance/scopes_fortfront_f90.txt` | 4 |
+| `test/conformance/scopes_lfortran.txt` | 302 |
+| `test/conformance/scopes_gfortran_dg.txt` | 219 |
+| `test/conformance/owner_subsystems.txt` | 135 |
 
 Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
 snapshot. The seed baselines below are historical starting points, not current
@@ -210,17 +217,30 @@ Fields:
 |---|---|---|
 | `suite` | string | Suite name |
 | `file` | string | File basename (suite-relative path) |
-| `status` | string | `PASS`, `XFAIL`, `XPASS`, or `FAIL` |
+| `status` | string | `PASS`, `XFAIL`, `XPASS`, `FAIL`, or `SKIP` |
 | `ffc_exit` | int | ffc exit code (0 = built and ran) |
 | `ref_exit` | int | gfortran exit code (0 = built and ran) |
 | `note` | string | Human-readable explanation |
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
+| `noref` | boolean | `true` when no gfortran reference was available; omitted otherwise |
 
 A final SUMMARY record closes the file:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"..."}
 ```
+
+The revision and tree fields are full Git hashes. `ffc_revision` identifies the
+tested compiler commit. `ffc_source_sha256` hashes `src`, `app`, and `fpm.toml`;
+`ffc_binary_sha256` identifies the exact executable. With
+`--require-provenance`, the runner first builds that executable with `fo`,
+requires clean inputs across ffc and every dependency or corpus checkout, and
+rejects a binary older than any tracked compiler or dependency input.
+`corpus_files_sha256` hashes the exact suite-relative denominator.
+`full_run` is false when a report used `--file`, `--files-from`, or
+`--max-files`. Dashboard generation requires verified provenance and rejects
+partial reports, mismatched tree or file-list identities, a stale source
+digest, or a different selected compiler binary.
 
 ## Disposition states
 
@@ -336,6 +356,58 @@ scripts/audit_manifest_owners.sh
 Duplicate paths and malformed entries fail with the manifest path and line
 number. Undefined-output manifests remain plain filename lists because they
 describe the comparison oracle, not an expected failure or skip.
+
+`test/conformance/fail_owners_<suite>.txt` uses the same metadata grammar for
+current `FAIL` rows. It supplies dashboard ownership without changing gauntlet
+dispositions. The explicit owner audit covers xfail, skip, and failure-owner
+manifests.
+
+`test/conformance/scopes_<suite>.txt` tags any result, including `PASS`, for the
+scoped dashboard view. A scope disposition in an xfail or skip manifest must
+have the same entry in the scope registry. `owner_subsystems.txt` maps every
+issue owner to one explicit compiler subsystem; missing and stale mappings are
+errors.
+
+### Generated parity dashboard
+
+Run all four suites without selectors so the default report paths contain full
+reports, then generate the checked-in dashboard:
+
+```bash
+scripts/conformance_gauntlet.sh --suite fortfront-f90 \
+    --require-provenance \
+    --report /tmp/ffc_parity_fortfront-f90.jsonl
+scripts/conformance_gauntlet.sh --suite fortfront-lf \
+    --require-provenance \
+    --report /tmp/ffc_parity_fortfront-lf.jsonl
+scripts/conformance_gauntlet.sh --suite lfortran \
+    --require-provenance \
+    --report /tmp/ffc_parity_lfortran.jsonl
+scripts/conformance_gauntlet.sh --suite gfortran-dg \
+    --require-provenance \
+    --report /tmp/ffc_parity_gfortran-dg.jsonl
+scripts/generate_parity_dashboard.sh
+scripts/generate_parity_dashboard.sh --check
+scripts/generate_parity_dashboard.sh \
+    --from-snapshot test/conformance/parity_dashboard.tsv --check
+```
+
+The generator requires Bash 4.3 or newer. It parses each flat JSON object,
+rejects unknown or duplicate fields, validates field types and totals, checks
+structured NOREF rows, verifies report provenance, and joins every disposition,
+scope, owner, and subsystem. It contacts no external service.
+
+A full generation writes the compact
+`test/conformance/parity_dashboard.tsv` snapshot and renders
+`docs/PARITY_STATUS.md` from it. The snapshot-only check is the fast test gate;
+it compares the snapshot with the current compiler binary, source, dependency
+trees, corpus trees and file lists, and all dashboard manifests. Snapshot
+validation also reconciles suite, all-view, scoped-view, and owner totals. The
+full-report check detects the same drift before rendering. The dashboard
+reports suite totals, scoped totals, rates, and subsystem ownership for
+non-passing results. The scoped view excludes only `coarray`, `OpenMP`,
+`OpenACC`, and `GPU` tags. A scoped passing file is excluded from both numerator
+and denominator.
 
 ### Seed baseline
 

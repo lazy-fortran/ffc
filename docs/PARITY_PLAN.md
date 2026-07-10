@@ -11,29 +11,15 @@ tests are not parity targets. ISO Fortran parallel features are in scope for
 full standard parity, including coarrays and image-control semantics, but they
 are late runtime work because they need single-image and multi-image semantics.
 
-Live scoreboard: issue #299. This file is the durable architecture and issue
-map. Update it when issue state, manifest counts, standard scope, or phase
-boundaries change.
+The generated live scoreboard is `docs/PARITY_STATUS.md`. This file is the
+durable architecture and issue map. Update it when issue state, standard scope,
+or phase boundaries change.
 
 ## Current State
 
-Current checked-in manifest counts in this checkout:
-
-| Suite | XFAIL entries | SKIP entries |
-|-------|--------------:|-------------:|
-| fortfront-f90 | 100 | 0 |
-| fortfront-lf  | 59  | 0 |
-| lfortran      | 3421 | 0 |
-| gfortran-dg   | 2136 | 2298 |
-
-Latest recorded full-dashboard state in #299 after wave 14:
-
-| Suite | PASS | Notes |
-|-------|-----:|-------|
-| fortfront-f90 | 339 | Three undefined-output cases use a version-independent completion oracle. |
-| fortfront-lf  | 205 | No gfortran oracle for lazy syntax. |
-| lfortran      | 837 | Remaining backlog is mostly feature stacking and architecture. |
-| gfortran-dg   | 1176 | Positive gains are offset by invalid-program acceptance debt. |
+Current suite totals, manifest counts, scoped rates, revisions, and ownership
+groups are rendered in `docs/PARITY_STATUS.md` from the checked-in parity
+snapshot; they are not duplicated here.
 
 Local verification command:
 
