@@ -407,11 +407,11 @@ contains
         ok = expect_snapshot_failure('stale snapshot manifest digest') .and. ok
         call copy_production_snapshot()
         call execute_command_line("sed -i '/^suite[[:space:]]fortfront-f90/"// &
-            "{s/439/440/;s/339/340/;}' "//ROOT//'/bad.tsv')
+            "{s/440/441/;s/340/341/;}' "//ROOT//'/bad.tsv')
         ok = expect_snapshot_failure('All totals do not equal suites') .and. ok
         call copy_production_snapshot()
         call execute_command_line("sed -i '/^view[[:space:]]Scoped/"// &
-            "{s/10396/10395/;s/2467/2466/;}' "//ROOT//'/bad.tsv')
+            "{s/10397/10396/;s/2468/2467/;}' "//ROOT//'/bad.tsv')
         ok = expect_snapshot_failure('Scoped totals do not equal') .and. ok
         call copy_production_snapshot()
         call execute_command_line("sed -i '/owner=lazy-fortran.ffc#297/"// &
