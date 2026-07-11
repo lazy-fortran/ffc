@@ -70,7 +70,6 @@ issue_2497_include_line_standalone.f90 # owner=lazy-fortran/ffc#354; reason=expa
 issue_2520_doubled_quotes_format_string.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_2559_select_type_case_variations.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 issue_2562_where_invalid_if.f90 # scope=harness; reason=FortFront semantic rejection fixture
-issue_256_fix_suggestion.f90 # scope=harness; reason=FortFront parser rejection fixture
 issue_256_incomplete_expression.f90 # scope=harness; reason=FortFront parser rejection fixture
 issue_256_invalid_syntax_missing_then.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 issue_2591_unsigned_declarations.f90 # scope=vendor; reason=nonstandard UNSIGNED extension

@@ -185,7 +185,7 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 100 |
+| `test/conformance/xfail_fortfront_f90.txt` | 99 |
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
 | `test/conformance/xfail_lfortran.txt` | 3421 |
