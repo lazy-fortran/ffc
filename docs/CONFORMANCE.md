@@ -185,12 +185,12 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 99 |
+| `test/conformance/xfail_fortfront_f90.txt` | 100 |
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
 | `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
-| `test/conformance/xfail_lfortran.txt` | 3421 |
+| `test/conformance/xfail_lfortran.txt` | 3420 |
 | `test/conformance/xfail_gfortran_dg.txt` | 2132 |
-| `test/conformance/skip_lfortran.txt` | 0 |
+| `test/conformance/skip_lfortran.txt` | 1 |
 | `test/conformance/skip_gfortran_dg.txt` | 2298 |
 | `test/conformance/fail_owners_lfortran.txt` | 11 |
 | `test/conformance/fail_owners_gfortran_dg.txt` | 333 |
@@ -446,8 +446,8 @@ Seed baseline from lfortran commit `5e3229bd6`: `PASS=123`,
 `TOTAL=4257`.
 
 At LFortran revision `caf87b660f803148f000046392a5da803f9fc630`, the current
-summary is `PASS=848`, `XFAIL=3421`, `XPASS=0`, `FAIL=11`, `NOREF=145`,
-`SKIP=0`, `TOTAL=4280`.
+summary is `PASS=848`, `XFAIL=3420`, `XPASS=0`, `FAIL=11`, `NOREF=145`,
+`SKIP=1`, `TOTAL=4280`.
 
 ## Separate compilation
 

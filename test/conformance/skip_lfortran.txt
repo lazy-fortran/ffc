@@ -1,2 +1,3 @@
 # lfortran integration_tests entries skipped by the gauntlet.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
+gpu_metal_51.f90 # scope=GPU; reason=excluded GPU or device-backend case

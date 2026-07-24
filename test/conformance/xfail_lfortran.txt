@@ -1506,7 +1506,6 @@ gpu_metal_46.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_47.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_49.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_50.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_51.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_52.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_53.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_54.f90 # scope=GPU; reason=excluded GPU or device-backend case

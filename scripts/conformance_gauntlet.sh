@@ -332,11 +332,14 @@ fi
 # Collect files.
 ALL_FILE_LIST="$TMPDIR_WORK/all_files.txt"
 FILE_LIST="$TMPDIR_WORK/files.txt"
+# Collate in C so the corpus order, and the digest taken over it below, do not
+# depend on the caller's locale. suite_files_sha256 in lib_parity_dashboard.sh
+# hashes the same list and must agree with it.
 case "$SUITE" in
     fortfront-lf)
-        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | sort > "$ALL_FILE_LIST" ;;
+        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | LC_ALL=C sort > "$ALL_FILE_LIST" ;;
     *)
-        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | sort > "$ALL_FILE_LIST" ;;
+        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | LC_ALL=C sort > "$ALL_FILE_LIST" ;;
 esac
 CORPUS_FILES_SHA256=$(sed "s#^$SUITE_ROOT/##" "$ALL_FILE_LIST" | \
     sha256sum | cut -d ' ' -f 1)
