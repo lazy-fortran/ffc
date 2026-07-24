@@ -25,29 +25,59 @@ The retired MLIR/HLFIR experiment lives only in git history. Reference it
 by commit hash if you need to look back, but do not revive it without an
 explicit decision.
 
-## Path to Fortran 95 / 2003 compliance
+## Path to standard Fortran conformance
 
-The full path is tracked in #272, measured as 100% corpus pass with output
-matching `gfortran -w` and `lfortran`. Current pass rates, from the checked-in
-snapshot in `test/conformance/parity_dashboard.tsv`: `fortfront-f90` 341/441,
+The target is the Fortran standard through F2023, minus the parallel and vendor
+features excluded below. The standard defines what must work; the corpora only
+measure how far along we are. A corpus file is evidence, never the goal, so a
+case that tests another compiler's extension surface is excluded rather than
+chased.
+
+Excluded, and never counted in any denominator:
+
+- coarrays, images, teams, events, and collective subroutines
+- OpenMP, OpenACC, and MPI
+- GPU and device backends
+- vendor extensions outside the standard
+- features deleted from the standard
+- compiler-option and DejaGNU-harness behavior the runner does not model
+
+Current pass rates, from the checked-in snapshot in
+`test/conformance/parity_dashboard.tsv`: `fortfront-f90` 341/441,
 `fortfront-lf` 205/264, `lfortran` integration 848/4280, `gfortran.dg`
 1175/5938. Read the snapshot rather than this paragraph; regenerate it with
 `scripts/generate_parity_dashboard.sh` whenever corpus state changes.
 
-Two root-cause blockers dominate every corpus and come first:
+Those denominators are raw file counts, not the conformance denominator. 241
+cases are still `NOREF`, meaning undefined output, missing linkage, or a
+harness contract the runner does not model. Until #430 classifies them, the
+number that 100% is 100% *of* is not yet known. Finish that classification
+before quoting a conformance percentage.
 
-- E1 inferred-declaration lowering (lazy typing): #262.
-- E2 module system and separate compilation: #263.
+The `E1` through `E10` epics (#262 through #271), the `#272` compliance
+umbrella, and the LIRIC coordination issue `krystophny/liric#520` are all
+closed. They were split into the atomic issues that now carry the work; do not
+cite them as the live plan.
 
-Then type coverage (E3 arrays #264, E4 derived types #265, E5 procedure
-results/dummies/args #266, E6 scalars #267), the runtime (E7 `ffc/runtime/`
-I/O library #268, E8 precision and intrinsics #269), control flow (E9 #270),
-and convergence (E10 corpora to 100% plus CI gate #271). Backend coordination
-with LIRIC is krystophny/liric#520; no concrete backend gap is open.
+The live work order is the chunk sequence in the workspace roadmap <!-- slop-ok: names a real document -->: freeze the
+public compiler graph, centralize typed lowering, stabilize the
+descriptor/runtime/backend ABIs, make module artifacts authoritative, route
+arrays and I/O through shared engines, then close corpus breadth. Each chunk
+names its own atomic issues.
 
-`gfortran.dg` is not a 100% target: it contains error-detection, deprecated,
-and vendor-extension tests. Gate only its runnable, conformant subset and
-document the exclusions in `docs/CONFORMANCE.md`.
+Neither external corpus is a 100% target as a whole. `gfortran.dg` contains
+error-detection, deprecated, and vendor-extension tests; the `lfortran`
+integration suite exercises that compiler's own extension surface. Gate only
+the runnable, standard-conforming subset of each and document the exclusions in
+`docs/CONFORMANCE.md`. The two FortFront corpora are maintained in-tree and are
+100% targets once their `NOREF` cases are classified.
+
+F2023 is part of the target, and the delta it adds over F2018 is unscoped. The
+`[ffc-f2023-*]` trackers (#243 through #255) were closed after being split into
+the current issue set, but that split covered F95-through-F2018 language
+coverage; the syntax and intrinsics F2023 itself introduced were never
+enumerated. #473 owns auditing that delta so "newest standard" does not quietly
+mean F2018.
 
 ## Shipped baseline: direct LIRIC session backend
 

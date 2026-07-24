@@ -130,37 +130,20 @@ Difficulty labels:
 
 ## Current Open ffc Work
 
-Umbrellas and epics: #263 through #272 remain the compliance spine. #262 is
-implemented; the follow-up integer(8) argument-width regression is covered by
-`test_session_integer8_function_compiler`.
+This document does not enumerate open issues. The list it used to carry named
+21 issues as current work; 20 of them had since closed, and the drift was
+invisible because nothing verified it.
 
-Current feature and correctness issues:
+Query the live set instead:
 
-- #273 runtime polymorphism.
-- #274 separate-file modules.
-- #275 top-level external procedures.
-- #276 remaining array forms.
-- #277 remaining control flow and statements.
-- #278 remaining I/O.
-- #279 remaining intrinsics.
-- #280 compiles-but-mismatches-gfortran.
-- #281 Lazy Fortran support.
-- #284 duplicate runtime-helper symbols in separate compilation.
-- #286 structured diagnostics.
-- #290 contained-function ICE.
-- #291 negative-test acceptance.
-- #295 `gfortran.dg` compile regressions.
-- #297 separate-file submodules.
-- #306 illegal-context array rejection.
-- #307, #308, #309, #310 architecture foundations.
-- #311 gauntlet worktree path resolution.
+```bash
+gh issue list --state open --limit 500          # everything open
+gh issue list --state open --label difficulty:hard
+```
 
-Closed or stale entries removed from the active blocker list:
-
-- ffc #257, #258, #260, #294, #296, #298, #300, #303-#305.
-- FortFront #2840-#2842, #2844, #2846, #2848-#2858, #2868-#2871.
-- LIRIC #520-#522.
-- fo #88.
+For the order to work them in, read the chunk sequence in the workspace
+roadmap <!-- slop-ok: names a real document -->. It names the atomic issues per chunk and is updated when a chunk
+moves.
 
 ## Dependency State
 
