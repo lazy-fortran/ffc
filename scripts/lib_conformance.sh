@@ -224,7 +224,13 @@ build_module_index() {
             [ -z "$parent" ] && continue
             printf 'sub\t%s\t%s\n' "$parent" "$(basename "$f")" >> "$index"
         done < <(submodule_parents_in "$f")
-    done < <(find "$dir" -maxdepth 1 \( -name '*.f90' -o -name '*.lf' \) -type f | sort)
+    # Collate in C so which sibling wins a duplicate module name does not
+    # depend on the caller's LC_COLLATE. index_file_for_module takes the first
+    # match, so a locale-sensitive order silently changes which file is compiled
+    # as a prerequisite. The same defect in conformance_gauntlet.sh produced a
+    # real digest mismatch.
+    done < <(find "$dir" -maxdepth 1 \( -name '*.f90' -o -name '*.lf' \) -type f \
+        | LC_ALL=C sort)
 }
 
 # index_file_for_module <index> <modname>
@@ -348,8 +354,19 @@ compile_with_gfortran() {
 # those lines and corrupt later iterations.
 run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
-    timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
-    return $?
+    local sandbox status
+    # Run from a scratch directory, not the caller's cwd. A corpus program that
+    # opens a file by bare name (lfortran integration_tests/file_08.f90 writes
+    # 'file_08.txt') otherwise litters whatever directory drove the gauntlet,
+    # which is the ffc repository root.
+    sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-run-XXXXXX") || {
+        timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
+        return $?
+    }
+    ( cd "$sandbox" && timeout "$timeout" "$exe" ) > "$out_file" 2>&1 < /dev/null
+    status=$?
+    rm -rf "$sandbox"
+    return $status
 }
 
 # compare_outputs <ffc_out> <ref_out> <ffc_exit> <ref_exit>
@@ -381,9 +398,15 @@ numeric_structure() {
 # cannot be compared byte-for-byte; they are compared structurally instead.
 reference_is_nondeterministic() {
     local exe="$1" timeout="$2"
-    local a b
-    a=$(timeout "$timeout" "$exe" 2>&1 < /dev/null) || return 1
-    b=$(timeout "$timeout" "$exe" 2>&1 < /dev/null) || return 1
+    local a b sandbox
+    # Same scratch-directory discipline as run_capture: these two probe runs
+    # execute the corpus program twice and would litter the caller's cwd.
+    sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-nd-XXXXXX") || return 1
+    a=$( cd "$sandbox" && timeout "$timeout" "$exe" 2>&1 < /dev/null ) || {
+        rm -rf "$sandbox"; return 1; }
+    b=$( cd "$sandbox" && timeout "$timeout" "$exe" 2>&1 < /dev/null ) || {
+        rm -rf "$sandbox"; return 1; }
+    rm -rf "$sandbox"
     [ "$a" != "$b" ]
 }
 
