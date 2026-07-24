@@ -59,7 +59,7 @@ umbrella, and the LIRIC coordination issue `krystophny/liric#520` are all
 closed. They were split into the atomic issues that now carry the work; do not
 cite them as the live plan.
 
-The live work order is the chunk sequence in the workspace roadmap <!-- slop-ok: names a real document -->: freeze the
+The live work order is the chunk sequence in the workspace plan: freeze the
 public compiler graph, centralize typed lowering, stabilize the
 descriptor/runtime/backend ABIs, make module artifacts authoritative, route
 arrays and I/O through shared engines, then close corpus breadth. Each chunk

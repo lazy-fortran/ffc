@@ -141,9 +141,8 @@ gh issue list --state open --limit 500          # everything open
 gh issue list --state open --label difficulty:hard
 ```
 
-For the order to work them in, read the chunk sequence in the workspace
-roadmap <!-- slop-ok: names a real document -->. It names the atomic issues per chunk and is updated when a chunk
-moves.
+For the order to work them in, read the chunk sequence in the workspace plan.
+It names the atomic issues per chunk and is updated when a chunk moves.
 
 ## Dependency State
 
