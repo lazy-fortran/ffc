@@ -232,6 +232,12 @@ module session_program_lowering_types
             integer(c_int64_t) :: i32_constant = 0_c_int64_t
             logical :: is_transient_i32_constant = .false.
             logical :: is_deferred_character = .false.
+            ! A scalar automatic CHARACTER whose declared length is known only
+            ! at runtime (currently character(len=len(dummy))). It shares the
+            ! {data, length} storage layout with a deferred-length character,
+            ! but its captured length is immutable across assignments: values
+            ! are blank-padded or truncated to that width.
+            logical :: is_runtime_fixed_character = .false.
             type(lr_operand_desc_t) :: deferred_data
             type(lr_operand_desc_t) :: deferred_length
             logical :: is_allocatable = .false.

@@ -319,6 +319,8 @@
             if (results(1)%symbols(index)%value_kind == VALUE_CHARACTER) then
                 context%symbols(index)%is_deferred_character = &
                     results(1)%symbols(index)%is_deferred_character
+                context%symbols(index)%is_runtime_fixed_character = &
+                    results(1)%symbols(index)%is_runtime_fixed_character
                 context%symbols(index)%deferred_data = &
                     results(1)%symbols(index)%deferred_data
                 context%symbols(index)%deferred_length = &

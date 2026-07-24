@@ -282,6 +282,8 @@
                                      error_msg)) return
             context%symbols(index)%is_deferred_character = &
                 then_result%symbols(index)%is_deferred_character
+            context%symbols(index)%is_runtime_fixed_character = &
+                then_result%symbols(index)%is_runtime_fixed_character
             context%symbols(index)%deferred_data = &
                 then_result%symbols(index)%deferred_data
             context%symbols(index)%deferred_length = &

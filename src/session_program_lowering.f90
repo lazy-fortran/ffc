@@ -724,6 +724,11 @@ contains
         call set_empty(error_msg)
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) return
+        if (context%symbols(symbol_index)%is_runtime_fixed_character) then
+            call lower_runtime_fixed_char_assignment(context%arena, init_index, &
+                context, symbol_index, error_msg)
+            return
+        end if
         call concat_character_literals(context%arena, init_index, literal_text, &
             fold_ok)
         if (.not. fold_ok) then

@@ -18,6 +18,13 @@
                 ! length is resolved when the body assigns the result value.
                 if (len_trim(error_msg) > 0) then
                     if (runtime_character_length(context, node)) then
+                        call resolve_len_of_character_length(context, node, &
+                            source_index)
+                        if (source_index > 0) then
+                            call capture_runtime_fixed_character_length(context, &
+                                existing_index, source_index, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        end if
                         call set_empty(error_msg)
                     end if
                     return
@@ -80,7 +87,6 @@
         integer, intent(in) :: source_index
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
-        type(lr_operand_desc_t) :: source_data, source_len_i32, source_len_i64
 
         call define_deferred_character_symbol(context, name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -92,6 +98,24 @@
             return
         end if
 
+        call capture_runtime_fixed_character_length(context, symbol_index, &
+                                                    source_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
+    end subroutine define_runtime_length_character_local
+
+    subroutine capture_runtime_fixed_character_length(context, symbol_index, &
+                                                       source_index, error_msg)
+        ! Capture a `character(len=len(source))` width once at declaration.
+        ! The storage layout stays the ordinary {data, length} descriptor, but
+        ! the runtime-fixed flag makes later assignments retain this length.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: source_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_data, source_len_i32, source_len_i64
+
+        context%symbols(symbol_index)%is_runtime_fixed_character = .true.
         call char_length_operands(context, source_index, source_data, &
                                   source_len_i32, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -101,7 +125,7 @@
                 context%symbols(symbol_index)%deferred_length, error_msg)) &
             return
         call set_empty(error_msg)
-    end subroutine define_runtime_length_character_local
+    end subroutine capture_runtime_fixed_character_length
 
     subroutine resolve_len_of_character_length(context, node, source_index)
         ! Recognize a character length expression of the exact shape
@@ -335,6 +359,12 @@
 
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
+            return
+        end if
+
+        if (context%symbols(symbol_index)%is_runtime_fixed_character) then
+            call lower_runtime_fixed_char_assignment(arena, node%value_index, &
+                context, symbol_index, error_msg)
             return
         end if
 
@@ -841,6 +871,72 @@
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_fixed_char_expr_assignment
+
+    subroutine lower_runtime_fixed_char_assignment(arena, value_index, context, &
+                                                    dest_symbol_index, error_msg)
+        ! Assignment to an automatic character whose declared width was captured
+        ! at runtime. The descriptor length remains that declaration-time width;
+        ! only its data pointer changes. This is deliberately distinct from an
+        ! allocatable deferred character, whose assignment changes its length.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_data, source_len, target_len
+        type(lr_operand_desc_t) :: target_len64, buffer_size, buffer, copy_len
+        type(lr_operand_desc_t) :: copy_len64, source_fits, null_pos
+
+        call char_expr_operands(arena, value_index, context, source_data, &
+                                source_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! The data slot may be null before the first assignment. The length slot
+        ! was initialized at declaration time and remains immutable here.
+        if (.not. emit_i32_load(context%session, &
+                context%symbols(dest_symbol_index)%deferred_length, target_len, &
+                error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, target_len, &
+                target_len64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, target_len64, &
+                i64_immediate(context%session, 1_c_int64_t), buffer_size, &
+                error_msg)) return
+
+        ! A runtime-fixed local used to form a function result must outlive the
+        ! function frame. Use the same heap allocation convention as the other
+        ! runtime character-expression helpers in internal functions.
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, buffer_size, buffer, &
+                    error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, buffer_size, buffer, &
+                    error_msg)) return
+        end if
+        call fill_spaces(context, buffer, target_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, source_len, &
+                target_len, source_fits, error_msg)) return
+        call select_value(context, source_fits, source_len, target_len, copy_len, &
+                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_len, copy_len64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, buffer, source_data, copy_len64, &
+                error_msg)) return
+
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, &
+                target_len64, null_pos, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+
+        if (.not. emit_ptr_store(context%session, buffer, &
+                context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        context%symbols(dest_symbol_index)%value = buffer
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_runtime_fixed_char_assignment
 
     subroutine lower_deferred_trim_assignment(arena, trim_index, context, &
                                               dest_symbol_index, error_msg)
