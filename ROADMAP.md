@@ -28,8 +28,11 @@ explicit decision.
 ## Path to Fortran 95 / 2003 compliance
 
 The full path is tracked in #272, measured as 100% corpus pass with output
-matching `gfortran -w` and `lfortran`. Current pass rates: `fortfront-f90`
-164/400, `fortfront-lf` 28/255, `lfortran` integration ~123/4257.
+matching `gfortran -w` and `lfortran`. Current pass rates, from the checked-in
+snapshot in `test/conformance/parity_dashboard.tsv`: `fortfront-f90` 341/441,
+`fortfront-lf` 205/264, `lfortran` integration 848/4280, `gfortran.dg`
+1175/5938. Read the snapshot rather than this paragraph; regenerate it with
+`scripts/generate_parity_dashboard.sh` whenever corpus state changes.
 
 Two root-cause blockers dominate every corpus and come first:
 
@@ -94,9 +97,10 @@ filed as a FortFront issue, not an ffc workaround.
 ## Verification
 
 ```bash
-LIBRARY_PATH=<liric-build> fpm build
-LIBRARY_PATH=<liric-build> fpm test
+export LIBRARY_PATH=<liric-build>   # so the LIRIC static library is linkable
+fo                                  # static analysis, build, tests, lint, fmt
 ```
 
-CI runs the same workflow on every push and pull request. Run these
-commands before pushing.
+Use `fo` for every build and test loop; call `fpm` directly only to isolate one
+named test or to diagnose a `fo` failure. CI runs the same workflow on every
+push and pull request. Run `fo` before pushing.
