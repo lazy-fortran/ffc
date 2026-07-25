@@ -2,6 +2,7 @@ module session_program_lowering_types
     use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
     use liric_session_bindings, only: lr_operand_desc_t, liric_session_t
     use fortfront_compiler, only: ast_arena_t
+    use session_symbol_table, only: session_symbol_table_t
     implicit none
     private
 
@@ -188,7 +189,20 @@ module session_program_lowering_types
         end type common_slot_t
 
         type, public :: symbol_t
+            ! `name` is display data (diagnostics, mangling), not identity.
+            ! Identity is the FortFront binding below, when this symbol came
+            ! from a declaration FortFront could resolve (#327).
             character(len=64) :: name = ''
+            ! FortFront binding identity: the declaration node, the entity
+            ! within it (integer :: a, b, c share one node), and the scope
+            ! node that owns it, as reported by declaration_binding_t. Stays
+            ! .false./0 for symbols ffc synthesises without a FortFront
+            ! declaration (inferred lazy-Fortran locals, DO variables,
+            ! function-result and ABI temporaries).
+            logical :: has_binding = .false.
+            integer :: binding_declaration_index = 0
+            integer :: binding_entity_index = 0
+            integer :: binding_scope_index = 0
             integer :: value_kind = VALUE_I32
             type(lr_operand_desc_t) :: value
             type(lr_operand_desc_t) :: address
@@ -435,6 +449,10 @@ module session_program_lowering_types
             integer :: root_index = 0
             type(symbol_t), allocatable :: symbols(:)
             integer :: symbol_count = 0
+            ! Maps a FortFront (declaration, scope) binding identity onto a
+            ! slot in `symbols` (#327). Populated as declarations lower;
+            ! consulted before any name comparison at a reference site.
+            type(session_symbol_table_t) :: binding_table
             ! Symbols at index <= block_scope_floor belong to an enclosing scope. A
             ! declaration inside a BLOCK whose name matches such a symbol creates a
             ! fresh shadowing slot instead of reusing the outer storage (#280).

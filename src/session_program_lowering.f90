@@ -336,6 +336,76 @@ module session_program_lowering
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
+        !! Lower a declaration, then record the FortFront binding identity of
+        !! every name it declares (#327). Registration happens after lowering
+        !! so it sees the symbol slot the declaration actually produced,
+        !! whichever of the many declaration paths below created it.
+        type(declaration_node), intent(in) :: node_in
+        ! Arena index of this declaration, the unique key for SAVE-local globals.
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_declaration_entities(node_in, node_index, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call register_declaration_bindings(context, node_in, node_index)
+    end subroutine lower_declaration
+
+    subroutine register_declaration_bindings(context, node, node_index)
+        !! Bind each name this declaration introduces to its lowering symbol
+        !! by FortFront binding identity. Nothing is registered unless
+        !! FortFront agrees that, at the declaration's own site, the name
+        !! denotes this very declaration: ffc must never invent an identity.
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        integer :: i
+
+        if (node_index <= 0) return
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call register_declaration_binding(context, &
+                    trim(node%var_names(i)), node_index)
+            end do
+            return
+        end if
+        if (allocated(node%var_name)) &
+            call register_declaration_binding(context, trim(node%var_name), &
+            node_index)
+    end subroutine register_declaration_bindings
+
+    subroutine register_declaration_binding(context, name, node_index)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: node_index
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: resolve_error
+        integer :: symbol_index
+
+        if (len_trim(name) == 0) return
+        ! The declaration has just run, so the newest same-named slot is the
+        ! one it produced. This is the last place text is used as a key.
+        symbol_index = find_symbol(context, name)
+        if (symbol_index <= 0) return
+        call resolve_name_at_node(context%arena, node_index, name, binding, &
+            resolve_error)
+        if (len_trim(resolve_error) > 0) return
+        if (.not. binding%found) return
+        if (binding%declaration_node_index /= node_index) return
+        if (binding%scope_node_index <= 0) return
+        context%symbols(symbol_index)%has_binding = .true.
+        context%symbols(symbol_index)%binding_declaration_index = &
+            binding%declaration_node_index
+        context%symbols(symbol_index)%binding_entity_index = &
+            binding%declaration_entity_index
+        context%symbols(symbol_index)%binding_scope_index = &
+            binding%scope_node_index
+        call context%binding_table%insert_binding( &
+            binding%declaration_node_index, binding%declaration_entity_index, &
+            binding%scope_node_index, symbol_index)
+    end subroutine register_declaration_binding
+
+    subroutine lower_declaration_entities(node_in, node_index, context, error_msg)
         type(declaration_node), intent(in) :: node_in
         ! Arena index of this declaration, the unique key for SAVE-local globals.
         integer, intent(in) :: node_index
@@ -586,7 +656,7 @@ contains
         else
             error_msg = 'scalar declaration did not expose a variable name'
         end if
-    end subroutine lower_declaration
+    end subroutine lower_declaration_entities
 
     ! A bare DIMENSION statement: it carries the array shape (is_array with
     ! dimension_indices) but names no type, so the variable's type comes from a
@@ -2230,6 +2300,100 @@ contains
         index = find_symbol(context, name)
         if (index > 0 .and. index <= context%block_scope_floor) index = 0
     end function find_symbol_same_scope
+
+    integer function resolve_symbol_at_node(context, node_index, name) &
+            result(index)
+        !! Resolve a name reference to a lowering symbol (#327).
+        !!
+        !! FortFront owns name resolution: it maps the reference to a
+        !! declaration binding, and the binding table maps that identity to a
+        !! symbol slot. Only when the reference has no FortFront binding, or
+        !! the bound declaration has no lowering symbol yet, does this fall
+        !! back to the historical text lookup — that fallback still carries
+        !! the symbols ffc synthesises without a declaration (inferred
+        !! lazy-Fortran locals, DO variables, ABI temporaries), which the
+        !! remaining scope issues will migrate.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: resolve_error
+        integer :: bound
+
+        index = 0
+        if (node_index <= 0) then
+            index = find_symbol(context, name)
+            return
+        end if
+        call resolve_name_at_node(context%arena, node_index, name, binding, &
+            resolve_error)
+        if (len_trim(resolve_error) == 0 .and. binding%found) then
+            bound = context%binding_table%find_binding( &
+                binding%declaration_node_index, &
+                binding%declaration_entity_index, binding%scope_node_index)
+            if (symbol_slot_holds_binding(context, bound, binding)) then
+                index = bound
+                return
+            end if
+        end if
+        index = find_symbol(context, name)
+    end function resolve_symbol_at_node
+
+    logical function symbol_slot_holds_binding(context, slot, binding) &
+            result(holds)
+        !! True when `slot` is a live symbol that still carries this exact
+        !! binding identity. The lowering context reuses slot numbers once a
+        !! BLOCK or a procedure body pops its locals, so the identity stored
+        !! on the symbol itself — not the table entry — is the authority.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: slot
+        type(declaration_binding_t), intent(in) :: binding
+
+        holds = .false.
+        if (slot <= 0) return
+        if (slot > context%symbol_count) return
+        if (.not. context%symbols(slot)%has_binding) return
+        if (context%symbols(slot)%binding_declaration_index /= &
+            binding%declaration_node_index) return
+        if (context%symbols(slot)%binding_entity_index /= &
+            binding%declaration_entity_index) return
+        if (context%symbols(slot)%binding_scope_index /= &
+            binding%scope_node_index) return
+        holds = .true.
+    end function symbol_slot_holds_binding
+
+    subroutine fold_named_constant_at_node(context, node_index, name, value, &
+            found, error_msg)
+        !! A named constant that FortFront resolves at this reference but that
+        !! has no lowering symbol — a host-associated PARAMETER, whose
+        !! declaration was lowered into a different context. Its value comes
+        !! from the bound declaration's own initializer, reached through the
+        !! binding rather than by searching the arena for the spelling: an
+        !! identically named constant in a module that is not USEd stays
+        !! invisible and keeps producing the undeclared-name diagnostic.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: value
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: resolve_error
+        character(len=:), allocatable :: fold_error
+
+        value = 0_c_int64_t
+        found = .false.
+        call set_empty(error_msg)
+        if (node_index <= 0) return
+        call resolve_name_at_node(context%arena, node_index, name, binding, &
+            resolve_error)
+        if (len_trim(resolve_error) > 0) return
+        if (.not. binding%found) return
+        if (binding%binding_kind /= BINDING_NAMED_CONSTANT) return
+        call fold_i32_binding(context%arena, context, binding, value, fold_error)
+        if (len_trim(fold_error) > 0) return
+        found = .true.
+    end subroutine fold_named_constant_at_node
 
     logical function same_name(lhs, rhs)
         character(len=*), intent(in) :: lhs

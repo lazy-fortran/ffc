@@ -279,7 +279,13 @@ empty executable, matching gfortran's own module-only object. When such a file
 also holds a main program after its modules, the program's own contained
 procedures are registered and lowered from inside the multi-unit container, so
 a call to a program-contained scalar function resolves as contained instead of
-raising the unsupported-call diagnostic. A single-file A single-file
+raising the unsupported-call diagnostic. A contained procedure may reference a
+host-associated named constant (an `integer, parameter` declared in the
+containing program or module) in an integer expression: the value folds from
+the declaration that FortFront's binding resolution names at the reference, so
+an identically spelled constant in a module the unit never `use`s stays
+invisible and still raises the undeclared-name diagnostic. Host-associated
+*variables* are still not supported. A single-file A single-file
 `submodule (m) s` implements the module procedures its parent module `m`
 declares through interface bodies; both the restated signature form and the
 separate `module procedure` form lower under the parent's mangled symbol, so a
