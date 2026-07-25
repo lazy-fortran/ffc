@@ -79,6 +79,12 @@ jobs:
           repository: krystophny/liric
           path: liric
 
+      - name: Checkout fo
+        uses: actions/checkout@v4
+        with:
+          repository: lazy-fortran/fo
+          path: fo
+
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -95,6 +101,12 @@ jobs:
             https://github.com/fortran-lang/fpm/releases/download/v0.13.0/fpm-0.13.0-linux-x86_64-gcc-12
           sudo chmod +x /usr/local/bin/fpm
           fpm --version
+
+      - name: Install fo onto PATH
+        working-directory: fo
+        run: |
+          fpm install --prefix "$HOME/.local"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build liric
         working-directory: liric
@@ -129,3 +141,74 @@ jobs:
             --files-from test/conformance/ci_lfortran.txt
           scripts/conformance_check.sh --no-build --suite gfortran-dg \
             --files-from test/conformance/ci_gfortran_dg.txt
+
+      # Runs last, and after "Build ffc" for two reasons. The compiler half of
+      # `fo lint` re-compiles each source with -fsyntax-only against the module
+      # directories under build/, so without a prior build it silently reports
+      # almost nothing; and putting it after the test and corpus steps keeps a
+      # lint failure from cancelling their result.
+      - name: Lint (fo)
+        working-directory: ffc
+        env:
+          LIBRARY_PATH: ${{ github.workspace }}/liric/build
+        run: |
+          set -euo pipefail
+          # `fo lint` exits 1 on any finding, so capture the report first and
+          # decide below which half of it gates.
+          fo lint --json > "$RUNNER_TEMP/fo-lint.json" || true
+          jq -r '.warnings[] | "\(.file):\(.line):\(.column): \(.message)"' \
+            "$RUNNER_TEMP/fo-lint.json"
+          unused=$(jq '.unused_imports | length' "$RUNNER_TEMP/fo-lint.json")
+          warnings=$(jq '.warnings | length' "$RUNNER_TEMP/fo-lint.json")
+          echo "unused imports: $unused, compiler warnings: $warnings"
+          # Blocking: main carries no unused imports, so a new one is a
+          # regression and fails here.
+          # Not blocking yet: the compiler warnings are pre-existing debt
+          # (27 on main, tracked in issue #475). They are printed above. Once
+          # they are cleared this whole step collapses into a plain `fo lint`,
+          # whose exit status already covers both halves.
+          test "$unused" -eq 0
+
+  # `fo fmt --check` only reads sources: it needs neither fortfront, nor liric,
+  # nor a build. Its own job therefore starts reporting within a minute or two,
+  # and a formatting failure never pre-empts the build and test results.
+  fmt:
+    name: fo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ffc
+        uses: actions/checkout@v4
+        with:
+          path: ffc
+
+      - name: Checkout fo
+        uses: actions/checkout@v4
+        with:
+          repository: lazy-fortran/fo
+          path: fo
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran
+          gfortran --version | head -1
+
+      - name: Install fpm
+        run: |
+          sudo curl -L -o /usr/local/bin/fpm \
+            https://github.com/fortran-lang/fpm/releases/download/v0.13.0/fpm-0.13.0-linux-x86_64-gcc-12
+          sudo chmod +x /usr/local/bin/fpm
+          fpm --version
+
+      - name: Install fo onto PATH
+        working-directory: fo
+        run: |
+          fpm install --prefix "$HOME/.local"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # main is clean under `fo fmt --check` today, so this gate blocks from
+      # the start. It covers *.f90 only; fo's formatter does not read the
+      # *.inc lowering fragments.
+      - name: Check formatting
+        working-directory: ffc
+        run: fo fmt --check
