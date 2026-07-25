@@ -457,6 +457,16 @@ module session_program_lowering_types
             ! declaration inside a BLOCK whose name matches such a symbol creates a
             ! fresh shadowing slot instead of reusing the outer storage (#280).
             integer :: block_scope_floor = 0
+            ! Arena index of the declaration whose specification expressions
+            ! are being lowered (#329), or 0 outside a declaration. A
+            ! specification expression - an array bound, a character length,
+            ! a kind selector - is evaluated in the scope where its
+            ! declaration appears, so this node is the anchor FortFront
+            ! resolves its names against. Character lengths in particular
+            ! reach lowering as text with no arena node of their own, and
+            ! text alone cannot distinguish a BLOCK-shadowed constant from
+            ! the host one it hides.
+            integer :: current_declaration_index = 0
             type(derived_type_info_t), allocatable :: derived_types(:)
             integer :: derived_type_count = 0
             type(module_exports_t), allocatable :: module_exports(:)
