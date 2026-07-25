@@ -392,45 +392,6 @@ scripts/generate_parity_dashboard.sh \
     --from-snapshot test/conformance/parity_dashboard.tsv --check
 ```
 
-### Three constraints that are not obvious
-
-Each of these has broken `main` or produced a wrong measurement.
-
-**Generate from a branch whose HEAD equals `main`, as its first commit.** The
-snapshot records the ffc revision it was generated at, and the check requires
-that revision to be an ancestor of HEAD:
-
-```bash
-git merge-base --is-ancestor "$ffc_revision" HEAD \
-    || fail "snapshot ffc revision is not an ancestor"
-```
-
-Squash-merge creates a commit with no ancestry to the branch, so any commit
-sitting above `main` when the snapshot was generated takes the snapshot's
-provenance with it and `main` goes red on landing. The PR will be green on its
-own branch, which is why this is easy to miss.
-
-**A PR that both changes corpus behaviour and carries a regenerated snapshot
-must be merged with a merge commit, not squashed.** The snapshot cannot be
-generated at `main`'s HEAD when the change it measures lives on a branch, so
-preserving ancestry is the only option that keeps `main` green.
-
-**Regenerate on an idle machine, with a raised compile timeout.**
-
-```bash
-FFC_COMPILE_TIMEOUT=60 scripts/conformance_gauntlet.sh --suite ... --require-provenance
-```
-
-`benchmark_5000_lines.f90` compiles in about five seconds against the ten-second
-default, so it passes when the machine is quiet and times out when it is not.
-The report records a timeout as `ffc_exit: 1` rather than `124`, which reads as a
-compile error and invites a hunt for a regression that is not there. Two suites
-regenerated under load will disagree with two regenerated idle. See #478.
-
-Note also that `scripts/conformance_check.sh` does **not** pass
-`--require-provenance`, so its reports cannot feed the generator; invoke the
-gauntlet directly per suite as shown above.
-
 The generator requires Bash 4.3 or newer. It parses each flat JSON object,
 rejects unknown or duplicate fields, validates field types and totals, checks
 structured NOREF rows, verifies report provenance, and joins every disposition,
