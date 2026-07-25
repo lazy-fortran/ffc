@@ -193,8 +193,8 @@
     end subroutine declaration_character_length
 
     ! Resolve character(<name>) where <name> is a compile-time integer
-    ! parameter already in the symbol table. Leaves error_msg set when the
-    ! length text is not a single resolvable parameter name.
+    ! parameter. Leaves error_msg set when the length text is not a single
+    ! resolvable parameter name.
     subroutine resolve_named_character_length(context, node, character_length, &
                                               error_msg)
         type(lowering_context_t), intent(in) :: context
@@ -202,6 +202,9 @@
         integer, intent(out) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
+        character(len=:), allocatable :: fold_error
+        integer(c_int64_t) :: folded
+        logical :: folded_found
         integer :: symbol_index
 
         character_length = -1
@@ -214,6 +217,22 @@
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
             /= 0) return
 
+        ! Ask FortFront which constant this name denotes at the declaration
+        ! that spells it (#329). The length text carries no arena node, so the
+        ! declaration is the anchor; without it a BLOCK-local parameter that
+        ! shadows a host one of the same name silently takes the host width.
+        call fold_named_constant_at_node(context, &
+                                         context%current_declaration_index, &
+                                         name, folded, folded_found, fold_error)
+        if (len_trim(fold_error) == 0 .and. folded_found) then
+            if (folded <= 0_c_int64_t) return
+            character_length = int(folded)
+            call set_empty(error_msg)
+            return
+        end if
+
+        ! No FortFront binding: a symbol ffc synthesised without a declaration
+        ! of its own still resolves by name, as it did before #329.
         symbol_index = find_symbol(context, name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%has_i32_constant) return
