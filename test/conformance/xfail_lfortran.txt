@@ -417,7 +417,6 @@ assumed_type_05.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar
 assume_rank_shape_product_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 attr_dim_01.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 attr_dim_03.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-attr_intrinsic.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 automatic_allocation_02.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 bindc_01.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 bindc_02b.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive

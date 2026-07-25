@@ -99,7 +99,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'logical identifier was not declared: '// &
                             trim(id_name)
@@ -333,7 +333,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) return
             if (context%symbols(symbol_index)%is_array) return
             is_int = context%symbols(symbol_index)%value_kind == VALUE_I32
@@ -425,7 +425,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'real identifier was not declared: '//trim(id_name)
                 return
@@ -616,7 +616,7 @@
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index > 0) then
                 is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
             end if
@@ -765,7 +765,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'real identifier was not declared: '//trim(id_name)
                 return
@@ -1067,7 +1067,7 @@
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index > 0) then
                 is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
             end if
@@ -1142,7 +1142,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = resolve_symbol_at_node(context, node_index, id_name)
             operand_has_value_kind = sym > 0 .and. &
                 context%symbols(sym)%value_kind == want_kind
             return
@@ -1247,7 +1247,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'integer(8) identifier was not declared: '//trim(id_name)
                 return
@@ -1465,7 +1465,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'integer(1) identifier was not declared: '//trim(id_name)
                 return
@@ -1598,7 +1598,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'integer(2) identifier was not declared: '//trim(id_name)
                 return

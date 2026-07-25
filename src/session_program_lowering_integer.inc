@@ -15,6 +15,8 @@
       integer :: bin_left, bin_right, bin_line, bin_col
       character(len=:), allocatable :: lit_value, lit_type
       character(len=:), allocatable :: id_name
+      integer(c_int64_t) :: const_value
+      logical :: const_found
 
       if (.not. node_exists(arena, node_index)) then
           error_msg = 'expression index does not reference an AST node'
@@ -81,8 +83,19 @@
               call set_empty(error_msg)
               return
           end if
-          symbol_index = find_symbol(context, id_name)
+          symbol_index = resolve_symbol_at_node(context, node_index, id_name)
           if (symbol_index <= 0) then
+              ! A host-associated named constant has no symbol in this
+              ! procedure's context; fold it from its bound declaration.
+              call fold_named_constant_at_node(context, node_index, id_name, &
+                                               const_value, const_found, &
+                                               error_msg)
+              if (len_trim(error_msg) > 0) return
+              if (const_found) then
+                  value = i32_immediate(context%session, const_value)
+                  call set_empty(error_msg)
+                  return
+              end if
               error_msg = 'integer identifier was not declared: '//trim(id_name)
               return
           end if

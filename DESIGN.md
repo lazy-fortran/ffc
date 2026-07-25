@@ -59,6 +59,28 @@ Arrays beyond fixed-size, modules and separate compilation, polymorphism,
 type-bound procedures, allocatables, the full intrinsic set, and a
 Fortran-aware I/O runtime are unsupported and tracked as GitHub issues.
 
+## Symbol identity
+
+Lowering symbols are keyed by FortFront binding identity, not by text
+(`src/session_symbol_table.f90`, #327). FortFront resolves a name
+reference to a `declaration_binding_t`; the triple
+`(declaration_node_index, declaration_entity_index, scope_node_index)`
+identifies the declared entity, and the binding table maps that identity
+onto a slot in the lowering context's symbol array. Text names remain in
+`symbol_t` for diagnostics and mangling only.
+
+This keeps ownership clean: FortFront alone applies Fortran's shadowing,
+host-association, USE and accessibility rules, and `ffc` alone owns
+storage and ABI metadata. `ffc` never synthesises a symbol for a name
+FortFront could not resolve — an unresolved reference keeps the
+undeclared-name diagnostic.
+
+Reference sites still fall back to the historical text lookup when a
+reference has no FortFront binding, because `ffc` also creates symbols
+with no declaration behind them (inferred lazy-Fortran locals, DO
+variables, ABI temporaries). Retiring that fallback is the work of the
+remaining scope issues.
+
 ## Runtime and ABI decisions
 
 The current ABI is documented in `docs/RUNTIME_ABI.md`. Before broadening
