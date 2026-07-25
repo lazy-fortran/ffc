@@ -32,13 +32,22 @@ module session_symbol_table
     end type symbol_binding_t
 
     type, public :: session_symbol_table_t
+        ! State is private on purpose. This type is the boundary the 69 lowering
+        ! include fragments will eventually be split behind, and every fragment
+        ! holds lowering_context_t as intent(inout). Public components would let
+        ! any of them corrupt the table directly, which is exactly the coupling
+        ! the split exists to remove. All access goes through the type-bound
+        ! procedures below.
+        private
         type(symbol_binding_t), allocatable :: bindings(:)
         integer :: binding_count = 0
     contains
         procedure :: find_binding => table_find_binding
         procedure :: insert_binding => table_insert_binding
-        procedure :: drop_from_symbol => table_drop_from_symbol
-        procedure :: reset => table_reset
+        ! drop_from_symbol is deliberately not exposed. It is reachable only
+        ! from insert_binding, which is the sole point where a symbol slot can
+        ! be reused; see the note there.
+        procedure, private :: drop_from_symbol => table_drop_from_symbol
     end type session_symbol_table_t
 
 contains
@@ -101,6 +110,14 @@ contains
 
     subroutine table_drop_from_symbol(self, first_symbol_index)
         !! Forget every association whose symbol slot is `first_symbol_index`
+        !! or above.
+        !!
+        !! This does NOT track the lowering context truncating its symbol array
+        !! back to an enclosing scope. Roughly 40 sites assign
+        !! context%symbol_count downward and none of them notify this table, so
+        !! do not rely on it as a scope-exit hook. It exists solely so that
+        !! insert_binding cannot leave a stale identity attached to a slot it is
+        !! about to reuse.
         !! or later. Called when the lowering context truncates its symbol
         !! array back to an enclosing scope.
         class(session_symbol_table_t), intent(inout) :: self
@@ -118,11 +135,6 @@ contains
         self%binding_count = kept
     end subroutine table_drop_from_symbol
 
-    subroutine table_reset(self)
-        class(session_symbol_table_t), intent(inout) :: self
-
-        self%binding_count = 0
-    end subroutine table_reset
 
     subroutine grow_bindings(self)
         class(session_symbol_table_t), intent(inout) :: self
