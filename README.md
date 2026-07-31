@@ -306,7 +306,12 @@ A plain explicit `interface` block that declares the signature of an external
 top-level function (or a module function) whose real definition also appears in
 the file reconciles the signature with the definition instead of colliding as a
 duplicate, so the call resolves to the real symbol for every scalar result kind
-(integer, real, logical).
+(integer, real, logical). When the definition lives in another translation unit
+instead, the interface still types the call and the symbol resolves at link
+time: a source of only top-level procedures compiles with `-c` to an object
+that defines no `main` and links beside a separately compiled driver. Asking
+for an executable from such a procedure-only source is rejected with `no main
+program unit`.
 The `associate` construct binds scalar selectors, a rank-1 unit-stride
 array-section selector (`associate (x => a(lo:hi))`, reindexed to lower
 bound 1), and a derived-type component selector (`associate (s => a%comp)`);

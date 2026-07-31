@@ -49,6 +49,14 @@
         logical :: needs_main
         call validate_program(arena, root_index, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! Linking an executable needs a main program unit. A procedure-only root
+        ! supplies none, so say so instead of emitting a do-nothing main (#416).
+        ! A module-only unit keeps its established no-op executable (#284).
+        if (emit_executable .and. unit_is_procedure_only(arena, root_index)) then
+            error_msg = 'no main program unit: a procedure-only translation '// &
+                'unit compiles to an object (-c), not an executable'
+            return
+        end if
         session_config = lr_session_config_t()
         if (present(backend)) session_config%backend = int(backend, c_int)
         if (present(opt_level)) session_config%opt_level = int(opt_level, c_int)
@@ -344,8 +352,75 @@
             end do
             return
         end if
+        ! A source holding nothing but top-level procedures parses as a program
+        ! whose body is exactly those procedure definitions. It is a
+        ! procedure-only translation unit, not a main program (#416): emitting
+        ! main would collide with the driver it links against.
+        if (unit_is_procedure_only(arena, root_index)) then
+            has_main = .false.
+            return
+        end if
         has_main = .true.
     end function unit_defines_main
+
+    logical function unit_is_procedure_only(arena, root_index) result(procs_only)
+        ! Whether the root holds top-level procedure definitions and nothing
+        ! else: no main program, no module, no executable statement (#416).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        character(len=:), allocatable :: node_type, ff_error
+        integer, allocatable :: body_indices(:)
+        integer :: i
+        integer :: allowed_programs
+
+        procs_only = .false.
+        node_type = get_node_type_at(arena, root_index)
+        if (node_type /= 'program_node' .and. node_type /= 'program' .and. &
+            node_type /= 'multi_unit_container') return
+        call get_unit_body_indices(arena, root_index, body_indices, ff_error)
+        if (len_trim(ff_error) > 0) return
+        if (.not. allocated(body_indices)) return
+        if (size(body_indices) == 0) return
+        do i = 1, size(body_indices)
+            if (.not. body_index_is_procedure_def(arena, body_indices(i))) return
+        end do
+        ! An explicit (even empty) PROGRAM unit keeps its own program node in
+        ! the arena beside the wrapper FortFront builds for the file, so the
+        ! source does define a main program and is not procedure-only.
+        allowed_programs = 0
+        if (node_type /= 'multi_unit_container') allowed_programs = 1
+        if (program_node_count(arena) > allowed_programs) return
+        procs_only = .true.
+    end function unit_is_procedure_only
+
+    integer function program_node_count(arena) result(count)
+        ! How many PROGRAM units the arena holds, including the wrapper node
+        ! FortFront synthesizes for a file with no explicit program.
+        type(ast_arena_t), intent(in) :: arena
+        integer :: i
+
+        count = 0
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (is_program_node(arena, i)) count = count + 1
+        end do
+    end function program_node_count
+
+    logical function body_index_is_procedure_def(arena, node_index) result(is_proc)
+        ! Whether a program-body entry defines a procedure rather than a
+        ! declaration or executable statement.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_proc = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (nd => arena%entries(node_index)%node)
+        type is (function_def_node)
+            is_proc = .true.
+        type is (subroutine_def_node)
+            is_proc = .true.
+        end select
+    end function body_index_is_procedure_def
 
     subroutine import_bare_module_use_dependencies(arena, root_index, context, &
                                                    error_msg)

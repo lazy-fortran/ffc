@@ -1,5 +1,6 @@
 program test_session_scalar_procedure_call_compiler
-    use ffc_test_support, only: expect_error_contains, expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status, &
+                                expect_no_error
     implicit none
 
     logical :: all_passed
@@ -13,7 +14,7 @@ program test_session_scalar_procedure_call_compiler
     if (.not. test_top_level_scalar_calls()) all_passed = .false.
     if (.not. test_wrong_arity_diagnostic()) all_passed = .false.
     if (.not. test_incompatible_type_diagnostic()) all_passed = .false.
-    if (.not. test_unavailable_body_diagnostic()) all_passed = .false.
+    if (.not. test_host_interface_is_external()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: scalar same-unit procedure calls preserve resolved signatures'
@@ -153,7 +154,10 @@ contains
             source, 'mismatched', '/tmp/ffc_session_scalar_proc_type')
     end function test_incompatible_type_diagnostic
 
-    logical function test_unavailable_body_diagnostic()
+    logical function test_host_interface_is_external()
+        ! An interface block at host level declares an external procedure whose
+        ! body lives in another translation unit (#416), so it lowers to a call
+        ! that the linker resolves rather than a "body unavailable" rejection.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
@@ -165,8 +169,8 @@ contains
             '  stop missing_body(1)'//new_line('a')// &
             'end program main'
 
-        test_unavailable_body_diagnostic = expect_error_contains( &
-            source, 'body', '/tmp/ffc_session_scalar_proc_missing')
-    end function test_unavailable_body_diagnostic
+        test_host_interface_is_external = expect_no_error( &
+            source, '/tmp/ffc_session_scalar_proc_missing')
+    end function test_host_interface_is_external
 
 end program test_session_scalar_procedure_call_compiler
