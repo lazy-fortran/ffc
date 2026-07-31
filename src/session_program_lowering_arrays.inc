@@ -2344,6 +2344,11 @@
             return
         end if
         vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_CHARACTER) then
+            call lower_character_array_constructor(context, flat, symbol_index, &
+                                                   error_msg)
+            return
+        end if
         if (vk == VALUE_C4 .or. vk == VALUE_C8) then
             call lower_complex_array_constructor(arena, flat, symbol_index, &
                                                  context, error_msg)
@@ -2374,6 +2379,46 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    subroutine lower_character_array_constructor(context, flat, symbol_index, &
+                                                 error_msg)
+        !! arr = ["ab", "cd"] for a character array. A Lazy binding gets its
+        !! element length and extent from the inferred declaration, so each
+        !! constructor element folds to a literal text and stores into the
+        !! matching string slot, padded or truncated to the declared length.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: flat(:)
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: texts(:)
+        character(len=:), allocatable :: folded_text
+        integer :: character_length
+        integer :: i
+        logical :: ok
+
+        call set_empty(error_msg)
+        character_length = context%symbols(symbol_index)%character_length
+        if (character_length <= 0) then
+            error_msg = 'character array assignment needs a declared element '// &
+                'length for '//trim(context%symbols(symbol_index)%name)
+            return
+        end if
+        allocate (character(len=character_length) :: texts(size(flat)))
+        do i = 1, size(flat)
+            call concat_character_literals(context%arena, flat(i), folded_text, ok)
+            if (.not. ok) then
+                error_msg = 'character array constructor element is not a '// &
+                    'foldable literal for '// &
+                    trim(context%symbols(symbol_index)%name)
+                return
+            end if
+            call normalize_character_literal(folded_text, character_length)
+            texts(i) = folded_text
+        end do
+        call store_character_array_initials(context, symbol_index, &
+                                            character_length, size(flat), texts, &
+                                            error_msg)
+    end subroutine lower_character_array_constructor
 
     subroutine lower_constructor_i32_element(arena, node_index, context, value, &
                                              error_msg)
