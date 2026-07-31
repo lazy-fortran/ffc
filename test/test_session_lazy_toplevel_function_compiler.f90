@@ -38,9 +38,11 @@ program test_session_lazy_toplevel_function_compiler
     ! synthetic multi-unit program. The container must lower like a program:
     ! the subroutine becomes a contained procedure, the bare statements the
     ! main body (#266, #275). Mirrors monomorphization_scale_subroutine.lf.
+    ! The dummy carries an explicit INTENT(INOUT) because the Lazy Fortran
+    ! default intent is INTENT(IN) (#438).
     if (.not. lazy_runs( &
         'subroutine bump(v)'//new_line('a')// &
-        '    integer :: v'//new_line('a')// &
+        '    integer, intent(inout) :: v'//new_line('a')// &
         '    v = v + 1'//new_line('a')// &
         '    print *, v'//new_line('a')// &
         'end subroutine'//new_line('a')// &

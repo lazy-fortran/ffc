@@ -1782,3 +1782,183 @@ integer function expression_value_kind(arena, node_index, context, &
         if (is_binary_op(arena, node_index)) return
         is_section_index = .true.
     end function is_section_index
+
+    ! A dummy argument that is INTENT(IN) can never be redefined. Lazy Fortran
+    ! makes INTENT(IN) the default for a dummy declared without an explicit
+    ! INTENT (#438), so in lazy mode an intent-less dummy is protected too,
+    ! while a standard Fortran source keeps the language rule that only an
+    ! explicit INTENT(IN) protects. The check runs before any code is emitted
+    ! so an offending unit is diagnosed instead of silently lowered.
+    subroutine check_dummy_intent_definitions(arena, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (function_def_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                if (.not. allocated(nd%param_indices)) cycle
+                call check_scope_intent_writes(arena, context, &
+                                               nd%param_indices, &
+                                               nd%body_indices, error_msg)
+            type is (subroutine_def_node)
+                if (.not. allocated(nd%body_indices)) cycle
+                if (.not. allocated(nd%param_indices)) cycle
+                call check_scope_intent_writes(arena, context, &
+                                               nd%param_indices, &
+                                               nd%body_indices, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_dummy_intent_definitions
+
+    subroutine check_scope_intent_writes(arena, context, param_indices, &
+                                         body_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: param_indices(:)
+        integer, intent(in) :: body_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (stmt => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                cycle
+            class default
+                call check_statement_intent_writes(arena, context, &
+                                                   param_indices, &
+                                                   body_indices, &
+                                                   body_indices(i), error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_scope_intent_writes
+
+    recursive subroutine check_statement_intent_writes(arena, context, &
+                                                       param_indices, &
+                                                       body_indices, &
+                                                       stmt_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: param_indices(:)
+        integer, intent(in) :: body_indices(:)
+        integer, intent(in) :: stmt_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, stmt_index)) return
+        select type (stmt => arena%entries(stmt_index)%node)
+        type is (assignment_node)
+            call check_intent_write_target(arena, context, param_indices, &
+                                           body_indices, stmt%target_index, &
+                                           error_msg)
+        type is (if_node)
+            if (allocated(stmt%then_body_indices)) then
+                do i = 1, size(stmt%then_body_indices)
+                    call check_statement_intent_writes(arena, context, &
+                        param_indices, body_indices, &
+                        stmt%then_body_indices(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+            if (allocated(stmt%else_body_indices)) then
+                do i = 1, size(stmt%else_body_indices)
+                    call check_statement_intent_writes(arena, context, &
+                        param_indices, body_indices, &
+                        stmt%else_body_indices(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        type is (do_loop_node)
+            if (.not. allocated(stmt%body_indices)) return
+            do i = 1, size(stmt%body_indices)
+                call check_statement_intent_writes(arena, context, &
+                    param_indices, body_indices, stmt%body_indices(i), &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        type is (do_while_node)
+            if (.not. allocated(stmt%body_indices)) return
+            do i = 1, size(stmt%body_indices)
+                call check_statement_intent_writes(arena, context, &
+                    param_indices, body_indices, stmt%body_indices(i), &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end select
+    end subroutine check_statement_intent_writes
+
+    subroutine check_intent_write_target(arena, context, param_indices, &
+                                         body_indices, target_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: param_indices(:)
+        integer, intent(in) :: body_indices(:)
+        integer, intent(in) :: target_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        character(len=64) :: location
+        integer :: decl_index
+
+        call set_empty(error_msg)
+        call target_base_name(arena, target_index, name)
+        if (len_trim(name) == 0) return
+        if (.not. name_is_dummy(arena, param_indices, name)) return
+        call scope_decl_for_name(arena, body_indices, name, decl_index)
+        if (decl_index <= 0) return
+        if (.not. declaration_is_intent_in(arena, decl_index, context)) return
+        write (location, '(" at line ",I0,", column ",I0)') &
+            get_node_line(arena, target_index), &
+            get_node_column(arena, target_index)
+        error_msg = 'INTENT(IN) dummy argument '''//trim(name)// &
+            ''' cannot appear in a variable definition context '// &
+            '(assignment target)'//trim(location)
+    end subroutine check_intent_write_target
+
+    logical function name_is_dummy(arena, param_indices, name) result(is_dummy)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: param_indices(:)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: param, name_error
+        integer :: i
+
+        is_dummy = .false.
+        do i = 1, size(param_indices)
+            call parameter_name(arena, param_indices(i), param, name_error)
+            if (len_trim(name_error) > 0) cycle
+            if (.not. allocated(param)) cycle
+            if (same_name(param, name)) then
+                is_dummy = .true.
+                return
+            end if
+        end do
+    end function name_is_dummy
+
+    ! Effective INTENT(IN): declared so, or - under the Lazy Fortran default
+    ! intent policy - declared with no INTENT at all (#438).
+    logical function declaration_is_intent_in(arena, decl_index, context) &
+            result(is_in)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: decl_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_in = .false.
+        select type (decl => arena%entries(decl_index)%node)
+        type is (declaration_node)
+            if (decl%is_pointer) return
+            if (decl%has_intent) then
+                if (.not. allocated(decl%intent)) return
+                is_in = trim(lowercase_text(decl%intent)) == 'in'
+            else
+                is_in = context%lazy_mode
+            end if
+        end select
+    end function declaration_is_intent_in

@@ -540,6 +540,12 @@ module session_program_lowering_types
         type(liric_session_t) :: session
         type(ast_arena_t) :: arena
         integer :: root_index = 0
+        ! Lazy Fortran dialect defaults are active for this compilation unit
+        ! (#438). The driver sets this from the frontend input mode, so the
+        ! policy is explicit in the lowering context instead of being guessed
+        ! from the source text: a kind-less `real` is real(8), and a dummy
+        ! argument without an explicit INTENT is INTENT(IN).
+        logical :: lazy_mode = .false.
         type(symbol_t), allocatable :: symbols(:)
         integer :: symbol_count = 0
         ! Maps a FortFront (declaration, scope) binding identity onto a

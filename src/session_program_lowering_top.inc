@@ -1,6 +1,6 @@
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
                                           error_msg, include_paths, link_objects, &
-                                          backend, opt_level)
+                                          backend, opt_level, lazy_mode)
 
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -10,13 +10,15 @@
         character(len=*), intent(in), optional :: link_objects(:)
         integer, intent(in), optional :: backend
         integer, intent(in), optional :: opt_level
+        logical, intent(in), optional :: lazy_mode
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .true., error_msg, include_paths, &
-                                         link_objects, backend, opt_level)
+                                         link_objects, backend, opt_level, &
+                                         lazy_mode)
     end subroutine lower_program_to_liric_exe
     subroutine lower_program_to_liric_object(arena, root_index, output_path, &
                                              error_msg, include_paths, backend, &
-                                             opt_level)
+                                             opt_level, lazy_mode)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
@@ -24,14 +26,16 @@
         character(len=*), intent(in), optional :: include_paths(:)
         integer, intent(in), optional :: backend
         integer, intent(in), optional :: opt_level
+        logical, intent(in), optional :: lazy_mode
         call lower_program_to_liric_path(arena, root_index, output_path, &
                                          .false., error_msg, include_paths, &
-                                         backend=backend, opt_level=opt_level)
+                                         backend=backend, opt_level=opt_level, &
+                                         lazy_mode=lazy_mode)
     end subroutine lower_program_to_liric_object
     subroutine lower_program_to_liric_path(arena, root_index, output_path, &
                                            emit_executable, error_msg, &
                                            include_paths, link_objects, backend, &
-                                           opt_level)
+                                           opt_level, lazy_mode)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
@@ -39,6 +43,7 @@
         character(len=*), intent(in), optional :: link_objects(:)
         integer, intent(in), optional :: backend
         integer, intent(in), optional :: opt_level
+        logical, intent(in), optional :: lazy_mode
         logical, intent(in) :: emit_executable
         character(len=:), allocatable, intent(out) :: error_msg
         type(lowering_context_t) :: context
@@ -78,6 +83,7 @@
         allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
         context%arena = arena
+        if (present(lazy_mode)) context%lazy_mode = lazy_mode
         ! A module-only unit compiled to an object is linked beside the main and
         ! sibling module objects. Tag its per-unit .ffc content globals with a
         ! prefix derived from the output path so their counter-numbered names do
@@ -121,6 +127,11 @@
             return
         end if
         if (.not. synthesize_complex8_printer(context%session, error_msg)) then
+            call destroy(context%session)
+            return
+        end if
+        call check_dummy_intent_definitions(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
             call destroy(context%session)
             return
         end if

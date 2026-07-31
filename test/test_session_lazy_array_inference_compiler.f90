@@ -22,12 +22,14 @@ program test_session_lazy_array_inference_compiler
         'ffc_lazy_arr_int')) ok = .false.
 
     ! Real constructor plus a whole-array expression: the inferred descriptor
-    ! of `b` is derived from the array expression, not from a literal.
+    ! of `b` is derived from the array expression, not from a literal. The
+    ! elements are real(8): the Lazy Fortran default real kind is 8 (#438).
     if (.not. lazy_runs( &
         'a = [1.0, 2.0, 3.0]'//new_line('a')// &
         'b = a * 2.0'//new_line('a')// &
         'print *, b'//new_line('a'), &
-        '   2.00000000       4.00000000       6.00000000', &
+        '   2.0000000000000000        4.0000000000000000'// &
+        '        6.0000000000000000', &
         'ffc_lazy_arr_real')) ok = .false.
 
     ! Integer array expression between two inferred bindings.
