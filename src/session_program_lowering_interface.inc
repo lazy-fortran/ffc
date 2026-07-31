@@ -952,6 +952,10 @@
         character(len=:), allocatable :: resolved, dealiased
         integer :: g
 
+        if (visible_nested_procedure_node(context, name) > 0) then
+            resolved = trim(name)
+            return
+        end if
         dealiased = resolve_proc_alias(context, name)
         g = find_generic(context, dealiased)
         if (g > 0) then

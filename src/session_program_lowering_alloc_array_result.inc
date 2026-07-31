@@ -72,7 +72,7 @@
         end do
 
         if (.not. emit_void_call(context%session, &
-                                 call_emit_name(arena, trim(func_name)), &
+                                 call_emit_name(arena, trim(func_name), context), &
                                  all_args, error_msg)) return
         call copy_back_reference_args(context, user_args, copyback_indices, &
                                       error_msg)

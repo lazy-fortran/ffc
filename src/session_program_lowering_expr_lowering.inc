@@ -243,7 +243,8 @@
             allocate (copyback_indices(0))
         end if
 
-        if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name), &
+        if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name, &
+                                                         context), &
                                 args, value, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_logical_call
@@ -570,7 +571,7 @@
         end if
 
         if (.not. emit_liric_f32_call(context%session, &
-                call_emit_name(arena, call_name), args, value, &
+                call_emit_name(arena, call_name, context), args, value, &
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_f32_call
@@ -942,7 +943,7 @@
         end if
 
         if (.not. emit_liric_f64_call(context%session, &
-                call_emit_name(arena, call_name), args, value, &
+                call_emit_name(arena, call_name, context), args, value, &
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_contained_f64_call_named
@@ -1017,13 +1018,13 @@
         if (len_trim(error_msg) > 0) return
         if (ret_kind == VALUE_F64) then
             if (.not. emit_liric_f64_call(context%session, &
-                    call_emit_name(arena, specific), args, value, error_msg)) return
+                    call_emit_name(arena, specific, context), args, value, error_msg)) return
         else if (ret_kind == VALUE_F32) then
             if (.not. emit_liric_f32_call(context%session, &
-                    call_emit_name(arena, specific), args, value, error_msg)) return
+                    call_emit_name(arena, specific, context), args, value, error_msg)) return
         else
             if (.not. emit_i32_call(context%session, &
-                    call_emit_name(arena, specific), args, value, error_msg)) return
+                    call_emit_name(arena, specific, context), args, value, error_msg)) return
         end if
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_overloaded_operator
@@ -1327,7 +1328,7 @@
         end if
 
         if (.not. emit_i64_call(context%session, &
-                                call_emit_name(arena, node%name), &
+                                call_emit_name(arena, node%name, context), &
                                 args, value, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_i64_call

@@ -619,9 +619,38 @@
         ! Declared parameter count of a contained procedure, or -1 if unknown.
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer :: i
+        integer :: i, nested_node_index
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
 
         count = -1
+        nested_node_index = visible_nested_procedure_node(context, name)
+        if (nested_node_index > 0) then
+            node_type = get_node_type_at(context%arena, nested_node_index)
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                fn_node => get_node_as_function_def(context%arena, nested_node_index)
+                if (associated(fn_node)) then
+                    if (allocated(fn_node%param_indices)) then
+                        count = size(fn_node%param_indices)
+                    else
+                        count = 0
+                    end if
+                end if
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(context%arena, nested_node_index)
+                if (associated(sb_node)) then
+                    if (allocated(sb_node%param_indices)) then
+                        count = size(sb_node%param_indices)
+                    else
+                        count = 0
+                    end if
+                end if
+            end if
+            return
+        end if
         do i = 1, context%function_count
             if (same_name(context%function_names(i), name)) then
                 count = context%function_param_counts(i)
@@ -723,6 +752,8 @@
         if (len_trim(node%return_type) == 0) then
             call result_var_scalar_kind(node, context, value_kind, &
                                         derived_type_index, error_msg)
+            if (value_kind == VALUE_CHARACTER) &
+                value_kind = VALUE_DEFERRED_CHARACTER_RESULT
             return
         end if
 
@@ -799,17 +830,11 @@
                 call parse_character_length(node%return_type, &
                                             char_len, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (char_len <= 0) then
-                    value_kind = VALUE_DEFERRED_CHARACTER_RESULT
-                else
-                    call unsupported_feature_error('function result type', &
-                                                    node%line, node%column, &
-                                                    'direct LIRIC session '// &
-                                                    'supports deferred-length '// &
-                                                    'character, integer, real, '// &
-                                                    'and logical contained '// &
-                                                    'functions', error_msg)
-                end if
+                ! Both fixed- and deferred-length character results use the
+                ! descriptor return ABI. The body result declaration records a
+                ! fixed width when one is present, so assignments still pad or
+                ! truncate correctly.
+                value_kind = VALUE_DEFERRED_CHARACTER_RESULT
                 return
             end if
             call extracted_derived_type_name(node%return_type, derived_name)
@@ -1369,15 +1394,369 @@
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
         integer :: i
+        type(declaration_binding_t) :: binding
 
         do i = 1, source%symbol_count
-            if (find_symbol(destination, trim(source%symbols(i)%name)) > 0) cycle
             if (.not. symbol_has_global_storage(source%symbols(i))) cycle
+            if (source%symbols(i)%has_binding) then
+                binding%found = .true.
+                binding%name = trim(source%symbols(i)%name)
+                binding%declaration_node_index = &
+                    source%symbols(i)%binding_declaration_index
+                binding%declaration_entity_index = &
+                    source%symbols(i)%binding_entity_index
+                binding%scope_node_index = source%symbols(i)%binding_scope_index
+                if (find_symbol_for_binding(destination, binding) > 0) cycle
+            else if (find_symbol(destination, trim(source%symbols(i)%name)) > 0) then
+                cycle
+            end if
             call grow_symbols(destination)
             destination%symbol_count = destination%symbol_count + 1
             destination%symbols(destination%symbol_count) = source%symbols(i)
+            if (source%symbols(i)%has_binding) then
+                call destination%binding_table%insert_binding( &
+                    source%symbols(i)%binding_declaration_index, &
+                    source%symbols(i)%binding_entity_index, &
+                    source%symbols(i)%binding_scope_index, &
+                    destination%symbol_count)
+            end if
         end do
     end subroutine copy_host_global_symbols
+
+    subroutine collect_host_associated_symbols(arena, context, error_msg)
+        ! Host variables are referenced by flat LIRIC procedures, so their
+        ! storage must exist before either the host body or the contained body
+        ! is emitted. The FortFront binding triple is the only identity used;
+        ! text names are retained solely for diagnostics (#330).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_binding_t) :: binding
+        type(mono_type_t), allocatable :: inferred
+        character(len=:), allocatable :: name, resolve_error, kind_error
+        logical :: found
+        integer :: i, value_kind, result_derived_index, procedure_index
+
+        call set_empty(error_msg)
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (.not. is_identifier(arena, i)) cycle
+            procedure_index = containing_procedure_node(arena, i)
+            if (procedure_index <= 0) cycle
+            if (.not. procedure_is_internal(arena, procedure_index)) cycle
+            call get_identifier_name(arena, i, name, resolve_error)
+            if (len_trim(resolve_error) > 0) cycle
+            call resolve_name_at_node(arena, i, name, binding, resolve_error)
+            if (len_trim(resolve_error) > 0 .or. .not. binding%found) cycle
+            if (binding%association /= ASSOCIATION_HOST) cycle
+            if (binding_scope_is_module(arena, binding%scope_node_index)) cycle
+            if (binding%binding_kind /= BINDING_DECLARATION .and. &
+                binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
+            if (find_symbol_for_binding(context, binding) > 0) cycle
+            value_kind = 0
+            call set_empty(kind_error)
+            if (binding%binding_kind == BINDING_FUNCTION_RESULT) then
+                if (binding%scope_node_index > 0 .and. &
+                    node_exists(arena, binding%scope_node_index)) then
+                    select type (fn => &
+                            arena%entries(binding%scope_node_index)%node)
+                    type is (function_def_node)
+                        call function_value_kind(fn, context, value_kind, &
+                            result_derived_index, kind_error, &
+                            binding%scope_node_index)
+                    class default
+                        value_kind = 0
+                    end select
+                end if
+            else
+                call get_type_for_node(arena, i, inferred, found)
+                if (found .and. allocated(inferred)) &
+                    value_kind = inferred_type_to_value_kind(inferred, context)
+            end if
+            if (value_kind <= 0 .and. binding%binding_kind == &
+                    BINDING_DECLARATION .and. binding%declaration_node_index > 0) then
+                if (node_exists(arena, binding%declaration_node_index)) then
+                    select type (decl => &
+                            arena%entries(binding%declaration_node_index)%node)
+                    type is (declaration_node)
+                        call declaration_value_kind(decl, value_kind, kind_error, &
+                            context, binding%declaration_node_index)
+                        if (len_trim(kind_error) > 0) value_kind = 0
+                    class default
+                        value_kind = 0
+                    end select
+                end if
+            end if
+            if (value_kind <= 0) cycle
+            select case (value_kind)
+            case (VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, VALUE_LOGICAL, &
+                  VALUE_CHARACTER, VALUE_DEFERRED_CHARACTER_RESULT)
+                if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) &
+                    value_kind = VALUE_CHARACTER
+                call register_host_global_symbol(context, binding, name, &
+                                                  value_kind, error_msg)
+                if (len_trim(error_msg) > 0) return
+            case default
+                ! The current direct-session storage ABI has no scalar global
+                ! representation for this host entity. Leave it unresolved so
+                ! the existing typed diagnostic remains authoritative.
+            end select
+        end do
+        ! Treat pre-registered host storage as an enclosing scope. A declaration
+        ! with the same spelling but a different FortFront identity must append a
+        ! local symbol instead of colliding with this pre-pass storage.
+        context%block_scope_floor = context%symbol_count
+    end subroutine collect_host_associated_symbols
+
+    subroutine register_host_global_symbol(context, binding, name, value_kind, &
+                                           error_msg)
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_double, c_float, &
+            c_int8_t, c_int32_t, c_int64_t, c_size_t, c_loc, c_ptr
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: value_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), target :: init_i32
+        integer(c_int8_t), target :: init_i8(16)
+        integer(c_int64_t), target :: init_i64
+        real(c_float), target :: init_f32
+        real(c_double), target :: init_f64
+        type(c_ptr) :: init_ptr, global_type
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
+        integer :: index
+
+        call set_empty(error_msg)
+        global_name = host_global_name(binding, name)
+        call to_c_chars(global_name, c_name)
+        init_i32 = 0_c_int32_t
+        init_i8 = 0_c_int8_t
+        init_i64 = 0_c_int64_t
+        init_f32 = 0.0_c_float
+        init_f64 = 0.0_c_double
+        c_false_local = .false.
+        select case (value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            global_type = lr_type_i32_s(context%session%handle)
+            init_ptr = c_loc(init_i32)
+            init_size = 4_c_size_t
+        case (VALUE_I64)
+            global_type = lr_type_i64_s(context%session%handle)
+            init_ptr = c_loc(init_i64)
+            init_size = 8_c_size_t
+        case (VALUE_CHARACTER)
+            global_type = lr_type_array_s(context%session%handle, &
+                lr_type_i8_s(context%session%handle), 16_c_int64_t)
+            init_ptr = c_loc(init_i8)
+            init_size = 16_c_size_t
+        case (VALUE_F32)
+            global_type = lr_type_f32_s(context%session%handle)
+            init_ptr = c_loc(init_f32)
+            init_size = 4_c_size_t
+        case (VALUE_F64)
+            global_type = lr_type_f64_s(context%session%handle)
+            init_ptr = c_loc(init_f64)
+            init_size = 8_c_size_t
+        case default
+            error_msg = 'unsupported host-associated scalar: '//trim(name)
+            return
+        end select
+        global_id = lr_session_global(context%session%handle, c_name, global_type, &
+            c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create host-associated global: '// &
+                trim(global_name)
+            return
+        end if
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern host-associated global: '// &
+                trim(global_name)
+            return
+        end if
+
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index) = symbol_t()
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = value_kind
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%is_reference = .true.
+        context%symbols(index)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(index)%address%payload = int(global_id, c_int64_t)
+        context%symbols(index)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(index)%address%global_offset = 0_c_int64_t
+        select case (value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
+        case (VALUE_I64)
+            context%symbols(index)%value = i64_immediate(context%session, 0_c_int64_t)
+        case (VALUE_F32)
+            context%symbols(index)%value = liric_f32_immediate(context%session, &
+                0.0_c_float)
+        case (VALUE_F64)
+            context%symbols(index)%value = liric_f64_immediate(context%session, &
+                0.0_c_double)
+        case (VALUE_CHARACTER)
+            context%symbols(index)%is_deferred_character = .true.
+            context%symbols(index)%has_character_value = .false.
+        end select
+        context%symbols(index)%has_binding = .true.
+        context%symbols(index)%binding_declaration_index = &
+            binding%declaration_node_index
+        context%symbols(index)%binding_entity_index = &
+            binding%declaration_entity_index
+        context%symbols(index)%binding_scope_index = binding%scope_node_index
+        context%symbol_count = index
+        call context%binding_table%insert_binding( &
+            binding%declaration_node_index, binding%declaration_entity_index, &
+            binding%scope_node_index, index)
+    end subroutine register_host_global_symbol
+
+    subroutine materialize_host_character_globals(context, error_msg)
+        ! Host-associated character results and variables use a mutable global
+        ! {data, length} descriptor. Its field addresses are function-local LIRIC
+        ! operands, so materialise them only after a function has begun.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        do i = 1, context%symbol_count
+            if (context%symbols(i)%value_kind /= VALUE_CHARACTER) cycle
+            if (.not. context%symbols(i)%is_deferred_character) cycle
+            if (context%symbols(i)%address%kind /= LR_OP_KIND_GLOBAL) cycle
+            if (context%symbols(i)%deferred_data%kind /= LR_OP_KIND_IMM_I64) cycle
+            if (.not. emit_ptr_offset(context%session, &
+                context%symbols(i)%address, 0_c_int64_t, &
+                context%symbols(i)%deferred_data, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, &
+                context%symbols(i)%address, 8_c_int64_t, &
+                context%symbols(i)%deferred_length, error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine materialize_host_character_globals
+
+    subroutine emit_host_character_result_return(context, symbol_index, error_msg)
+        ! Copy a host-result global descriptor into the caller's hidden sret
+        ! descriptor before returning from the flattened contained function.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: result_data_addr, result_length_addr
+        type(lr_operand_desc_t) :: data_value, length_value
+
+        call set_empty(error_msg)
+        if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
+            0_c_int64_t, result_data_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
+            8_c_int64_t, result_length_addr, error_msg)) return
+        if (.not. emit_ptr_load(context%session, &
+            context%symbols(symbol_index)%deferred_data, data_value, error_msg)) return
+        if (.not. emit_i64_load(context%session, &
+            context%symbols(symbol_index)%deferred_length, length_value, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_value, result_data_addr, &
+            error_msg)) return
+        if (.not. emit_i64_store(context%session, length_value, result_length_addr, &
+            error_msg)) return
+        if (.not. emit_ret_void(context%session, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_host_character_result_return
+
+    subroutine load_function_result_value(context, symbol_index, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. context%symbols(symbol_index)%has_address) then
+            value = context%symbols(symbol_index)%value
+            return
+        end if
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_I64)
+            if (.not. emit_i64_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case default
+            if (.not. emit_i32_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        end select
+        call set_empty(error_msg)
+    end subroutine load_function_result_value
+
+    subroutine resolve_function_result_binding(arena, procedure_node_index, name, &
+                                               binding)
+        ! The result name can be represented by the body declaration rather than
+        ! the synthetic function-result binding (for example, an explicit
+        ! `character(4) :: f`). Find the identity FortFront assigns to an actual
+        ! reference in this procedure before falling back to the synthetic one.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        character(len=*), intent(in) :: name
+        type(declaration_binding_t), intent(out) :: binding
+        type(declaration_binding_t) :: candidate
+        character(len=:), allocatable :: identifier_name, resolve_error
+        integer :: i, parent
+
+        binding%found = .false.
+        binding%declaration_node_index = 0
+        binding%declaration_entity_index = 0
+        binding%scope_node_index = 0
+        binding%binding_kind = 0
+        binding%association = 0
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (.not. is_identifier(arena, i)) cycle
+            call get_identifier_name(arena, i, identifier_name, resolve_error)
+            if (len_trim(resolve_error) > 0 .or. &
+                .not. same_name(identifier_name, name)) cycle
+            parent = i
+            do while (parent > 0 .and. parent /= procedure_node_index)
+                if (.not. node_exists(arena, parent)) exit
+                parent = arena%entries(parent)%parent_index
+            end do
+            if (parent /= procedure_node_index) cycle
+            call resolve_name_at_node(arena, i, name, candidate, resolve_error)
+            if (len_trim(resolve_error) > 0 .or. .not. candidate%found) cycle
+            if (candidate%scope_node_index /= procedure_node_index) cycle
+            if (candidate%binding_kind /= BINDING_DECLARATION .and. &
+                candidate%binding_kind /= BINDING_FUNCTION_RESULT) cycle
+            binding = candidate
+            return
+        end do
+
+        ! No reference was available, but the synthetic function result still
+        ! has a stable FortFront identity.
+        binding%found = .true.
+        binding%declaration_node_index = procedure_node_index
+        binding%declaration_entity_index = 1
+        binding%scope_node_index = procedure_node_index
+        binding%binding_kind = BINDING_FUNCTION_RESULT
+    end subroutine resolve_function_result_binding
+
+    function host_global_name(binding, name) result(global_name)
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: global_name
+        character(len=32) :: declaration_text, entity_text, scope_text
+
+        write (declaration_text, '(I0)') binding%declaration_node_index
+        write (entity_text, '(I0)') binding%declaration_entity_index
+        write (scope_text, '(I0)') binding%scope_node_index
+        global_name = '.ffc.host.'//trim(declaration_text)//'.'// &
+            trim(entity_text)//'.'//trim(scope_text)//'.'//trim(name)
+    end function host_global_name
 
     logical function symbol_has_global_storage(symbol)
         type(symbol_t), intent(in) :: symbol
@@ -1518,9 +1897,14 @@
     integer function contained_function_kind(context, name) result(value_kind)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer :: i
+        integer :: i, nested_node_index
 
         value_kind = 0
+        nested_node_index = visible_nested_procedure_node(context, name)
+        if (nested_node_index > 0) then
+            value_kind = procedure_value_kind(context, nested_node_index)
+            return
+        end if
         do i = 1, context%function_count
             if (same_name(context%function_names(i), name)) then
                 value_kind = context%function_value_kinds(i)
@@ -1606,7 +1990,11 @@
                 error_msg = 'internal procedure index does not reference a function node'
                 return
             end if
-            call lower_scalar_function(arena, fn_node, context, error_msg)
+            call lower_nested_internal_procedures(arena, fn_node%body_indices, &
+                                                  context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_scalar_function(arena, fn_node, context, error_msg, &
+                                       procedure_node_index=node_index)
         else if (node_type == 'subroutine_def_node' .or. &
                  node_type == 'subroutine_def') then
             sb_node => get_node_as_subroutine_def(arena, node_index)
@@ -1614,7 +2002,11 @@
                 error_msg = 'internal procedure index does not reference a subroutine node'
                 return
             end if
-            call lower_void_subroutine(arena, sb_node, context, error_msg)
+            call lower_nested_internal_procedures(arena, sb_node%body_indices, &
+                                                  context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_void_subroutine(arena, sb_node, context, error_msg, &
+                                       procedure_node_index=node_index)
         end if
     end subroutine lower_one_internal_function
 
@@ -1703,20 +2095,24 @@
         if (node_type == 'function_def_node' .or. node_type == 'function_def') then
             fn_node => get_node_as_function_def(arena, node_index)
             if (.not. associated(fn_node)) return
-            call lower_scalar_function(arena, fn_node, context, error_msg, &
-                module_procedure_mangled(module_name, fn_node%name))
-            if (len_trim(error_msg) > 0) return
             call lower_nested_internal_procedures(arena, fn_node%body_indices, &
                                                   context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_scalar_function(arena, fn_node, context, error_msg, &
+                module_procedure_mangled(module_name, fn_node%name), &
+                procedure_node_index=node_index)
+            if (len_trim(error_msg) > 0) return
         else if (node_type == 'subroutine_def_node' .or. &
                  node_type == 'subroutine_def') then
             sb_node => get_node_as_subroutine_def(arena, node_index)
             if (.not. associated(sb_node)) return
-            call lower_void_subroutine(arena, sb_node, context, error_msg, &
-                module_procedure_mangled(module_name, sb_node%name))
-            if (len_trim(error_msg) > 0) return
             call lower_nested_internal_procedures(arena, sb_node%body_indices, &
                                                   context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_void_subroutine(arena, sb_node, context, error_msg, &
+                module_procedure_mangled(module_name, sb_node%name), &
+                procedure_node_index=node_index)
+            if (len_trim(error_msg) > 0) return
         end if
     end subroutine lower_one_module_procedure
 
@@ -1932,13 +2328,14 @@
         end if
     end function is_internal_procedure_entry
 
-   subroutine lower_scalar_function(arena, node, parent_context, error_msg, &
-                                     emit_name_override)
+    subroutine lower_scalar_function(arena, node, parent_context, error_msg, &
+                                     emit_name_override, procedure_node_index)
         type(ast_arena_t), intent(in) :: arena
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in), optional :: emit_name_override
+        integer, intent(in), optional :: procedure_node_index
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
@@ -1949,8 +2346,11 @@
         integer :: alloc_rank
         integer :: function_index
         integer :: function_node_index
+        integer :: result_binding_index
         logical :: terminated
         logical :: result_is_alloc_array
+        logical :: host_character_result
+        type(declaration_binding_t) :: result_binding
         character(len=:), allocatable :: result_name
         character(len=:), allocatable :: emit_name
 
@@ -1959,9 +2359,13 @@
             return
         end if
         function_node_index = 0
-        function_index = find_function_index(parent_context, node%name)
-        if (function_index > 0) &
-            function_node_index = parent_context%function_node_indices(function_index)
+        if (present(procedure_node_index)) then
+            function_node_index = procedure_node_index
+        else
+            function_index = find_function_index(parent_context, node%name)
+            if (function_index > 0) &
+                function_node_index = parent_context%function_node_indices(function_index)
+        end if
         if (function_node_index > 0) then
             call function_value_kind(node, parent_context, value_kind, &
                                      result_derived_index, error_msg, &
@@ -1996,15 +2400,25 @@
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
         call copy_host_global_symbols(parent_context, context)
+        result_binding_index = 0
+        if (function_node_index > 0) then
+            call resolve_function_result_binding(arena, function_node_index, &
+                result_name, result_binding)
+            result_binding_index = find_symbol_for_binding(context, &
+                result_binding)
+        end if
+        context%block_scope_floor = context%symbol_count
         context%in_internal_function = .true.
         context%current_proc_name = trim(node%name)
+        context%current_proc_node_index = function_node_index
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
         if (present(emit_name_override)) then
             emit_name = trim(emit_name_override)
         else
-            emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+            emit_name = nested_procedure_emit_name(arena, function_node_index, &
+                node%name, node%bind_c_clause)
         end if
         if (value_kind == VALUE_F32) then
             if (.not. begin_liric_f32_function(context%session, emit_name, &
@@ -2029,7 +2443,16 @@
                                                           error_msg)) return
         end if
 
-        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+        call materialize_host_character_globals(context, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        host_character_result = .false.
+        if (result_binding_index > 0) then
+            context%current_function_result_index = result_binding_index
+            host_character_result = value_kind == VALUE_DEFERRED_CHARACTER_RESULT .and. &
+                context%symbols(result_binding_index)%value_kind == VALUE_CHARACTER .and. &
+                context%symbols(result_binding_index)%is_deferred_character
+        else if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
             call grow_symbols(context)
             context%current_function_result_index = context%symbol_count + 1
             context%symbols(context%current_function_result_index)%name = &
@@ -2120,8 +2543,7 @@
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            context%current_function_result_index = find_symbol(context, &
-                                                                result_name)
+            context%current_function_result_index = find_symbol(context, result_name)
         end if
        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                 value_kind == VALUE_DERIVED .or. &
@@ -2153,7 +2575,7 @@
             if (len_trim(error_msg) > 0) return
         end if
 
-        result_index = find_symbol(context, result_name)
+        result_index = context%current_function_result_index
         if (result_index <= 0) then
             error_msg = 'function result symbol was not declared: '// &
                         trim(result_name)
@@ -2165,12 +2587,22 @@
                 value_kind == VALUE_ARRAY_RESULT .or. &
                 value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
                 value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
-                if (.not. emit_ret_void(context%session, error_msg)) return
+                if (host_character_result) then
+                    call emit_host_character_result_return(context, result_index, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else if (.not. emit_ret_void(context%session, error_msg)) then
+                    return
+                end if
             else if (value_kind == VALUE_I64) then
-                value = context%symbols(result_index)%value
+                call load_function_result_value(context, result_index, value, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (.not. emit_ret_i64_operand(context%session, value, error_msg)) return
             else
-                value = context%symbols(result_index)%value
+                call load_function_result_value(context, result_index, value, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
             end if
         end if

@@ -1,6 +1,6 @@
 module session_program_lowering
     use, intrinsic :: iso_c_binding, only: c_char, c_double, c_float, c_int, &
-        c_int32_t, c_int64_t
+        c_int8_t, c_int32_t, c_int64_t
     use ast_nodes_bounds, only: array_slice_node, array_bounds_node, &
         range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
@@ -45,8 +45,9 @@ module session_program_lowering
         is_identifier, get_identifier_name, &
         is_module_node, is_program_node, &
         declaration_binding_t, resolve_name_at_node, &
-        resolve_identifier_binding, BINDING_NAMED_CONSTANT, &
-        ASSOCIATION_DIRECT
+        resolve_identifier_binding, BINDING_DECLARATION, &
+        BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
+        BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
@@ -60,7 +61,8 @@ module session_program_lowering
         emit_void_indirect_call, &
         liric_session_create, lr_session_config_t, &
         i32_immediate, i32_vreg, f32_vreg, f64_vreg, lr_operand_desc_t, &
-        lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
+        lr_type_i32_s, lr_type_i8_s, lr_type_ptr_s, lr_type_i64_s, &
+        lr_type_f32_s, lr_type_f64_s, &
         lr_type_array_s, &
         lr_session_global, lr_session_intern, &
         lr_session_emit, lr_inst_desc_t, lr_error_t, &
@@ -402,6 +404,8 @@ contains
         if (.not. binding%found) return
         if (binding%declaration_node_index /= node_index) return
         if (binding%scope_node_index <= 0) return
+        symbol_index = find_symbol_for_binding(context, binding)
+        if (symbol_index <= 0) return
         context%symbols(symbol_index)%has_binding = .true.
         context%symbols(symbol_index)%binding_declaration_index = &
             binding%declaration_node_index
@@ -684,23 +688,13 @@ contains
     end function declaration_is_bare_dimension
 
     logical function declaration_is_bare_external(node) result(is_bare)
-        ! An EXTERNAL statement (external :: bar) with no intrinsic type: FortFront
-        ! marks is_external and sets the placeholder type_name 'external'. A typed
-        ! external (real, external :: f) keeps its intrinsic type and is left to
-        ! the ordinary declaration path.
+        ! An EXTERNAL statement names a procedure even when it carries the
+        ! procedure's result type (character, external :: f). It contributes no
+        ! storage; calls resolve through the procedure table.
         type(declaration_node), intent(in) :: node
 
         is_bare = .false.
-        if (.not. node%is_external) return
-        if (.not. allocated(node%type_name)) then
-            is_bare = .true.
-            return
-        end if
-        if (len_trim(node%type_name) == 0) then
-            is_bare = .true.
-            return
-        end if
-        is_bare = lowercase_text(trim(node%type_name)) == 'external'
+        is_bare = node%is_external
     end function declaration_is_bare_external
 
     subroutine apply_pending_dimension(context, node)
@@ -986,7 +980,35 @@ contains
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: existing_index
-        existing_index = find_symbol(context, name)
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: binding_error
+        logical :: has_current_binding
+        integer :: text_index, binding_index
+
+        has_current_binding = .false.
+        if (context%current_declaration_index > 0) then
+            call resolve_name_at_node(context%arena, &
+                context%current_declaration_index, name, binding, binding_error)
+            if (len_trim(binding_error) == 0 .and. binding%found) &
+                has_current_binding = .true.
+        end if
+        text_index = find_symbol(context, name)
+        existing_index = text_index
+        if (has_current_binding) then
+            binding_index = find_symbol_for_binding(context, binding)
+            if (binding_index > 0) then
+                if (context%symbols(binding_index)%is_parameter) then
+                    call update_parameter_symbol(context, binding_index, value_kind, &
+                        error_msg)
+                    return
+                end if
+                if (context%symbols(binding_index)%value_kind == value_kind) then
+                    call set_empty(error_msg)
+                    return
+                end if
+                existing_index = binding_index
+            end if
+        end if
         ! A match in an enclosing scope must not be reused: a BLOCK-local
         ! declaration shadows it with a fresh slot so the outer storage is left
         ! intact (#280). Only same-scope matches take the benign-redeclare path.
@@ -1515,7 +1537,7 @@ contains
             copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_void_call(context%session, &
-            call_emit_name(arena, specific), args, error_msg)) return
+            call_emit_name(arena, specific, context), args, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
         handled = len_trim(error_msg) == 0
     end subroutine try_lower_overloaded_assignment
@@ -1536,12 +1558,14 @@ contains
         end if
         select case (context%symbols(idx)%value_kind)
         case (VALUE_I32, VALUE_LOGICAL, VALUE_F32, VALUE_F64)
-            result_value = context%symbols(idx)%value
+            call load_function_result_value(context, idx, result_value, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_ret_i32_operand(context%session, result_value, &
                 error_msg)) return
             context%current_block_terminated = .true.
         case (VALUE_I64)
-            result_value = context%symbols(idx)%value
+            call load_function_result_value(context, idx, result_value, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_ret_i64_operand(context%session, result_value, &
                 error_msg)) return
             context%current_block_terminated = .true.
@@ -1792,7 +1816,7 @@ contains
             call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_call_with_optional_padding(context, &
-            call_emit_name(arena, call_name), args, error_msg)) &
+            call_emit_name(arena, call_name, context), args, error_msg)) &
             return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_subroutine_call
@@ -2347,6 +2371,30 @@ contains
         end if
         index = find_symbol(context, name)
     end function resolve_symbol_at_node
+
+    integer function find_symbol_for_binding(context, binding) result(index)
+        !! Find a symbol by FortFront identity, without consulting its spelling.
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        integer :: i
+
+        index = context%binding_table%find_binding( &
+            binding%declaration_node_index, binding%declaration_entity_index, &
+            binding%scope_node_index)
+        if (symbol_slot_holds_binding(context, index, binding)) return
+        index = 0
+        do i = context%symbol_count, 1, -1
+            if (.not. context%symbols(i)%has_binding) cycle
+            if (context%symbols(i)%binding_declaration_index /= &
+                binding%declaration_node_index) cycle
+            if (context%symbols(i)%binding_entity_index /= &
+                binding%declaration_entity_index) cycle
+            if (context%symbols(i)%binding_scope_index /= &
+                binding%scope_node_index) cycle
+            index = i
+            return
+        end do
+    end function find_symbol_for_binding
 
     logical function symbol_slot_holds_binding(context, slot, binding) &
             result(holds)

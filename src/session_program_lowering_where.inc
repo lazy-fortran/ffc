@@ -610,13 +610,13 @@
             select case (vk)
             case (VALUE_F32)
                 if (.not. emit_liric_f32_call(context%session, &
-                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+                        call_emit_name(arena, n%name, context), arg, value, error_msg)) return
             case (VALUE_I32)
                 if (.not. emit_i32_call(context%session, &
-                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+                        call_emit_name(arena, n%name, context), arg, value, error_msg)) return
             case default
                 if (.not. emit_liric_f64_call(context%session, &
-                        call_emit_name(arena, n%name), arg, value, error_msg)) return
+                        call_emit_name(arena, n%name, context), arg, value, error_msg)) return
             end select
         class default
             error_msg = 'elemental user call node lost its type'
