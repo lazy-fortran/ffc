@@ -197,6 +197,7 @@ module session_program_lowering
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
     use ast_arena_source_text, only: get_source_text
+    use ast_base, only: LITERAL_STRING
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
         get_type_for_node, mono_type_t, &
         TINT, TREAL, TCHAR, TLOGICAL, TARRAY, TCOMPLEX, TDOUBLE, TDERIVED, &

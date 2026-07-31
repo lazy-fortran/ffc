@@ -1379,3 +1379,143 @@
             end select
         end do
     end function name_in_equivalence
+
+    ! DATA forms the parser cannot represent (#383). Two invalid families
+    ! never reach the typed AST: a DATA statement whose initializer is not a
+    ! constant expression (data a(1:2) / myint(b), .../, or a truncated value
+    ! list) and old-style slashed initialization in a declaration
+    ! (integer z /10/), which conflicts with the DATA attribute rules. Both
+    ! would otherwise be silently dropped and the objects left uninitialised,
+    ! so they are rejected from the source text, the only layer that still
+    ! holds them.
+    subroutine check_data_source_forms(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source, line
+        integer :: pos, next_nl, line_no, data_lines, first_data_line
+        character(len=64) :: location
+        logical :: found
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        pos = 1
+        line_no = 0
+        data_lines = 0
+        first_data_line = 0
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            line_no = line_no + 1
+            line = strip_source_comment(line)
+            if (is_old_style_init_line(line)) then
+                write (location, '(" at line ",I0)') line_no
+                error_msg = 'old-style slashed initialization in a '// &
+                    'declaration is not accepted; the DATA attribute '// &
+                    'conflicts here'//trim(location)
+                return
+            end if
+            if (is_data_statement_line(line)) then
+                data_lines = data_lines + 1
+                if (first_data_line == 0) first_data_line = line_no
+            end if
+        end do
+        if (data_lines <= count_data_statement_nodes(arena)) return
+        write (location, '(" at line ",I0)') first_data_line
+        error_msg = 'invalid initializer in DATA statement'//trim(location)
+    end subroutine check_data_source_forms
+
+    integer function count_data_statement_nodes(arena) result(total)
+        type(ast_arena_t), intent(in) :: arena
+        integer :: n
+
+        total = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (data_statement_node)
+                total = total + 1
+            end select
+        end do
+    end function count_data_statement_nodes
+
+    function strip_source_comment(line) result(code)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: code
+        integer :: i
+        logical :: in_single, in_double
+
+        in_single = .false.
+        in_double = .false.
+        code = line
+        do i = 1, len(line)
+            if (line(i:i) == '''' .and. .not. in_double) then
+                in_single = .not. in_single
+            else if (line(i:i) == '"' .and. .not. in_single) then
+                in_double = .not. in_double
+            else if (line(i:i) == '!') then
+                if (.not. in_single .and. .not. in_double) then
+                    if (i == 1) then
+                        code = ''
+                    else
+                        code = line(:i - 1)
+                    end if
+                    return
+                end if
+            end if
+        end do
+    end function strip_source_comment
+
+    logical function is_data_statement_line(line) result(is_data)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: low
+
+        is_data = .false.
+        low = trim(adjustl(lowercase_text(line)))
+        if (len(low) < 6) return
+        if (low(1:5) /= 'data ') return
+        if (index(low, '/') == 0) return
+        is_data = .true.
+    end function is_data_statement_line
+
+    logical function is_old_style_init_line(line) result(is_old)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: low
+        integer :: slash
+
+        is_old = .false.
+        low = trim(adjustl(lowercase_text(line)))
+        if (len_trim(low) == 0) return
+        if (index(low, '::') > 0) return
+        slash = index(low, '/')
+        if (slash == 0) return
+        if (.not. starts_with_type_keyword(low)) return
+        is_old = .true.
+    end function is_old_style_init_line
+
+    logical function starts_with_type_keyword(low) result(is_type)
+        character(len=*), intent(in) :: low
+        character(len=16), parameter :: keywords(6) = &
+            [character(len=16) :: 'integer', 'real', 'logical', 'complex', &
+             'character', 'double precision']
+        integer :: k, klen
+
+        is_type = .false.
+        do k = 1, size(keywords)
+            klen = len_trim(keywords(k))
+            if (len(low) <= klen) cycle
+            if (low(1:klen) /= trim(keywords(k))) cycle
+            if (low(klen + 1:klen + 1) == ' ' .or. &
+                low(klen + 1:klen + 1) == '(' .or. &
+                low(klen + 1:klen + 1) == '*') then
+                is_type = .true.
+                return
+            end if
+        end do
+    end function starts_with_type_keyword
