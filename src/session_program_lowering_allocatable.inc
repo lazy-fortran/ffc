@@ -1,3 +1,82 @@
+    subroutine validate_allocate_status_specifiers(arena, node, context, error_msg)
+        ! #382: an ALLOCATE stat= specifier must name a scalar INTEGER
+        ! variable and errmsg= must name a scalar default CHARACTER variable.
+        ! Only resolved plain identifiers carry enough information here; other
+        ! forms (array elements, components) stay with the existing handling.
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+        logical :: is_scalar
+
+        call set_empty(error_msg)
+
+        call resolve_status_specifier_symbol(arena, node%stat_var_index, &
+                                             context, sym, is_scalar)
+        if (sym > 0) then
+            if (.not. is_scalar) then
+                call allocate_status_error(node, 'stat', &
+                    'a scalar INTEGER variable', error_msg)
+                return
+            end if
+            if (context%symbols(sym)%value_kind /= VALUE_I32 .and. &
+                context%symbols(sym)%value_kind /= VALUE_I64) then
+                call allocate_status_error(node, 'stat', &
+                    'a scalar INTEGER variable', error_msg)
+                return
+            end if
+        end if
+
+        call resolve_status_specifier_symbol(arena, node%errmsg_var_index, &
+                                             context, sym, is_scalar)
+        if (sym > 0) then
+            if (.not. is_scalar) then
+                call allocate_status_error(node, 'errmsg', &
+                    'a scalar default CHARACTER variable', error_msg)
+                return
+            end if
+            if (context%symbols(sym)%value_kind /= VALUE_CHARACTER) then
+                call allocate_status_error(node, 'errmsg', &
+                    'a scalar default CHARACTER variable', error_msg)
+                return
+            end if
+        end if
+    end subroutine validate_allocate_status_specifiers
+
+    subroutine resolve_status_specifier_symbol(arena, node_index, context, &
+                                               symbol_index, is_scalar)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index
+        logical, intent(out) :: is_scalar
+        character(len=:), allocatable :: name, local_error
+
+        symbol_index = 0
+        is_scalar = .true.
+        if (node_index <= 0) return
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, local_error)
+        if (len_trim(local_error) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        if (symbol_index <= 0) return
+        if (context%symbols(symbol_index)%is_array) is_scalar = .false.
+        if (context%symbols(symbol_index)%array_rank > 0) is_scalar = .false.
+    end subroutine resolve_status_specifier_symbol
+
+    subroutine allocate_status_error(node, specifier, requirement, error_msg)
+        type(allocate_statement_node), intent(in) :: node
+        character(len=*), intent(in) :: specifier
+        character(len=*), intent(in) :: requirement
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+
+        write (location, '(" at line ",I0,", column ",I0)') node%line, node%column
+        error_msg = 'ALLOCATE '//specifier//'= must be '//requirement// &
+                    trim(location)
+    end subroutine allocate_status_error
+
     subroutine lower_allocatable_declaration(node, context, error_msg, &
                                              value_kind_override)
         ! integer/real/logical/character, allocatable :: a(:) or a(:,:)

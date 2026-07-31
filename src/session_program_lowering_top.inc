@@ -826,6 +826,11 @@
         type is (allocate_statement_node)
             ! allocate(<type> :: x) on a class(*) allocatable populates the
             ! polymorphic descriptor; everything else uses the array path.
+            ! #382: invalid stat=/errmsg= status specifiers are rejected
+            ! before any allocation is lowered.
+            call validate_allocate_status_specifiers(arena, node, context, &
+                                                     error_msg)
+            if (len_trim(error_msg) > 0) return
             if (allocate_targets_class_star(arena, node, context)) then
                 call lower_class_star_allocate(arena, node, context, error_msg)
             else
