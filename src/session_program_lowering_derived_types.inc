@@ -35,7 +35,71 @@
                 end select
             end do
         end select
+        call collect_old_style_parameters(arena, context, error_msg)
     end subroutine collect_program_parameters
+
+    subroutine collect_old_style_parameters(arena, context, error_msg)
+        ! An old-style PARAMETER statement whose name has no type declaration
+        ! (parameter (ialen = 42)) reaches ffc as a free-standing declaration
+        ! carrying only the name and the initializer: FortFront leaves it out
+        ! of the enclosing scope body because implicit typing supplies its
+        ! type. Bind it here so later specification expressions (array bounds)
+        ! and references fold against the constant. Names that already carry a
+        ! type declaration are merged by FortFront into the body declaration
+        ! and stay on the ordinary path.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, value_kind
+
+        call set_empty(error_msg)
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (arena%entries(i)%parent_index /= 0) cycle
+            select type (node => arena%entries(i)%node)
+            type is (declaration_node)
+                if (.not. declaration_is_old_style_parameter(node)) cycle
+                value_kind = implicit_parameter_value_kind(node%var_name)
+                call lower_constant_declaration(node, context, value_kind, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+                call register_declaration_bindings(context, node, i)
+            end select
+        end do
+    end subroutine collect_old_style_parameters
+
+    logical function declaration_is_old_style_parameter(node) result(is_old)
+        ! True for an untyped PARAMETER-statement entity: a named constant
+        ! with an initializer and no declared type.
+        type(declaration_node), intent(in) :: node
+
+        is_old = .false.
+        if (.not. node%is_parameter) return
+        if (node%is_array .or. node%is_multi_declaration) return
+        if (.not. node%has_initializer) return
+        if (node%initializer_index <= 0) return
+        if (.not. allocated(node%var_name)) return
+        if (len_trim(node%var_name) == 0) return
+        if (allocated(node%type_name)) then
+            if (len_trim(node%type_name) > 0) return
+        end if
+        is_old = .true.
+    end function declaration_is_old_style_parameter
+
+    integer function implicit_parameter_value_kind(name) result(value_kind)
+        ! Default implicit typing: names starting with I-N are integer, all
+        ! others are default real. IMPLICIT statements are out of scope here.
+        character(len=*), intent(in) :: name
+        character(len=1) :: first
+
+        first = name(1:1)
+        if (first >= 'A' .and. first <= 'Z') first = achar(iachar(first) + 32)
+        if (first >= 'i' .and. first <= 'n') then
+            value_kind = VALUE_I32
+        else
+            value_kind = VALUE_F32
+        end if
+    end function implicit_parameter_value_kind
 
     subroutine collect_derived_type_definitions(arena, root_index, context, &
                                                 error_msg)
