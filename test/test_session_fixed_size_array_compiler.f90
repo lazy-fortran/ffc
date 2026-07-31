@@ -224,55 +224,55 @@ contains
             'end program main'
 
         test_array_in_contained_subroutine = expect_output( &
-                source, '           9'//new_line('a'), &
-                '/tmp/ffc_session_array_subroutine_test')
-        end function test_array_in_contained_subroutine
+            source, '           9'//new_line('a'), &
+            '/tmp/ffc_session_array_subroutine_test')
+    end function test_array_in_contained_subroutine
 
-        logical function test_array_in_contained_function()
-            character(len=*), parameter :: source = &
-                'program main'//new_line('a')// &
-                '  print *, fill()'//new_line('a')// &
-                'contains'//new_line('a')// &
-                '  integer function fill()'//new_line('a')// &
-                '    integer :: a(2)'//new_line('a')// &
-                '    a(1) = 4'//new_line('a')// &
-                '    a(2) = 5'//new_line('a')// &
-                '    fill = a(1) + a(2)'//new_line('a')// &
-                '  end function fill'//new_line('a')// &
-                'end program main'
+    logical function test_array_in_contained_function()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, fill()'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function fill()'//new_line('a')// &
+            '    integer :: a(2)'//new_line('a')// &
+            '    a(1) = 4'//new_line('a')// &
+            '    a(2) = 5'//new_line('a')// &
+            '    fill = a(1) + a(2)'//new_line('a')// &
+            '  end function fill'//new_line('a')// &
+            'end program main'
 
-            test_array_in_contained_function = expect_output( &
-                    source, '           9'//new_line('a'), &
-                    '/tmp/ffc_session_array_function_test')
-            end function test_array_in_contained_function
+        test_array_in_contained_function = expect_output( &
+            source, '           9'//new_line('a'), &
+            '/tmp/ffc_session_array_function_test')
+    end function test_array_in_contained_function
 
-            logical function test_array_inline_literal_initializer()
-                ! Inline array-literal initializer must populate storage, so a later
-                ! strided section assignment leaves the untouched elements intact.
-                character(len=*), parameter :: source = &
-                    'integer :: arr(10) = '// &
-                    '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]'// &
-                    new_line('a')// &
-                    'arr(1:9:2) = 0'//new_line('a')// &
-                    'print *, arr'//new_line('a')
+    logical function test_array_inline_literal_initializer()
+        ! Inline array-literal initializer must populate storage, so a later
+        ! strided section assignment leaves the untouched elements intact.
+        character(len=*), parameter :: source = &
+            'integer :: arr(10) = '// &
+            '[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]'// &
+            new_line('a')// &
+            'arr(1:9:2) = 0'//new_line('a')// &
+            'print *, arr'//new_line('a')
 
-                test_array_inline_literal_initializer = expect_output( &
-                    source, &
-                    '           0           2           0           4           0'// &
-                    '           6           0           8           0          10'// &
-                    new_line('a'), &
-                    '/tmp/ffc_session_array_inline_literal_test')
-            end function test_array_inline_literal_initializer
+        test_array_inline_literal_initializer = expect_output( &
+            source, &
+            '           0           2           0           4           0'// &
+            '           6           0           8           0          10'// &
+            new_line('a'), &
+            '/tmp/ffc_session_array_inline_literal_test')
+    end function test_array_inline_literal_initializer
 
-            logical function test_array_inline_scalar_initializer()
-                ! Inline scalar initializer broadcasts to every element.
-                character(len=*), parameter :: source = &
-                    'integer :: a(4) = 7'//new_line('a')// &
-                    'print *, a(1) + a(4)'//new_line('a')
+    logical function test_array_inline_scalar_initializer()
+        ! Inline scalar initializer broadcasts to every element.
+        character(len=*), parameter :: source = &
+            'integer :: a(4) = 7'//new_line('a')// &
+            'print *, a(1) + a(4)'//new_line('a')
 
-                test_array_inline_scalar_initializer = expect_output( &
-                    source, '          14'//new_line('a'), &
-                    '/tmp/ffc_session_array_inline_scalar_test')
-            end function test_array_inline_scalar_initializer
+        test_array_inline_scalar_initializer = expect_output( &
+            source, '          14'//new_line('a'), &
+            '/tmp/ffc_session_array_inline_scalar_test')
+    end function test_array_inline_scalar_initializer
 
-        end program test_session_fixed_size_array_compiler
+end program test_session_fixed_size_array_compiler

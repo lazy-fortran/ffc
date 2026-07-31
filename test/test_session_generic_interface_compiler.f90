@@ -135,78 +135,78 @@ contains
 
         ! print_val(7, result) -> print_int(7, result) -> result = 7 + 1 = 8
         test_generic_subroutine = expect_exit_status( &
-                source, 8, '/tmp/ffc_session_generic_sub')
-        end function test_generic_subroutine
+            source, 8, '/tmp/ffc_session_generic_sub')
+    end function test_generic_subroutine
 
-        logical function test_generic_full_signature_dispatch()
-            ! B7c: when two specifics share the first argument kind, dispatch uses
-            ! the full signature so overloads like (integer, integer) and
-            ! (integer, real) stay distinct.
-            character(len=*), parameter :: source = &
-                'module m'//new_line('a')// &
-                '  implicit none'//new_line('a')// &
-                '  interface mix'//new_line('a')// &
-                '    module procedure mix_ii, mix_ir'//new_line('a')// &
-                '  end interface'//new_line('a')// &
-                'contains'//new_line('a')// &
-                '  integer function mix_ii(a, b)'//new_line('a')// &
-                '    integer, intent(in) :: a, b'//new_line('a')// &
-                '    mix_ii = a + b + 10'//new_line('a')// &
-                '  end function mix_ii'//new_line('a')// &
-                '  integer function mix_ir(a, b)'//new_line('a')// &
-                '    integer, intent(in) :: a'//new_line('a')// &
-                '    real(8), intent(in) :: b'//new_line('a')// &
-                '    mix_ir = a + 100 + int(b)'//new_line('a')// &
-                '  end function mix_ir'//new_line('a')// &
-                'end module m'//new_line('a')// &
-                'program main'//new_line('a')// &
-                '  use m'//new_line('a')// &
-                '  integer :: n'//new_line('a')// &
-                '  real(8) :: r'//new_line('a')// &
-                '  n = mix(5, 6)'//new_line('a')// &
-                '  if (n /= 21) error stop 1'//new_line('a')// &
-                '  n = mix(5, 6.0d0)'//new_line('a')// &
-                '  if (n /= 111) error stop 2'//new_line('a')// &
-                '  stop n'//new_line('a')// &
-                'end program main'
+    logical function test_generic_full_signature_dispatch()
+        ! B7c: when two specifics share the first argument kind, dispatch uses
+        ! the full signature so overloads like (integer, integer) and
+        ! (integer, real) stay distinct.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface mix'//new_line('a')// &
+            '    module procedure mix_ii, mix_ir'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function mix_ii(a, b)'//new_line('a')// &
+            '    integer, intent(in) :: a, b'//new_line('a')// &
+            '    mix_ii = a + b + 10'//new_line('a')// &
+            '  end function mix_ii'//new_line('a')// &
+            '  integer function mix_ir(a, b)'//new_line('a')// &
+            '    integer, intent(in) :: a'//new_line('a')// &
+            '    real(8), intent(in) :: b'//new_line('a')// &
+            '    mix_ir = a + 100 + int(b)'//new_line('a')// &
+            '  end function mix_ir'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  integer :: n'//new_line('a')// &
+            '  real(8) :: r'//new_line('a')// &
+            '  n = mix(5, 6)'//new_line('a')// &
+            '  if (n /= 21) error stop 1'//new_line('a')// &
+            '  n = mix(5, 6.0d0)'//new_line('a')// &
+            '  if (n /= 111) error stop 2'//new_line('a')// &
+            '  stop n'//new_line('a')// &
+            'end program main'
 
-            test_generic_full_signature_dispatch = expect_exit_status( &
-                source, 111, '/tmp/ffc_session_generic_sig')
-        end function test_generic_full_signature_dispatch
+        test_generic_full_signature_dispatch = expect_exit_status( &
+            source, 111, '/tmp/ffc_session_generic_sig')
+    end function test_generic_full_signature_dispatch
 
-        logical function test_generic_rank_dispatch()
-            ! B7c: generic with two specifics sharing element kind but differing
-            ! in rank (scalar vs array) resolves to the correct specific based on
-            ! the actual argument rank, not just the kind vector.
-            character(len=*), parameter :: source = &
-                'module m'//new_line('a')// &
-                '  implicit none'//new_line('a')// &
-                '  interface proc'//new_line('a')// &
-                '    module procedure proc_scalar, proc_array'//new_line('a')// &
-                '  end interface'//new_line('a')// &
-                'contains'//new_line('a')// &
-                '  integer function proc_scalar(x)'//new_line('a')// &
-                '    integer, intent(in) :: x'//new_line('a')// &
-                '    proc_scalar = x * 10'//new_line('a')// &
-                '  end function proc_scalar'//new_line('a')// &
-                '  integer function proc_array(x)'//new_line('a')// &
-                '    integer, intent(in) :: x(3)'//new_line('a')// &
-                '    proc_array = x(1) + x(2) + x(3)'//new_line('a')// &
-                '  end function proc_array'//new_line('a')// &
-                'end module m'//new_line('a')// &
-                'program main'//new_line('a')// &
-                '  use m'//new_line('a')// &
-                '  integer :: n, a(3)'//new_line('a')// &
-                '  n = 5'//new_line('a')// &
-                '  a = [1, 2, 3]'//new_line('a')// &
-                '  stop proc(n) - proc(a)'//new_line('a')// &
-                'end program main'
+    logical function test_generic_rank_dispatch()
+        ! B7c: generic with two specifics sharing element kind but differing
+        ! in rank (scalar vs array) resolves to the correct specific based on
+        ! the actual argument rank, not just the kind vector.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface proc'//new_line('a')// &
+            '    module procedure proc_scalar, proc_array'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function proc_scalar(x)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    proc_scalar = x * 10'//new_line('a')// &
+            '  end function proc_scalar'//new_line('a')// &
+            '  integer function proc_array(x)'//new_line('a')// &
+            '    integer, intent(in) :: x(3)'//new_line('a')// &
+            '    proc_array = x(1) + x(2) + x(3)'//new_line('a')// &
+            '  end function proc_array'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  integer :: n, a(3)'//new_line('a')// &
+            '  n = 5'//new_line('a')// &
+            '  a = [1, 2, 3]'//new_line('a')// &
+            '  stop proc(n) - proc(a)'//new_line('a')// &
+            'end program main'
 
-            ! proc(5) -> proc_scalar(5) -> 50
-            ! proc([1,2,3]) -> proc_array([1,2,3]) -> 6
-            ! exit code = 50 - 6 = 44
-            test_generic_rank_dispatch = expect_exit_status( &
-                source, 44, '/tmp/ffc_session_generic_rank')
-        end function test_generic_rank_dispatch
+        ! proc(5) -> proc_scalar(5) -> 50
+        ! proc([1,2,3]) -> proc_array([1,2,3]) -> 6
+        ! exit code = 50 - 6 = 44
+        test_generic_rank_dispatch = expect_exit_status( &
+            source, 44, '/tmp/ffc_session_generic_rank')
+    end function test_generic_rank_dispatch
 
-    end program test_session_generic_interface_compiler
+end program test_session_generic_interface_compiler
