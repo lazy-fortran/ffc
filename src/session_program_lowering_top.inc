@@ -1106,6 +1106,7 @@
     include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_submodules.inc'
     include 'session_program_lowering_save.inc'
+    include 'session_program_lowering_save_static.inc'
     include 'session_program_lowering_common.inc'
     include 'session_program_lowering_equivalence.inc'
     include 'session_program_lowering_block_concurrent.inc'

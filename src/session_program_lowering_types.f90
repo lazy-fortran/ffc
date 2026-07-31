@@ -234,6 +234,11 @@ module session_program_lowering_types
         ! its own program-unit declaration, reached before or after the
         ! COMMON statement in source order, must not reallocate storage.
         logical :: is_common_bound = .false.
+        ! Bound to a saved-local global whose DATA values were folded into the
+        ! static bytes (#466). The body walk consumes the matching DATA values
+        ! without storing them, so the initializer applies once rather than on
+        ! every call.
+        logical :: is_static_data_initialized = .false.
         integer :: character_length = 0
         logical :: has_character_value = .false.
         logical :: is_array = .false.

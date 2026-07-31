@@ -11,6 +11,10 @@ program test_session_save_attribute_compiler
     if (.not. test_saved_counter_prints()) all_passed = .false.
     if (.not. test_distinct_procedures_separate_storage()) all_passed = .false.
     if (.not. test_real_saved_accumulates()) all_passed = .false.
+    if (.not. test_saved_array_counter_persists()) all_passed = .false.
+    if (.not. test_saved_array_zero_start()) all_passed = .false.
+    if (.not. test_saved_data_initializer_applies_once()) all_passed = .false.
+    if (.not. test_saved_data_array_applies_once()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: save attribute gives scalar locals persistent storage'
@@ -100,5 +104,91 @@ contains
         test_real_saved_accumulates = expect_output( &
             source, expected, '/tmp/ffc_session_save_real')
     end function test_real_saved_accumulates
+
+    logical function test_saved_array_counter_persists()
+        ! A saved array keeps every element across calls: element 1 counts the
+        ! calls while element 2 accumulates from its initializer.
+        character(len=*), parameter :: source = &
+            'subroutine bump()'//new_line('a')// &
+            '  integer, save :: c(3) = (/ 0, 100, 7 /)'//new_line('a')// &
+            '  c(1) = c(1) + 1'//new_line('a')// &
+            '  c(2) = c(2) + 10'//new_line('a')// &
+            '  print *, c(1), c(2), c(3)'//new_line('a')// &
+            'end subroutine bump'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           1         110           7'//new_line('a')// &
+            '           2         120           7'//new_line('a')
+
+        test_saved_array_counter_persists = expect_output( &
+            source, expected, '/tmp/ffc_session_save_array')
+    end function test_saved_array_counter_persists
+
+    logical function test_saved_array_zero_start()
+        ! A saved array without an initializer starts zeroed and persists.
+        character(len=*), parameter :: source = &
+            'subroutine acc(v)'//new_line('a')// &
+            '  real, intent(in) :: v'//new_line('a')// &
+            '  real, save :: s(2)'//new_line('a')// &
+            '  s(1) = s(1) + v'//new_line('a')// &
+            '  print *, s(1)'//new_line('a')// &
+            'end subroutine acc'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  call acc(1.5)'//new_line('a')// &
+            '  call acc(2.5)'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '   1.50000000    '//new_line('a')// &
+            '   4.00000000    '//new_line('a')
+
+        test_saved_array_zero_start = expect_output( &
+            source, expected, '/tmp/ffc_session_save_array_zero')
+    end function test_saved_array_zero_start
+
+    logical function test_saved_data_initializer_applies_once()
+        ! A DATA initializer for a saved local applies once before first use;
+        ! re-applying it on each call would print 11 twice.
+        character(len=*), parameter :: source = &
+            'subroutine bump()'//new_line('a')// &
+            '  integer, save :: c'//new_line('a')// &
+            '  data c /10/'//new_line('a')// &
+            '  c = c + 1'//new_line('a')// &
+            '  print *, c'//new_line('a')// &
+            'end subroutine bump'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '          11'//new_line('a')//'          12'//new_line('a')
+
+        test_saved_data_initializer_applies_once = expect_output( &
+            source, expected, '/tmp/ffc_session_save_data')
+    end function test_saved_data_initializer_applies_once
+
+    logical function test_saved_data_array_applies_once()
+        ! DATA over a saved array element list applies once; the accumulating
+        ! element keeps its value across calls.
+        character(len=*), parameter :: source = &
+            'subroutine bump()'//new_line('a')// &
+            '  integer, save :: c(2)'//new_line('a')// &
+            '  data c /5, 6/'//new_line('a')// &
+            '  c(1) = c(1) + 1'//new_line('a')// &
+            '  print *, c(1), c(2)'//new_line('a')// &
+            'end subroutine bump'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            '  call bump()'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           6           6'//new_line('a')// &
+            '           7           6'//new_line('a')
+
+        test_saved_data_array_applies_once = expect_output( &
+            source, expected, '/tmp/ffc_session_save_data_array')
+    end function test_saved_data_array_applies_once
 
 end program test_session_save_attribute_compiler

@@ -26,8 +26,14 @@
             select type (decl => arena%entries(n)%node)
             type is (declaration_node)
                 if (.not. decl%is_save) cycle
-                if (decl%is_parameter .or. decl%is_array .or. &
-                    decl%is_pointer .or. decl%is_target) cycle
+                if (decl%is_parameter .or. decl%is_pointer .or. &
+                    decl%is_target .or. decl%is_allocatable) cycle
+                if (decl%is_array) then
+                    call emit_saved_array_globals(arena, decl, n, context, &
+                                                  error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    cycle
+                end if
                 call emit_saved_decl_globals(decl, n, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
@@ -102,8 +108,9 @@
         logical(c_bool) :: c_false_local
 
         c_false_local = .false.
-        call fold_saved_initializer(node, context, value_kind, take_initializer, &
-                                    init_i32, init_f32, init_f64, error_msg)
+        call fold_saved_initializer(node, node_index, name, context, value_kind, &
+                                    take_initializer, init_i32, init_f32, &
+                                    init_f64, error_msg)
         if (len_trim(error_msg) > 0) return
         gname = saved_local_global_name(node_index, name)
         call to_c_chars(gname, c_name)
@@ -205,6 +212,8 @@
         context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+        context%symbols(sym_idx)%is_static_data_initialized = &
+            saved_local_has_data_values(context%arena, node_index, name, context)
         call set_empty(error_msg)
     end subroutine bind_saved_scalar
 
@@ -220,14 +229,17 @@
         gname = '.ffc.save.'//trim(idx_text)//'.'//name
     end function saved_local_global_name
 
-    subroutine fold_saved_initializer(node, context, value_kind, take_initializer, &
-                                      init_i32, init_f32, init_f64, error_msg)
+    subroutine fold_saved_initializer(node, node_index, name, context, &
+                                      value_kind, take_initializer, init_i32, &
+                                      init_f32, init_f64, error_msg)
         ! Fold a saved scalar's literal initializer into raw initial bytes. An
         ! absent initializer (plain `save`) starts at zero. Only literal
         ! initializers fold; anything else keeps the unit xfail.
         use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float, &
                                                c_double
         type(declaration_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
         logical, intent(in) :: take_initializer
@@ -244,7 +256,14 @@
         init_f64 = 0.0_c_double
         call set_empty(error_msg)
         if (.not. take_initializer) return
-        if (.not. node%has_initializer .or. node%initializer_index <= 0) return
+        if (.not. node%has_initializer .or. node%initializer_index <= 0) then
+            ! A saved scalar may take its value from a DATA statement instead;
+            ! fold it here so it is applied once, not on every call (#466).
+            call fold_saved_scalar_data(context%arena, node_index, name, &
+                                        context, value_kind, init_i32, &
+                                        init_f32, init_f64, error_msg)
+            return
+        end if
         if (.not. is_literal(context%arena, node%initializer_index)) then
             call unsupported_feature_error('saved local initializer', node%line, &
                 node%column, 'only literal initializers are stored for saved '// &
