@@ -554,6 +554,8 @@
         if (len_trim(error_msg) > 0) return
         call check_alloc_pointer_targets(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_storage_association_restrictions(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)

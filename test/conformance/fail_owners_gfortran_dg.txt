@@ -42,10 +42,8 @@ class_56.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and 
 class_dummy_5.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
 class_is_1.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 coarray_data_2.f90 # scope=coarray; reason=requires coarray runtime and compiler options
-common_10.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 common_29.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
 common_30.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
-common_31.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 compare_interfaces.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 contiguous_12.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 convert_2.f90 # scope=vendor; reason=GNU CONVERT unformatted I/O extension
@@ -87,7 +85,6 @@ enum_6.f90 # owner=lazy-fortran/fortfront#2899; reason=enforce ENUM grammar and 
 enum_7.f90 # owner=lazy-fortran/fortfront#2899; reason=enforce ENUM grammar and value constraints
 enum_8.f90 # owner=lazy-fortran/fortfront#2899; reason=enforce ENUM grammar and value constraints
 eor_handling_2.f90 # owner=lazy-fortran/ffc#434; reason=owns fixed-width A input and record cursor behavior
-equiv_constraint_bind_c.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 error_recovery_2.f90 # owner=lazy-fortran/fortfront#2898; reason=reject malformed iterators and delimiters
 error_recovery_3.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
 external_implicit_none_2.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
@@ -192,7 +189,6 @@ parent_result_ref_2.f90 # owner=lazy-fortran/ffc#330; reason=owns function resul
 pdt_33.f90 # owner=lazy-fortran/fortfront#2896; reason=reject constructs in forbidden program sections
 pointer_intent_7.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
 pointer_target_3.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
-pr103259.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 pr103508.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
 pr103606.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
 pr104351.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
@@ -275,7 +271,6 @@ recursive_check_3.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE E
 redefined_intrinsic_assignment.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
 repeat_7.f90 # owner=lazy-fortran/ffc#453; reason=owns scalar intrinsic validation, HUGE, and REPEAT argument evaluation
 reshape_zerosize_2.f90 # owner=lazy-fortran/ffc#367; reason=accept zero-sized RESHAPE expressions
-save_common.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 select_5.f90 # owner=lazy-fortran/ffc#447; reason=owns declared integer kinds and kind-preserving comparisons
 short_circuiting.f90 # owner=lazy-fortran/ffc#447; reason=owns logical literals, binary operations, and one-time operand evaluation
 spellcheck-procedure_2.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
@@ -292,7 +287,6 @@ typebound_override_2.f90 # owner=lazy-fortran/fortfront#2881; reason=enforce ove
 typebound_override_4.f90 # owner=lazy-fortran/fortfront#2881; reason=enforce override FINAL and defined-I/O signatures
 typebound_override_5.f90 # owner=lazy-fortran/fortfront#2881; reason=enforce override FINAL and defined-I/O signatures
 typed_subroutine_1.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
-uncommon_block_data_1.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 unexpected_eof_2.f90 # owner=lazy-fortran/fortfront#2894; reason=reject malformed or disallowed literal forms
 unexpected_eof_3.f90 # owner=lazy-fortran/fortfront#2894; reason=reject malformed or disallowed literal forms
 unexpected_interface.f90 # owner=lazy-fortran/fortfront#2896; reason=reject constructs in forbidden program sections
