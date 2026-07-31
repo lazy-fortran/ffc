@@ -96,6 +96,18 @@
                   call set_empty(error_msg)
                   return
               end if
+              ! An intrinsic-module kind constant (iso_fortran_env int32,
+              ! iso_c_binding c_int) has no lowering symbol either; it is a
+              ! compile-time integer whose value is its kind number.
+              const_found = iso_fortran_env_kind_value(id_name, const_value)
+              if (.not. const_found) then
+                  const_found = iso_c_binding_kind_value(id_name, const_value)
+              end if
+              if (const_found) then
+                  value = i32_immediate(context%session, const_value)
+                  call set_empty(error_msg)
+                  return
+              end if
               error_msg = 'integer identifier was not declared: '//trim(id_name)
               return
           end if
