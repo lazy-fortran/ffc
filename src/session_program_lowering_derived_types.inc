@@ -339,6 +339,11 @@
                 call get_declaration_var_name(arena, mod_node%declaration_indices(j), &
                                               decl_name, name_err)
                 if (len_trim(name_err) > 0 .or. len_trim(decl_name) == 0) cycle
+                ! A PROCEDURE declaration (procedure(iface) :: p) exports a
+                ! procedure name, not module variable storage (#364).
+                if (declaration_names_procedure(decl)) then
+                    if (.not. decl%is_pointer) cycle
+                end if
                 ! A scalar derived-type PARAMETER exports like a derived module
                 ! variable: it gets a flat slot global (with its constructor
                 ! folded into the static bytes) and binds as a derived reference

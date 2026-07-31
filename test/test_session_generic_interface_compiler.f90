@@ -13,6 +13,8 @@ program test_session_generic_interface_compiler
     if (.not. test_generic_subroutine()) all_passed = .false.
     if (.not. test_generic_full_signature_dispatch()) all_passed = .false.
     if (.not. test_generic_rank_dispatch()) all_passed = .false.
+    if (.not. test_procedure_declaration_specific()) all_passed = .false.
+    if (.not. test_procedure_declaration_direct_call()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: generic interfaces resolve to correct specific procedures'
@@ -208,5 +210,63 @@ contains
         test_generic_rank_dispatch = expect_exit_status( &
             source, 44, '/tmp/ffc_session_generic_rank')
     end function test_generic_rank_dispatch
+
+    logical function test_procedure_declaration_specific()
+        ! #364 (gfortran.dg/proc_decl_5.f90): a PROCEDURE declaration statement
+        ! naming an explicit interface contributes a generic specific, and the
+        ! generic call resolves to it.
+        character(len=*), parameter :: source = &
+            'module modproc'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface bar'//new_line('a')// &
+            '    procedure x'//new_line('a')// &
+            '  end interface bar'//new_line('a')// &
+            '  procedure(sub) :: x'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer function sub()'//new_line('a')// &
+            '    end function sub'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'end module modproc'//new_line('a')// &
+            'integer function x()'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  x = 7'//new_line('a')// &
+            'end function x'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use modproc'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  stop bar()'//new_line('a')// &
+            'end program main'
+
+        ! bar() -> x() -> 7
+        test_procedure_declaration_specific = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_generic_proc_decl')
+    end function test_procedure_declaration_specific
+
+    logical function test_procedure_declaration_direct_call()
+        ! #364: a PROCEDURE declaration introduces no variable storage; the
+        ! declared name calls the external procedure with that interface.
+        character(len=*), parameter :: source = &
+            'module modproc'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  procedure(sub) :: x'//new_line('a')// &
+            '  interface'//new_line('a')// &
+            '    integer function sub()'//new_line('a')// &
+            '    end function sub'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'end module modproc'//new_line('a')// &
+            'integer function x()'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  x = 9'//new_line('a')// &
+            'end function x'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use modproc'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  stop x()'//new_line('a')// &
+            'end program main'
+
+        ! x() -> 9
+        test_procedure_declaration_direct_call = expect_exit_status( &
+            source, 9, '/tmp/ffc_session_generic_proc_decl_call')
+    end function test_procedure_declaration_direct_call
 
 end program test_session_generic_interface_compiler
