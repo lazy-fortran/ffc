@@ -1222,7 +1222,22 @@
         context%symbols(index)%address = ptr_param(context%session, param_index)
         context%symbols(index)%has_address = .true.
         context%symbols(index)%is_reference = .true.
-        context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
+        if (value_kind == VALUE_C4) then
+            if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 4_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) return
+            context%symbols(index)%value = &
+                liric_f32_immediate(context%session, 0.0_c_float)
+        else if (value_kind == VALUE_C8) then
+            if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 8_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) return
+            context%symbols(index)%value = &
+                liric_f64_immediate(context%session, 0.0_c_double)
+        else
+            context%symbols(index)%value = i32_immediate(context%session, &
+                0_c_int64_t)
+        end if
         context%symbols(index)%is_parameter = .true.
         if (has_binding) then
             context%symbols(index)%has_binding = .true.

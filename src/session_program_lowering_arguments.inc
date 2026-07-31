@@ -63,9 +63,20 @@
         ! are skipped to keep the count comparison exact.
         if (sp <= 0) then
             param_count = arena_proc_param_count(arena, callee_name)
+            if (param_count < 0) param_count = proc_param_count(context, callee_name)
             if (param_count >= 0 .and. visible_count > param_count) then
                 error_msg = 'More actual than formal arguments in call to '// &
                     trim(callee_name)
+                return
+            end if
+        end if
+
+        ! Keep array-interface diagnostics (rank and storage extent) useful even
+        ! when the interface has no body in this lowering unit.  Scalar calls
+        ! can only be lowered when their same-unit body is available.
+        if (.not. call_has_array_dummy(arena, callee_name, arg_indices, sp)) then
+            if (registered_procedure_body_missing(arena, context, callee_name)) then
+                error_msg = 'procedure body unavailable for call to '//trim(callee_name)
                 return
             end if
         end if
@@ -75,6 +86,9 @@
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
+            call check_scalar_actual_compatibility(arena, arg_indices(i), context, &
+                callee_name, call_arg_param_pos(i, sp), error_msg)
+            if (len_trim(error_msg) > 0) return
             ! A scalar actual (literal or scalar variable, not an array element)
             ! passed where the callee declares an array dummy is a rank mismatch
             ! (F2018 15.5.2.4). callee_dummy_is_array only resolves against a
@@ -180,6 +194,246 @@
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    logical function registered_procedure_body_missing(arena, context, name) &
+            result(missing)
+        ! An explicit-interface signature is callable only when its body is
+        ! present in the lowering unit.  A real procedure with an empty body is
+        ! still available; external procedures are deliberately left unknown so
+        ! the separate-compilation and bind(C) paths can handle them.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: nested_index, i, node_index
+
+        missing = .false.
+        nested_index = visible_nested_procedure_node(context, name)
+        if (nested_index > 0) then
+            missing = procedure_node_is_interface_signature(arena, nested_index)
+            if (missing .and. procedure_body_node_present(arena, context, name)) &
+                missing = .false.
+            return
+        end if
+        do i = 1, context%function_count
+            if (.not. same_name(context%function_names(i), name)) cycle
+            node_index = context%function_node_indices(i)
+            if (node_index > 0) then
+                missing = procedure_node_is_interface_signature(arena, node_index)
+                if (missing .and. procedure_body_node_present(arena, context, name)) &
+                    missing = .false.
+            end if
+            return
+        end do
+    end function registered_procedure_body_missing
+
+    logical function procedure_node_is_interface_signature(arena, node_index) &
+            result(is_signature)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer :: parent_index
+        character(len=:), allocatable :: parent_type
+
+        is_signature = .false.
+        if (node_index <= 0 .or. .not. node_exists(arena, node_index)) return
+        parent_index = arena%entries(node_index)%parent_index
+        if (parent_index <= 0) return
+        parent_type = get_node_type_at(arena, parent_index)
+        is_signature = parent_type == 'interface_block_node' .or. &
+                       parent_type == 'interface_block'
+    end function procedure_node_is_interface_signature
+
+    logical function procedure_body_node_present(arena, context, name) &
+            result(present)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: candidate_name
+        integer :: i
+
+        present = .false.
+        do i = 1, arena%size
+            if (.not. procedure_unit_name(arena, i, candidate_name)) cycle
+            if (.not. same_name(candidate_name, name)) cycle
+            if (context%current_proc_node_index > 0) then
+                if (.not. procedure_scope_is(arena, i, &
+                                              context%current_proc_node_index)) cycle
+            end if
+            if (.not. procedure_node_is_interface_signature(arena, i)) then
+                present = .true.
+                return
+            end if
+        end do
+    end function procedure_body_node_present
+
+    logical function call_has_array_dummy(arena, callee_name, arg_indices, sp) &
+            result(has_array)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: arg_indices(:)
+        integer, intent(in) :: sp
+        integer :: i, param_pos
+
+        has_array = .false.
+        do i = 1, size(arg_indices)
+            param_pos = call_arg_param_pos(i, sp)
+            if (callee_dummy_is_array(arena, callee_name, param_pos)) then
+                has_array = .true.
+                return
+            end if
+        end do
+    end function call_has_array_dummy
+
+    subroutine check_scalar_actual_compatibility(arena, actual_index, context, &
+                                                 callee_name, param_pos, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: actual_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dummy_kind, actual_kind
+        integer :: dummy_class, actual_class
+
+        call set_empty(error_msg)
+        if (callee_dummy_is_array(arena, callee_name, param_pos)) return
+        if (callee_dummy_is_class_star(arena, callee_name, param_pos)) return
+        if (callee_dummy_is_inferred(arena, callee_name, param_pos)) return
+        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos)
+        if (dummy_kind == 0) dummy_kind = external_dummy_value_kind(context, &
+            callee_name, param_pos)
+        if (dummy_kind == 0) return
+        actual_kind = actual_argument_value_kind(arena, actual_index, context, &
+                                                 dummy_kind)
+        if (actual_kind == 0) return
+        dummy_class = scalar_value_class(dummy_kind)
+        actual_class = scalar_value_class(actual_kind)
+        if (dummy_class == 0 .or. actual_class == 0) return
+        if (dummy_class /= actual_class) then
+            error_msg = 'mismatched scalar type in argument to '//trim(callee_name)
+            return
+        end if
+        if (dummy_kind /= actual_kind .and. is_identifier(arena, actual_index)) then
+            error_msg = 'mismatched scalar kind in argument to '//trim(callee_name)
+            return
+        end if
+    end subroutine check_scalar_actual_compatibility
+
+    logical function callee_dummy_is_inferred(arena, callee_name, param_pos) &
+            result(is_inferred)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable :: node_type, name, name_err
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: param_indices(:), body_indices(:)
+        integer :: n, i, j
+
+        is_inferred = .true.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node) .or. .not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                param_indices = fn_node%param_indices
+                body_indices = fn_node%body_indices
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node) .or. .not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                param_indices = sb_node%param_indices
+                body_indices = sb_node%body_indices
+            else
+                cycle
+            end if
+            if (.not. allocated(param_indices)) return
+            if (param_pos < 1 .or. param_pos > size(param_indices)) return
+            call parameter_name(arena, param_indices(param_pos), name, name_err)
+            if (len_trim(name_err) > 0) return
+            if (.not. allocated(body_indices)) return
+            do i = 1, size(body_indices)
+                if (.not. node_exists(arena, body_indices(i))) cycle
+                select type (decl => arena%entries(body_indices(i))%node)
+                type is (declaration_node)
+                    if (allocated(decl%var_name)) then
+                        if (same_name(decl%var_name, name)) then
+                            is_inferred = decl%is_inferred
+                            return
+                        end if
+                    end if
+                    if (decl%is_multi_declaration .and. &
+                        allocated(decl%var_names)) then
+                        do j = 1, size(decl%var_names)
+                            if (same_name(decl%var_names(j), name)) then
+                                is_inferred = decl%is_inferred
+                                return
+                            end if
+                        end do
+                    end if
+                end select
+            end do
+            return
+        end do
+    end function callee_dummy_is_inferred
+
+    integer function actual_argument_value_kind(arena, node_index, context, &
+                                                dummy_kind) result(value_kind)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: dummy_kind
+        character(len=:), allocatable :: name, name_err
+        integer :: symbol_index
+
+        value_kind = 0
+        if (actual_is_character(arena, node_index, context)) then
+            value_kind = VALUE_CHARACTER
+            return
+        end if
+        if (actual_is_derived(arena, node_index, context)) then
+            value_kind = VALUE_DERIVED
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, name_err)
+            if (len_trim(name_err) > 0) return
+            symbol_index = resolve_symbol_at_node(context, node_index, name)
+            if (symbol_index > 0) then
+                value_kind = context%symbols(symbol_index)%value_kind
+                return
+            end if
+        end if
+        if ((dummy_kind == VALUE_C4 .or. dummy_kind == VALUE_C8) .and. &
+            is_complex_valued(arena, node_index, context, dummy_kind)) then
+            value_kind = dummy_kind
+            return
+        end if
+        value_kind = expression_value_kind(arena, node_index, context, dummy_kind)
+    end function actual_argument_value_kind
+
+    integer function scalar_value_class(value_kind) result(value_class)
+        integer, intent(in) :: value_kind
+
+        select case (value_kind)
+        case (VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64)
+            value_class = 1
+        case (VALUE_F32, VALUE_F64)
+            value_class = 2
+        case (VALUE_C4, VALUE_C8)
+            value_class = 3
+        case (VALUE_LOGICAL)
+            value_class = 4
+        case (VALUE_CHARACTER)
+            value_class = 5
+        case (VALUE_DERIVED)
+            value_class = 6
+        case default
+            value_class = 0
+        end select
+    end function scalar_value_class
 
     subroutine check_explicit_shape_actual_size(arena, actual_index, context, &
                                                 callee_name, param_pos, error_msg)
@@ -1067,6 +1321,18 @@
         end if
 
         value_kind = expression_value_kind(arena, node_index, context, default_kind)
+        if (value_kind /= VALUE_C4 .and. value_kind /= VALUE_C8) then
+            if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
+                value_kind = VALUE_C8
+            else if (is_complex_valued(arena, node_index, context, VALUE_C4)) then
+                value_kind = VALUE_C4
+            end if
+        end if
+        if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            call make_complex_reference_argument(arena, node_index, context, &
+                value_kind, arg, error_msg)
+            return
+        end if
         call lower_expression_by_kind(arena, node_index, context, value_kind, value, &
                                       error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1106,6 +1372,16 @@
                                            'are not supported', error_msg)
             return
         end if
+        if (context%symbols(symbol_index)%value_kind == VALUE_C4 .or. &
+            context%symbols(symbol_index)%value_kind == VALUE_C8) then
+            if (.not. context%symbols(symbol_index)%has_address) then
+                error_msg = 'complex scalar argument has no storage: '//trim(id_name)
+                return
+            end if
+            arg = context%symbols(symbol_index)%address
+            call set_empty(error_msg)
+            return
+        end if
         if (context%symbols(symbol_index)%is_reference) then
             arg = context%symbols(symbol_index)%address
             call set_empty(error_msg)
@@ -1120,6 +1396,47 @@
         copyback_index = symbol_index
         call set_empty(error_msg)
     end subroutine prepare_identifier_reference_arg
+
+    subroutine make_complex_reference_argument(arena, node_index, context, &
+                                               value_kind, address, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_value, im_value, im_address
+        integer(c_int64_t) :: bytes, im_offset
+
+        if (value_kind == VALUE_C8) then
+            bytes = 16_c_int64_t
+            im_offset = 8_c_int64_t
+            call eval_c8_rhs(arena, node_index, context, re_value, im_value, &
+                             error_msg)
+        else
+            bytes = 8_c_int64_t
+            im_offset = 4_c_int64_t
+            call eval_c4_rhs(arena, node_index, context, re_value, im_value, &
+                             error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_alloca_bytes(context%session, i64_immediate( &
+                context%session, bytes), address, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, address, im_offset, &
+                                  im_address, error_msg)) return
+        if (value_kind == VALUE_C8) then
+            if (.not. emit_liric_f64_store(context%session, re_value, address, &
+                                           error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, im_value, im_address, &
+                                           error_msg)) return
+        else
+            if (.not. emit_liric_f32_store(context%session, re_value, address, &
+                                           error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, im_value, im_address, &
+                                           error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine make_complex_reference_argument
 
 integer function expression_value_kind(arena, node_index, context, &
                                             default_kind) result(value_kind)
