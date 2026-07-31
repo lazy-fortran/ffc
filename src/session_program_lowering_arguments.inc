@@ -197,14 +197,18 @@
 
     logical function registered_procedure_body_missing(arena, context, name) &
             result(missing)
-        ! An explicit-interface signature is callable only when its body is
-        ! present in the lowering unit.  A real procedure with an empty body is
-        ! still available; external procedures are deliberately left unknown so
-        ! the separate-compilation and bind(C) paths can handle them.
+        ! A signature declared by an interface inside a contained scope names a
+        ! dummy procedure of that scope; it is callable only when its body is
+        ! present in the lowering unit.  A host-level interface block instead
+        ! declares an external procedure, which a procedure-only object supplies
+        ! at link time (#416), so it is never reported as missing.  A real
+        ! procedure with an empty body is still available; external procedures
+        ! are deliberately left unknown so the separate-compilation and bind(C)
+        ! paths can handle them.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer :: nested_index, i, node_index
+        integer :: nested_index
 
         missing = .false.
         nested_index = visible_nested_procedure_node(context, name)
@@ -214,16 +218,6 @@
                 missing = .false.
             return
         end if
-        do i = 1, context%function_count
-            if (.not. same_name(context%function_names(i), name)) cycle
-            node_index = context%function_node_indices(i)
-            if (node_index > 0) then
-                missing = procedure_node_is_interface_signature(arena, node_index)
-                if (missing .and. procedure_body_node_present(arena, context, name)) &
-                    missing = .false.
-            end if
-            return
-        end do
     end function registered_procedure_body_missing
 
     logical function procedure_node_is_interface_signature(arena, node_index) &
