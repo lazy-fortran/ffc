@@ -2220,7 +2220,9 @@
             call lower_i16_expression(context%arena, value_index, context, &
                                       value, error_msg)
         case (VALUE_C4, VALUE_C8)
-            error_msg = 'complex array scalar initializer is not supported'
+            call broadcast_complex_scalar_initializer(context%arena, value_index, &
+                                                      symbol_index, array_size, &
+                                                      context, error_msg)
             return
         case default
             call lower_i32_expression(context%arena, value_index, context, &
@@ -2298,6 +2300,11 @@
             return
         end if
         vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+            call lower_complex_array_constructor(arena, flat, symbol_index, &
+                                                 context, error_msg)
+            return
+        end if
         do i = 1, n
             if (vk == VALUE_F32) then
                 call lower_f32_expression(arena, flat(i), context, value, error_msg)
@@ -2312,10 +2319,6 @@
                 call lower_i8_expression(arena, flat(i), context, value, error_msg)
             else if (vk == VALUE_I16) then
                 call lower_i16_expression(arena, flat(i), context, value, error_msg)
-            else if (vk == VALUE_C4 .or. vk == VALUE_C8) then
-                error_msg = 'complex array constructor initializer is not '// &
-                            'supported'
-                return
             else
                 call lower_constructor_i32_element(arena, flat(i), context, &
                                                    value, error_msg)
