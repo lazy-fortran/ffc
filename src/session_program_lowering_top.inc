@@ -544,6 +544,8 @@
         if (len_trim(error_msg) > 0) return
         call check_data_source_forms(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_format_specifications(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)
@@ -1000,7 +1002,15 @@
         class default
             node_type = get_node_type_at(arena, node_index)
             if (len_trim(node_type) == 0) node_type = 'unknown'
-            call unsupported_statement_node(arena, node_index, node_type, error_msg)
+            if (node_type == 'format_statement') then
+                ! A FORMAT statement is non-executable: it only labels a format
+                ! specification for a later data transfer statement, so it emits
+                ! no code at its position (#391).
+                call set_empty(error_msg)
+            else
+                call unsupported_statement_node(arena, node_index, node_type, &
+                                                error_msg)
+            end if
         end select
     end subroutine lower_statement
     subroutine unsupported_statement_node(arena, node_index, node_type, error_msg)

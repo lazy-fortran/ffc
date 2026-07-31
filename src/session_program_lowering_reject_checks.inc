@@ -1552,7 +1552,7 @@
                 pos = pos + next_nl
             end if
             line_no = line_no + 1
-            line = strip_source_comment(line)
+            line = strip_data_source_comment(line)
             if (is_old_style_init_line(line)) then
                 write (location, '(" at line ",I0)') line_no
                 error_msg = 'old-style slashed initialization in a '// &
@@ -1584,7 +1584,7 @@
         end do
     end function count_data_statement_nodes
 
-    function strip_source_comment(line) result(code)
+    function strip_data_source_comment(line) result(code)
         character(len=*), intent(in) :: line
         character(len=:), allocatable :: code
         integer :: i
@@ -1609,7 +1609,7 @@
                 end if
             end if
         end do
-    end function strip_source_comment
+    end function strip_data_source_comment
 
     logical function is_data_statement_line(line) result(is_data)
         character(len=*), intent(in) :: line
@@ -1658,3 +1658,475 @@
             end if
         end do
     end function starts_with_type_keyword
+
+    ! A format specification is a parenthesised list of edit descriptors, and a
+    ! format tag that is not a label must be a default character entity.
+    ! FortFront parses these forms but keeps the descriptor text uninterpreted,
+    ! so this is the earliest layer with both the typed IO node and the literal
+    ! text needed to reject malformed formats (#391).
+    subroutine check_format_specifications(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(io_statement_query_t) :: query
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            query = query_io_statement(arena, n)
+            if (.not. query%found) cycle
+            if (query%statement_kind == IO_STATEMENT_FORMAT) then
+                if (.not. query%has_format_spec) cycle
+                call check_format_text(query%format_spec, query%line, &
+                                       query%column, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
+            if (query%statement_kind /= IO_STATEMENT_WRITE .and. &
+                query%statement_kind /= IO_STATEMENT_READ) cycle
+            call check_format_tag(arena, query, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call check_asynchronous_specifier(query, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call check_concatenated_format_source(arena, error_msg)
+    end subroutine check_format_specifications
+
+    ! The format tag of a data transfer statement is either a label, an
+    ! asterisk, a literal format specification, or the name of a default
+    ! character entity. A named constant of any other type is invalid
+    ! (gfortran: "Invalid expression in the FORMAT tag").
+    subroutine check_format_tag(arena, query, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(io_statement_query_t), intent(in) :: query
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: text, type_name
+        character(len=64) :: location
+        logical :: found
+
+        call set_empty(error_msg)
+        if (.not. query%has_format_spec) return
+        text = trim(adjustl(query%format_spec))
+        if (len(text) == 0) return
+        if (text == '*') return
+        if (text(1:1) == '(') then
+            call check_format_text(text, query%line, query%column, error_msg)
+            return
+        end if
+        if (is_integer_text(text)) return
+        if (scan(text(1:1), 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ') &
+            == 0) return
+        call declared_type_of_name(arena, text, type_name, found)
+        if (.not. found) return
+        if (index(lowercase_text(type_name), 'character') == 1) return
+        write (location, '(" at line ",I0,", column ",I0)') &
+            query%line, query%column
+        error_msg = 'Invalid expression in the FORMAT tag'//trim(location)// &
+            ': '''//text//''' is of type '''//type_name//''''
+    end subroutine check_format_tag
+
+    ! ASYNCHRONOUS= in a data transfer statement must be an initialization
+    ! expression, so a reference to a non-intrinsic function is invalid
+    ! (gfortran: "must be an intrinsic function").
+    subroutine check_asynchronous_specifier(query, error_msg)
+        type(io_statement_query_t), intent(in) :: query
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: value, name, tail
+        character(len=64) :: location
+        integer :: i, rest
+
+        call set_empty(error_msg)
+        if (.not. allocated(query%specifiers)) return
+        do i = 1, size(query%specifiers)
+            if (.not. allocated(query%specifiers(i)%name)) cycle
+            if (.not. same_name(query%specifiers(i)%name, 'asynchronous')) cycle
+            if (.not. allocated(query%specifiers(i)%value)) cycle
+            value = trim(adjustl(query%specifiers(i)%value))
+            name = leading_identifier(lowercase_text(value))
+            if (len_trim(name) == 0) cycle
+            rest = len_trim(name) + 1
+            if (rest > len(value)) cycle
+            tail = adjustl(value(rest:))
+            if (len_trim(tail) == 0) cycle
+            if (tail(1:1) /= '(') cycle
+            if (is_character_intrinsic_name(name)) cycle
+            write (location, '(" at line ",I0,", column ",I0)') &
+                query%line, query%column
+            error_msg = 'Function '''//trim(name)// &
+                ''' in the ASYNCHRONOUS= specifier'//trim(location)// &
+                ' must be an intrinsic function'
+            return
+        end do
+    end subroutine check_asynchronous_specifier
+
+    logical function is_character_intrinsic_name(name) result(is_intrinsic)
+        character(len=*), intent(in) :: name
+
+        select case (trim(name))
+        case ('trim', 'adjustl', 'adjustr', 'repeat', 'char', 'achar', &
+              'merge', 'transfer')
+            is_intrinsic = .true.
+        case default
+            is_intrinsic = .false.
+        end select
+    end function is_character_intrinsic_name
+
+    subroutine declared_type_of_name(arena, name, type_name, found)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: type_name
+        logical, intent(out) :: found
+        integer :: n, k
+
+        found = .false.
+        type_name = ''
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (decl => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (allocated(decl%var_name)) then
+                    if (same_name(decl%var_name, name)) then
+                        type_name = decl%type_name
+                        found = .true.
+                        return
+                    end if
+                end if
+                if (.not. decl%is_multi_declaration) cycle
+                if (.not. allocated(decl%var_names)) cycle
+                do k = 1, size(decl%var_names)
+                    if (.not. same_name(decl%var_names(k), name)) cycle
+                    type_name = decl%type_name
+                    found = .true.
+                    return
+                end do
+            end select
+        end do
+    end subroutine declared_type_of_name
+
+    ! Validate the text of a format specification: parentheses must balance,
+    ! and a zero repeat specification is only well formed as the scale factor
+    ! of a P edit descriptor.
+    subroutine check_format_text(text, line, column, error_msg)
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: line
+        integer, intent(in) :: column
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+        character(len=1) :: ch, quote
+        integer :: i, depth, run_start
+        logical :: in_string, at_descriptor_start
+
+        call set_empty(error_msg)
+        write (location, '(" at line ",I0,", column ",I0)') line, column
+        depth = 0
+        in_string = .false.
+        quote = ' '
+        at_descriptor_start = .true.
+        i = 1
+        do while (i <= len(text))
+            ch = text(i:i)
+            if (in_string) then
+                if (ch == quote) in_string = .false.
+                i = i + 1
+                cycle
+            end if
+            if (ch == '''' .or. ch == '"') then
+                in_string = .true.
+                quote = ch
+                at_descriptor_start = .false.
+                i = i + 1
+                cycle
+            end if
+            if (ch == '(') then
+                depth = depth + 1
+                at_descriptor_start = .true.
+                i = i + 1
+                cycle
+            end if
+            if (ch == ')') then
+                depth = depth - 1
+                if (depth < 0) then
+                    error_msg = 'Unexpected end of format string'// &
+                        trim(location)//': unbalanced parenthesis in '''// &
+                        trim(text)//''''
+                    return
+                end if
+                at_descriptor_start = .false.
+                i = i + 1
+                cycle
+            end if
+            if (ch == ',' .or. ch == '/' .or. ch == ':') then
+                at_descriptor_start = .true.
+                i = i + 1
+                cycle
+            end if
+            if (ch == ' ') then
+                i = i + 1
+                cycle
+            end if
+            if (scan(ch, '0123456789') > 0) then
+                run_start = i
+                do while (i <= len(text))
+                    if (scan(text(i:i), '0123456789') == 0) exit
+                    i = i + 1
+                end do
+                if (at_descriptor_start) then
+                    call check_zero_repeat(text, run_start, i, location, &
+                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                at_descriptor_start = .false.
+                cycle
+            end if
+            at_descriptor_start = .false.
+            i = i + 1
+        end do
+        if (depth /= 0) then
+            error_msg = 'Unexpected end of format string'//trim(location)// &
+                ': unbalanced parenthesis in '''//trim(text)//''''
+        end if
+    end subroutine check_format_text
+
+    ! A digit run in repeat-specification position whose value is zero is only
+    ! legal as the scale factor of a P edit descriptor: r in an r-repeated
+    ! descriptor must be positive.
+    subroutine check_zero_repeat(text, run_start, run_end, location, error_msg)
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: run_start
+        integer, intent(in) :: run_end
+        character(len=*), intent(in) :: location
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (verify(text(run_start:run_end - 1), '0') /= 0) return
+        i = run_end
+        do while (i <= len(text))
+            if (text(i:i) /= ' ') exit
+            i = i + 1
+        end do
+        if (i <= len(text)) then
+            if (text(i:i) == 'P' .or. text(i:i) == 'p') return
+        end if
+        error_msg = 'Expected P edit descriptor'//trim(location)// &
+            ': zero repeat specification in '''//trim(text)//''''
+    end subroutine check_zero_repeat
+
+    ! A format written as a concatenation of character literals is still a
+    ! complete format specification. FortFront drops a data transfer statement
+    ! whose parenthesised format expression never closes, so the concatenated
+    ! literal text is checked from the source (gfortran: "Unexpected end of
+    ! format string").
+    subroutine check_concatenated_format_source(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable :: source, line
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: found
+        integer :: pos, line_no, next_nl
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        pos = 1
+        line_no = 1
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            call check_transfer_line_format(line, line_no, error_msg)
+            if (len_trim(error_msg) > 0) return
+            line_no = line_no + 1
+        end do
+    end subroutine check_concatenated_format_source
+
+    subroutine check_transfer_line_format(line, line_no, error_msg)
+        character(len=*), intent(in) :: line
+        integer, intent(in) :: line_no
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: text, keyword, format_text, joined
+        integer :: start_pos, split_pos, label_end
+        logical :: literal_only
+
+        call set_empty(error_msg)
+        call strip_line_comment(line, text)
+        text = trim(adjustl(text))
+        if (len(text) == 0) return
+        label_end = verify(text, '0123456789') - 1
+        if (label_end > 0) text = trim(adjustl(text(label_end + 1:)))
+        if (len(text) == 0) return
+        keyword = leading_identifier(lowercase_text(text))
+        if (len_trim(keyword) == 0) return
+        start_pos = len_trim(keyword) + 1
+        if (start_pos > len(text)) return
+        if (trim(keyword) == 'format') then
+            format_text = trim(adjustl(text(start_pos:)))
+            if (len(format_text) == 0) return
+            if (format_text(1:1) /= '(') return
+            call check_format_text(format_text, line_no, 1, error_msg)
+            return
+        end if
+        select case (trim(keyword))
+        case ('read', 'write', 'print')
+        case default
+            return
+        end select
+        call check_asynchronous_source(text(start_pos:), line_no, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (start_pos > len(text)) return
+        call format_expression_text(text(start_pos:), format_text, split_pos)
+        if (index(format_text, '//') == 0) return
+        call concatenated_literal_text(format_text, joined, literal_only)
+        if (.not. literal_only) return
+        if (len_trim(joined) == 0) return
+        if (joined(1:1) /= '(') return
+        call check_format_text(joined, line_no, 1, error_msg)
+    end subroutine check_transfer_line_format
+
+    ! The ASYNCHRONOUS= value of a data transfer statement must be an
+    ! initialization expression; FortFront drops a whole bare main program that
+    ! carries such a statement, so the specifier is also checked from the
+    ! source text.
+    subroutine check_asynchronous_source(text, line_no, error_msg)
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: line_no
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lowered, value, name, tail
+        character(len=64) :: location
+        integer :: at, rest
+
+        call set_empty(error_msg)
+        lowered = lowercase_text(text)
+        at = index(lowered, 'asynchronous')
+        if (at == 0) return
+        rest = at + len('asynchronous')
+        if (rest > len(lowered)) return
+        tail = adjustl(lowered(rest:))
+        if (len_trim(tail) == 0) return
+        if (tail(1:1) /= '=') return
+        value = adjustl(tail(2:))
+        name = leading_identifier(value)
+        if (len_trim(name) == 0) return
+        rest = len_trim(name) + 1
+        if (rest > len(value)) return
+        tail = adjustl(value(rest:))
+        if (len_trim(tail) == 0) return
+        if (tail(1:1) /= '(') return
+        if (is_character_intrinsic_name(name)) return
+        write (location, '(" at line ",I0)') line_no
+        error_msg = 'Function '''//trim(name)// &
+            ''' in the ASYNCHRONOUS= specifier'//trim(location)// &
+            ' must be an intrinsic function'
+    end subroutine check_asynchronous_source
+
+    ! Drop a trailing comment so the statement text can be scanned for the
+    ! literal tokens of its format expression.
+    subroutine strip_line_comment(line, stripped)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: stripped
+        character(len=1) :: ch, quote
+        integer :: i
+        logical :: in_string
+
+        in_string = .false.
+        quote = ' '
+        stripped = line
+        do i = 1, len(line)
+            ch = line(i:i)
+            if (in_string) then
+                if (ch == quote) in_string = .false.
+                cycle
+            end if
+            if (ch == '''' .or. ch == '"') then
+                in_string = .true.
+                quote = ch
+                cycle
+            end if
+            if (ch == '!') then
+                stripped = line(1:i - 1)
+                return
+            end if
+        end do
+    end subroutine strip_line_comment
+
+    ! The format expression of a data transfer statement written without a
+    ! control list ends at the first comma outside parentheses and quotes.
+    subroutine format_expression_text(text, format_text, split_pos)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: format_text
+        integer, intent(out) :: split_pos
+        character(len=1) :: ch, quote
+        integer :: i, depth
+        logical :: in_string
+
+        depth = 0
+        in_string = .false.
+        quote = ' '
+        split_pos = 0
+        do i = 1, len(text)
+            ch = text(i:i)
+            if (in_string) then
+                if (ch == quote) in_string = .false.
+                cycle
+            end if
+            if (ch == '''' .or. ch == '"') then
+                in_string = .true.
+                quote = ch
+                cycle
+            end if
+            if (ch == '(') depth = depth + 1
+            if (ch == ')') depth = depth - 1
+            if (ch == ',' .and. depth == 0) then
+                split_pos = i
+                exit
+            end if
+        end do
+        if (split_pos > 0) then
+            format_text = text(1:split_pos - 1)
+        else
+            format_text = text
+        end if
+    end subroutine format_expression_text
+
+    ! Join the character literals of an expression built only from literals,
+    ! concatenation operators, parentheses and blanks. Any other token means
+    ! the text is not a compile-time known format.
+    subroutine concatenated_literal_text(text, joined, literal_only)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: joined
+        logical, intent(out) :: literal_only
+        character(len=1) :: ch, quote
+        integer :: i
+
+        joined = ''
+        literal_only = .true.
+        i = 1
+        do while (i <= len(text))
+            ch = text(i:i)
+            if (ch == '''' .or. ch == '"') then
+                quote = ch
+                i = i + 1
+                do while (i <= len(text))
+                    if (text(i:i) == quote) exit
+                    joined = joined//text(i:i)
+                    i = i + 1
+                end do
+                if (i > len(text)) then
+                    literal_only = .false.
+                    return
+                end if
+                i = i + 1
+                cycle
+            end if
+            if (scan(ch, '() /') == 0) then
+                literal_only = .false.
+                return
+            end if
+            i = i + 1
+        end do
+    end subroutine concatenated_literal_text
