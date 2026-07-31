@@ -81,7 +81,100 @@
             if (.not. emit_i32_store(context%session, val, dst_addr, error_msg)) &
                 return
         end do
+        call deep_copy_alloc_components(context, dest_index, src_index, &
+                                        type_index, error_msg)
     end subroutine lower_derived_scalar_copy
+
+    subroutine deep_copy_alloc_components(context, dest_index, src_index, &
+                                          type_index, error_msg)
+        ! Give the destination independent ownership of every allocatable
+        ! component the raw slot copy left aliasing the source: allocate fresh
+        ! storage of the same byte span, copy the contents, and overwrite the
+        ! destination's inline data pointer. An unallocated source component
+        ! leaves the copied null pointer in place.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_index, src_index, type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: c, elem_bytes, inner_bytes
+        logical :: is_array_comp
+
+        call set_empty(error_msg)
+        do c = 1, context%derived_types(type_index)%component_count
+            is_array_comp = component_is_alloc_array(context, type_index, c)
+            if (.not. is_array_comp .and. &
+                .not. component_is_allocatable(context, type_index, c)) cycle
+            elem_bytes = int(allocatable_elem_size( &
+                             component_kind(context, type_index, c)))
+            if (is_array_comp) then
+                inner_bytes = alloc_derived_inner_bytes(context, type_index, c)
+                if (inner_bytes > 0) elem_bytes = inner_bytes
+            end if
+            call deep_copy_one_alloc_component(context, dest_index, src_index, &
+                type_index, c, is_array_comp, elem_bytes, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine deep_copy_alloc_components
+
+    subroutine deep_copy_one_alloc_component(context, dest_index, src_index, &
+            type_index, comp_index, is_array_comp, elem_bytes, error_msg)
+        ! Reallocate and copy one allocatable component under a runtime null
+        ! guard: when the source pointer is null the destination keeps the null
+        ! the slot copy already stored.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_index, src_index, type_index, comp_index
+        logical, intent(in) :: is_array_comp
+        integer, intent(in) :: elem_bytes
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: src_desc, dst_desc, src_data, new_data
+        type(lr_operand_desc_t) :: extent64, bytes64, condition
+        integer(c_int32_t) :: copy_block, merge_block
+        integer :: slot
+
+        slot = component_start_slot(context, type_index, comp_index)
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(src_index)%array_size, &
+                context%symbols(src_index)%element_address, &
+                i32_immediate(context%session, int(slot, c_int64_t)), &
+                src_desc, error_msg)) return
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(dest_index)%array_size, &
+                context%symbols(dest_index)%element_address, &
+                i32_immediate(context%session, int(slot, c_int64_t)), &
+                dst_desc, error_msg)) return
+        if (.not. emit_ptr_load(context%session, src_desc, src_data, error_msg)) &
+            return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, src_data, &
+                null_ptr_operand(context), condition, error_msg)) return
+
+        copy_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, condition, copy_block, &
+                merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, copy_block, error_msg)) return
+        context%current_block_id = copy_block
+        context%current_block_terminated = .false.
+        if (is_array_comp) then
+            if (.not. emit_i64_load_at(context%session, src_desc, 8_c_int64_t, &
+                    extent64, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, extent64, &
+                    i64_immediate(context%session, int(elem_bytes, c_int64_t)), &
+                    bytes64, error_msg)) return
+        else
+            bytes64 = i64_immediate(context%session, int(elem_bytes, c_int64_t))
+        end if
+        if (.not. emit_malloc(context%session, bytes64, new_data, error_msg)) return
+        if (.not. emit_memcpy(context%session, new_data, src_data, bytes64, &
+                error_msg)) return
+        if (.not. emit_ptr_store(context%session, new_data, dst_desc, error_msg)) &
+            return
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine deep_copy_one_alloc_component
 
     subroutine lower_derived_constructor_assignment(arena, call_index, context, &
             symbol_index, type_index, handled, error_msg)
