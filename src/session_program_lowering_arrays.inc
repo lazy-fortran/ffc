@@ -787,7 +787,7 @@
         if (is_subroutine_call_statement(arena, node_index)) then
             call get_subroutine_call_name(arena, node_index, call_name, err)
             if (len_trim(err) > 0) return
-            if (.not. same_name(call_name, proc_name)) return
+            if (.not. call_name_reaches_proc(arena, call_name, proc_name)) return
             call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                                  err)
             if (len_trim(err) > 0) return
@@ -797,11 +797,55 @@
         select type (cnode => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (.not. allocated(cnode%name)) return
-            if (.not. same_name(cnode%name, proc_name)) return
+            if (.not. call_name_reaches_proc(arena, cnode%name, proc_name)) return
             if (allocated(cnode%arg_indices)) arg_indices = cnode%arg_indices
             matches = .true.
         end select
     end function call_targets_proc
+
+    logical function call_name_reaches_proc(arena, call_name, proc_name) &
+            result(reaches)
+        ! True when a call written as call_name reaches proc_name: either it
+        ! names proc_name directly, or call_name is a procedure pointer that the
+        ! program associates with proc_name (#362). An indirect call through such
+        ! a pointer supplies its actuals to proc_name's dummies exactly like a
+        ! direct call, so assumed-shape extent resolution must see it.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: call_name
+        character(len=*), intent(in) :: proc_name
+
+        reaches = .true.
+        if (same_name(call_name, proc_name)) return
+        reaches = proc_pointer_binds_target(arena, call_name, proc_name)
+    end function call_name_reaches_proc
+
+    logical function proc_pointer_binds_target(arena, ptr_name, proc_name) &
+            result(binds)
+        ! True when the arena holds a pointer assignment `ptr_name => proc_name`.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: ptr_name
+        character(len=*), intent(in) :: proc_name
+        integer :: n
+        character(len=:), allocatable :: lhs_name, rhs_name, err
+
+        binds = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (pnode => arena%entries(n)%node)
+            type is (pointer_assignment_node)
+                if (.not. is_identifier(arena, pnode%pointer_index)) cycle
+                if (.not. is_identifier(arena, pnode%target_index)) cycle
+                call get_identifier_name(arena, pnode%pointer_index, lhs_name, err)
+                if (len_trim(err) > 0) cycle
+                if (.not. same_name(lhs_name, ptr_name)) cycle
+                call get_identifier_name(arena, pnode%target_index, rhs_name, err)
+                if (len_trim(err) > 0) cycle
+                if (.not. same_name(rhs_name, proc_name)) cycle
+                binds = .true.
+                return
+            end select
+        end do
+    end function proc_pointer_binds_target
 
     subroutine array_decl_extents(context, var_name, dim_count, extents, ok)
         ! Find var_name's array declaration anywhere in the arena and compute its

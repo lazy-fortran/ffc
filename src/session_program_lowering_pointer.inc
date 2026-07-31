@@ -736,6 +736,38 @@
         ok = idx > 0 .and. context%symbols(idx)%is_proc_pointer
     end function is_proc_pointer_call
 
+    subroutine resolve_proc_pointer_callee_name(arena, ptr_name, callee_name)
+        ! Name to validate an indirect call against (#362). A procedure pointer
+        ! associated with a procedure defined or interfaced in this unit keeps
+        ! that procedure's interface: the call must use the same descriptor
+        ! passing and rank checks as a direct call, so argument lowering is
+        ! driven by the target's name. Without a resolvable target the pointer's
+        ! own name is kept, which carries no dummy information.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: ptr_name
+        character(len=:), allocatable, intent(out) :: callee_name
+        integer :: n
+        character(len=:), allocatable :: lhs_name, rhs_name, err
+
+        callee_name = trim(ptr_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (pnode => arena%entries(n)%node)
+            type is (pointer_assignment_node)
+                if (.not. is_identifier(arena, pnode%pointer_index)) cycle
+                if (.not. is_identifier(arena, pnode%target_index)) cycle
+                call get_identifier_name(arena, pnode%pointer_index, lhs_name, err)
+                if (len_trim(err) > 0) cycle
+                if (.not. same_name(lhs_name, ptr_name)) cycle
+                call get_identifier_name(arena, pnode%target_index, rhs_name, err)
+                if (len_trim(err) > 0) cycle
+                if (arena_proc_param_count(arena, rhs_name) < 0) cycle
+                callee_name = trim(rhs_name)
+                return
+            end select
+        end do
+    end subroutine resolve_proc_pointer_callee_name
+
     subroutine lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
         ! Indirect integer function call through a procedure pointer.
         type(ast_arena_t), intent(in) :: arena
@@ -747,13 +779,15 @@
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         integer :: idx
+        character(len=:), allocatable :: callee_name
 
         idx = find_symbol_compat(context, node%name)
+        call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
         if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
                                 callee_ptr, error_msg)) return
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_I32, node%name, args, &
+                                        VALUE_I32, callee_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
@@ -777,17 +811,20 @@
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         integer :: idx
+        character(len=:), allocatable :: callee_name
 
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         idx = find_symbol_compat(context, name)
+        call resolve_proc_pointer_callee_name(arena, name, callee_name)
         if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
                                 callee_ptr, error_msg)) return
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
-                                    name, args, copyback_indices, error_msg)
+                                    callee_name, args, copyback_indices, &
+                                    error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_void_indirect_call(context%session, callee_ptr, args, &
                                           error_msg)) return
