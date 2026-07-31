@@ -905,5 +905,10 @@
             libm32 = 'erfcf'; libm64 = 'erfc'
         else if (same_name(name, 'abs')) then
             libm32 = 'fabsf'; libm64 = 'fabs'
+        else if (same_name(name, 'aint')) then
+            libm32 = 'truncf'; libm64 = 'trunc'
+        else if (same_name(name, 'anint')) then
+            ! ANINT rounds half away from zero, matching C round().
+            libm32 = 'roundf'; libm64 = 'round'
         end if
     end subroutine elemental_real_libm_names

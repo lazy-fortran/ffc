@@ -1218,3 +1218,93 @@
         out_length = total_len
         call set_empty(error_msg)
     end subroutine lower_repeat_deferred
+
+    subroutine check_real_conversion_args(arena, node, context, wide_kind, &
+                                          error_msg)
+        !! Shared argument check for AINT(A [,KIND]) and ANINT(A [,KIND]).
+        !! A must be real, and a foldable KIND must name a supported real kind.
+        !! wide_kind reports whether the KIND selector requests real(8).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: wide_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: kind_error
+
+        wide_kind = .false.
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+
+        if (is_integer_operand(arena, node%arg_indices(1), context)) then
+            call unsupported_feature_error( &
+                trim(node%name)//' argument must be real', node%line, &
+                node%column, 'the direct LIRIC session lowers '// &
+                trim(node%name)//' only for real(4) and real(8) arguments', &
+                error_msg)
+            return
+        end if
+
+        if (size(node%arg_indices) < 2) return
+        call parse_i32_constant(arena, node%arg_indices(2), kind_value, &
+                                'real kind', kind_error)
+        if (len_trim(kind_error) > 0) then
+            ! An unfoldable selector keeps the conservative wide result.
+            wide_kind = .true.
+            return
+        end if
+        if (kind_value /= 4_c_int64_t .and. kind_value /= 8_c_int64_t) then
+            call unsupported_feature_error( &
+                trim(node%name)//' result kind', node%line, node%column, &
+                'the direct LIRIC session supports only real kinds 4 and 8', &
+                error_msg)
+            return
+        end if
+        wide_kind = kind_value == 8_c_int64_t
+    end subroutine check_real_conversion_args
+
+    subroutine lower_f32_real_conversion(arena, node, libm_name, context, &
+                                         value, error_msg)
+        !! AINT/ANINT with a real(4) result. The argument is converted to the
+        !! result kind first and then truncated or rounded there, matching the
+        !! gfortran reference output for AINT(A, 4) on a real(8) argument.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(1)
+        logical :: wide_kind
+
+        call check_real_conversion_args(arena, node, context, wide_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, &
+                                     args(1), error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_f32_call(context%session, libm_name, args, value, &
+                                      error_msg)) return
+    end subroutine lower_f32_real_conversion
+
+    subroutine lower_f64_real_conversion(arena, node, libm_name, context, &
+                                         value, error_msg)
+        !! AINT/ANINT with a real(8) result. Widening a real(4) argument first
+        !! is exact, so the f64 libm call alone gives the standard result.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(1)
+        logical :: wide_kind
+
+        call check_real_conversion_args(arena, node, context, wide_kind, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, &
+                                     args(1), error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_f64_call(context%session, libm_name, args, value, &
+                                      error_msg)) return
+    end subroutine lower_f64_real_conversion
