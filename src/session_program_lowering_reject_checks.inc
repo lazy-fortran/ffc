@@ -468,6 +468,145 @@
         end do
     end subroutine check_boz_ctor_elements
 
+    ! A BOZ-literal-constant has no type of its own (F2018 7.7.1): it is a
+    ! bit pattern that borrows the type of the context it appears in. The only
+    ! contexts that supply one are a DATA-statement value, an argument of
+    ! INT/REAL/DBLE/CMPLX, and - by the gfortran extension already lowered
+    ! here - the right side of an intrinsic assignment to an integer or real
+    ! variable. Everything else has no type to lend it: an unlimited
+    ! polymorphic or otherwise non-numeric assignment target, an ASSOCIATE
+    ! selector, or a structure-constructor component.
+    subroutine check_boz_literal_contexts(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, i
+        character(len=:), allocatable :: callee
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (associate_node)
+                if (.not. allocated(nd%associations)) cycle
+                do i = 1, size(nd%associations)
+                    if (.not. node_is_boz_literal(arena, &
+                                                  nd%associations(i)%expr_index)) cycle
+                    write (location, '(" at line ",I0,", column ",I0)') &
+                        get_node_line(arena, nd%associations(i)%expr_index), &
+                        get_node_column(arena, nd%associations(i)%expr_index)
+                    error_msg = 'associate selector'//trim(location)// &
+                                ' cannot be a BOZ literal constant'
+                    return
+                end do
+            type is (call_or_subscript_node)
+                if (.not. allocated(nd%arg_indices)) cycle
+                call set_empty(callee)
+                if (allocated(nd%name)) callee = trim(nd%name)
+                if (boz_argument_intrinsic(callee)) cycle
+                do i = 1, size(nd%arg_indices)
+                    if (.not. node_is_boz_literal(arena, nd%arg_indices(i))) cycle
+                    write (location, '(" at line ",I0,", column ",I0)') &
+                        get_node_line(arena, nd%arg_indices(i)), &
+                        get_node_column(arena, nd%arg_indices(i))
+                    error_msg = 'BOZ literal constant'//trim(location)// &
+                                ' cannot appear as an argument to '''// &
+                                callee//''''
+                    return
+                end do
+            type is (assignment_node)
+                if (.not. node_is_boz_literal(arena, nd%value_index)) cycle
+                if (boz_assignment_target_typed(arena, nd%target_index)) cycle
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    get_node_line(arena, nd%value_index), &
+                    get_node_column(arena, nd%value_index)
+                error_msg = 'BOZ literal constant'//trim(location)// &
+                            ' cannot be assigned to a non-numeric variable'
+                return
+            end select
+        end do
+    end subroutine check_boz_literal_contexts
+
+    ! The intrinsics whose defining interface accepts a typeless BOZ actual
+    ! argument and gives it a type (F2018 16.9): the conversion family, plus
+    ! the legacy FLOAT/DFLOAT/DCMPLX spellings gfortran maps onto it.
+    logical function boz_argument_intrinsic(name) result(ok)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: low
+
+        low = trim(lowercase_text(name))
+        ok = low == 'int' .or. low == 'real' .or. low == 'dble' .or. &
+             low == 'cmplx' .or. low == 'dcmplx' .or. low == 'float' .or. &
+             low == 'dfloat'
+    end function boz_argument_intrinsic
+
+    ! True when the assignment target can lend a BOZ right-hand side a type:
+    ! an integer or real variable. A target with no visible declaration is
+    ! left alone - lazy-fortran infers its type from the assignment itself.
+    logical function boz_assignment_target_typed(arena, target_index) result(ok)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        character(len=:), allocatable :: name, err, type_name
+
+        ok = .true.
+        if (target_index <= 0) return
+        if (.not. node_exists(arena, target_index)) return
+        if (.not. is_identifier(arena, target_index)) return
+        call get_identifier_name(arena, target_index, name, err)
+        if (len_trim(err) > 0) return
+        call declared_type_name_of(arena, name, type_name)
+        if (.not. allocated(type_name)) return
+        if (len_trim(type_name) == 0) return
+        ok = boz_compatible_type(type_name)
+    end function boz_assignment_target_typed
+
+    logical function boz_compatible_type(type_name) result(ok)
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable :: low
+
+        low = trim(lowercase_text(type_name))
+        ok = .false.
+        if (len(low) >= 7) then
+            if (low(1:7) == 'integer') ok = .true.
+        end if
+        if (len(low) >= 4) then
+            if (low(1:4) == 'real') ok = .true.
+        end if
+        if (len(low) >= 6) then
+            if (low(1:6) == 'double') ok = .true.
+        end if
+    end function boz_compatible_type
+
+    ! Declared type spelling of a named entity, searched across every
+    ! declaration in the arena. Empty when the name has no declaration.
+    subroutine declared_type_name_of(arena, name, type_name)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: type_name
+        integer :: n, i
+
+        call set_empty(type_name)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (decl => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (allocated(decl%var_name)) then
+                    if (same_name(decl%var_name, name)) then
+                        type_name = trim(decl%type_name)
+                        return
+                    end if
+                end if
+                if (.not. allocated(decl%var_names)) cycle
+                do i = 1, size(decl%var_names)
+                    if (.not. same_name(decl%var_names(i), name)) cycle
+                    type_name = trim(decl%type_name)
+                    return
+                end do
+            end select
+        end do
+    end subroutine declared_type_name_of
+
     ! An assumed-size specifier (*) is only well-formed as the extent of the
     ! LAST array dimension; a bare asterisk anywhere earlier is not a valid
     ! array-spec (gfortran: "Bad specification for assumed size array" for a

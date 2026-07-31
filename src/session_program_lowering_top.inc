@@ -516,6 +516,8 @@
         if (len_trim(error_msg) > 0) return
         call check_boz_in_array_constructors(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_boz_literal_contexts(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call check_assumed_size_dimension_order(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_intrinsic_external_conflict(arena, error_msg)
