@@ -6,7 +6,7 @@ module session_program_lowering
     use ast_nodes_core, only: component_access_node, array_literal_node, &
         pointer_assignment_node, literal_node, &
         identifier_node, binary_op_node
-    use ast_nodes_transfer, only: nullify_node
+    use ast_nodes_transfer, only: nullify_node, entry_node
     use ast_nodes_data, only: derived_type_node, type_binding_node, &
         block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
@@ -2623,4 +2623,5 @@ contains
     include 'session_program_lowering_reject_storage.inc'
     include 'session_program_lowering_reject_const_overflow.inc'
     include 'session_program_lowering_reject_alloc.inc'
+    include 'session_program_lowering_reject_result.inc'
 end module session_program_lowering
