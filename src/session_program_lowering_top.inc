@@ -62,6 +62,15 @@
         if (present(opt_level)) session_config%opt_level = int(opt_level, c_int)
         call liric_session_create(context%session, error_msg, session_config)
         if (len_trim(error_msg) > 0) return
+        ! Install the runtime archive matching this backend and target before
+        ! any runtime call is lowered (#376). With no archive directory
+        ! configured this is a no-op and the inline-runtime path is kept.
+        if (.not. install_runtime_archive(context%session, &
+                                          session_config%backend, &
+                                          'host', error_msg)) then
+            call destroy(context%session)
+            return
+        end if
         allocate(context%symbols(16))
         allocate(context%derived_types(8))
         allocate(context%module_exports(4))
