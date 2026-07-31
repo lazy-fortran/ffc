@@ -1,3 +1,39 @@
+    subroutine component_default_words(context, type_index, comp_index, words, &
+                                       error_msg)
+        ! The i32 slot payloads a component's folded default occupies, in slot
+        ! order: one word for integer/real(4)/logical/c_ptr, the low and high
+        ! halves of the f64 bit pattern for real(real64), and the packed byte
+        ! storage for a fixed-length character component.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+        integer(c_int64_t), allocatable, intent(out) :: words(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: raw
+        integer(c_int32_t) :: halves(2)
+        integer :: value_kind
+
+        call set_empty(error_msg)
+        value_kind = context%derived_types(type_index)% &
+                     component_value_kind(comp_index)
+        if (value_kind == VALUE_CHARACTER) then
+            call character_default_words(context, type_index, comp_index, words, &
+                                         error_msg)
+            return
+        end if
+        raw = context%derived_types(type_index)%component_default_value(comp_index)
+        if (value_kind == VALUE_F64) then
+            halves = transfer(raw, halves)
+            allocate (words(2))
+            words(1) = int(halves(1), c_int64_t)
+            words(2) = int(halves(2), c_int64_t)
+            return
+        end if
+        allocate (words(1))
+        words(1) = raw
+    end subroutine component_default_words
+
     integer function component_slot_width(context, type_index, comp_index)
         ! i32 slots one element of a component occupies: an allocatable component
         ! holds an 8-byte data pointer (two slots); f64 spans two 4-byte slots;
@@ -141,7 +177,8 @@
         integer, intent(in) :: type_index
         integer, intent(in) :: base_slot
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: c, nested, abs_slot, e
+        integer :: c, nested, abs_slot, e, w
+        integer(c_int64_t), allocatable :: words(:)
         type(lr_operand_desc_t) :: addr
 
         call set_empty(error_msg)
@@ -192,14 +229,18 @@
                                 component_has_default)) cycle
             if (.not. context%derived_types(type_index)%component_has_default(c)) &
                 cycle
-            if (.not. emit_i32_array_element_addr(context%session, outer_slots, &
-                    context%symbols(symbol_index)%element_address, &
-                    i32_immediate(context%session, int(abs_slot, c_int64_t)), &
-                    addr, error_msg)) return
-            if (.not. emit_i32_store(context%session, &
-                    i32_immediate(context%session, &
-                        context%derived_types(type_index)%component_default_value(c)), &
-                    addr, error_msg)) return
+            call component_default_words(context, type_index, c, words, error_msg)
+            if (len_trim(error_msg) > 0) return
+            do w = 1, size(words)
+                if (.not. emit_i32_array_element_addr(context%session, outer_slots, &
+                        context%symbols(symbol_index)%element_address, &
+                        i32_immediate(context%session, &
+                            int(abs_slot + w - 1, c_int64_t)), &
+                        addr, error_msg)) return
+                if (.not. emit_i32_store(context%session, &
+                        i32_immediate(context%session, words(w)), &
+                        addr, error_msg)) return
+            end do
         end do
     end subroutine store_type_default_slots
 
@@ -235,12 +276,14 @@
         ! Write type_index's defaulted scalar leaves into a static slot array
         ! (1-based), recursing through nested derived components. Slots without a
         ! default keep their existing (zero) value.
-        use, intrinsic :: iso_c_binding, only: c_int32_t
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: base_slot
         integer(c_int32_t), intent(inout) :: slots(:)
-        integer :: c, nested, abs_slot, e
+        integer :: c, nested, abs_slot, e, w
+        integer(c_int64_t), allocatable :: words(:)
+        character(len=:), allocatable :: words_err
 
         if (.not. allocated(context%derived_types(type_index)% &
                             component_type_index)) return
@@ -263,8 +306,11 @@
                                 component_has_default)) cycle
             if (.not. context%derived_types(type_index)%component_has_default(c)) &
                 cycle
-            slots(abs_slot + 1) = int(context%derived_types(type_index)% &
-                                      component_default_value(c), c_int32_t)
+            call component_default_words(context, type_index, c, words, words_err)
+            if (len_trim(words_err) > 0) cycle
+            do w = 1, size(words)
+                slots(abs_slot + w) = int(words(w), c_int32_t)
+            end do
         end do
     end subroutine fill_type_default_slots
 

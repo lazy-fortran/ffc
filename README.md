@@ -197,8 +197,10 @@ components (`x = t(1, 2.5, .true.)`, `x = person_t("Ada", 7)`, omitted
 components keeping their defaults) stores
 its positional arguments into the target, whether written as an executable
 assignment or as a scalar variable initializer (`type(t) :: v = t(1, 2.5)`).
-Integer, default-real (f32), and logical component default initialisers
-materialise on default-initialised instances, propagating through nested
+Integer, default-real (f32), `real(real64)`, logical, fixed-length character,
+and `c_null_ptr` component default initialisers materialise on
+default-initialised instances and on components a structure constructor omits,
+propagating through nested
 components so an inner type's own defaults show up inline (`x%c%field`). A
 scalar allocatable component of intrinsic numeric or logical type
 (`integer, allocatable :: v`) holds an inline data pointer that starts null;

@@ -497,9 +497,9 @@
         type(lr_operand_desc_t), intent(in) :: base_address
         integer, intent(in) :: type_index, comp_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: component_address
-        integer :: nested_type
-        integer(c_int64_t) :: default_value
+        type(lr_operand_desc_t) :: component_address, slot_address
+        integer :: nested_type, w
+        integer(c_int64_t), allocatable :: words(:)
 
         call component_address_from_base(context, base_address, type_index, &
                                          comp_index, component_address, error_msg)
@@ -510,16 +510,21 @@
                                                  nested_type, error_msg)
             return
         end if
-        if (component_kind(context, type_index, comp_index) == VALUE_CHARACTER) then
-            error_msg = 'character defaults in nested derived constructors are '// &
-                        'not supported'
-            return
-        end if
-        default_value = context%derived_types(type_index)% &
-                        component_default_value(comp_index)
-        if (.not. emit_i32_store(context%session, &
-                i32_immediate(context%session, default_value), component_address, &
-                error_msg)) return
+        call component_default_words(context, type_index, comp_index, words, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        do w = 1, size(words)
+            slot_address = component_address
+            if (w > 1) then
+                if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                        component_address, &
+                        i64_immediate(context%session, int(4*(w - 1), c_int64_t)), &
+                        slot_address, error_msg)) return
+            end if
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, words(w)), slot_address, &
+                    error_msg)) return
+        end do
         call set_empty(error_msg)
     end subroutine emit_constructor_default_at_address
 
@@ -552,16 +557,27 @@
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: addr
-        integer(c_int64_t) :: default_value
+        type(lr_operand_desc_t) :: addr, slot_address
+        integer(c_int64_t), allocatable :: words(:)
+        integer :: w
 
         call emit_component_slot_address(context, symbol_index, type_index, &
                                          comp_index, addr, error_msg)
         if (len_trim(error_msg) > 0) return
-        default_value = &
-            context%derived_types(type_index)%component_default_value(comp_index)
-        if (.not. emit_i32_store(context%session, &
-                i32_immediate(context%session, default_value), addr, error_msg)) return
+        call component_default_words(context, type_index, comp_index, words, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        do w = 1, size(words)
+            slot_address = addr
+            if (w > 1) then
+                if (.not. emit_i64_binary(context%session, LR_OP_ADD, addr, &
+                        i64_immediate(context%session, int(4*(w - 1), c_int64_t)), &
+                        slot_address, error_msg)) return
+            end if
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, words(w)), slot_address, &
+                    error_msg)) return
+        end do
     end subroutine emit_constructor_default
 
     subroutine emit_component_slot_address(context, symbol_index, type_index, &
