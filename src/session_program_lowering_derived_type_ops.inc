@@ -19,6 +19,9 @@
                             component_value_kind)) return
         if (context%derived_types(type_index)%component_value_kind(comp_index) == &
             VALUE_F64) component_slot_width = 2
+        ! A procedure-pointer component holds an 8-byte callee address (#372).
+        if (context%derived_types(type_index)%component_value_kind(comp_index) == &
+            VALUE_PROC_PTR) component_slot_width = 2
     end function component_slot_width
 
     integer function nested_element_count(context, type_index, comp_index)
@@ -170,6 +173,15 @@
                 cycle
             end if
             if (component_is_allocatable(context, type_index, c)) then
+                call null_allocatable_component_slots(context, symbol_index, &
+                                                      outer_slots, abs_slot, 2, &
+                                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
+            if (component_kind(context, type_index, c) == VALUE_PROC_PTR) then
+                ! A fresh procedure-pointer component is disassociated: null its
+                ! two address slots so associated() reads false (#372).
                 call null_allocatable_component_slots(context, symbol_index, &
                                                       outer_slots, abs_slot, 2, &
                                                       error_msg)

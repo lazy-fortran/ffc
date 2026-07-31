@@ -842,6 +842,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     type_index, nested_type_index, error_msg)
                 return
             end if
+            if (is_proc_pointer_component(component)) then
+                call collect_proc_pointer_component(component, context, &
+                                                    type_index, error_msg)
+                return
+            end if
             call declaration_value_kind(component, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
             ! A scalar allocatable component of intrinsic numeric/logical type
@@ -1123,6 +1128,18 @@ subroutine collect_component_declaration(component_index, parent_line, &
             call set_empty(error_msg)
             return
         end if
+        ! A procedure-pointer component holds a callee address in an inline
+        ! 8-byte slot pair (#372); arrays of them are out of scope.
+        if (is_proc_pointer_component(component)) then
+            if (component%is_array) then
+                call unsupported_feature_error('derived type array component', &
+                    component%line, component%column, 'arrays of procedure '// &
+                    'pointer components are not supported', error_msg)
+                return
+            end if
+            call set_empty(error_msg)
+            return
+        end if
 
         nested_index = declaration_derived_type_index(context, component)
         if (nested_index > 0) then
@@ -1225,6 +1242,74 @@ subroutine collect_component_declaration(component_index, parent_line, &
             character_component_slots = (character_length + 4) / 4
         end if
     end function character_component_slots
+
+    logical function is_proc_pointer_component(component) result(is_proc)
+        ! True for `procedure(iface), pointer :: p` inside a derived type: the
+        ! component stores a callee address rather than a data value (#372).
+        type(declaration_node), intent(in) :: component
+        integer :: n
+
+        ! FortFront reports the component type as "procedure()" or
+        ! "procedure(iface)"; the POINTER attribute is not retained on the
+        ! component node, and a component of procedure type is always a
+        ! procedure pointer.
+        is_proc = .false.
+        if (.not. allocated(component%type_name)) return
+        n = min(9, len_trim(component%type_name))
+        if (n <= 0) return
+        is_proc = lowercase_text(trim(adjustl(component%type_name(1:n)))) == &
+                  'procedure'
+    end function is_proc_pointer_component
+
+    subroutine collect_proc_pointer_component(component, context, type_index, &
+                                              error_msg)
+        ! Record one or more procedure-pointer components. Each occupies an
+        ! inline pointer slot pair (see component_slot_width) that a fresh
+        ! instance nulls, so associated() reads false before any => binding.
+        ! FortFront keeps the component's attribute keywords (nopass, pointer)
+        ! in var_names, so only the entity names are taken from that list.
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, added
+
+        added = 0
+        call set_empty(error_msg)
+        if (allocated(component%var_names)) then
+            do i = 1, size(component%var_names)
+                if (is_proc_component_attribute(component%var_names(i))) cycle
+                call add_derived_component(context, type_index, &
+                                           component%var_names(i), &
+                                           component%line, component%column, &
+                                           .false., 0_c_int64_t, 1, &
+                                           VALUE_PROC_PTR, error_msg)
+                if (len_trim(error_msg) > 0) return
+                added = added + 1
+            end do
+        end if
+        if (added > 0) return
+        if (.not. allocated(component%var_name)) then
+            error_msg = 'derived type component declaration did not expose a name'
+            return
+        end if
+        call add_derived_component(context, type_index, component%var_name, &
+                                   component%line, component%column, &
+                                   .false., 0_c_int64_t, 1, VALUE_PROC_PTR, &
+                                   error_msg)
+    end subroutine collect_proc_pointer_component
+
+    logical function is_proc_component_attribute(text) result(is_attribute)
+        ! True for an attribute keyword FortFront leaves in a procedure
+        ! component's entity list rather than an entity name.
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: word
+
+        word = lowercase_text(trim(adjustl(text)))
+        is_attribute = word == 'nopass' .or. word == 'pointer' .or. &
+                       word == 'pass' .or. word == 'private' .or. &
+                       word == 'public'
+    end function is_proc_component_attribute
 
     logical function component_alloc_array_rank_one(component) result(is_rank_one)
         ! True when an allocatable array component declares exactly one dimension.
