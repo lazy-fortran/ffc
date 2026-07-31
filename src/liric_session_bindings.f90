@@ -7,7 +7,7 @@ module liric_session_bindings
         lr_operand_desc_t, lr_inst_desc_t, &
         liric_session_t, require_open_session, &
         status_ok, liric_session_error_message, &
-        clear_liric_error, to_c_chars, set_empty
+        clear_liric_error, to_c_chars, set_empty, verify_liric_abi
     implicit none
     private
 
@@ -53,6 +53,7 @@ module liric_session_bindings
     public :: lr_session_config_t, lr_error_t, lr_operand_desc_t, &
         lr_inst_desc_t, liric_session_t
     public :: liric_session_create
+    public :: verify_liric_abi
     public :: liric_session_error_message
     public :: i32_vreg, i32_immediate, f32_vreg, f64_vreg
     public :: global_operand
@@ -259,6 +260,15 @@ contains
         type(lr_error_t) :: error
 
         call clear_liric_error(error)
+
+        ! Verify the library's published session ABI before anything is
+        ! emitted (#375). A shifted layout must stop us here, not corrupt
+        ! descriptors later.
+        if (.not. verify_liric_abi(error_msg)) then
+            session%handle = c_null_ptr
+            return
+        end if
+
         local_config = lr_session_config_t()
         if (present(config)) local_config = config
 
