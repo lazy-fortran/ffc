@@ -231,6 +231,9 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: value
         type(lr_operand_desc_t) :: address
         logical :: is_parameter = .false.
+        ! A dummy argument of the current procedure. Its storage is borrowed
+        ! from the caller, so scope exit never finalizes it (#403).
+        logical :: is_dummy_argument = .false.
         ! Temporary by-value override used while inlining a statement function;
         ! it is resolved by its synthetic name until the body expression is
         ! restored (#332).
@@ -427,6 +430,10 @@ module session_program_lowering_types
         ! Lets a polymorphic dummy check accept an extension of its declared
         ! type (#369).
         character(len=64) :: parent_name = ''
+        ! Name of the scalar FINAL procedure declared for this type (empty
+        ! when the type declares none). It runs once when an owned scalar
+        ! value of the type reaches the end of its lifetime (#403).
+        character(len=64) :: final_proc_name = ''
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)

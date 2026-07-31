@@ -110,6 +110,10 @@
         end if
 
         if (.not. context%current_block_terminated) then
+            ! The procedure ends execution here, so its owned local derived
+            ! values reach the end of their lifetime (#403).
+            call emit_scope_exit_finalizers(context, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_ret_void(context%session, error_msg)) return
         end if
         if (.not. finish_function(context%session, error_msg)) return

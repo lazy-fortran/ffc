@@ -497,6 +497,72 @@
         end do
     end function find_module_export_index
 
+    logical function symbol_is_scope_finalizable(context, symbol_index) &
+            result(is_finalizable)
+        ! An owned local scalar derived variable of a type that declares a
+        ! scalar FINAL procedure (#403). Dummies borrow their storage and
+        ! globals outlive the scope, so neither is finalized here.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+        integer :: type_index
+
+        is_finalizable = .false.
+        if (.not. context%symbols(symbol_index)%is_derived) return
+        if (context%symbols(symbol_index)%is_dummy_argument) return
+        if (context%symbols(symbol_index)%is_array) return
+        ! A pointer names storage it does not own.
+        if (context%symbols(symbol_index)%is_pointer) return
+        ! An allocatable owns storage only while it is allocated; a moved-from
+        ! or deallocated value has already lost its address.
+        if (context%symbols(symbol_index)%is_allocatable) then
+            if (.not. context%symbols(symbol_index)%has_address) return
+        end if
+        if (symbol_has_global_storage(context%symbols(symbol_index))) return
+        type_index = context%symbols(symbol_index)%derived_type_index
+        if (type_index <= 0) return
+        if (type_index > context%derived_type_count) return
+        if (len_trim(context%derived_types(type_index)%final_proc_name) == 0) return
+        is_finalizable = .true.
+    end function symbol_is_scope_finalizable
+
+    subroutine emit_scalar_finalizer_call(context, symbol_index, error_msg)
+        ! Call the declared scalar FINAL procedure with the value's storage
+        ! address, exactly once at the point the value dies (#403).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(1)
+        character(len=:), allocatable :: final_name
+        integer :: type_index
+
+        call set_empty(error_msg)
+        type_index = context%symbols(symbol_index)%derived_type_index
+        if (type_index <= 0) return
+        if (type_index > context%derived_type_count) return
+        final_name = trim(context%derived_types(type_index)%final_proc_name)
+        if (len_trim(final_name) == 0) return
+        args(1) = context%symbols(symbol_index)%element_address
+        if (.not. emit_call_with_optional_padding(context, &
+                call_emit_name(context%arena, final_name, context), args, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_scalar_finalizer_call
+
+    subroutine emit_scope_exit_finalizers(context, error_msg)
+        ! End of a procedure's execution finalizes each owned local derived
+        ! value once, in reverse declaration order (#403).
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        do i = context%symbol_count, 1, -1
+            if (.not. symbol_is_scope_finalizable(context, i)) cycle
+            call emit_scalar_finalizer_call(context, i, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine emit_scope_exit_finalizers
+
     subroutine lower_derived_type_definition(node, context, error_msg)
         type(derived_type_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -619,11 +685,26 @@
                         'final, or deferred', error_msg)
                     return
                 end if
-                ! FINAL bindings name a destructor, not a callable method.
-                ! ffc does not model finalization, so the type registers and
-                ! lowers ignoring the final; a program that observes the
-                ! finaliser's side effect mismatches rather than mis-passes.
-                if (binding%is_final) cycle
+                ! FINAL names a destructor, not a callable method: record it
+                ! so an owned scalar value of this type is finalized once at
+                ! the end of its lifetime (#403). A second FINAL binding is
+                ! ambiguous for the scalar case ffc models, so it is rejected
+                ! rather than resolved by picking one.
+                if (binding%is_final) then
+                    if (.not. allocated(binding%binding_name)) cycle
+                    if (len_trim(context%derived_types(type_index)% &
+                                 final_proc_name) > 0) then
+                        call unsupported_feature_error('final procedure', &
+                            node%line, node%column, &
+                            'direct LIRIC session supports one scalar final '// &
+                            'procedure per type; "'//trim(node%name)// &
+                            '" declares several', error_msg)
+                        return
+                    end if
+                    context%derived_types(type_index)%final_proc_name = &
+                        trim(binding%binding_name)
+                    cycle
+                end if
                 if (.not. allocated(binding%binding_name)) cycle
                 method_name_buf = trim(binding%binding_name)
                 if (allocated(binding%implementation) .and. &
