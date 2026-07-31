@@ -95,6 +95,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
         right_is_literal = .false.
         is_self_alias = .false.
 
+        ! A fixed-length result (character(len=N) :: s) uses the descriptor
+        ! return ABI but keeps its declared width: the concatenated value pads
+        ! with blanks or truncates to N instead of taking the operand sum.
+        if (context%symbols(dest_symbol_index)%character_length > 0) then
+            call lower_fixed_width_deferred_concat(arena, node, context, &
+                                                   dest_symbol_index, error_msg)
+            return
+        end if
+
         ! Get the binary // operands from the assignment value.
         if (.not. is_binary_op(arena, node%value_index)) then
             error_msg = 'expected binary // operator for deferred character '// &
@@ -273,6 +282,77 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine lower_deferred_concat_assignment
 
+    subroutine lower_fixed_width_deferred_concat(arena, node, context, &
+                                                 dest_symbol_index, error_msg)
+        ! Concatenate into a descriptor-returned destination whose declared
+        ! length is fixed (character(len=N)). The buffer is exactly N content
+        ! bytes plus a trailing null, blank-filled first so a short chain pads
+        ! and an over-long one truncates. The descriptor records N, so LEN and
+        ! the printed bytes match a fixed-length result under gfortran.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: data_ops(:), len_ops(:)
+        integer, allocatable :: stat_len(:)
+        type(lr_operand_desc_t) :: buf, offset, null_ptr, size_op
+        character(len=64) :: null_name
+        integer :: count, dest_len
+
+        call set_empty(error_msg)
+        dest_len = context%symbols(dest_symbol_index)%character_length
+        allocate (data_ops(64), len_ops(64), stat_len(64))
+        count = 0
+        call collect_concat_operands(arena, node%value_index, context, data_ops, &
+                                     len_ops, stat_len, count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (count == 0) then
+            error_msg = 'character concatenation has no operands'
+            return
+        end if
+
+        size_op = i64_immediate(context%session, int(dest_len + 1, c_int64_t))
+        if (context%in_internal_function .and. &
+            dest_symbol_index == context%current_function_result_index) then
+            ! The result outlives the callee frame, so its storage is owned
+            ! heap memory the caller copies from and releases.
+            if (.not. emit_malloc(context%session, size_op, buf, error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, size_op, buf, &
+                error_msg)) return
+        end if
+        call fill_spaces(context, buf, &
+            i32_immediate(context%session, int(dest_len, c_int64_t)), error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call emit_concat_copies(context, data_ops, len_ops, stat_len, count, &
+                                dest_len, buf, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, &
+            i64_immediate(context%session, int(dest_len, c_int64_t)), offset, &
+            error_msg)) return
+        context%string_literal_count = context%string_literal_count + 1
+        null_name = ffc_unit_global_name( &
+            context, 'dfcat.term.', context%string_literal_count)
+        call materialize_liric_string(context%session, trim(null_name), '', &
+                                      null_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_memcpy(context%session, offset, null_ptr, &
+            i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+
+        if (.not. emit_ptr_store(context%session, buf, &
+            context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, int(dest_len, c_int64_t)), &
+            context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+
+        context%symbols(dest_symbol_index)%value = buf
+        context%symbols(dest_symbol_index)%has_character_value = .true.
+    end subroutine lower_fixed_width_deferred_concat
+
     subroutine materialize_concat_literal(context, text, data_op, len_op, &
                                           error_msg)
         use, intrinsic :: iso_c_binding, only: c_int64_t
@@ -324,7 +404,12 @@ integer function resolve_concat_operand(arena, node_index, context, &
         fixed_length = context%symbols(dest_symbol_index)%character_length
         if (fixed_length > 0) then
             allocate (character(len=fixed_length) :: stored_text)
-            stored_text = literal_text
+            ! stored_text is deferred-length allocatable, so a whole-variable
+            ! assignment would reallocate it to the literal's own length and
+            ! drop the blank padding. Assign through a substring reference so
+            ! the declared width N is preserved: shorter literals pad with
+            ! blanks, longer ones truncate.
+            stored_text(1:fixed_length) = literal_text
             call materialize_concat_literal(context, stored_text, data_op, &
                                             len_op, error_msg)
         else

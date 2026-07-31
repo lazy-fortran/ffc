@@ -17,6 +17,19 @@
                 ! other non-constant) keeps the deferred descriptor ABI: the
                 ! length is resolved when the body assigns the result value.
                 if (len_trim(error_msg) > 0) then
+                    ! F2018 10.1.11: a nonconstant result length must be a
+                    ! specification expression. A plain local variable of the
+                    ! same function is not one, so reject it instead of letting
+                    ! the deferred ABI silently invent a width (#410).
+                    if (result_length_is_local_variable(context, node)) then
+                        call unsupported_feature_error( &
+                            'character length declaration', node%line, &
+                            node%column, &
+                            'nonconstant character result length must be a '// &
+                            'specification expression: a local variable of '// &
+                            'the same procedure is not permitted', error_msg)
+                        return
+                    end if
                     if (runtime_character_length(context, node)) then
                         call resolve_len_of_character_length(context, node, &
                             source_index)
@@ -301,6 +314,33 @@
     ! length is only valid for a function result here, lowered through the
     ! deferred descriptor ABI: the actual width comes from the assigned result
     ! value, so the declared expression itself is never evaluated.
+    ! True when a function result's character length is written as a bare
+    ! identifier naming a local variable of the same procedure: not a dummy
+    ! argument, not a named constant, and not host- or module-associated
+    ! storage. Such a length is not a valid specification expression.
+    logical function result_length_is_local_variable(context, node)
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable :: expr
+        integer :: symbol_index
+
+        result_length_is_local_variable = .false.
+        if (.not. context%in_internal_function) return
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        expr = trim(adjustl(node%character_length_expr))
+        if (len(expr) == 0) return
+        if (verify(expr, &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+        symbol_index = find_symbol_compat(context, expr)
+        if (symbol_index <= 0) return
+        if (context%symbols(symbol_index)%is_parameter) return
+        if (context%symbols(symbol_index)%has_i32_constant) return
+        if (symbol_has_global_storage(context%symbols(symbol_index))) return
+        result_length_is_local_variable = .true.
+    end function result_length_is_local_variable
+
     logical function runtime_character_length(context, node)
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
