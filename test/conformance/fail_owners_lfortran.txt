@@ -1,8 +1,6 @@
 # Current FAIL ownership for the parity dashboard.
 # Entries annotate reports and do not change gauntlet dispositions.
 block_data_02.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA initialization
-arrays_06_size.f90 # owner=lazy-fortran/ffc#359; reason=capture dummy-bound extents on entry
-arrays_07_size.f90 # owner=lazy-fortran/ffc#359; reason=capture dummy-bound extents on entry
 common_18.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 implicit_interface_38b.f90 # owner=lazy-fortran/ffc#353; reason=register positional alternate-return slots
 interface_29.f90 # owner=lazy-fortran/ffc#357; reason=preserve bodies after interface blocks
