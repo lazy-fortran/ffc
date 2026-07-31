@@ -260,8 +260,39 @@
             procs(count)%kind = kind_text
             procs(count)%nargs = nargs
             procs(count)%arg_kinds = arg_tokens
+            procs(count)%arg_names = fmod_procedure_arg_names(arena, &
+                                                     procedure_indices(p))
         end do
     end subroutine build_fmod_procedures
+
+    function fmod_procedure_arg_names(arena, node_index) result(tokens)
+        ! Space-joined dummy-argument names of an exported module procedure, so
+        ! a separately compiled caller can associate keyword actuals with it
+        ! (#408). Empty when a name cannot be recovered.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: tokens
+        character(len=64), allocatable :: names(:)
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer :: count, i
+
+        tokens = ''
+        count = -1
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            call collect_param_names(arena, fn_node%param_indices, names, count)
+        else
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            call collect_param_names(arena, sb_node%param_indices, names, count)
+        end if
+        if (count < 0) return
+        do i = 1, count
+            if (i > 1) tokens = tokens//' '
+            tokens = tokens//trim(names(i))
+        end do
+    end function fmod_procedure_arg_names
 
     subroutine grow_fmod_procs(arr, n)
         type(fmod_procedure_t), allocatable, intent(inout) :: arr(:)

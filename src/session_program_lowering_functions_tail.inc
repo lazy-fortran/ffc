@@ -1512,3 +1512,101 @@
             context%function_param_counts = 0
         end if
     end subroutine ensure_all_context_arrays_allocated
+
+    subroutine collect_param_names(arena, param_indices, names, count)
+        ! Dummy-argument names behind a procedure definition's parameter index
+        ! list. count is -1 when any parameter name cannot be recovered, so the
+        ! caller treats the signature as unusable for keyword association.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        character(len=64), allocatable, intent(inout) :: names(:)
+        integer, intent(out) :: count
+        character(len=:), allocatable :: name, name_err
+        integer :: i
+
+        count = 0
+        if (allocated(names)) deallocate (names)
+        if (.not. allocated(param_indices)) then
+            allocate (names(0))
+            return
+        end if
+        allocate (names(size(param_indices)))
+        names = ''
+        do i = 1, size(param_indices)
+            call parameter_name(arena, param_indices(i), name, name_err)
+            if (len_trim(name_err) > 0) then
+                count = -1
+                return
+            end if
+            names(i) = name
+        end do
+        count = size(param_indices)
+    end subroutine collect_param_names
+
+    subroutine callee_dummy_names(arena, context, callee_name, names, count)
+        ! Public dummy-argument names of callee_name, taken from its definition
+        ! or interface in this unit, else from a separately compiled signature
+        ! imported from a .fmod. count is -1 when no signature is visible.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        character(len=64), allocatable, intent(out) :: names(:)
+        integer, intent(out) :: count
+        integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        count = -1
+        allocate (names(0))
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                call collect_param_names(arena, sb_node%param_indices, names, &
+                                         count)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                call collect_param_names(arena, fn_node%param_indices, names, &
+                                         count)
+                return
+            end if
+        end do
+        call external_dummy_names(context, callee_name, names, count)
+    end subroutine callee_dummy_names
+
+    subroutine external_dummy_names(context, callee_name, names, count)
+        ! Dummy-argument names of a separately compiled procedure whose
+        ! signature arrived through a .fmod. count stays -1 when the artefact
+        ! carried no names (an older .fmod) or the procedure is unknown.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        character(len=64), allocatable, intent(inout) :: names(:)
+        integer, intent(inout) :: count
+        integer :: idx, j
+
+        idx = external_procedure_index(context, callee_name)
+        if (idx <= 0) return
+        associate (ep => context%external_procedures(idx))
+            if (ep%arg_count > MAX_PROC_ARGS) return
+            do j = 1, ep%arg_count
+                if (len_trim(ep%arg_names(j)) == 0) return
+            end do
+            if (allocated(names)) deallocate (names)
+            allocate (names(ep%arg_count))
+            do j = 1, ep%arg_count
+                names(j) = ep%arg_names(j)
+            end do
+            count = ep%arg_count
+        end associate
+    end subroutine external_dummy_names

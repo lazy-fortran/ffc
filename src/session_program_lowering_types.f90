@@ -508,6 +508,9 @@ module session_program_lowering_types
         character(len=64) :: c_name = ''
         integer :: return_value_kind = VALUE_I32
         integer :: arg_value_kinds(MAX_PROC_ARGS) = VALUE_I32
+        ! Declared dummy names, when the signature carried them, so a call
+        ! may associate its actuals by keyword (#408). Empty when unknown.
+        character(len=64) :: arg_names(MAX_PROC_ARGS) = ''
         integer :: arg_count = 0
         ! A bind(c) external passes arguments by value; a separately
         ! compiled module procedure resolved from a .fmod passes them by

@@ -677,12 +677,13 @@
 
     subroutine add_external_procedure(context, fortran_name, c_name, &
                                       return_kind, arg_count, by_reference, &
-                                      arg_kinds)
+                                      arg_kinds, arg_names)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
         logical, intent(in), optional :: by_reference
         integer, intent(in), optional :: arg_kinds(:)
+        character(len=*), intent(in), optional :: arg_names(:)
         integer :: j
 
         call grow_external_procedures(context)
@@ -701,6 +702,12 @@
             if (present(arg_kinds)) then
                 do j = 1, min(arg_count, size(arg_kinds))
                     ep%arg_value_kinds(j) = arg_kinds(j)
+                end do
+            end if
+            ep%arg_names = ''
+            if (present(arg_names)) then
+                do j = 1, min(arg_count, size(arg_names))
+                    ep%arg_names(j) = trim(arg_names(j))
                 end do
             end if
         end associate

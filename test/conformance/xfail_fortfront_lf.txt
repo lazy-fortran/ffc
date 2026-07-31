@@ -19,7 +19,6 @@ issue_1330_missing_declarations.lf # owner=lazy-fortran/ffc#438; reason=apply La
 issue_1410_pointer_null.lf # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 issue_1414_implied_do.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_1534_multi_dimension_allocatable.lf # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
-issue_1775_intent_in_preserved.lf # owner=lazy-fortran/ffc#408; reason=reorder keyword actual arguments by public dummy names
 issue_1784_subroutine_wrapping.lf # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 issue_1814_nested_lazy_function.lf # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_1816_multiple_return_values.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
