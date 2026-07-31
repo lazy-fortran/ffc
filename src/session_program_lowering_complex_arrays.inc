@@ -376,3 +376,90 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_complex_array_whole_assignment
+
+    ! Store one complex value into the re/im component arrays of a fixed-size
+    ! complex array at a compile-time linear element index.
+    subroutine store_complex_array_element(context, symbol_index, linear_index, &
+                                           vk, re_val, im_val, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: linear_index
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_addr, im_addr
+
+        call complex_array_linear_addresses(context, symbol_index, linear_index, &
+                                            vk, re_addr, im_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (vk == VALUE_C4) then
+            if (.not. emit_liric_f32_store(context%session, re_val, re_addr, &
+                                           error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, im_val, im_addr, &
+                                           error_msg)) return
+        else
+            if (.not. emit_liric_f64_store(context%session, re_val, re_addr, &
+                                           error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, im_val, im_addr, &
+                                           error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine store_complex_array_element
+
+    ! Initialize a fixed-size complex array from an array constructor: fold each
+    ! element to a complex value of the declared kind and store it in order.
+    subroutine lower_complex_array_constructor(arena, elements, symbol_index, &
+                                               context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elements(:)
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_val, im_val
+        integer :: i, vk
+
+        call set_empty(error_msg)
+        vk = context%symbols(symbol_index)%value_kind
+        do i = 1, size(elements)
+            if (vk == VALUE_C4) then
+                call eval_c4_rhs(arena, elements(i), context, re_val, im_val, &
+                                 error_msg)
+            else
+                call eval_c8_rhs(arena, elements(i), context, re_val, im_val, &
+                                 error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            call store_complex_array_element(context, symbol_index, i - 1, vk, &
+                                             re_val, im_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_complex_array_constructor
+
+    ! Broadcast one complex scalar initializer across every element of a
+    ! fixed-size complex array.
+    subroutine broadcast_complex_scalar_initializer(arena, value_index, &
+                                                    symbol_index, array_size, &
+                                                    context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: array_size
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_val, im_val
+        integer :: i, vk
+
+        vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_C4) then
+            call eval_c4_rhs(arena, value_index, context, re_val, im_val, error_msg)
+        else
+            call eval_c8_rhs(arena, value_index, context, re_val, im_val, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        do i = 1, array_size
+            call store_complex_array_element(context, symbol_index, i - 1, vk, &
+                                             re_val, im_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine broadcast_complex_scalar_initializer
