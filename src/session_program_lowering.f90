@@ -44,7 +44,7 @@ module session_program_lowering
         is_literal, get_literal_info, &
         is_identifier, get_identifier_name, &
         is_module_node, is_program_node, &
-        declaration_binding_t, resolve_name_at_node, &
+        declaration_binding_t, resolve_name_at_node, get_scope_bindings, &
         resolve_identifier_binding, BINDING_DECLARATION, &
         BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
         BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
@@ -220,7 +220,7 @@ module session_program_lowering
         multi_unit_container_node, submodule_node
     use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
-        branch_result_t, symbol_t, &
+        branch_result_t, symbol_t, declaration_record_t, &
         array_section_info_t, &
         reduction_operand_t, &
         derived_type_info_t, &
@@ -395,7 +395,6 @@ contains
         integer :: symbol_index, binding_index
 
         if (len_trim(name) == 0) return
-        if (context%storage_scope_depth <= 0) return
         ! The declaration has just run, so the newest same-named slot is the
         ! one it produced. This is the last place text is used as a key.
         symbol_index = find_symbol(context, name)
@@ -406,6 +405,9 @@ contains
         if (.not. binding%found) return
         if (binding%declaration_node_index /= node_index) return
         if (binding%scope_node_index <= 0) return
+        if (context%declaration_collection_complete) then
+            if (find_declaration_record(context, binding) <= 0) return
+        end if
         binding_index = find_symbol_for_binding(context, binding)
         if (binding_index > 0) then
             symbol_index = binding_index

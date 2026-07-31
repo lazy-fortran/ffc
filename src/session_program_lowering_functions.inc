@@ -1390,6 +1390,23 @@
         end do
     end subroutine copy_module_exports
 
+    subroutine copy_declaration_registry(source, destination)
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+
+        if (allocated(destination%declaration_records)) then
+            deallocate(destination%declaration_records)
+        end if
+        if (allocated(source%declaration_records)) then
+            allocate(destination%declaration_records( &
+                size(source%declaration_records)))
+            destination%declaration_records = source%declaration_records
+        end if
+        destination%declaration_record_count = source%declaration_record_count
+        destination%declaration_collection_complete = &
+            source%declaration_collection_complete
+    end subroutine copy_declaration_registry
+
     subroutine copy_host_global_symbols(source, destination)
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
@@ -1436,6 +1453,7 @@
         character(len=:), allocatable :: name, resolve_error, kind_error
         logical :: found
         integer :: i, value_kind, result_derived_index, procedure_index
+        integer :: declaration_index
 
         call set_empty(error_msg)
         do i = 1, arena%size
@@ -1452,6 +1470,14 @@
             if (binding_scope_is_module(arena, binding%scope_node_index)) cycle
             if (binding%binding_kind /= BINDING_DECLARATION .and. &
                 binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
+            declaration_index = find_declaration_record(context, binding)
+            if (declaration_index > 0 .and. &
+                context%declaration_records(declaration_index)%is_array) then
+                call register_host_array_global_symbol(context, binding, name, &
+                    context%declaration_records(declaration_index), error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             if (find_symbol_for_binding(context, binding) > 0) cycle
             value_kind = 0
             call set_empty(kind_error)
@@ -1616,6 +1642,122 @@
             binding%declaration_node_index, binding%declaration_entity_index, &
             binding%scope_node_index, index)
     end subroutine register_host_global_symbol
+
+    subroutine register_host_array_global_symbol(context, binding, name, record, &
+                                                 error_msg)
+        ! A contained procedure can use a fixed-size host array before the host
+        ! procedure's body is lowered. Give that binding one static global, just
+        ! as module arrays receive, so the later host declaration reuses the
+        ! identity instead of allocating a second array.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_double, c_float, &
+            c_int32_t, c_int64_t, c_loc, c_ptr, c_size_t
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        type(declaration_record_t), intent(in) :: record
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), target, allocatable :: array_i32(:)
+        real(c_float), target, allocatable :: array_f32(:)
+        real(c_double), target, allocatable :: array_f64(:)
+        type(c_ptr) :: elem_type, global_type, init_ptr
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        integer :: array_lower, array_size, index
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        if (find_symbol_for_binding(context, binding) > 0) return
+        if (record%rank /= 1) return
+        if (.not. node_exists(context%arena, binding%declaration_node_index)) return
+        if (.not. host_array_scope_is_program(context%arena, &
+                                              binding%scope_node_index)) return
+        select type (decl => &
+                context%arena%entries(binding%declaration_node_index)%node)
+        type is (declaration_node)
+            if (decl%is_allocatable .or. decl%is_pointer .or. decl%is_target) return
+            call get_array_bounds(decl, context, array_lower, array_size, error_msg)
+        class default
+            return
+        end select
+        if (len_trim(error_msg) > 0) return
+        if (array_size <= 0) return
+
+        c_false_local = .false.
+        select case (record%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            allocate (array_i32(array_size))
+            array_i32 = 0_c_int32_t
+            elem_type = lr_type_i32_s(context%session%handle)
+            init_ptr = c_loc(array_i32)
+            init_size = int(array_size, c_size_t) * 4_c_size_t
+        case (VALUE_F32)
+            allocate (array_f32(array_size))
+            array_f32 = 0.0_c_float
+            elem_type = lr_type_f32_s(context%session%handle)
+            init_ptr = c_loc(array_f32)
+            init_size = int(array_size, c_size_t) * 4_c_size_t
+        case (VALUE_F64)
+            allocate (array_f64(array_size))
+            array_f64 = 0.0_c_double
+            elem_type = lr_type_f64_s(context%session%handle)
+            init_ptr = c_loc(array_f64)
+            init_size = int(array_size, c_size_t) * 8_c_size_t
+        case default
+            return
+        end select
+        global_name = host_global_name(binding, name)
+        call to_c_chars(global_name, c_name)
+        global_type = lr_type_array_s(context%session%handle, elem_type, &
+                                      int(array_size, c_int64_t))
+        global_id = lr_session_global(context%session%handle, c_name, global_type, &
+                                      c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create host-associated array: '//trim(name)
+            return
+        end if
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern host-associated array: '//trim(name)
+            return
+        end if
+
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index) = symbol_t()
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = record%value_kind
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%is_reference = .true.
+        context%symbols(index)%is_array = .true.
+        context%symbols(index)%array_rank = 1
+        context%symbols(index)%array_size = array_size
+        context%symbols(index)%array_lower_bound = array_lower
+        context%symbols(index)%array_dim_sizes(1) = array_size
+        context%symbols(index)%array_dim_lowers(1) = array_lower
+        context%symbols(index)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(index)%address%payload = int(global_id, c_int64_t)
+        context%symbols(index)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(index)%address%global_offset = 0_c_int64_t
+        context%symbols(index)%element_address = context%symbols(index)%address
+        context%symbol_count = index
+        call attach_symbol_binding(context, index, binding)
+        call set_empty(error_msg)
+    end subroutine register_host_array_global_symbol
+
+    logical function host_array_scope_is_program(arena, scope_node_index) &
+        result(is_program_scope)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: scope_node_index
+
+        is_program_scope = .false.
+        if (.not. node_exists(arena, scope_node_index)) return
+        select type (scope => arena%entries(scope_node_index)%node)
+        type is (program_node)
+            is_program_scope = .true.
+        end select
+    end function host_array_scope_is_program
 
     subroutine materialize_host_character_globals(context, error_msg)
         ! Host-associated character results and variables use a mutable global
@@ -2399,6 +2541,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_declaration_registry(parent_context, context)
         call copy_host_global_symbols(parent_context, context)
         result_binding_index = 0
         if (function_node_index > 0) then
@@ -2545,7 +2688,14 @@
             if (len_trim(error_msg) > 0) return
             context%current_function_result_index = find_symbol(context, result_name)
         end if
-       if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
+        ! The result binding is synthetic in FortFront (its identity is the
+        ! function scope), so publish it before any specification or executable
+        ! expression can reference the result name (#457).
+        if (result_binding%found .and. context%current_function_result_index > 0) then
+            call attach_symbol_binding(context, context%current_function_result_index, &
+                                       result_binding)
+        end if
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                 value_kind == VALUE_DERIVED .or. &
                 value_kind == VALUE_ARRAY_RESULT .or. &
                 value_kind == VALUE_ALLOC_ARRAY_RESULT .or. &
