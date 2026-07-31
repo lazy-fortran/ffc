@@ -398,6 +398,10 @@ module session_program_lowering_types
         ! component (0 for every other component). Column-major element
         ! addressing of comp(i,j) needs this stride.
         integer, allocatable :: component_dim1(:)
+        ! Name of the type this one extends (empty when it extends nothing).
+        ! Lets a polymorphic dummy check accept an extension of its declared
+        ! type (#369).
+        character(len=64) :: parent_name = ''
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)
