@@ -158,6 +158,30 @@
             source_index = 0
     end subroutine resolve_len_of_character_length
 
+    ! #384: reject a character length specification that cannot be a scalar
+    ! INTEGER expression: a real, complex, logical or character literal, or a
+    ! LEN() of an entity that is not of type CHARACTER.
+    subroutine validate_character_length_expression(node, error_msg)
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: expr
+        character(len=:), allocatable :: reason
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        expr = trim(adjustl(node%character_length_expr))
+        if (len(expr) == 0) return
+
+        reason = character_length_literal_reason(expr)
+        if (len_trim(reason) == 0) return
+
+        write (location, '(" at line ",I0,", column ",I0)') node%line, node%column
+        error_msg = 'character length must be a scalar INTEGER expression: '// &
+                    trim(reason)//trim(location)
+    end subroutine validate_character_length_expression
+
     subroutine declaration_character_length(context, node, character_length, &
                                             error_msg, reference_index)
         type(lowering_context_t), intent(in) :: context
@@ -170,6 +194,10 @@
 
         character_length = -1
         call set_empty(error_msg)
+        ! #384: a length that is not a scalar INTEGER expression is invalid at
+        ! every declaration site, so it is rejected before any other handling.
+        call validate_character_length_expression(node, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. allocated(node%type_name)) then
             return
         end if
@@ -263,11 +291,16 @@
         type(declaration_node), intent(in) :: node
         character(len=:), allocatable :: expr
         character(len=:), allocatable :: name
+        character(len=:), allocatable :: invalid_msg
         integer :: symbol_index
 
         runtime_character_length = .false.
         if (.not. node%has_character_length) return
         if (.not. allocated(node%character_length_expr)) return
+        ! An invalid length (#384) is never a runtime length: the deferred ABI
+        ! must not absorb it and hide the diagnostic.
+        call validate_character_length_expression(node, invalid_msg)
+        if (len_trim(invalid_msg) > 0) return
         expr = trim(adjustl(node%character_length_expr))
         if (len(expr) == 0) return
 
@@ -1560,3 +1593,283 @@
     end subroutine fill_spaces
 
     include 'session_program_lowering_character_tail.inc'
+
+    ! #384: every CHARACTER length specification must be a scalar INTEGER
+    ! expression. The parser drops a length it cannot read as an integer, so
+    ! the specification text is re-read from the source the arena carries;
+    ! this mirrors check_intrinsic_type_stmt_source.
+    subroutine check_character_length_specs(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable :: source
+        character(len=:), allocatable :: line
+        character(len=:), allocatable :: reason
+        character(len=*), parameter :: PREFIX = &
+            'character length must be a scalar INTEGER expression: '
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+        logical :: found
+        integer :: pos, line_no, next_nl, column
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        pos = 1
+        line_no = 1
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            call character_length_spec_reason(line, reason, column)
+            if (len_trim(reason) > 0) then
+                write (location, '(" at line ",I0,", column ",I0)') &
+                    line_no, column
+                error_msg = PREFIX//trim(reason)//trim(location)
+                return
+            end if
+            line_no = line_no + 1
+        end do
+    end subroutine check_character_length_specs
+
+    ! Report why the first CHARACTER length specification on one source line
+    ! is not a scalar INTEGER expression, and where it starts. An empty reason
+    ! means the line carries no invalid specification.
+    subroutine character_length_spec_reason(line, reason, column)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: reason
+        integer, intent(out) :: column
+        character(len=:), allocatable :: code
+        character(len=:), allocatable :: lowered
+        character(len=:), allocatable :: spec
+        integer :: i, spec_start, spec_end
+
+        reason = ''
+        column = 1
+        call strip_source_comment(line, code)
+        if (len_trim(code) == 0) return
+        lowered = lowercase_text(mask_string_literals(code))
+
+        i = 1
+        do while (i > 0)
+            i = next_character_keyword(lowered, i)
+            if (i <= 0) exit
+            call character_spec_bounds(lowered, i, spec_start, spec_end)
+            if (spec_start <= 0) then
+                i = i + len('character')
+                cycle
+            end if
+            spec = character_length_spec_text(code(spec_start + 1:spec_end - 1))
+            reason = character_length_literal_reason(spec)
+            if (len_trim(reason) == 0) then
+                if (statement_is_implicit(lowered)) then
+                    if (index(spec, '(') > 0) then
+                        reason = 'an IMPLICIT length needs a constant '// &
+                                 'expression'
+                    end if
+                end if
+            end if
+            if (len_trim(reason) > 0) then
+                column = spec_start
+                return
+            end if
+            i = spec_end + 1
+        end do
+    end subroutine character_length_spec_reason
+
+    ! Position of the next CHARACTER keyword in lowered source outside of
+    ! character literals and not embedded in a longer identifier; 0 when none.
+    integer function next_character_keyword(lowered, from) result(at)
+        character(len=*), intent(in) :: lowered
+        integer, intent(in) :: from
+        character(len=:), allocatable :: ident_chars
+        integer :: i
+
+        ident_chars = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+        at = 0
+        i = from
+        do while (i + len('character') - 1 <= len(lowered))
+            if (lowered(i:i + len('character') - 1) == 'character') then
+                if (identifier_boundary(lowered, i, len('character'))) then
+                    at = i
+                    return
+                end if
+            end if
+            i = i + 1
+        end do
+    end function next_character_keyword
+
+    ! True when the word of length word_len starting at position start is not
+    ! part of a longer identifier.
+    logical function identifier_boundary(lowered, start, word_len)
+        character(len=*), intent(in) :: lowered
+        integer, intent(in) :: start
+        integer, intent(in) :: word_len
+        character(len=:), allocatable :: ident_chars
+        integer :: after
+
+        ident_chars = 'abcdefghijklmnopqrstuvwxyz0123456789_'
+        identifier_boundary = .true.
+        if (start > 1) then
+            if (verify(lowered(start - 1:start - 1), ident_chars) == 0) then
+                identifier_boundary = .false.
+                return
+            end if
+        end if
+        after = start + word_len
+        if (after <= len(lowered)) then
+            if (verify(lowered(after:after), ident_chars) == 0) then
+                identifier_boundary = .false.
+            end if
+        end if
+    end function identifier_boundary
+
+    ! Bounds of the parenthesised type-parameter list that follows the
+    ! CHARACTER keyword at position start; spec_start is 0 when the keyword is
+    ! not followed by one.
+    subroutine character_spec_bounds(code, start, spec_start, spec_end)
+        character(len=*), intent(in) :: code
+        integer, intent(in) :: start
+        integer, intent(out) :: spec_start
+        integer, intent(out) :: spec_end
+        integer :: i, depth
+
+        spec_start = 0
+        spec_end = 0
+        i = start + len('character')
+        do while (i <= len(code))
+            if (code(i:i) /= ' ') exit
+            i = i + 1
+        end do
+        if (i > len(code)) return
+        if (code(i:i) /= '(') return
+        spec_start = i
+        depth = 0
+        do i = spec_start, len(code)
+            if (code(i:i) == '(') depth = depth + 1
+            if (code(i:i) == ')') then
+                depth = depth - 1
+                if (depth == 0) then
+                    spec_end = i
+                    return
+                end if
+            end if
+        end do
+        spec_start = 0
+    end subroutine character_spec_bounds
+
+    ! The length value inside a CHARACTER type-parameter list: the text after
+    ! LEN= when the list is keyword-spelled, otherwise the whole list. A list
+    ! that only sets KIND carries no length.
+    function character_length_spec_text(spec) result(text)
+        character(len=*), intent(in) :: spec
+        character(len=:), allocatable :: text
+        character(len=:), allocatable :: lowered
+        integer :: len_pos, i, depth, value_end
+
+        text = trim(adjustl(spec))
+        lowered = lowercase_text(text)
+        if (index(lowered, '=') == 0) return
+
+        len_pos = index(lowered, 'len')
+        do while (len_pos > 0)
+            if (identifier_boundary(lowered, len_pos, 3)) exit
+            i = index(lowered(len_pos + 1:), 'len')
+            if (i == 0) then
+                len_pos = 0
+            else
+                len_pos = len_pos + i
+            end if
+        end do
+        if (len_pos <= 0) then
+            text = ''
+            return
+        end if
+        i = len_pos + 3
+        do while (i <= len(text))
+            if (text(i:i) /= ' ') exit
+            i = i + 1
+        end do
+        if (i > len(text)) then
+            text = ''
+            return
+        end if
+        if (text(i:i) /= '=') then
+            text = ''
+            return
+        end if
+        i = i + 1
+        depth = 0
+        do value_end = i, len(text)
+            if (text(value_end:value_end) == '(') depth = depth + 1
+            if (text(value_end:value_end) == ')') depth = depth - 1
+            if (text(value_end:value_end) == ',' .and. depth == 0) exit
+        end do
+        text = trim(adjustl(text(i:value_end - 1)))
+    end function character_length_spec_text
+
+    ! True when the statement on this lowered line starts with IMPLICIT.
+    logical function statement_is_implicit(lowered)
+        character(len=*), intent(in) :: lowered
+        character(len=:), allocatable :: head
+
+        statement_is_implicit = .false.
+        head = trim(adjustl(lowered))
+        if (len(head) < len('implicit')) return
+        if (head(1:len('implicit')) /= 'implicit') return
+        statement_is_implicit = identifier_boundary(head, 1, len('implicit'))
+    end function statement_is_implicit
+
+    ! Drop a trailing comment, honouring character literals.
+    subroutine strip_source_comment(line, code)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable, intent(out) :: code
+        character :: quote
+        logical :: in_string
+        integer :: i
+
+        in_string = .false.
+        quote = ' '
+        code = line
+        do i = 1, len(line)
+            if (in_string) then
+                if (line(i:i) == quote) in_string = .false.
+            else if (line(i:i) == '''' .or. line(i:i) == '"') then
+                in_string = .true.
+                quote = line(i:i)
+            else if (line(i:i) == '!') then
+                code = line(1:i - 1)
+                return
+            end if
+        end do
+    end subroutine strip_source_comment
+
+    ! Replace the contents of character literals with a filler so that a scan
+    ! for keywords and parentheses never reads inside a literal. The quotes
+    ! themselves stay in place, and positions are preserved.
+    function mask_string_literals(code) result(masked)
+        character(len=*), intent(in) :: code
+        character(len=:), allocatable :: masked
+        character :: quote
+        logical :: in_string
+        integer :: i
+
+        masked = code
+        in_string = .false.
+        quote = ' '
+        do i = 1, len(code)
+            if (in_string) then
+                if (code(i:i) == quote) then
+                    in_string = .false.
+                else
+                    masked(i:i) = 'x'
+                end if
+            else if (code(i:i) == '''' .or. code(i:i) == '"') then
+                in_string = .true.
+                quote = code(i:i)
+            end if
+        end do
+    end function mask_string_literals

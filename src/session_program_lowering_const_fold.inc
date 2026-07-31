@@ -923,3 +923,88 @@
         end do
         call set_empty(error_msg)
     end subroutine eval_dot_product_constant
+
+    ! #384: classify the text of a character length specification. An empty
+    ! result means the text is not a literal that is plainly non-integer;
+    ! otherwise it states why the length is not a scalar INTEGER expression.
+    ! Only literal forms are judged here: names and general expressions carry
+    ! no constant value at this layer and are resolved by the callers.
+    function character_length_literal_reason(expr) result(reason)
+        character(len=*), intent(in) :: expr
+        character(len=:), allocatable :: reason
+        character(len=:), allocatable :: text
+        integer :: i
+        integer :: depth
+        logical :: has_digit
+        logical :: has_real_marker
+
+        reason = ''
+        text = strip_outer_parentheses(expr)
+        if (len_trim(text) == 0) return
+        if (index(text, '''') > 0 .or. index(text, '"') > 0) then
+            reason = 'a CHARACTER value is not an INTEGER expression'
+            return
+        end if
+        text = lowercase_text(text)
+        if (text == '.true.' .or. text == '.false.') then
+            reason = 'a LOGICAL value is not an INTEGER expression'
+            return
+        end if
+
+        ! A comma outside any nested parentheses marks a complex literal such
+        ! as (0.,1.); an argument list keeps its commas at a deeper level.
+        depth = 0
+        do i = 1, len(text)
+            if (text(i:i) == '(') depth = depth + 1
+            if (text(i:i) == ')') depth = depth - 1
+            if (text(i:i) == ',' .and. depth == 0) then
+                reason = 'a COMPLEX value is not an INTEGER expression'
+                return
+            end if
+        end do
+
+        ! A bare real literal: only literal punctuation, at least one digit,
+        ! and either a decimal point or an exponent letter after a digit.
+        if (verify(text, '0123456789.+-_deq') /= 0) return
+        has_digit = .false.
+        has_real_marker = .false.
+        do i = 1, len(text)
+            if (verify(text(i:i), '0123456789') == 0) has_digit = .true.
+            if (text(i:i) == '.') has_real_marker = .true.
+            if (index('deq', text(i:i)) > 0) then
+                if (has_digit) has_real_marker = .true.
+            end if
+        end do
+        if (has_digit .and. has_real_marker) then
+            reason = 'a REAL value is not an INTEGER expression'
+        end if
+    end function character_length_literal_reason
+
+    ! Remove parentheses that wrap the whole expression, repeatedly, so that
+    ! ((1.)) is classified like 1. and (('')) like ''.
+    function strip_outer_parentheses(expr) result(text)
+        character(len=*), intent(in) :: expr
+        character(len=:), allocatable :: text
+        integer :: i
+        integer :: depth
+        logical :: wraps
+
+        text = trim(adjustl(expr))
+        do
+            if (len(text) < 2) exit
+            if (text(1:1) /= '(') exit
+            if (text(len(text):len(text)) /= ')') exit
+            depth = 0
+            wraps = .true.
+            do i = 1, len(text)
+                if (text(i:i) == '(') depth = depth + 1
+                if (text(i:i) == ')') depth = depth - 1
+                if (depth == 0 .and. i < len(text)) then
+                    wraps = .false.
+                    exit
+                end if
+            end do
+            if (.not. wraps) exit
+            text = trim(adjustl(text(2:len(text) - 1)))
+        end do
+    end function strip_outer_parentheses
