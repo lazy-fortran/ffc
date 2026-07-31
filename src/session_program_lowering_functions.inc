@@ -801,6 +801,10 @@
             end if
         case ('real')
             ! Classify by kind: bare real and real(4) are f32; real(8) is f64.
+            call check_float_kind_supported('real', kind_spec, node%line, &
+                                            node%column, error_msg, context, &
+                                            reference_index)
+            if (len_trim(error_msg) > 0) return
             if (real_kind_is_f64(kind_spec, context, reference_index)) then
                 value_kind = VALUE_F64
             else if (len_trim(kind_spec) == 0 .and. &
@@ -818,6 +822,10 @@
             value_kind = VALUE_F64
         case ('complex')
             ! Bare complex and complex(4) are two f32s; complex(8) is two f64s.
+            call check_float_kind_supported('complex', kind_spec, node%line, &
+                                            node%column, error_msg, context, &
+                                            reference_index)
+            if (len_trim(error_msg) > 0) return
             if (complex_kind_is_c8(kind_spec, context, reference_index)) then
                 value_kind = VALUE_C8
             else
