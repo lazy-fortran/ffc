@@ -4,7 +4,6 @@ EXformat_2.f90 # owner=lazy-fortran/ffc#366; reason=implement internal E and X f
 allocatable_dummy_2.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
 allocate_alloc_opt_2.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
 allocate_class_2.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
-allocate_stat_2.f90 # owner=lazy-fortran/ffc#382; reason=require valid ALLOCATE status specifiers
 argument_checking_25.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
 array_constructor_2.f90 # owner=lazy-fortran/ffc#388; reason=reject incompatible array constructor types
 array_constructor_39.f90 # owner=lazy-fortran/ffc#459; reason=owns typed constructors and implied-DO elements
