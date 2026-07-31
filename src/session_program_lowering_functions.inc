@@ -721,6 +721,7 @@
         integer, intent(out) :: derived_type_index
         integer, intent(in), optional :: reference_index
         integer :: char_len, paren, rparen
+        integer :: pointee_kind
         character(len=:), allocatable :: derived_name, base_type, kind_spec
         character(len=:), allocatable, intent(out) :: error_msg
 
@@ -741,6 +742,12 @@
         ! descriptor sret ABI; the callee allocates the data at run time.
         if (result_var_is_alloc_array(node, context)) then
             value_kind = VALUE_ALLOC_ARRAY_RESULT
+            return
+        end if
+
+        ! A scalar data POINTER result returns the target address itself (#407).
+        if (result_var_is_data_pointer(node, context, pointee_kind)) then
+            value_kind = VALUE_DATA_PTR_RESULT
             return
         end if
 
@@ -1193,6 +1200,57 @@
             end select
         end do
     end function result_var_is_fixed_array
+
+    logical function result_var_is_data_pointer(node, context, pointee_kind) &
+        result(is_data_pointer)
+        ! True when the function result variable is declared as a scalar data
+        ! POINTER in the body (#407). pointee_kind reports the pointee's scalar
+        ! value kind. Pointer array and derived results stay out of scope and
+        ! keep their existing diagnostics.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: pointee_kind
+        character(len=:), allocatable :: result_name, decl_error
+        integer :: i, k, derived_index
+        logical :: is_array
+
+        is_data_pointer = .false.
+        pointee_kind = VALUE_I32
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_pointer) cycle
+                if (decl%is_array) cycle
+                is_data_pointer = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) is_data_pointer = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) &
+                            is_data_pointer = .true.
+                    end do
+                end if
+                if (.not. is_data_pointer) cycle
+                call resolve_result_decl_kind(decl, context, pointee_kind, &
+                    derived_index, is_array, decl_error, node%body_indices(i))
+                if (len_trim(decl_error) > 0 .or. is_array .or. &
+                    derived_index > 0) then
+                    is_data_pointer = .false.
+                    pointee_kind = VALUE_I32
+                    cycle
+                end if
+                return
+            end select
+        end do
+    end function result_var_is_data_pointer
 
     logical function declaration_is_fixed_rank1(decl) result(is_fixed)
         ! A rank-1 explicit-shape array declaration with neither allocatable nor
@@ -2499,6 +2557,8 @@
         integer :: result_binding_index
         logical :: terminated
         logical :: result_is_alloc_array
+        logical :: result_is_data_pointer
+        integer :: pointee_kind
         logical :: host_character_result
         type(declaration_binding_t) :: result_binding
         character(len=:), allocatable :: result_name
@@ -2586,6 +2646,11 @@
             ! pointer: the caller passes the result buffer address as param 0.
             if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
+        else if (value_kind == VALUE_DATA_PTR_RESULT) then
+            ! A scalar data pointer result returns the target address itself,
+            ! so the LIRIC function returns ptr and copies no pointee storage.
+            if (.not. begin_ptr_function(context%session, emit_name, &
+                                         param_count, error_msg)) return
         else if (value_kind == VALUE_I64) then
             if (.not. begin_i64_function(context%session, emit_name, param_count, &
                                                           error_msg)) return
@@ -2691,6 +2756,22 @@
                 rsym%allocatable_descriptor_address = ptr_param(context%session, 0)
             end associate
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_DATA_PTR_RESULT) then
+            ! The result is a data pointer: it starts disassociated and adopts a
+            ! target address at the first `r => t` in the body.
+            result_is_data_pointer = result_var_is_data_pointer(node, context, &
+                                                                pointee_kind)
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = pointee_kind
+                rsym%is_pointer = .true.
+                rsym%is_associated = .false.
+                rsym%has_address = .false.
+                rsym%is_reference = .false.
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -2752,6 +2833,17 @@
                 else if (.not. emit_ret_void(context%session, error_msg)) then
                     return
                 end if
+            else if (value_kind == VALUE_DATA_PTR_RESULT) then
+                ! Return the adopted target address, or a null pointer when the
+                ! result was never associated.
+                if (context%symbols(result_index)%has_address .and. &
+                    context%symbols(result_index)%is_associated) then
+                    value = context%symbols(result_index)%address
+                else
+                    value = null_ptr_operand(context)
+                end if
+                if (.not. emit_ret_ptr_operand(context%session, value, &
+                                               error_msg)) return
             else if (value_kind == VALUE_I64) then
                 call load_function_result_value(context, result_index, value, &
                     error_msg)

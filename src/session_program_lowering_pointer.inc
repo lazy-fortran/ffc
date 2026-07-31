@@ -427,6 +427,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ptr_name, target_name
         integer :: ptr_index, target_index
+        logical :: declared_data_pointer
 
         ! obj%p => proc binds a procedure-pointer component (#372).
         if (is_proc_pointer_component_access(arena, node%pointer_index, context)) then
@@ -450,6 +451,9 @@
             error_msg = 'pointer assignment target was not declared: '//trim(ptr_name)
             return
         end if
+        ! An entity FortFront resolved to a declaration; a lazy-Fortran name
+        ! that no declaration introduced carries no binding.
+        declared_data_pointer = context%symbols(ptr_index)%has_binding
         if (.not. context%symbols(ptr_index)%is_pointer) then
             if (promote_inferred_data_pointer(context, ptr_index)) then
                 ! FortFront currently keeps a bare POINTER statement out of the
@@ -460,6 +464,25 @@
                 error_msg = 'left of => is not a pointer: '//trim(ptr_name)
                 return
             end if
+        end if
+        ! p => null(): the pointer becomes disassociated and drops its storage.
+        ! Only a declared pointer qualifies: an inferred lazy-Fortran name that
+        ! no declaration introduced keeps its undeclared-pointer diagnostic.
+        if (pointer_target_is_null(arena, node%target_index) .and. &
+            declared_data_pointer) then
+            context%symbols(ptr_index)%is_associated = .false.
+            context%symbols(ptr_index)%has_runtime_association = .false.
+            context%symbols(ptr_index)%has_address = .false.
+            context%symbols(ptr_index)%is_reference = .false.
+            call set_empty(error_msg)
+            return
+        end if
+        ! p => f(...): a data-pointer function result hands back the target
+        ! address itself, so the pointer adopts the returned address (#407).
+        if (data_pointer_result_call(arena, node%target_index, context)) then
+            call bind_data_pointer_result(arena, node%target_index, context, &
+                                          ptr_index, error_msg)
+            return
         end if
         if (.not. is_identifier(arena, node%target_index)) then
             error_msg = 'direct LIRIC session pointer assignment requires a '// &
@@ -484,6 +507,17 @@
             error_msg = 'pointer assignment source has no storage: '// &
                         trim(target_name)
             return
+        end if
+        ! A data-pointer result must not carry back the address of storage that
+        ! dies with the invocation: only a dummy's storage or static storage
+        ! survives the return (#407).
+        if (context%in_internal_function .and. &
+            ptr_index == context%current_function_result_index) then
+            if (.not. target_outlives_procedure(context%symbols(target_index))) then
+                error_msg = 'pointer result target does not outlive the '// &
+                            'function: '//trim(target_name)
+                return
+            end if
         end if
         ! Whole-array p => t: the pointer adopts the target array's base,
         ! shape, and element kind. The bounds-remapped form p(lo:hi) => t is
@@ -533,8 +567,108 @@
         context%symbols(ptr_index)%has_address = .true.
         context%symbols(ptr_index)%is_reference = .true.
         context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .false.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    logical function target_outlives_procedure(symbol) result(outlives)
+        ! A target whose storage survives the current invocation: a dummy
+        ! argument (the caller owns the storage) or an entity in static
+        ! storage (module variable, COMMON block, saved local).
+        type(symbol_t), intent(in) :: symbol
+
+        outlives = symbol%is_dummy_argument .or. symbol_has_global_storage(symbol)
+    end function target_outlives_procedure
+
+    logical function data_pointer_result_call(arena, node_index, context) &
+        result(is_call)
+        ! True when node_index is a call to a function whose result is a scalar
+        ! data pointer (#407).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (call_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(call_node%name)) return
+            is_call = contained_function_kind(context, call_node%name) == &
+                      VALUE_DATA_PTR_RESULT
+        end select
+    end function data_pointer_result_call
+
+    subroutine bind_data_pointer_result(arena, node_index, context, ptr_index, &
+                                        error_msg)
+        ! p => f(...): call f, which returns the target address, and bind that
+        ! address into p. No pointee storage is copied, so a write through p
+        ! reaches the same target the callee returned. The association state is
+        ! only known at run time, so ASSOCIATED(p) compares against null.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: ptr_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t) :: result_address
+        integer :: pointee_kind
+
+        call set_empty(error_msg)
+        select type (call_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            pointee_kind = data_pointer_result_kind(context, call_node%name)
+            if (pointee_kind /= context%symbols(ptr_index)%value_kind) then
+                error_msg = 'pointer and function result scalar kinds do not '// &
+                            'match: '//trim(call_node%name)
+                return
+            end if
+            if (allocated(call_node%arg_indices)) then
+                call prepare_reference_args(arena, call_node%arg_indices, &
+                                            context, pointee_kind, &
+                                            call_node%name, args, &
+                                            copyback_indices, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
+                allocate (args(0))
+                allocate (copyback_indices(0))
+            end if
+            if (.not. emit_ptr_call(context%session, &
+                    call_emit_name(arena, call_node%name, context), args, &
+                    result_address, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, &
+                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'pointer assignment source is not a function call'
+            return
+        end select
+        context%symbols(ptr_index)%address = result_address
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .true.
+    end subroutine bind_data_pointer_result
+
+    integer function data_pointer_result_kind(context, name) result(pointee_kind)
+        ! Pointee scalar kind of a data-pointer function result, read back from
+        ! the callee's own result declaration.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        type(function_def_node), pointer :: fn_node
+        integer :: table_index, node_index
+
+        pointee_kind = VALUE_I32
+        table_index = find_function_index(context, name)
+        if (table_index <= 0) return
+        node_index = context%function_node_indices(table_index)
+        if (node_index <= 0) return
+        if (.not. node_exists(context%arena, node_index)) return
+        fn_node => get_node_as_function_def(context%arena, node_index)
+        if (.not. associated(fn_node)) return
+        if (.not. result_var_is_data_pointer(fn_node, context, pointee_kind)) &
+            pointee_kind = VALUE_I32
+    end function data_pointer_result_kind
 
     logical function promote_inferred_data_pointer(context, symbol_index)
         ! Recognize a data pointer declared only by a bare POINTER statement
@@ -644,6 +778,7 @@
                 return
             end if
             context%symbols(symbol_index)%is_associated = .false.
+            context%symbols(symbol_index)%has_runtime_association = .false.
             context%symbols(symbol_index)%has_address = .false.
             context%symbols(symbol_index)%is_reference = .false.
         end do
@@ -701,6 +836,14 @@
             return
         end if
         if (size(arg_indices) == 1) then
+            ! A pointer bound to a data-pointer function result has no
+            ! compile-time association flag: test its address against null.
+            if (context%symbols(ptr_idx)%has_runtime_association) then
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        context%symbols(ptr_idx)%address, &
+                        null_ptr_operand(context), value, error_msg)) return
+                return
+            end if
             ! One-argument: fold to compile-time association flag.
             if (context%symbols(ptr_idx)%is_associated) then
                 value = i32_immediate(context%session, 1_c_int64_t)

@@ -1222,6 +1222,7 @@
         context%symbols(index)%address = ptr_param(context%session, param_index)
         context%symbols(index)%has_address = .true.
         context%symbols(index)%is_reference = .true.
+        context%symbols(index)%is_dummy_argument = .true.
         if (value_kind == VALUE_C4) then
             if (.not. emit_ptr_offset(context%session, &
                     context%symbols(index)%address, 4_c_int64_t, &
