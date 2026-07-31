@@ -38,8 +38,10 @@
             result(same)
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: name_a, name_b
-        integer :: count_a, count_b, pos, vk_a, vk_b
-        logical :: char_a, char_b
+        integer :: count_a, count_b, pos
+        integer :: kind_a, kind_b, rank_a, rank_b
+        logical :: known_a, known_b, proc_a, proc_b, any_a, any_b
+        character(len=:), allocatable :: base_a, base_b
 
         same = .false.
         count_a = arena_proc_param_count(arena, name_a)
@@ -47,20 +49,286 @@
         if (count_a < 0 .or. count_b < 0) return
         if (count_a /= count_b) return
         do pos = 1, count_a
-            if (callee_dummy_is_array(arena, name_a, pos)) return
-            if (callee_dummy_is_array(arena, name_b, pos)) return
-            char_a = callee_dummy_is_character(arena, name_a, pos)
-            char_b = callee_dummy_is_character(arena, name_b, pos)
-            if (char_a .neqv. char_b) return
-            if (.not. char_a) then
-                vk_a = callee_dummy_value_kind(arena, name_a, pos)
-                vk_b = callee_dummy_value_kind(arena, name_b, pos)
-                if (vk_a == 0 .or. vk_b == 0) return
-                if (vk_a /= vk_b) return
+            call dummy_signature(arena, name_a, pos, known_a, base_a, kind_a, &
+                                 rank_a, proc_a, any_a)
+            call dummy_signature(arena, name_b, pos, known_b, base_b, kind_b, &
+                                 rank_b, proc_b, any_b)
+            if (.not. known_a) return
+            if (.not. known_b) return
+            ! A procedure dummy is never distinguished from another procedure
+            ! dummy by the type of its result (F2018 C1514 applies TKR only to
+            ! data objects), so such a position cannot resolve the generic.
+            if (proc_a .neqv. proc_b) return
+            if (proc_a) cycle
+            ! An unlimited polymorphic dummy is type compatible with every
+            ! actual argument, so it distinguishes nothing.
+            if (any_a .or. any_b) cycle
+            if (rank_a /= rank_b) return
+            if (base_a /= base_b) return
+            if (kind_a /= 0 .and. kind_b /= 0) then
+                if (kind_a /= kind_b) return
             end if
         end do
         same = .true.
     end function specifics_indistinguishable
+
+    ! Type, kind and rank facts about the pos-th dummy argument of the
+    ! procedure proc_name, as needed by the generic-ambiguity rule. known is
+    ! false whenever the procedure or the dummy position cannot be resolved
+    ! statically; callers must then claim no ambiguity.
+    subroutine dummy_signature(arena, proc_name, pos, known, base_name, &
+                               kind_value, rank, is_proc, is_any)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: proc_name
+        integer, intent(in) :: pos
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: base_name
+        integer, intent(out) :: kind_value
+        integer, intent(out) :: rank
+        logical, intent(out) :: is_proc
+        logical, intent(out) :: is_any
+        integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        known = .false.
+        base_name = ''
+        kind_value = 0
+        rank = 0
+        is_proc = .false.
+        is_any = .false.
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, proc_name)) cycle
+                call dummy_signature_at(arena, sb_node%param_indices, &
+                                        sb_node%body_indices, pos, known, &
+                                        base_name, kind_value, rank, is_proc, &
+                                        is_any)
+                call refine_dummy_signature(arena, proc_name, pos, kind_value, &
+                                            rank)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, proc_name)) cycle
+                call dummy_signature_at(arena, fn_node%param_indices, &
+                                        fn_node%body_indices, pos, known, &
+                                        base_name, kind_value, rank, is_proc, &
+                                        is_any)
+                call refine_dummy_signature(arena, proc_name, pos, kind_value, &
+                                            rank)
+                return
+            end if
+        end do
+    end subroutine dummy_signature
+
+    ! Fill in rank and kind from the lowerer's own dummy queries when the
+    ! declaration node did not carry them.
+    subroutine refine_dummy_signature(arena, proc_name, pos, kind_value, rank)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: proc_name
+        integer, intent(in) :: pos
+        integer, intent(inout) :: kind_value
+        integer, intent(inout) :: rank
+
+        if (rank == 0) then
+            if (callee_dummy_is_array(arena, proc_name, pos)) rank = 1
+        end if
+        if (kind_value == 0) then
+            kind_value = callee_dummy_value_kind(arena, proc_name, pos)
+        end if
+    end subroutine refine_dummy_signature
+
+    subroutine dummy_signature_at(arena, param_indices, body_indices, pos, &
+                                  known, base_name, kind_value, rank, &
+                                  is_proc, is_any)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: pos
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: base_name
+        integer, intent(out) :: kind_value
+        integer, intent(out) :: rank
+        logical, intent(out) :: is_proc
+        logical, intent(out) :: is_any
+        character(len=:), allocatable :: name, name_err
+        logical :: unresolved
+
+        known = .false.
+        base_name = ''
+        kind_value = 0
+        rank = 0
+        is_proc = .false.
+        is_any = .false.
+        unresolved = .false.
+        if (.not. allocated(param_indices)) return
+        if (pos < 1 .or. pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (len_trim(name) == 0) return
+        if (trim(name) == '*') then
+            ! An alternate-return dummy carries no type; two of them in the
+            ! same position are indistinguishable.
+            known = .true.
+            base_name = '*'
+            return
+        end if
+        select type (pn => arena%entries(param_indices(pos))%node)
+        type is (parameter_declaration_node)
+            if (allocated(pn%type_name)) then
+                if (len_trim(pn%type_name) > 0) then
+                    base_name = normalized_base_type(pn%type_name)
+                    is_any = base_name == 'class(*)'
+                    if (pn%is_array) then
+                        rank = 1
+                        if (allocated(pn%dimension_indices)) then
+                            rank = size(pn%dimension_indices)
+                        end if
+                    end if
+                    if (pn%has_kind) then
+                        kind_value = pn%kind_value
+                        if (pn%kind_value <= 0) return
+                    end if
+                    known = .true.
+                    return
+                end if
+            end if
+        end select
+        call dummy_decl_signature(arena, body_indices, name, known, base_name, &
+                                  kind_value, rank, is_proc, is_any, unresolved)
+        if (unresolved) then
+            known = .false.
+            return
+        end if
+        if (known) return
+        ! No declaration in the body: implicit typing gives this dummy the
+        ! default type for its initial letter.
+        base_name = implicit_base_type(name)
+        known = len_trim(base_name) > 0
+    end subroutine dummy_signature_at
+
+    ! unresolved reports a KIND selector that is not a literal - the declared
+    ! kind is then unknown, and no distinguishability claim may rest on it.
+    subroutine dummy_decl_signature(arena, body_indices, param_name, found, &
+                                    base_name, kind_value, rank, is_proc, &
+                                    is_any, unresolved)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: base_name
+        integer, intent(out) :: kind_value
+        integer, intent(out) :: rank
+        logical, intent(out) :: is_proc
+        logical, intent(out) :: is_any
+        logical, intent(out) :: unresolved
+        integer :: i, k
+        logical :: names_it
+
+        found = .false.
+        base_name = ''
+        kind_value = 0
+        rank = 0
+        is_proc = .false.
+        is_any = .false.
+        unresolved = .false.
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                names_it = .false.
+                if (allocated(decl%var_name)) then
+                    if (same_name(decl%var_name, param_name)) names_it = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (same_name(decl%var_names(k), param_name)) then
+                            names_it = .true.
+                        end if
+                    end do
+                end if
+                if (.not. names_it) cycle
+                if (decl%is_external) is_proc = .true.
+                if (decl%is_array) then
+                    if (allocated(decl%dimension_indices)) then
+                        rank = max(rank, size(decl%dimension_indices))
+                    else
+                        rank = max(rank, 1)
+                    end if
+                end if
+                if (allocated(decl%type_name)) then
+                    if (len_trim(decl%type_name) > 0) then
+                        base_name = normalized_base_type(decl%type_name)
+                        is_any = base_name == 'class(*)'
+                        found = .true.
+                    end if
+                end if
+                if (decl%has_kind) then
+                    kind_value = decl%kind_value
+                    if (decl%kind_value <= 0) unresolved = .true.
+                end if
+            end select
+        end do
+        if (is_proc) found = .true.
+    end subroutine dummy_decl_signature
+
+    ! Collapse a declared type string to the form that decides generic
+    ! distinguishability. CLASS(T) and TYPE(T) name the same declared type; the
+    ! kind selector is kept, because two specifics of the same type but
+    ! different kind are distinguishable.
+    function normalized_base_type(type_name) result(base)
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable :: base
+
+        base = squeeze_blanks(lowercase_text(trim(adjustl(type_name))))
+        if (base == 'class(*)') return
+        if (len(base) > 6) then
+            if (base(1:6) == 'class(') base = 'type('//base(7:)
+        end if
+    end function normalized_base_type
+
+    ! The type name without its kind or length selector.
+    function base_type_root(base) result(root)
+        character(len=*), intent(in) :: base
+        character(len=:), allocatable :: root
+        integer :: lp
+
+        root = trim(base)
+        if (root == 'class(*)') return
+        if (len(root) > 5) then
+            if (root(1:5) == 'type(') return
+        end if
+        lp = index(root, '(')
+        if (lp > 1) root = root(1:lp - 1)
+    end function base_type_root
+
+    ! Default implicit type of a name: integer for I-N, real otherwise.
+    function implicit_base_type(name) result(base)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: base
+        character(len=1) :: first
+
+        base = ''
+        if (len_trim(name) == 0) return
+        first = lowercase_text(name(1:1))
+        if (first < 'a' .or. first > 'z') return
+        if (first >= 'i' .and. first <= 'n') then
+            base = 'integer'
+        else
+            base = 'real'
+        end if
+    end function implicit_base_type
 
     integer function arena_proc_param_count(arena, proc_name) result(count)
         type(ast_arena_t), intent(in) :: arena
