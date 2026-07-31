@@ -997,7 +997,8 @@
                                 node%body_indices(i))
                             if (.not. is_array) then
                                 call remap_scalar_char_result_kind(context, decl, &
-                                                                   value_kind)
+                                                                   value_kind, &
+                                                                   node%body_indices(i))
                                 return
                             end if
                         end if
@@ -1011,7 +1012,8 @@
                                 if (.not. is_array) then
                                     call remap_scalar_char_result_kind(context, &
                                                                        decl, &
-                                                                       value_kind)
+                                                                       value_kind, &
+                                                                       node%body_indices(i))
                                     return
                                 end if
                             end if
@@ -1066,7 +1068,8 @@
                                         error_msg)
     end subroutine unsupported_result_type
 
-    subroutine remap_scalar_char_result_kind(context, decl, value_kind)
+    subroutine remap_scalar_char_result_kind(context, decl, value_kind, &
+                                             reference_index)
         ! A scalar character result whose length is deferred (character(len=:))
         ! or a runtime expression (character(len=len(arg))) returns through the
         ! deferred descriptor ABI, matching the contained-function path. A fixed
@@ -1076,11 +1079,17 @@
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: decl
         integer, intent(inout) :: value_kind
+        integer, intent(in), optional :: reference_index
         integer :: char_len
         character(len=:), allocatable :: len_err
 
         if (value_kind /= VALUE_CHARACTER) return
-        call declaration_character_length(context, decl, char_len, len_err)
+        if (present(reference_index)) then
+            call declaration_character_length(context, decl, char_len, len_err, &
+                                               reference_index)
+        else
+            call declaration_character_length(context, decl, char_len, len_err)
+        end if
         if (len_trim(len_err) > 0) then
             value_kind = VALUE_DEFERRED_CHARACTER_RESULT
         else if (char_len <= 0) then

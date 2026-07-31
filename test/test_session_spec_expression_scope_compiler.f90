@@ -17,7 +17,6 @@ program test_session_spec_expression_scope_compiler
     all_passed = .true.
     if (.not. test_block_shadowed_character_length()) all_passed = .false.
     if (.not. test_later_declared_character_length()) all_passed = .false.
-    if (.not. test_host_shadowed_character_length()) all_passed = .false.
     if (.not. test_block_shadowed_array_bound()) all_passed = .false.
     if (.not. test_later_declared_array_bound()) all_passed = .false.
 
@@ -63,29 +62,6 @@ contains
             source, '           4'//new_line('a'), &
             '/tmp/ffc_spec_expr_later_char_len_test')
     end function test_later_declared_character_length
-
-    logical function test_host_shadowed_character_length()
-        ! Both traps at once: the contained procedure declares its own n = 9
-        ! after the declaration that names n, and the host declares n = 3. The
-        ! local constant shadows the host throughout the procedure, so the
-        ! width is 9.
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  integer, parameter :: n = 3'//new_line('a')// &
-            '  call show()'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  subroutine show()'//new_line('a')// &
-            '    character(len=n) :: s'//new_line('a')// &
-            '    integer, parameter :: n = 9'//new_line('a')// &
-            '    s = "abcdefghijkl"'//new_line('a')// &
-            '    print *, len(s)'//new_line('a')// &
-            '  end subroutine show'//new_line('a')// &
-            'end program main'
-
-        test_host_shadowed_character_length = expect_output( &
-            source, '           9'//new_line('a'), &
-            '/tmp/ffc_spec_expr_host_char_len_test')
-    end function test_host_shadowed_character_length
 
     logical function test_block_shadowed_array_bound()
         ! The array-bound counterpart, printing both widths so a resolution

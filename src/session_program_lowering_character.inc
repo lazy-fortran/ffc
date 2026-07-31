@@ -159,11 +159,12 @@
     end subroutine resolve_len_of_character_length
 
     subroutine declaration_character_length(context, node, character_length, &
-                                            error_msg)
+                                            error_msg, reference_index)
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: parse_error
         character(len=:), allocatable :: lowered
 
@@ -183,8 +184,13 @@
         ! A non-literal length such as character(max_len) keeps the length
         ! text in character_length_expr. Resolve a named integer parameter
         ! against the symbol table before reporting it unsupported.
-        call resolve_named_character_length(context, node, character_length, &
-                                            parse_error)
+        if (present(reference_index)) then
+            call resolve_named_character_length(context, node, character_length, &
+                                                parse_error, reference_index)
+        else
+            call resolve_named_character_length(context, node, character_length, &
+                                                parse_error)
+        end if
         if (len_trim(parse_error) > 0) then
             call unsupported_feature_error('character length declaration', &
                                            node%line, node%column, &
@@ -196,15 +202,17 @@
     ! parameter. Leaves error_msg set when the length text is not a single
     ! resolvable parameter name.
     subroutine resolve_named_character_length(context, node, character_length, &
-                                              error_msg)
+                                              error_msg, reference_index)
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: name
         character(len=:), allocatable :: fold_error
         integer(c_int64_t) :: folded
         logical :: folded_found
+        integer :: anchor_index
         integer :: symbol_index
 
         character_length = -1
@@ -217,12 +225,14 @@
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
             /= 0) return
 
+        anchor_index = context%current_declaration_index
+        if (present(reference_index)) anchor_index = reference_index
         ! Ask FortFront which constant this name denotes at the declaration
         ! that spells it (#329). The length text carries no arena node, so the
         ! declaration is the anchor; without it a BLOCK-local parameter that
         ! shadows a host one of the same name silently takes the host width.
         call fold_named_constant_at_node(context, &
-                                         context%current_declaration_index, &
+                                         anchor_index, &
                                          name, folded, folded_found, fold_error)
         if (len_trim(fold_error) == 0 .and. folded_found) then
             if (folded <= 0_c_int64_t) return
