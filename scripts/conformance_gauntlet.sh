@@ -544,13 +544,23 @@ while IFS= read -r full_path <&3; do
     # through to its normal failure handling below.
     ffc_extra=()
     ref_extra=()
+
+    # LFortran's integration tests keep INCLUDE material in a directory named
+    # after the test (CMake INCLUDE_PATH <stem>). Both compilers get that
+    # directory on their include search path so the reference and ffc see the
+    # same source.
+    stem_include_dir="${full_path%.*}"
+    if [ -d "$stem_include_dir" ]; then
+        ffc_extra=(-I "$stem_include_dir")
+        ref_extra=(-I "$stem_include_dir")
+    fi
     if [ -s "$MODULE_INDEX" ]; then
         prereq_list="$TMPDIR_WORK/prereq_${TOTAL_COUNT}.txt"
         resolve_prerequisites "$full_path" "$SUITE_ROOT" "$MODULE_INDEX" "$prereq_list"
         if [ -s "$prereq_list" ]; then
             inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
             mkdir -p "$inc_dir"
-            ffc_extra=(-I "$inc_dir")
+            ffc_extra+=(-I "$inc_dir")
             # The gfortran reference ALWAYS receives the full prerequisite source
             # list so its binary links: whether ffc can compile a prerequisite is
             # an ffc concern, not the reference's. ffc objects are only added when
@@ -587,6 +597,23 @@ while IFS= read -r full_path <&3; do
                 "$note" "$warning_expectation"
             continue
         else
+            # A file the gfortran reference rejects too (e.g. a corpus source
+            # that INCLUDEs a file absent from the corpus) has no oracle: both
+            # compilers agree it is not compilable, which is the same NO-REF
+            # disposition step 6 records when only gfortran rejects.
+            if ! is_lazy_suite && \
+                ! compile_with_gfortran "$full_path" "$ref_exe" \
+                    "${ref_extra[@]}"; then
+                ref_exit=1
+                NOREF_COUNT=$((NOREF_COUNT + 1))
+                IS_NOREF_RECORD=1
+                status="PASS"
+                note="gfortran rejects too; no reference (NO-REF)"
+                PASS_COUNT=$((PASS_COUNT + 1))
+                write_result_record "$rel_path" "$status" "$ffc_exit" \
+                    "$ref_exit" "$note" "$warning_expectation"
+                continue
+            fi
             status="FAIL"
             note="ffc compilation failed"
             FAIL_COUNT=$((FAIL_COUNT + 1))

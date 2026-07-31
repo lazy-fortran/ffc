@@ -653,6 +653,8 @@ contains
     end function test_cli_return_statement_diagnostic
 
     logical function test_cli_include_statement_diagnostic()
+        ! The CLI expands INCLUDE lines, so an unresolvable include name is
+        ! now reported as a missing include file at its include site.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  include "missing.inc"'//new_line('a')// &
@@ -660,7 +662,7 @@ contains
 
         test_cli_include_statement_diagnostic = expect_cli_error_contains( &
             source, &
-            'unsupported include statement', &
+            'include file not found', &
             '/tmp/ffc_cli_include_test')
     end function test_cli_include_statement_diagnostic
 

@@ -1639,9 +1639,7 @@ implied_do_loops8.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-back
 implied_do_loops9.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 implied_do_loops_print.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 implied_do_loops_strings.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-include_01.f90 # owner=lazy-fortran/ffc#354; reason=expand Fortran INCLUDE lines
 include_02.f90 # owner=lazy-fortran/ffc#354; reason=expand Fortran INCLUDE lines
-include_04.f90 # owner=lazy-fortran/ffc#354; reason=expand Fortran INCLUDE lines
 infer_walrus_shadow_01.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 infer_walrus_shadow_02.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 infer_walrus_struct_02.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
