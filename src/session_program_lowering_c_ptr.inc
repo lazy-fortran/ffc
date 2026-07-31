@@ -166,22 +166,122 @@
                                      error_msg)
     end subroutine lower_c_loc
 
+    subroutine c_f_pointer_shape_extents(arena, shape_index, extents, error_msg)
+        ! Read the constant extents of a C_F_POINTER SHAPE actual. Only a
+        ! constant rank-1 array constructor is supported: the descriptor extents
+        ! must be known when the pointer adopts the C address.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        integer, allocatable, intent(out) :: extents(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: extent
+        logical :: ok
+        integer :: i, n
+
+        allocate (extents(0))
+        if (.not. node_exists(arena, shape_index)) then
+            error_msg = 'C_F_POINTER SHAPE does not reference an AST node'
+            return
+        end if
+        select type (node => arena%entries(shape_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) then
+                error_msg = 'C_F_POINTER SHAPE must supply at least one extent'
+                return
+            end if
+            n = size(node%element_indices)
+            if (n < 1) then
+                error_msg = 'C_F_POINTER SHAPE must supply at least one extent'
+                return
+            end if
+            deallocate (extents)
+            allocate (extents(n))
+            do i = 1, n
+                call try_const_int64(arena, node%element_indices(i), extent, ok)
+                if (.not. ok) then
+                    error_msg = 'C_F_POINTER SHAPE extent must be a constant '// &
+                                'integer expression'
+                    return
+                end if
+                if (extent < 0_c_int64_t) then
+                    error_msg = 'C_F_POINTER SHAPE extent must not be negative'
+                    return
+                end if
+                extents(i) = int(extent)
+            end do
+            call set_empty(error_msg)
+        class default
+            error_msg = 'C_F_POINTER SHAPE must be a constant array constructor'
+        end select
+    end subroutine c_f_pointer_shape_extents
+
+    subroutine associate_c_f_pointer_array(arena, shape_index, context, &
+                                           symbol_index, ptr_value, error_msg)
+        ! c_f_pointer(cptr, fptr, shape): the array pointer adopts the C address
+        ! as its element base and the validated SHAPE extents as its descriptor
+        ! shape. No pointee storage is copied.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: ptr_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: extents(:)
+        integer :: i, total
+
+        call c_f_pointer_shape_extents(arena, shape_index, extents, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = 'C_F_POINTER SHAPE was supplied for a scalar FPTR'
+            return
+        end if
+        if (size(extents) /= context%symbols(symbol_index)%array_rank) then
+            error_msg = 'C_F_POINTER SHAPE size does not match the rank of FPTR'
+            return
+        end if
+        if (size(extents) > ARRAY_MAX_RANK) then
+            error_msg = 'C_F_POINTER SHAPE rank is not supported'
+            return
+        end if
+        total = 1
+        do i = 1, size(extents)
+            total = total*extents(i)
+        end do
+        context%symbols(symbol_index)%element_address = ptr_value
+        context%symbols(symbol_index)%address = ptr_value
+        context%symbols(symbol_index)%array_size = total
+        context%symbols(symbol_index)%array_lower_bound = 1
+        context%symbols(symbol_index)%array_dim_sizes = 0
+        context%symbols(symbol_index)%array_dim_lowers = 0
+        do i = 1, size(extents)
+            context%symbols(symbol_index)%array_dim_sizes(i) = extents(i)
+            context%symbols(symbol_index)%array_dim_lowers(i) = 1
+        end do
+        context%symbols(symbol_index)%has_address = .true.
+        context%symbols(symbol_index)%is_reference = .true.
+        context%symbols(symbol_index)%is_pointer = .true.
+        context%symbols(symbol_index)%is_associated = .true.
+        call set_empty(error_msg)
+    end subroutine associate_c_f_pointer_array
+
     subroutine lower_c_associated(arena, arg_indices, context, value, error_msg)
         ! c_associated(p): 1 when p is non-null, 0 otherwise (an i32 boolean).
+        ! c_associated(p, q): 1 when p is non-null and refers to the same C
+        ! address as q (F2018 18.2.3.2).
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: ptr_value
+        type(lr_operand_desc_t) :: ptr_value, other_value, same_value, nonnull_value
 
         call set_empty(error_msg)
         if (.not. allocated(arg_indices)) then
-            error_msg = 'c_associated requires exactly one argument'
+            error_msg = 'c_associated requires one or two arguments'
             return
         end if
-        if (size(arg_indices) /= 1) then
-            error_msg = 'c_associated requires exactly one argument'
+        if (size(arg_indices) < 1 .or. size(arg_indices) > 2) then
+            error_msg = 'c_associated requires one or two arguments'
             return
         end if
         call lower_c_ptr_expression(arena, arg_indices(1), context, ptr_value, &
@@ -189,6 +289,16 @@
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, ptr_value, &
                 null_ptr_operand(context), value, error_msg)) return
+        if (size(arg_indices) == 2) then
+            call lower_c_ptr_expression(arena, arg_indices(2), context, &
+                                        other_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, ptr_value, &
+                    other_value, same_value, error_msg)) return
+            nonnull_value = value
+            if (.not. emit_i32_binary(context%session, LR_OP_AND, nonnull_value, &
+                    same_value, value, error_msg)) return
+        end if
         call set_empty(error_msg)
     end subroutine lower_c_associated
 
@@ -210,8 +320,8 @@
             error_msg = 'c_f_pointer requires at least two arguments'
             return
         end if
-        if (size(arg_indices) > 2) then
-            error_msg = 'c_f_pointer with a shape argument is not yet supported'
+        if (size(arg_indices) > 3) then
+            error_msg = 'c_f_pointer accepts at most three arguments'
             return
         end if
         call lower_c_ptr_expression(arena, arg_indices(1), context, ptr_value, &
@@ -230,8 +340,13 @@
         end if
         ! F2018 18.2.3.3: SHAPE is optional only when FPTR is scalar. An array
         ! FPTR without SHAPE has no extents to take, so reject it here.
-        if (context%symbols(symbol_index)%is_array) then
+        if (context%symbols(symbol_index)%is_array .and. size(arg_indices) < 3) then
             error_msg = 'Expected SHAPE argument to C_F_POINTER with array FPTR'
+            return
+        end if
+        if (size(arg_indices) == 3) then
+            call associate_c_f_pointer_array(arena, arg_indices(3), context, &
+                                             symbol_index, ptr_value, error_msg)
             return
         end if
         ! Bind the Fortran pointer to the C address: the pointer adopts cp's
