@@ -52,7 +52,8 @@ conforming arrays, a relational comparison between two conforming
 arrays assigned to a logical array, e.g. `mask = a > b`, and whole-array
 `.not.` of a logical array or logical-array expression, e.g.
 `a = .not. (b > c)`), and the array intrinsics
-`size`, `shape`, `sum`, `product`, `maxval`, `minval`, `dot_product`,
+`size`, `shape`, `sum`, `product`, `maxval`, `minval`, `norm2`,
+`dot_product`,
 `matmul`, `transpose`, `reshape` (also as a declaration initializer, with
 integer-source-to-real conversion, and with a `shape(X)` shape argument or
 keyword `source=`/`shape=` form), `lbound`, `ubound`, `count`, `any`, `all`

@@ -321,6 +321,11 @@
                                                error_msg, 'minval')
           return
       end if
+      if (same_name(node%name, 'norm2') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          error_msg = 'norm2 requires a real array argument'
+          return
+      end if
       if (same_name(node%name, 'dot_product') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_i32_dot_product_intrinsic(arena, node, context, value, &

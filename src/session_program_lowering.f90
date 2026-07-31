@@ -75,7 +75,7 @@ module session_program_lowering
         lr_session_emit, lr_inst_desc_t, lr_error_t, &
         clear_liric_error, status_ok, to_c_chars, &
         LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
-        LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, &
+        LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
         LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
         LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, &
         LR_OP_KIND_GLOBAL
@@ -334,6 +334,7 @@ module session_program_lowering
     integer, parameter :: DIM_REDUCE_COUNT = 3
     integer, parameter :: DIM_REDUCE_ANY = 4
     integer, parameter :: DIM_REDUCE_ALL = 5
+    integer, parameter :: DIM_REDUCE_NORM2 = 6
 
     ! Pull-based cursor over a DATA value list. A scalar value yields once; an
     ! implied-do value (e.g. (i*1.0, i=1,2)) unrolls its inner expression,

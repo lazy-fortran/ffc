@@ -434,3 +434,205 @@
         if (.not. emit_free(context%session, data_ptr, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_alloc_call_reduction
+
+    ! ---------------------------------------------------------------------
+    ! NORM2 support: a scaled sum of squares over already-loaded elements.
+    ! ---------------------------------------------------------------------
+
+    subroutine norm2_real_immediate(context, vk, val, value)
+        !! Real immediate of the element kind vk.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        real(c_double), intent(in) :: val
+        type(lr_operand_desc_t), intent(out) :: value
+
+        if (vk == VALUE_F32) then
+            value = liric_f32_immediate(context%session, real(val, c_float))
+        else
+            value = liric_f64_immediate(context%session, val)
+        end if
+    end subroutine norm2_real_immediate
+
+    logical function norm2_binary(context, vk, op, lhs, rhs, value, error_msg)
+        !! One real arithmetic instruction of the element kind vk.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        integer(c_int), intent(in) :: op
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (vk == VALUE_F32) then
+            norm2_binary = emit_liric_f32_binary(context%session, op, lhs, rhs, &
+                                                 value, error_msg)
+        else
+            norm2_binary = emit_liric_f64_binary(context%session, op, lhs, rhs, &
+                                                 value, error_msg)
+        end if
+    end function norm2_binary
+
+    logical function norm2_libm(context, vk, name32, name64, arg, value, error_msg)
+        !! One single-argument libm call of the element kind vk.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        character(len=*), intent(in) :: name32
+        character(len=*), intent(in) :: name64
+        type(lr_operand_desc_t), intent(in) :: arg
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (vk == VALUE_F32) then
+            norm2_libm = emit_liric_f32_call(context%session, name32, [arg], &
+                                             value, error_msg)
+        else
+            norm2_libm = emit_liric_f64_call(context%session, name64, [arg], &
+                                             value, error_msg)
+        end if
+    end function norm2_libm
+
+    logical function norm2_fcmp(context, vk, predicate, lhs, rhs, value, error_msg)
+        !! One real comparison of the element kind vk.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        integer(c_int), intent(in) :: predicate
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (vk == VALUE_F32) then
+            norm2_fcmp = emit_liric_f32_fcmp(context%session, predicate, lhs, &
+                                             rhs, value, error_msg)
+        else
+            norm2_fcmp = emit_liric_f64_fcmp(context%session, predicate, lhs, &
+                                             rhs, value, error_msg)
+        end if
+    end function norm2_fcmp
+
+    subroutine norm2_scale_factor(context, vk, elems, scale, error_msg)
+        !! Largest element magnitude, used as the scaling factor.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: elems(:)
+        type(lr_operand_desc_t), intent(out) :: scale
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: mag, cond, picked
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. norm2_libm(context, vk, 'fabsf', 'fabs', elems(1), scale, &
+                             error_msg)) return
+        do i = 2, size(elems)
+            if (.not. norm2_libm(context, vk, 'fabsf', 'fabs', elems(i), mag, &
+                                 error_msg)) return
+            if (.not. norm2_fcmp(context, vk, LR_FCMP_OGT, mag, scale, cond, &
+                                 error_msg)) return
+            call select_value(context, cond, mag, scale, picked, error_msg)
+            if (len_trim(error_msg) > 0) return
+            scale = picked
+        end do
+    end subroutine norm2_scale_factor
+
+    subroutine emit_norm2_from_elements(context, vk, elems, value, error_msg)
+        !! L2 norm of already-loaded real elements, computed as
+        !! scale * sqrt(sum((x / scale)**2)) with scale the largest magnitude.
+        !! Factoring the largest magnitude out keeps mixed large or small
+        !! magnitudes from overflowing or underflowing the accumulator. A zero
+        !! scale divides by one instead, so the zero vector yields exactly zero.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: elems(:)
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: scale, denom, acc, zero, one, cond
+        type(lr_operand_desc_t) :: scaled, squared, next_acc, root
+        integer :: i
+
+        call set_empty(error_msg)
+        if (vk /= VALUE_F32 .and. vk /= VALUE_F64) then
+            error_msg = 'norm2 requires a real array argument'
+            return
+        end if
+        if (size(elems) < 1) then
+            error_msg = 'norm2 requires a non-empty array'
+            return
+        end if
+        call norm2_scale_factor(context, vk, elems, scale, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call norm2_real_immediate(context, vk, 0.0_c_double, zero)
+        call norm2_real_immediate(context, vk, 1.0_c_double, one)
+        if (.not. norm2_fcmp(context, vk, LR_FCMP_OEQ, scale, zero, cond, &
+                             error_msg)) return
+        call select_value(context, cond, one, scale, denom, error_msg)
+        if (len_trim(error_msg) > 0) return
+        acc = zero
+        do i = 1, size(elems)
+            if (.not. norm2_binary(context, vk, LR_OP_FDIV, elems(i), denom, &
+                                   scaled, error_msg)) return
+            if (.not. norm2_binary(context, vk, LR_OP_FMUL, scaled, scaled, &
+                                   squared, error_msg)) return
+            if (.not. norm2_binary(context, vk, LR_OP_FADD, acc, squared, &
+                                   next_acc, error_msg)) return
+            acc = next_acc
+        end do
+        if (.not. norm2_libm(context, vk, 'sqrtf', 'sqrt', acc, root, &
+                             error_msg)) return
+        if (.not. norm2_binary(context, vk, LR_OP_FMUL, scale, root, value, &
+                               error_msg)) return
+    end subroutine emit_norm2_from_elements
+
+    subroutine lower_symbol_norm2(context, source_index, array_size, value, &
+                                  error_msg)
+        !! norm2 over the first array_size elements of a stored array symbol,
+        !! walked in storage order (so a rank-2 source reduces over all of it).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: source_index
+        integer, intent(in) :: array_size
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: elems(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        if (array_size < 1) then
+            error_msg = 'norm2 requires a non-empty array'
+            return
+        end if
+        allocate (elems(array_size))
+        do i = 1, array_size
+            call load_array_linear_element(context, source_index, &
+                                           int(i - 1, c_int64_t), elems(i), &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call emit_norm2_from_elements(context, &
+                                      context%symbols(source_index)%value_kind, &
+                                      elems, value, error_msg)
+    end subroutine lower_symbol_norm2
+
+    subroutine lower_section_norm2(info, total, context, value, error_msg)
+        !! norm2 over an array section a(lo:hi:st), walked in storage order.
+        type(array_section_info_t), intent(in) :: info
+        integer(c_int64_t), intent(in) :: total
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: elems(:)
+        integer(c_int64_t) :: k
+
+        call set_empty(error_msg)
+        if (total < 1_c_int64_t) then
+            error_msg = 'norm2 requires a non-empty section'
+            return
+        end if
+        allocate (elems(total))
+        do k = 0_c_int64_t, total - 1_c_int64_t
+            call lower_array_section_element_from_info(info, k, context, &
+                                                       elems(k + 1), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call emit_norm2_from_elements(context, &
+                                      context%symbols(info%source_index)%value_kind, &
+                                      elems, value, error_msg)
+    end subroutine lower_section_norm2
