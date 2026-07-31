@@ -390,6 +390,12 @@ module session_program_lowering_types
         ! its value lives in a separately malloc'd slot reached by loading the
         ! pointer. Null pointer marks it unallocated.
         logical, allocatable :: component_is_allocatable(:)
+        ! True for a scalar data-pointer component (integer/real/logical).
+        ! Such a component stores an 8-byte target address (two i32 slots)
+        ! inline; a null address marks it disassociated. `=>` writes the
+        ! address, intrinsic assignment of the parent copies it, so the
+        ! association travels with the object and never the pointee storage.
+        logical, allocatable :: component_is_pointer(:)
         ! True for a rank-1 allocatable array component (integer/real/logical).
         ! Such a component stores an inline 16-byte descriptor (four i32
         ! slots): an 8-byte data pointer at byte 0 and an i64 element extent

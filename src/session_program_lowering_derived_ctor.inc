@@ -177,6 +177,7 @@
         do c = 1, context%derived_types(type_index)%component_count
             if (component_is_allocatable(context, type_index, c) .or. &
                 component_is_alloc_array(context, type_index, c)) return
+            if (component_is_pointer(context, type_index, c)) return
             nested_type = context%derived_types(type_index)% &
                           component_type_index(c)
             if (nested_type /= 0) then

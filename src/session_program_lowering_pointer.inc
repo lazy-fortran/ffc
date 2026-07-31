@@ -433,6 +433,12 @@
             call lower_proc_component_assignment(arena, node, context, error_msg)
             return
         end if
+        ! obj%p => t binds a scalar data-pointer component (#401).
+        if (is_data_pointer_component_access(arena, node%pointer_index, context)) &
+        then
+            call lower_data_component_assignment(arena, node, context, error_msg)
+            return
+        end if
         call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
         ptr_index = find_symbol_compat(context, ptr_name)
@@ -619,6 +625,13 @@
             return
         end if
         do i = 1, size(node%pointer_indices)
+            if (is_data_pointer_component_access(arena, node%pointer_indices(i), &
+                                                 context)) then
+                call nullify_data_pointer_component(arena, node%pointer_indices(i), &
+                                                    context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             call get_identifier_name(arena, node%pointer_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol_compat(context, name)
@@ -661,6 +674,11 @@
         end if
         ! A procedure-pointer component operand has no compile-time association
         ! flag; compare its stored callee address at run time instead (#372).
+        if (is_data_pointer_component_access(arena, arg_indices(1), context)) then
+            call lower_data_pointer_component_associated(arena, arg_indices, &
+                                                         context, value, error_msg)
+            return
+        end if
         if (associated_uses_proc_component(arena, arg_indices, context)) then
             call lower_proc_pointer_associated(arena, arg_indices, context, &
                                                value, error_msg)
@@ -1150,6 +1168,186 @@
             return
         call set_empty(error_msg)
     end subroutine lower_proc_component_assignment
+
+    logical function is_data_pointer_component_access(arena, node_index, context) &
+        result(is_ptr)
+        ! True when node_index is obj%p naming a scalar data-pointer component
+        ! (#401). Unresolvable component references answer .false. so the
+        ! caller's other paths keep their own diagnostics.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: sym, type_index, comp_index
+        character(len=:), allocatable :: comp_name, local_error
+
+        is_ptr = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        select type (acc => arena%entries(node_index)%node)
+        type is (component_access_node)
+        class default
+            return
+        end select
+        call resolve_component_ref(arena, node_index, context, sym, type_index, &
+                                   comp_index, comp_name, local_error)
+        if (len_trim(local_error) > 0) return
+        is_ptr = component_is_pointer(context, type_index, comp_index)
+    end function is_data_pointer_component_access
+
+    subroutine data_component_slot_address(arena, access_index, context, addr, &
+                                           error_msg)
+        ! Address of the inline slot holding obj%p's target address.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: comp_name
+        integer :: sym, type_index, comp_index
+
+        call resolve_component_ref(arena, access_index, context, sym, type_index, &
+                                   comp_index, comp_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. component_is_pointer(context, type_index, comp_index)) then
+            error_msg = 'component is not a data pointer: '//trim(comp_name)
+            return
+        end if
+        call component_element_address_at(context, sym, type_index, comp_index, 0, &
+                                          addr, error_msg)
+    end subroutine data_component_slot_address
+
+    subroutine lower_data_component_assignment(arena, node, context, error_msg)
+        ! obj%p => t / obj%p => null(): store the target's address into the
+        ! component's inline pointer slot (#401). Target validation matches the
+        ! whole-variable pointer path: the right side must be a TARGET or a
+        ! pointer with storage, of the component's scalar kind.
+        type(ast_arena_t), intent(in) :: arena
+        type(pointer_assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr, target_addr
+
+        call data_component_slot_address(arena, node%pointer_index, context, &
+                                         slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (pointer_target_is_null(arena, node%target_index)) then
+            target_addr = null_ptr_operand(context)
+        else
+            call data_pointer_target_address(arena, node%pointer_index, &
+                                             node%target_index, context, &
+                                             target_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (.not. emit_ptr_store(context%session, target_addr, slot_addr, &
+                                 error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_data_component_assignment
+
+    subroutine data_pointer_target_address(arena, access_index, target_index, &
+                                           context, target_addr, error_msg)
+        ! Storage address a data-pointer component may adopt: a scalar TARGET
+        ! or pointer variable of the component's kind.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: target_addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: target_name, comp_name
+        integer :: sym, type_index, comp_index, tgt
+
+        call resolve_component_ref(arena, access_index, context, sym, type_index, &
+                                   comp_index, comp_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. is_identifier(arena, target_index)) then
+            error_msg = 'direct LIRIC session pointer component assignment '// &
+                        'requires a scalar target variable'
+            return
+        end if
+        call get_identifier_name(arena, target_index, target_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        tgt = find_symbol_compat(context, target_name)
+        if (tgt <= 0) then
+            error_msg = 'pointer assignment source was not declared: '// &
+                        trim(target_name)
+            return
+        end if
+        if (.not. (context%symbols(tgt)%is_target .or. &
+                   context%symbols(tgt)%is_pointer)) then
+            error_msg = 'right of => is not a target or pointer: '// &
+                        trim(target_name)
+            return
+        end if
+        if (.not. context%symbols(tgt)%has_address) then
+            error_msg = 'pointer assignment source has no storage: '// &
+                        trim(target_name)
+            return
+        end if
+        if (context%symbols(tgt)%is_array .or. context%symbols(tgt)%is_derived) then
+            error_msg = 'pointer component target must be a scalar of '// &
+                        'intrinsic type: '//trim(target_name)
+            return
+        end if
+        if (context%symbols(tgt)%value_kind /= &
+            component_kind(context, type_index, comp_index)) then
+            error_msg = 'pointer and target scalar kinds do not match'
+            return
+        end if
+        target_addr = context%symbols(tgt)%address
+        call set_empty(error_msg)
+    end subroutine data_pointer_target_address
+
+    subroutine nullify_data_pointer_component(arena, access_index, context, &
+                                              error_msg)
+        ! nullify(obj%p): clear the component's inline pointer slot (#401).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr
+
+        call data_component_slot_address(arena, access_index, context, slot_addr, &
+                                         error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                 slot_addr, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine nullify_data_pointer_component
+
+    subroutine lower_data_pointer_component_associated(arena, arg_indices, &
+                                                       context, value, error_msg)
+        ! associated(obj%p) / associated(obj%p, t): run-time comparison of the
+        ! stored target address (#401). F2018 16.9.20: a disassociated pointer
+        ! is never associated with a target, so the identity test is ANDed with
+        ! the non-null test.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr, ptr_value, target_addr, nonnull, same
+
+        call data_component_slot_address(arena, arg_indices(1), context, &
+                                         slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, slot_addr, ptr_value, error_msg)) &
+            return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, ptr_value, &
+                null_ptr_operand(context), nonnull, error_msg)) return
+        if (size(arg_indices) == 1) then
+            value = nonnull
+            call set_empty(error_msg)
+            return
+        end if
+        call data_pointer_target_address(arena, arg_indices(1), arg_indices(2), &
+                                         context, target_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, ptr_value, &
+                target_addr, same, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, nonnull, same, &
+                                  value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_data_pointer_component_associated
 
     subroutine lower_proc_pointer_associated(arena, arg_indices, context, value, &
                                              error_msg)

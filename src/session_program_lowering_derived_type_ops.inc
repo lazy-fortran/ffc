@@ -47,7 +47,8 @@
             component_slot_width = 4
             return
         end if
-        if (component_is_allocatable(context, type_index, comp_index)) then
+        if (component_is_allocatable(context, type_index, comp_index) .or. &
+            component_is_pointer(context, type_index, comp_index)) then
             component_slot_width = 2
             return
         end if
@@ -105,6 +106,34 @@
         component_is_allocatable = &
             context%derived_types(type_index)%component_is_allocatable(comp_index)
     end function component_is_allocatable
+
+    logical function component_is_pointer(context, type_index, comp_index)
+        ! True for a scalar data-pointer component (inline target address).
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_pointer = .false.
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_is_pointer)) return
+        component_is_pointer = &
+            context%derived_types(type_index)%component_is_pointer(comp_index)
+    end function component_is_pointer
+
+    logical function component_is_indirect(context, type_index, comp_index)
+        ! True when the component's slot holds an address and its value is
+        ! reached by loading that address: a scalar allocatable or a scalar
+        ! data pointer.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_indirect = &
+            component_is_allocatable(context, type_index, comp_index)
+        if (component_is_indirect) return
+        component_is_indirect = &
+            component_is_pointer(context, type_index, comp_index)
+    end function component_is_indirect
 
     integer function component_kind(context, type_index, comp_index)
         ! Scalar value kind of a component; VALUE_I32 when not yet recorded.
@@ -209,7 +238,7 @@
                 end do
                 cycle
             end if
-            if (component_is_allocatable(context, type_index, c)) then
+            if (component_is_indirect(context, type_index, c)) then
                 call null_allocatable_component_slots(context, symbol_index, &
                                                       outer_slots, abs_slot, 2, &
                                                       error_msg)
@@ -1485,7 +1514,7 @@
                                              'derived type component assignment target')
         if (len_trim(error_msg) > 0) return
 
-        if (component_access_is_allocatable(arena, target, context)) then
+        if (component_access_is_indirect(arena, target, context)) then
             call store_allocatable_component_value(context, component_address, &
                                                    comp_kind, value, error_msg)
             return
@@ -2065,7 +2094,7 @@
                                              'derived type component expression')
         if (len_trim(error_msg) > 0) return
 
-        if (component_access_is_allocatable(arena, node, context)) then
+        if (component_access_is_indirect(arena, node, context)) then
             call load_allocatable_component_value(context, component_address, &
                                                   comp_kind, value, error_msg)
             return
@@ -2109,6 +2138,25 @@
         if (component_index <= 0) return
         is_alloc = component_is_alloc_array(context, type_index, component_index)
     end function component_access_is_alloc_array
+
+    logical function component_access_is_indirect(arena, node, context) &
+            result(is_indirect)
+        ! True when a component_access node names a scalar component whose
+        ! value is reached through an inline address slot (allocatable or
+        ! data pointer).
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: type_index, component_index
+
+        is_indirect = .false.
+        type_index = component_base_type_index(arena, node%base_expr_index, context)
+        if (type_index <= 0) return
+        component_index = find_derived_component(context, type_index, &
+                                                 node%component_name)
+        if (component_index <= 0) return
+        is_indirect = component_is_indirect(context, type_index, component_index)
+    end function component_access_is_indirect
 
     subroutine load_allocatable_component_value(context, slot_address, comp_kind, &
                                                 value, error_msg)
