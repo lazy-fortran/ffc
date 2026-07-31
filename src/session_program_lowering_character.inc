@@ -50,9 +50,24 @@
                 call declaration_character_length(context, node, &
                                                   character_length, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (character_length > 0) then
+                ! An OPTIONAL dummy shares the presence ABI of every other
+                ! scalar kind: absent is a null reference pointer. Binding a
+                ! fixed-length dummy eagerly loads the data pointer out of
+                ! that descriptor, which faults before present() can be
+                ! evaluated, so an optional dummy keeps the descriptor form
+                ! (address arithmetic only) and reads its data at each use,
+                ! inside the guarded branch. The declared width N is still
+                ! recorded so the dummy keeps its own length, not the
+                ! caller's.
+                if (character_length > 0 .and. .not. node%is_optional) then
                     call bind_fixed_character_parameter_symbol(context, &
                         existing_index, character_length, error_msg)
+                else if (character_length > 0) then
+                    call bind_character_parameter_symbol(context, &
+                        existing_index, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    context%symbols(existing_index)%character_length = &
+                        character_length
                 else
                     call bind_character_parameter_symbol(context, &
                         existing_index, error_msg)
