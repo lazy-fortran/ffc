@@ -596,17 +596,27 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: elem, arg(1)
         integer :: vk
+        logical :: derived_actual
 
         call set_empty(error_msg)
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            call lower_array_elementwise_value(arena, n%arg_indices(1), &
-                                               target_symbol_index, linear_index, &
-                                               context, elem, error_msg)
-            if (len_trim(error_msg) > 0) return
             vk = context%symbols(target_symbol_index)%value_kind
-            call make_reference_argument(context, vk, elem, arg(1), error_msg)
+            ! A derived or polymorphic actual is passed by reference at its own
+            ! element stride, not loaded as a target-kind scalar (#369).
+            call elementwise_derived_actual_address(arena, n%arg_indices(1), &
+                                                    n%name, linear_index, context, &
+                                                    arg(1), derived_actual, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (.not. derived_actual) then
+                call lower_array_elementwise_value(arena, n%arg_indices(1), &
+                                                   target_symbol_index, &
+                                                   linear_index, context, elem, &
+                                                   error_msg)
+                if (len_trim(error_msg) > 0) return
+                call make_reference_argument(context, vk, elem, arg(1), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             select case (vk)
             case (VALUE_F32)
                 if (.not. emit_liric_f32_call(context%session, &
@@ -622,6 +632,148 @@
             error_msg = 'elemental user call node lost its type'
         end select
     end subroutine lower_elementwise_user_call
+
+    ! Address of element linear_index of a derived-type array actual, for an
+    ! elemental call whose dummy is a scalar type(...) or class(...) argument
+    ! (#369). The stride is the derived type's own slot count, so the callee
+    ! receives the same base address it would get from a scalar actual.
+    ! handled stays .false. for any other actual, leaving the caller's
+    ! intrinsic-kind path in charge.
+    subroutine elementwise_derived_actual_address(arena, node_index, &
+                                                  callee_name, linear_index, &
+                                                  context, address, handled, &
+                                                  error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index, slots
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, id_name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_derived) return
+        if (.not. context%symbols(symbol_index)%is_array) return
+        if (context%symbols(symbol_index)%is_allocatable) return
+        call check_elemental_dummy_conformance(arena, callee_name, context, &
+            context%symbols(symbol_index)%derived_type_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        slots = total_component_slots(context, &
+                                      context%symbols(symbol_index)%derived_type_index)
+        if (slots <= 0) return
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                i32_immediate(context%session, &
+                              int(linear_index, c_int64_t)*int(slots, c_int64_t)), &
+                address, error_msg)) return
+        handled = .true.
+    end subroutine elementwise_derived_actual_address
+
+    ! Reject a derived actual whose declared type is neither the elemental
+    ! dummy's declared type nor an extension of it (#369). Silence when the
+    ! dummy's declared type cannot be determined, so unrelated calls keep
+    ! their existing behaviour.
+    subroutine check_elemental_dummy_conformance(arena, callee_name, context, &
+                                                 actual_type_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: actual_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: dummy_type
+        integer :: type_index, depth
+
+        call set_empty(error_msg)
+        if (actual_type_index <= 0) return
+        call elemental_dummy_declared_type(arena, callee_name, dummy_type)
+        if (len_trim(dummy_type) == 0) return
+        type_index = actual_type_index
+        depth = 0
+        do while (type_index > 0 .and. depth <= context%derived_type_count)
+            if (same_name(trim(context%derived_types(type_index)%name), &
+                          dummy_type)) return
+            if (len_trim(context%derived_types(type_index)%parent_name) == 0) exit
+            type_index = find_derived_type(context, &
+                trim(context%derived_types(type_index)%parent_name))
+            depth = depth + 1
+        end do
+        error_msg = 'incompatible actual argument for elemental procedure "'// &
+                    trim(callee_name)//'": declared type '// &
+                    trim(context%derived_types(actual_type_index)%name)// &
+                    ' is not '//trim(dummy_type)//' or an extension of it'
+    end subroutine check_elemental_dummy_conformance
+
+    ! Declared derived-type name of the first dummy of the named procedure,
+    ! for a type(name) or class(name) declaration. Empty when the procedure
+    ! or its dummy declaration is not visible in the arena.
+    subroutine elemental_dummy_declared_type(arena, callee_name, type_name)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        character(len=:), allocatable, intent(out) :: type_name
+        character(len=:), allocatable :: dummy_name, err
+        integer :: i
+
+        type_name = ''
+        do i = 1, arena%size
+            if (.not. allocated(arena%entries(i)%node)) cycle
+            select type (fn => arena%entries(i)%node)
+            type is (function_def_node)
+                if (.not. allocated(fn%name)) cycle
+                if (.not. same_name(fn%name, callee_name)) cycle
+                if (.not. allocated(fn%param_indices)) cycle
+                if (size(fn%param_indices) /= 1) cycle
+                if (.not. allocated(fn%body_indices)) cycle
+                call parameter_name(arena, fn%param_indices(1), dummy_name, err)
+                if (len_trim(err) > 0) cycle
+                call declared_derived_type_of(arena, fn%body_indices, &
+                                              dummy_name, type_name)
+                if (len_trim(type_name) > 0) return
+            end select
+        end do
+    end subroutine elemental_dummy_declared_type
+
+    subroutine declared_derived_type_of(arena, body_indices, dummy_name, &
+                                        type_name)
+        ! Derived-type name declared for dummy_name by a type(name)/class(name)
+        ! declaration among body_indices; empty when there is none.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: dummy_name
+        character(len=:), allocatable, intent(out) :: type_name
+        character(len=:), allocatable :: text, base
+        integer :: i, open_paren, close_paren
+
+        type_name = ''
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%var_name)) cycle
+                if (.not. same_name(decl%var_name, dummy_name)) cycle
+                if (.not. allocated(decl%type_name)) cycle
+                text = lowercase_text(trim(adjustl(decl%type_name)))
+                open_paren = index(text, '(')
+                close_paren = index(text, ')', back=.true.)
+                if (open_paren <= 1) return
+                if (close_paren <= open_paren + 1) return
+                base = trim(adjustl(text(1:open_paren - 1)))
+                if (base /= 'class' .and. base /= 'type') return
+                type_name = trim(adjustl(text(open_paren + 1:close_paren - 1)))
+                if (type_name == '*') type_name = ''
+                return
+            end select
+        end do
+    end subroutine declared_derived_type_of
 
     logical function is_elemental_minmax_call(arena, node_index) result(is_call)
         ! True for a two-array-operand MAX/MIN call usable as a whole-array

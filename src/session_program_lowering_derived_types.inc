@@ -528,6 +528,7 @@
         context%derived_types(type_index)%name = trim(node%name)
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then
+            context%derived_types(type_index)%parent_name = trim(node%extends_parent)
             call inherit_parent_members(node, context, type_index, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
