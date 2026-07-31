@@ -1,5 +1,5 @@
 program test_session_deferred_char_compiler
-    use ffc_test_support, only: expect_output, expect_exit_status
+    use ffc_test_support, only: expect_output, expect_exit_status, expect_no_leaks
     implicit none
 
     logical :: all_passed
@@ -26,11 +26,101 @@ program test_session_deferred_char_compiler
     if (.not. test_pass_literal_to_assumed_length_dummy()) all_passed = .false.
     if (.not. test_assumed_length_len_inside_callee()) all_passed = .false.
     if (.not. test_assumed_length_len_trim()) all_passed = .false.
+    if (.not. test_repeated_length_changes_report_each_length()) &
+        all_passed = .false.
+    if (.not. test_explicit_allocation_is_released_on_deallocate()) &
+        all_passed = .false.
+    if (.not. test_reassignment_releases_the_previous_allocation()) &
+        all_passed = .false.
+    if (.not. test_repeated_deallocate_is_not_a_double_free()) &
+        all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: deferred-char function result ABI'
 
 contains
+
+    function repeated_length_source() result(text)
+        ! Shared source for the repeated-length-change cases: assignments of
+        ! length 2, 8 and 1, then an explicit allocation reused by an
+        ! assignment of exactly the allocated length.
+        character(len=:), allocatable :: text
+        character(len=*), parameter :: body = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  s = "ab"'//new_line('a')// &
+            '  print *, len(s), s'//new_line('a')// &
+            '  s = "abcdefgh"'//new_line('a')// &
+            '  print *, len(s), s'//new_line('a')// &
+            '  s = "z"'//new_line('a')// &
+            '  print *, len(s), s'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  allocate(character(len=3) :: s)'//new_line('a')// &
+            '  s = "xyz"'//new_line('a')// &
+            '  print *, len(s), s'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        text = body
+    end function repeated_length_source
+
+    logical function test_repeated_length_changes_report_each_length()
+        ! Each assignment retargets the descriptor length to the RHS length,
+        ! and the explicit allocate(character(len=3)) fixes length 3.
+        test_repeated_length_changes_report_each_length = expect_output( &
+            repeated_length_source(), &
+            '           2 ab'//new_line('a')// &
+            '           8 abcdefgh'//new_line('a')// &
+            '           1 z'//new_line('a')// &
+            '           3 xyz'//new_line('a'), &
+            '/tmp/ffc_session_deferred_relength_test')
+    end function test_repeated_length_changes_report_each_length
+
+    logical function test_explicit_allocation_is_released_on_deallocate()
+        ! allocate(character(len=n) :: s) owns heap storage; the descriptor
+        ! must release it exactly once, and only once, at deallocate.
+        test_explicit_allocation_is_released_on_deallocate = expect_no_leaks( &
+            repeated_length_source(), &
+            '/tmp/ffc_session_deferred_relength_leak_test')
+    end function test_explicit_allocation_is_released_on_deallocate
+
+    logical function test_reassignment_releases_the_previous_allocation()
+        ! Assigning over an owned descriptor releases the former storage
+        ! before installing the replacement.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  integer :: n'//new_line('a')// &
+            '  n = 5'//new_line('a')// &
+            '  allocate(character(len=n) :: s)'//new_line('a')// &
+            '  s = "hello"'//new_line('a')// &
+            '  s = "world!!"'//new_line('a')// &
+            '  print *, len(s), s'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_reassignment_releases_the_previous_allocation = expect_no_leaks( &
+            source, '/tmp/ffc_session_deferred_reassign_leak_test')
+    end function test_reassignment_releases_the_previous_allocation
+
+    logical function test_repeated_deallocate_is_not_a_double_free()
+        ! Deallocating an already-released descriptor sees the null state and
+        ! must not free the former pointer a second time.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s'//new_line('a')// &
+            '  allocate(character(len=4) :: s)'//new_line('a')// &
+            '  s = "abcd"'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_repeated_deallocate_is_not_a_double_free = expect_no_leaks( &
+            source, '/tmp/ffc_session_deferred_double_free_test')
+    end function test_repeated_deallocate_is_not_a_double_free
 
     logical function test_assumed_length_len_inside_callee()
         ! len(s) inside a callee returns the actual length of a literal actual.

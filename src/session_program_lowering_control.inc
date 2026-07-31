@@ -288,6 +288,12 @@
                 then_result%symbols(index)%deferred_data
             context%symbols(index)%deferred_length = &
                 then_result%symbols(index)%deferred_length
+            context%symbols(index)%has_character_ownership = &
+                then_result%symbols(index)%has_character_ownership
+            context%symbols(index)%deferred_capacity = &
+                then_result%symbols(index)%deferred_capacity
+            context%symbols(index)%deferred_storage = &
+                then_result%symbols(index)%deferred_storage
             context%symbols(index)%character_length = &
                 then_result%symbols(index)%character_length
             context%symbols(index)%has_character_value = &

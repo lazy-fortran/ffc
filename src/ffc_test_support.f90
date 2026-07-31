@@ -24,8 +24,58 @@ module ffc_test_support
     public :: expect_output_with_stdin
     public :: expect_stderr_and_exit
     public :: expect_eof_stderr_and_exit
+    public :: expect_no_leaks
 
 contains
+
+    logical function expect_no_leaks(source, exe_path) result(ok)
+        ! Compiles source and runs the executable under valgrind, requiring a
+        ! clean memcheck report: no definitely/indirectly lost blocks, no
+        ! invalid free, no invalid read or write. This is an ownership oracle
+        ! independent of the lowering: it observes the process's actual heap
+        ! behaviour rather than the emitted IR. When valgrind is not installed
+        ! the check reports success so the suite still runs.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg, out_path
+        integer :: cmd_stat, exit_stat, probe_stat
+
+        ok = .false.
+        call execute_command_line('command -v valgrind > /dev/null 2>&1', &
+            exitstat=probe_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. probe_stat /= 0) then
+            print *, 'SKIP: valgrind not available for leak check ', exe_path
+            ok = .true.
+            return
+        end if
+
+        call compile_to_exe(source, exe_path, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: ', trim(error_msg)
+            call execute_command_line('rm -f '//exe_path)
+            return
+        end if
+
+        out_path = exe_path//'.vg'
+        call execute_command_line('valgrind -q --leak-check=full '// &
+            '--errors-for-leak-kinds=definite,indirect --error-exitcode=97 '// &
+            exe_path//' > '//out_path//' 2>&1', &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: emitted executable did not run under valgrind: ', &
+                exe_path
+            call execute_command_line('rm -f '//exe_path//' '//out_path)
+            return
+        end if
+        if (exit_stat == 97) then
+            print *, 'FAIL: valgrind reported a memory error for ', exe_path
+            call execute_command_line('cat '//out_path)
+            call execute_command_line('rm -f '//exe_path//' '//out_path)
+            return
+        end if
+        call execute_command_line('rm -f '//exe_path//' '//out_path)
+        ok = .true.
+    end function expect_no_leaks
 
     logical function expect_stderr_and_exit(source, expected, expected_exit, &
             exe_path) result(ok)

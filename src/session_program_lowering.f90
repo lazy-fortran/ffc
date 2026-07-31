@@ -308,10 +308,23 @@ module session_program_lowering
         fmod_component_t, fmod_derived_type_t, &
         fmod_variable_t, fmod_procedure_t, fmod_generic_t, &
         write_fmod, read_fmod
+    use ffc_character_descriptor, only: CHARACTER_STORAGE_STATIC, &
+        CHARACTER_STORAGE_STACK, CHARACTER_STORAGE_OWNED
     implicit none
     private
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
+
+    ! Storage classes of the canonical character descriptor, widened to the
+    ! i64 immediate width the lowering emits with. They are derived from
+    ! ffc_character_descriptor so the emitted descriptors and the host-side
+    ! descriptor helpers cannot drift apart.
+    integer(c_int64_t), parameter :: LOWERING_CHARACTER_STORAGE_STATIC = &
+        int(CHARACTER_STORAGE_STATIC, c_int64_t)
+    integer(c_int64_t), parameter :: LOWERING_CHARACTER_STORAGE_STACK = &
+        int(CHARACTER_STORAGE_STACK, c_int64_t)
+    integer(c_int64_t), parameter :: LOWERING_CHARACTER_STORAGE_OWNED = &
+        int(CHARACTER_STORAGE_OWNED, c_int64_t)
 
     ! Reduction kinds for dim-wise whole-array reductions (sum/product/count/
     ! any/all along one dimension). See lower_dim_reduction_assignment.
