@@ -711,3 +711,356 @@
             is_dec = .false.
         end select
     end function is_dec_io_spec
+
+    ! NAMELIST transfer-statement constraints (#389). A group object that is
+    ! polymorphic, or of a derived type with ALLOCATABLE or POINTER components,
+    ! requires a defined input/output procedure; an INTENT(IN) group object
+    ! cannot be read. The group list is taken from the source text (see
+    ! check_namelist_members); the second positional item of a data transfer
+    ! statement is a namelist group name whenever the source declares that
+    ! group.
+    subroutine check_namelist_transfers(arena, source, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: source
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: group
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (read_statement_node)
+                call namelist_transfer_group(nd%namelist_group, nd%format_spec, &
+                                             source, nd%line, group)
+                if (len_trim(group) == 0) cycle
+                call check_namelist_transfer_group(arena, source, group, .true., &
+                                                   nd%line, error_msg)
+            type is (write_statement_node)
+                call namelist_transfer_group(nd%namelist_group, nd%format_spec, &
+                                             source, nd%line, group)
+                if (len_trim(group) == 0) cycle
+                call check_namelist_transfer_group(arena, source, group, .false., &
+                                                   nd%line, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_namelist_transfers
+
+    subroutine namelist_transfer_group(nml_spec, format_spec, source, line, group)
+        character(len=:), allocatable, intent(in) :: nml_spec
+        character(len=:), allocatable, intent(in) :: format_spec
+        character(len=*), intent(in) :: source
+        integer, intent(in) :: line
+        character(len=:), allocatable, intent(out) :: group
+        character(len=:), allocatable :: candidate
+
+        group = ''
+        if (allocated(nml_spec)) then
+            if (len_trim(nml_spec) > 0) then
+                group = trim(nml_spec)
+                return
+            end if
+        end if
+        candidate = ''
+        if (allocated(format_spec)) candidate = trim(format_spec)
+        if (len_trim(candidate) == 0) then
+            ! A bare positional group name is not always kept on the typed node,
+            ! so recover it from the transfer statement itself.
+            call namelist_source_control_item(source, line, candidate)
+        end if
+        if (len_trim(candidate) == 0) return
+        if (.not. namelist_source_has_group(source, trim(candidate))) return
+        group = trim(candidate)
+    end subroutine namelist_transfer_group
+
+    ! Second control-list item of the data transfer statement on `line`, which
+    ! is the format or namelist group name in positional form.
+    subroutine namelist_source_control_item(source, line, item)
+        character(len=*), intent(in) :: source
+        integer, intent(in) :: line
+        character(len=:), allocatable, intent(out) :: item
+        character(len=:), allocatable :: text
+        integer :: lp, comma, close_pos, eq_pos
+
+        item = ''
+        call namelist_source_line(source, line, text)
+        text = trim(adjustl(strip_data_source_comment(text)))
+        lp = index(text, '(')
+        if (lp == 0) return
+        comma = index(text(lp + 1:), ',')
+        if (comma == 0) return
+        text = text(lp + comma + 1:)
+        close_pos = index(text, ')')
+        if (close_pos == 0) return
+        text = text(1:close_pos - 1)
+        comma = index(text, ',')
+        if (comma > 0) text = text(1:comma - 1)
+        eq_pos = index(text, '=')
+        if (eq_pos > 0) text = text(eq_pos + 1:)
+        item = trim(adjustl(text))
+        if (verify(item, 'abcdefghijklmnopqrstuvwxyz' &
+                   //'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') /= 0) item = ''
+    end subroutine namelist_source_control_item
+
+    subroutine namelist_source_line(source, line, text)
+        character(len=*), intent(in) :: source
+        integer, intent(in) :: line
+        character(len=:), allocatable, intent(out) :: text
+        integer :: pos, next_nl, current
+
+        text = ''
+        if (line < 1) return
+        pos = 1
+        current = 1
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                if (current == line) text = source(pos:)
+                return
+            end if
+            if (current == line) then
+                text = source(pos:pos + next_nl - 2)
+                return
+            end if
+            pos = pos + next_nl
+            current = current + 1
+        end do
+    end subroutine namelist_source_line
+
+    logical function namelist_source_has_group(source, name) result(has_group)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: stmt, group
+        integer :: pos, line_no, stmt_line, n, p
+        logical :: found, ok
+
+        has_group = .false.
+        pos = 1
+        line_no = 1
+        do
+            call namelist_next_statement(source, pos, line_no, stmt, stmt_line, &
+                                         found)
+            if (.not. found) exit
+            n = len_trim(stmt)
+            p = 9
+            call namelist_take_group(stmt, n, p, group, ok)
+            if (.not. ok) cycle
+            if (same_name(group, name)) then
+                has_group = .true.
+                return
+            end if
+        end do
+    end function namelist_source_has_group
+
+    subroutine check_namelist_transfer_group(arena, source, group, is_read, &
+                                             line, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: group
+        logical, intent(in) :: is_read
+        integer, intent(in) :: line
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: stmt, this_group, member
+        integer :: pos, line_no, stmt_line, n, p
+        logical :: found, ok, new_group, in_group
+
+        call set_empty(error_msg)
+        pos = 1
+        line_no = 1
+        do
+            call namelist_next_statement(source, pos, line_no, stmt, stmt_line, &
+                                         found)
+            if (.not. found) exit
+            n = len_trim(stmt)
+            p = 9
+            new_group = .true.
+            in_group = .false.
+            do
+                if (new_group) then
+                    call namelist_take_group(stmt, n, p, this_group, ok)
+                    if (.not. ok) exit
+                    in_group = same_name(this_group, group)
+                    new_group = .false.
+                end if
+                call namelist_take_member(stmt, n, p, member, new_group, ok)
+                if (.not. ok) exit
+                if (in_group .and. len_trim(member) > 0) then
+                    call check_namelist_transfer_member(arena, source, member, &
+                        group, is_read, line, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                if (p > n) exit
+            end do
+        end do
+    end subroutine check_namelist_transfer_group
+
+    subroutine check_namelist_transfer_member(arena, source, name, group, &
+                                              is_read, line, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: name
+        character(len=*), intent(in) :: group
+        logical, intent(in) :: is_read
+        integer, intent(in) :: line
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base, low
+        character(len=32) :: location
+        integer :: decl_index
+
+        call set_empty(error_msg)
+        decl_index = namelist_find_declaration(arena, name, huge(1))
+        if (decl_index == 0) return
+        write (location, '(" at line ",I0)') line
+        select type (decl => arena%entries(decl_index)%node)
+        type is (declaration_node)
+            if (allocated(decl%type_name)) then
+                low = trim(lowercase_text(decl%type_name))
+                if (index(low, 'class(') == 1) then
+                    error_msg = 'NAMELIST object '''//trim(name)// &
+                        ''' in namelist '''//trim(group)//''' is polymorphic'// &
+                        ' and requires a defined input/output procedure'// &
+                        trim(location)
+                    return
+                end if
+                base = namelist_derived_base_name(decl%type_name)
+                if (len_trim(base) > 0) then
+                    if (namelist_type_needs_dtio(arena, source, base, 0)) then
+                        error_msg = 'NAMELIST object '''//trim(name)// &
+                            ''' in namelist '''//trim(group)//''' has '// &
+                            'ALLOCATABLE or POINTER components and thus '// &
+                            'requires a defined input/output procedure'// &
+                            trim(location)
+                        return
+                    end if
+                end if
+            end if
+            if (.not. is_read) return
+            if (.not. decl%has_intent) return
+            if (.not. allocated(decl%intent)) return
+            if (trim(lowercase_text(decl%intent)) == 'in') then
+                error_msg = 'NAMELIST object '''//trim(name)//''' in namelist '''// &
+                    trim(group)//''' is INTENT(IN) and cannot be read'// &
+                    trim(location)
+            end if
+        end select
+    end subroutine check_namelist_transfer_member
+
+    ! A derived type needs a defined input/output procedure for namelist
+    ! transfer when it has, directly or through a component, an ALLOCATABLE or
+    ! POINTER component. Types defined in another program unit of the same file
+    ! reach the arena without their component list, so the type definition is
+    ! also read from the source text.
+    recursive logical function namelist_type_needs_dtio(arena, source, name, &
+            depth) result(needs)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: depth
+        character(len=:), allocatable :: base
+        integer :: t, i
+
+        needs = .false.
+        if (depth > 8) return
+        t = namelist_find_derived_type(arena, name)
+        if (t == 0) then
+            needs = namelist_source_type_needs_dtio(source, name, depth)
+            return
+        end if
+        select type (td => arena%entries(t)%node)
+        type is (derived_type_node)
+            if (.not. allocated(td%component_indices)) then
+                needs = namelist_source_type_needs_dtio(source, name, depth)
+                return
+            end if
+            do i = 1, size(td%component_indices)
+                if (.not. node_exists(arena, td%component_indices(i))) cycle
+                select type (comp => arena%entries(td%component_indices(i))%node)
+                type is (declaration_node)
+                    if (comp%is_allocatable .or. comp%is_pointer) then
+                        needs = .true.
+                        return
+                    end if
+                    if (.not. allocated(comp%type_name)) cycle
+                    base = namelist_derived_base_name(comp%type_name)
+                    if (len_trim(base) == 0) cycle
+                    needs = namelist_type_needs_dtio(arena, source, base, &
+                                                     depth + 1)
+                    if (needs) return
+                end select
+            end do
+        end select
+    end function namelist_type_needs_dtio
+
+    ! Same question answered from the source text: walk the type definition
+    ! block of `name` and report an ALLOCATABLE or POINTER component, recursing
+    ! into derived-type components.
+    recursive logical function namelist_source_type_needs_dtio(source, name, &
+            depth) result(needs)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: depth
+        character(len=:), allocatable :: text, low, attrs, base
+        integer :: pos, next_nl, sep
+        logical :: inside
+
+        needs = .false.
+        if (depth > 8) return
+        pos = 1
+        inside = .false.
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                text = source(pos:)
+                pos = len(source) + 1
+            else
+                text = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            low = trim(adjustl(lowercase_text( &
+                               strip_data_source_comment(text))))
+            if (.not. inside) then
+                inside = namelist_type_header_names(low, name)
+                cycle
+            end if
+            if (index(low, 'end type') == 1) return
+            if (index(low, 'contains') == 1) return
+            sep = index(low, '::')
+            if (sep == 0) cycle
+            attrs = low(1:sep - 1)
+            if (index(attrs, 'allocatable') > 0 .or. &
+                index(attrs, 'pointer') > 0) then
+                needs = .true.
+                return
+            end if
+            base = namelist_derived_base_name(attrs)
+            if (len_trim(base) == 0) cycle
+            if (same_name(base, name)) cycle
+            needs = namelist_source_type_needs_dtio(source, base, depth + 1)
+            if (needs) return
+        end do
+    end function namelist_source_type_needs_dtio
+
+    ! True when the lowercased statement is the type definition header of
+    ! `name`, in either `type name`, `type :: name`, or `type, attrs :: name`
+    ! form.
+    logical function namelist_type_header_names(low, name) result(is_header)
+        character(len=*), intent(in) :: low
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: rest
+        integer :: sep
+
+        is_header = .false.
+        if (len(low) < 5) return
+        if (low(1:4) /= 'type') return
+        if (low(5:5) /= ' ' .and. low(5:5) /= ',' .and. low(5:5) /= ':') return
+        rest = trim(adjustl(low(5:)))
+        sep = index(rest, '::')
+        if (sep > 0) then
+            rest = trim(adjustl(rest(sep + 2:)))
+        else if (len(rest) > 0) then
+            if (rest(1:1) == ',') return
+        end if
+        if (index(rest, '(') > 0) rest = rest(1:index(rest, '(') - 1)
+        is_header = same_name(trim(rest), name)
+    end function namelist_type_header_names
