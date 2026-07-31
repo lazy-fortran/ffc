@@ -36,6 +36,7 @@ module liric_session_memory_bindings
     public :: emit_i64_load_at, emit_i64_store_at
     public :: emit_ptr_offset, emit_ptr_offset_dyn
     public :: emit_alloca_bytes, emit_malloc, emit_calloc, emit_free, emit_ptr_store, emit_memcpy
+    public :: emit_strnlen
     public :: emit_i32_array_alloca, emit_i32_array_element_addr
     public :: emit_ptr_array_alloca, emit_ptr_array_element_addr
     public :: emit_f32_array_alloca, emit_f32_array_element_addr
@@ -746,6 +747,32 @@ contains
         call set_empty(error_msg)
         emit_calloc = .true.
     end function emit_calloc
+
+    logical function emit_strnlen(session, ptr, max_bytes, result, error_msg)
+        ! strnlen(ptr, max_bytes): the number of bytes before the first C null
+        ! byte, capped at max_bytes. Used to derive the Fortran character
+        ! length of a borrowed C string view (#361).
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: ptr
+        type(lr_operand_desc_t), intent(in) :: max_bytes
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t) :: args(2)
+        integer(c_int32_t) :: vreg
+
+        emit_strnlen = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        args(1) = ptr
+        args(2) = max_bytes
+        vreg = emit_strnlen_call(session%handle, args, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i64_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_strnlen = .true.
+    end function emit_strnlen
 
     logical function emit_free(session, ptr, error_msg)
         ! free(ptr). free(NULL) is a no-op, so callers need not null-check.

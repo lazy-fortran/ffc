@@ -16,6 +16,14 @@
             end if
             call parse_character_length(node%type_name, character_length, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (character_length < 0 .and. node%is_pointer) then
+                ! character(len=:), pointer: a deferred-length character view.
+                ! It carries the same {data,len} descriptor as a deferred-length
+                ! allocatable, but the storage is borrowed, so it is never
+                ! freed through this symbol (#361).
+                call define_deferred_character_pointer(node, context, error_msg)
+                return
+            end if
             if (character_length <= 0) then
                 call unsupported_feature_error('character pointer/target declaration', &
                     node%line, node%column, &
@@ -38,6 +46,98 @@
             error_msg = 'pointer/target declaration did not expose a variable name'
         end if
     end subroutine lower_scalar_pointer_target
+
+    subroutine define_deferred_character_pointer(node, context, error_msg)
+        ! Define every name in a character(len=:), pointer declaration as a
+        ! deferred-length character symbol. Association is done later by
+        ! c_f_strpointer (#361).
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call define_deferred_character_symbol(context, node%var_names(i), &
+                                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call define_deferred_character_symbol(context, node%var_name, error_msg)
+        else
+            error_msg = 'pointer declaration did not expose a variable name'
+        end if
+    end subroutine define_deferred_character_pointer
+
+    subroutine lower_c_f_strpointer(arena, arg_indices, context, error_msg)
+        ! c_f_strpointer(cstring, fstrptr [, nchars]): associate a
+        ! deferred-length character pointer with borrowed C character storage.
+        ! The Fortran length is the number of characters before the first C
+        ! null byte, capped at nchars. The C target is never freed (#361).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr, max_chars, length
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+
+        call set_empty(error_msg)
+        if (.not. allocated(arg_indices)) then
+            error_msg = 'c_f_strpointer requires at least two arguments'
+            return
+        end if
+        if (size(arg_indices) < 2 .or. size(arg_indices) > 3) then
+            error_msg = 'c_f_strpointer requires two or three arguments'
+            return
+        end if
+        if (size(arg_indices) < 3) then
+            error_msg = 'c_f_strpointer with a c_ptr cstring requires the '// &
+                        'nchars argument'
+            return
+        end if
+
+        call lower_c_ptr_expression(arena, arg_indices(1), context, data_ptr, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = 'c_f_strpointer cstring must be a c_ptr expression; '// &
+                        'character array cstrings are not yet supported'
+            return
+        end if
+
+        if (.not. is_identifier(arena, arg_indices(2))) then
+            error_msg = 'c_f_strpointer fstrptr must be a character pointer'
+            return
+        end if
+        call get_identifier_name(arena, arg_indices(2), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        if (symbol_index <= 0) then
+            error_msg = 'c_f_strpointer fstrptr was not declared: '//trim(name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_deferred_character) then
+            error_msg = 'c_f_strpointer fstrptr must be a deferred-length '// &
+                        'character pointer: '//trim(name)
+            return
+        end if
+
+        call lower_i64_expression(arena, arg_indices(3), context, max_chars, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_strnlen(context%session, data_ptr, max_chars, length, &
+                               error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, length, &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        ! Uses of the view read the borrowed data pointer directly, exactly as
+        ! a deferred-length assignment binds its data operand.
+        context%symbols(symbol_index)%value = data_ptr
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_c_f_strpointer
 
     subroutine lower_pointer_target_array(node, context, value_kind, error_msg)
         ! Rank-1/rank-2 fixed-size integer/real/logical/complex POINTER/TARGET

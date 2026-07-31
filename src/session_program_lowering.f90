@@ -86,7 +86,7 @@ module session_program_lowering
         emit_i64_binary, emit_i64_alloca, &
         emit_alloca_bytes, emit_malloc, emit_calloc, &
         emit_free, emit_ptr_store, &
-        emit_memcpy, emit_i64_load_at, &
+        emit_memcpy, emit_strnlen, emit_i64_load_at, &
         emit_i64_store_at, &
         emit_i32_array_alloca, &
         emit_i32_array_element_addr, &
@@ -1866,6 +1866,10 @@ contains
             call_arg_ranks)
         if (same_name(call_name, 'get_command_argument')) then
             call lower_get_command_argument(arena, arg_indices, context, error_msg)
+            return
+        end if
+        if (same_name(call_name, 'c_f_strpointer')) then
+            call lower_c_f_strpointer(arena, arg_indices, context, error_msg)
             return
         end if
         if (same_name(call_name, 'c_f_pointer')) then
