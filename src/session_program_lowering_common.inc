@@ -5,12 +5,16 @@
     ! the layout, data_statement_nodes for the initialisers). This pass reads
     ! both from those structured nodes.
     !
-    ! Each named or blank COMMON block gets one LIRIC global per element
-    ! offset, keyed by block name and position-within-block (not variable
-    ! spelling): different program units may list different names at the
-    ! same block, and F2018 8.10.3 associates them by position, so a program
-    ! and a subroutine (or BLOCK DATA unit) sharing a block name alias the
-    ! same storage even when their member names differ. Each unit's own
+    ! Each named or blank COMMON block gets one LIRIC global: a flat byte
+    ! buffer sized to the block's storage sequence. Every member is bound as
+    ! an addressed reference into that buffer at its own byte offset, keyed
+    ! by block name and byte offset (not variable spelling): different program
+    ! units may list different names, and different widths, at the same block,
+    ! and F2018 8.10.3 associates them by storage sequence, so a program and a
+    ! subroutine (or BLOCK DATA unit) sharing a block name alias the same
+    ! bytes even when their member names and orderings differ. A real(8)
+    ! therefore consumes eight bytes and the integers behind it start at byte
+    ! 8, whichever unit's ordering is read first (#351). Each unit's own
     ! COMMON statement is re-resolved against this canonical layout when the
     ! body walk reaches it, so binding never depends on which other unit's
     ! node happens to share a member name. The BLOCK DATA unit's DATA values
@@ -45,15 +49,191 @@
         call apply_block_data_initializers(arena, slots, slot_count, error_msg)
         if (len_trim(error_msg) > 0) return
         call canonicalize_common_slots(slots, slot_count, canon, canon_count)
-        do i = 1, canon_count
-            call emit_one_common_global(canon(i), context, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
+        call emit_common_storage_globals(canon, canon_count, context, error_msg)
     end subroutine emit_common_block_globals
+
+    subroutine emit_common_storage_globals(canon, canon_count, context, &
+                                           error_msg)
+        ! One zero-initialised byte buffer per COMMON block, sized to the
+        ! longest storage sequence any unit gives it, with every folded
+        ! initialiser written into the bytes the member occupies.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_int64_t, c_loc, c_size_t, c_ptr
+        use liric_session_bindings, only: lr_type_i8_s, lr_type_array_s
+        type(common_slot_t), intent(in) :: canon(:)
+        integer, intent(in) :: canon_count
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: block_names(COMMON_MAX_SLOTS)
+        integer :: block_sizes(COMMON_MAX_SLOTS)
+        integer :: n_blocks, b, i, span
+        character(len=:), allocatable :: gname
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char, len=1), allocatable, target :: buffer(:)
+        type(c_ptr) :: gtype
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        n_blocks = 0
+        do i = 1, canon_count
+            call find_or_add_block_offset(block_names, block_sizes, n_blocks, &
+                                          canon(i)%block_name, b, error_msg)
+            if (len_trim(error_msg) > 0) return
+            span = canon(i)%byte_offset + common_slot_bytes(canon(i))
+            if (span > block_sizes(b)) block_sizes(b) = span
+        end do
+        do b = 1, n_blocks
+            if (block_sizes(b) <= 0) cycle
+            allocate (buffer(block_sizes(b)))
+            buffer = char(0)
+            do i = 1, canon_count
+                if (canon(i)%block_name /= trim(block_names(b))) cycle
+                call write_common_slot_init(canon(i), buffer, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    deallocate (buffer)
+                    return
+                end if
+            end do
+            gname = common_global_name(trim(block_names(b)))
+            call to_c_chars(gname, c_name)
+            gtype = lr_type_array_s(context%session%handle, &
+                                    lr_type_i8_s(context%session%handle), &
+                                    int(block_sizes(b), c_int64_t))
+            global_id = lr_session_global(context%session%handle, c_name, &
+                                          gtype, c_false_local, &
+                                          c_loc(buffer), &
+                                          int(block_sizes(b), c_size_t))
+            deallocate (buffer)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'LIRIC could not create COMMON global: '//gname
+                return
+            end if
+        end do
+    end subroutine emit_common_storage_globals
+
+    integer function common_slot_bytes(slot) result(sz)
+        ! Storage the member occupies in its block's storage sequence.
+        type(common_slot_t), intent(in) :: slot
+
+        sz = common_kind_bytes(slot%value_kind)
+        if (slot%is_array) sz = sz*max(slot%array_size, 1)
+    end function common_slot_bytes
+
+    integer function common_kind_bytes(value_kind) result(sz)
+        ! Byte width of one element of a supported COMMON member kind.
+        integer, intent(in) :: value_kind
+
+        select case (value_kind)
+        case (VALUE_F64, VALUE_I64, VALUE_C4)
+            sz = 8
+        case (VALUE_C8)
+            sz = 16
+        case default
+            sz = 4
+        end select
+    end function common_kind_bytes
+
+    subroutine write_common_slot_init(slot, buffer, error_msg)
+        ! Write one slot's folded initialiser into the block byte buffer at the
+        ! slot's own byte offset, so the shared storage carries the BLOCK DATA
+        ! values from load time onward.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_float, &
+                                               c_double
+        type(common_slot_t), intent(in) :: slot
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: init_i32
+        real(c_float) :: init_f32
+        real(c_double) :: init_f64
+        real(c_float) :: c4_re, c4_im
+        real(c_double) :: c8_re, c8_im
+        integer :: k, elem_bytes, off, io_stat
+
+        call set_empty(error_msg)
+        if (slot%value_kind == VALUE_C4 .or. slot%value_kind == VALUE_C8) then
+            if (.not. slot%has_init) return
+            call fold_complex_common_initializer(slot, c4_re, c4_im, c8_re, &
+                                                 c8_im, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (slot%value_kind == VALUE_C8) then
+                call put_bytes(buffer, slot%byte_offset, transfer(c8_re, buffer, 8))
+                call put_bytes(buffer, slot%byte_offset + 8, &
+                               transfer(c8_im, buffer, 8))
+            else
+                call put_bytes(buffer, slot%byte_offset, transfer(c4_re, buffer, 4))
+                call put_bytes(buffer, slot%byte_offset + 4, &
+                               transfer(c4_im, buffer, 4))
+            end if
+            return
+        end if
+        if (slot%is_array) then
+            if (.not. allocated(slot%array_init_values)) return
+            elem_bytes = common_kind_bytes(slot%value_kind)
+            do k = 1, size(slot%array_init_values)
+                if (len_trim(slot%array_init_values(k)) == 0) cycle
+                off = slot%byte_offset + (k - 1)*elem_bytes
+                select case (slot%value_kind)
+                case (VALUE_I32, VALUE_LOGICAL)
+                    call fold_array_element_i32(slot%array_init_values(k), &
+                                                init_i32, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call put_bytes(buffer, off, transfer(init_i32, buffer, 4))
+                case (VALUE_F32)
+                    read (slot%array_init_values(k), *, iostat=io_stat) init_f32
+                    if (io_stat /= 0) then
+                        error_msg = 'malformed real initializer: '// &
+                                    slot%array_init_values(k)
+                        return
+                    end if
+                    call put_bytes(buffer, off, transfer(init_f32, buffer, 4))
+                case (VALUE_F64)
+                    read (slot%array_init_values(k), *, iostat=io_stat) init_f64
+                    if (io_stat /= 0) then
+                        error_msg = 'malformed double initializer: '// &
+                                    slot%array_init_values(k)
+                        return
+                    end if
+                    call put_bytes(buffer, off, transfer(init_f64, buffer, 8))
+                case default
+                    error_msg = 'unsupported array COMMON variable kind'
+                    return
+                end select
+            end do
+            return
+        end if
+        if (.not. slot%has_init) return
+        call fold_common_initializer(slot, init_i32, init_f32, init_f64, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (slot%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            call put_bytes(buffer, slot%byte_offset, transfer(init_i32, buffer, 4))
+        case (VALUE_F32)
+            call put_bytes(buffer, slot%byte_offset, transfer(init_f32, buffer, 4))
+        case (VALUE_F64)
+            call put_bytes(buffer, slot%byte_offset, transfer(init_f64, buffer, 8))
+        case default
+            error_msg = 'unsupported COMMON variable kind for global emission'
+        end select
+    end subroutine write_common_slot_init
+
+    subroutine put_bytes(buffer, byte_offset, bytes)
+        ! Copy value bytes into the block buffer at a zero-based byte offset.
+        use, intrinsic :: iso_c_binding, only: c_char
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        integer, intent(in) :: byte_offset
+        character(kind=c_char, len=1), intent(in) :: bytes(:)
+
+        if (byte_offset < 0) return
+        if (byte_offset + size(bytes) > size(buffer)) return
+        buffer(byte_offset + 1:byte_offset + size(bytes)) = bytes
+    end subroutine put_bytes
 
     subroutine canonicalize_common_slots(slots, slot_count, canon, canon_count)
         ! Collapse the raw per-unit member list down to one entry per
-        ! distinct (block_name, pos_in_block): every unit sharing a block
+        ! distinct (block_name, byte_offset): every unit sharing a block
         ! name and offset shares one global, so only the first occurrence's
         ! kind/array shape is emitted, with any DATA initialiser found on a
         ! later duplicate merged in (a BLOCK DATA unit may spell a member
@@ -70,7 +250,7 @@
             found = .false.
             do j = 1, canon_count
                 if (canon(j)%block_name == slots(i)%block_name .and. &
-                    canon(j)%pos_in_block == slots(i)%pos_in_block) then
+                    canon(j)%byte_offset == slots(i)%byte_offset) then
                     call merge_common_slot_init(canon(j), slots(i))
                     found = .true.
                     exit
@@ -172,11 +352,11 @@
         ! the program unit that owns this COMMON statement when that scope
         ! can be resolved (root_index/node_index), so a name collision with
         ! an unrelated local in another unit cannot pick the wrong kind.
-        ! pos_in_block is this node's own running element offset within its
-        ! block (scalars consume one slot, arrays consume array_size),
-        ! independent of any other unit's member names, so two units sharing
-        ! a block name alias by position rather than by spelling (#1578,
-        ! F2018 8.10.3).
+        ! byte_offset is this node's own running byte offset within its block
+        ! (each member consumes its storage width, an array that width times
+        ! its element count), independent of any other unit's member names, so
+        ! two units sharing a block name alias by storage sequence rather than
+        ! by spelling (#1578, #351, F2018 8.10.3).
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index, node_index
         type(common_block_node), intent(in) :: node
@@ -212,20 +392,17 @@
             slots(slot_count)%value_kind = vk
             slots(slot_count)%is_array = arr_flag
             slots(slot_count)%array_size = arr_size
-            slots(slot_count)%pos_in_block = block_offsets(b)
+            slots(slot_count)%byte_offset = block_offsets(b)
             slots(slot_count)%has_init = .false.
-            if (arr_flag) then
-                block_offsets(b) = block_offsets(b) + max(arr_size, 1)
-            else
-                block_offsets(b) = block_offsets(b) + 1
-            end if
+            block_offsets(b) = block_offsets(b) + &
+                               common_slot_bytes(slots(slot_count))
         end do
     end subroutine add_common_node_slots
 
     subroutine find_or_add_block_offset(block_names_seen, block_offsets, &
                                         n_blocks_seen, block_name, b, error_msg)
-        ! Look up block_name's running-offset slot within a single node's own
-        ! scratch tables, appending a fresh zero-offset entry on first sight.
+        ! Look up block_name's running-byte-offset slot within a single node's
+        ! own scratch tables, appending a fresh zero entry on first sight.
         character(len=*), intent(inout) :: block_names_seen(:)
         integer, intent(inout) :: block_offsets(:)
         integer, intent(inout) :: n_blocks_seen
@@ -889,130 +1066,6 @@
         end do
     end function find_common_slot
 
-    subroutine emit_one_common_global(slot, context, error_msg)
-        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
-                                               c_loc, c_size_t, c_ptr, &
-                                               c_double, c_float, c_int64_t
-        use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
-                                          lr_type_f64_s
-        type(common_slot_t), intent(in) :: slot
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: gname
-        character(kind=c_char), allocatable :: c_name(:)
-        integer(c_int32_t), target :: init_i32
-        real(c_float), target :: init_f32
-        real(c_double), target :: init_f64
-        type(c_ptr) :: gtype, init_ptr
-        integer(c_size_t) :: init_size
-        integer(c_int32_t) :: global_id
-        logical(c_bool) :: c_false_local
-
-        if (slot%value_kind == VALUE_C4 .or. slot%value_kind == VALUE_C8) then
-            call emit_complex_common_global(slot, context, error_msg)
-            return
-        end if
-
-        c_false_local = .false.
-        gname = common_global_name(slot%block_name, slot%pos_in_block)
-        call to_c_chars(gname, c_name)
-
-        if (slot%is_array) then
-            call emit_array_common_global(slot, context, c_name, error_msg)
-            return
-        end if
-
-        call fold_common_initializer(slot, init_i32, init_f32, init_f64, &
-                                     error_msg)
-        if (len_trim(error_msg) > 0) return
-        select case (slot%value_kind)
-        case (VALUE_I32, VALUE_LOGICAL)
-            gtype = lr_type_i32_s(context%session%handle)
-            init_ptr = c_loc(init_i32)
-            init_size = 4_c_size_t
-        case (VALUE_F32)
-            gtype = lr_type_f32_s(context%session%handle)
-            init_ptr = c_loc(init_f32)
-            init_size = 4_c_size_t
-        case (VALUE_F64)
-            gtype = lr_type_f64_s(context%session%handle)
-            init_ptr = c_loc(init_f64)
-            init_size = 8_c_size_t
-        case default
-            error_msg = 'unsupported COMMON variable kind for global emission'
-            return
-        end select
-
-        global_id = lr_session_global(context%session%handle, c_name, gtype, &
-                                      c_false_local, init_ptr, init_size)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not create COMMON global: '//gname
-            return
-        end if
-        call set_empty(error_msg)
-    end subroutine emit_one_common_global
-
-    subroutine emit_complex_common_global(slot, context, error_msg)
-        ! A COMMON complex scalar stores its real and imaginary parts as two
-        ! separate globals (matching the local-variable complex storage model
-        ! in session_program_lowering_complex.inc: address=re, element_address
-        ! =im), named by appending .re/.im to the block-offset global name.
-        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_loc, &
-                                               c_size_t, c_ptr, c_double, &
-                                               c_float, c_int32_t
-        use liric_session_bindings, only: lr_type_f32_s, lr_type_f64_s
-        type(common_slot_t), intent(in) :: slot
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: base_name, gname_re, gname_im
-        character(kind=c_char), allocatable :: c_name_re(:), c_name_im(:)
-        real(c_float), target :: init_f32_re, init_f32_im
-        real(c_double), target :: init_f64_re, init_f64_im
-        type(c_ptr) :: gtype, init_ptr_re, init_ptr_im
-        integer(c_size_t) :: init_size
-        integer(c_int32_t) :: global_id
-        logical(c_bool) :: c_false_local
-
-        c_false_local = .false.
-        call fold_complex_common_initializer(slot, init_f32_re, init_f32_im, &
-                                            init_f64_re, init_f64_im, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        base_name = common_global_name(slot%block_name, slot%pos_in_block)
-        gname_re = base_name//'.re'
-        gname_im = base_name//'.im'
-        call to_c_chars(gname_re, c_name_re)
-        call to_c_chars(gname_im, c_name_im)
-
-        if (slot%value_kind == VALUE_C8) then
-            gtype = lr_type_f64_s(context%session%handle)
-            init_ptr_re = c_loc(init_f64_re)
-            init_ptr_im = c_loc(init_f64_im)
-            init_size = 8_c_size_t
-        else
-            gtype = lr_type_f32_s(context%session%handle)
-            init_ptr_re = c_loc(init_f32_re)
-            init_ptr_im = c_loc(init_f32_im)
-            init_size = 4_c_size_t
-        end if
-
-        global_id = lr_session_global(context%session%handle, c_name_re, &
-                                      gtype, c_false_local, init_ptr_re, &
-                                      init_size)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not create COMMON global: '//gname_re
-            return
-        end if
-        global_id = lr_session_global(context%session%handle, c_name_im, &
-                                      gtype, c_false_local, init_ptr_im, &
-                                      init_size)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not create COMMON global: '//gname_im
-            return
-        end if
-        call set_empty(error_msg)
-    end subroutine emit_complex_common_global
-
     subroutine fold_complex_common_initializer(slot, init_f32_re, init_f32_im, &
                                                init_f64_re, init_f64_im, &
                                                error_msg)
@@ -1050,102 +1103,6 @@
         init_f64_re = re_val
         init_f64_im = im_val
     end subroutine fold_complex_common_initializer
-
-    subroutine emit_array_common_global(slot, context, c_name, error_msg)
-        ! Builds and interns the array global in one call: the init buffer
-        ! is a local allocatable, so lr_session_global (which copies the
-        ! bytes immediately) must run before this subroutine returns and the
-        ! buffer goes out of scope (a caller-held c_ptr into it would dangle).
-        use, intrinsic :: iso_c_binding, only: c_bool, c_int32_t, c_int64_t, &
-                                               c_float, c_double, c_loc, &
-                                               c_size_t, c_ptr
-        use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
-                                          lr_type_f64_s, lr_type_array_s
-        type(common_slot_t), intent(in) :: slot
-        type(lowering_context_t), intent(in) :: context
-        character(kind=c_char), intent(in) :: c_name(:)
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer(c_int32_t), target, allocatable :: array_i32(:)
-        real(c_float), target, allocatable :: array_f32(:)
-        real(c_double), target, allocatable :: array_f64(:)
-        type(c_ptr) :: elem_type, gtype, init_ptr
-        integer(c_size_t) :: init_size
-        integer(c_int32_t) :: global_id
-        logical(c_bool) :: c_false_local
-        integer :: i, io_stat
-
-        call set_empty(error_msg)
-        c_false_local = .false.
-        select case (slot%value_kind)
-        case (VALUE_I32, VALUE_LOGICAL)
-            allocate (array_i32(slot%array_size))
-            array_i32 = 0_c_int32_t
-            if (allocated(slot%array_init_values)) then
-                do i = 1, size(slot%array_init_values)
-                    if (len_trim(slot%array_init_values(i)) > 0) then
-                        call fold_array_element_i32(slot%array_init_values(i), &
-                                                   array_i32(i), error_msg)
-                        if (len_trim(error_msg) > 0) return
-                    end if
-                end do
-            end if
-            elem_type = lr_type_i32_s(context%session%handle)
-            gtype = lr_type_array_s(context%session%handle, elem_type, &
-                                   int(slot%array_size, c_int64_t))
-            init_ptr = c_loc(array_i32)
-            init_size = int(slot%array_size, c_size_t) * 4_c_size_t
-        case (VALUE_F32)
-            allocate (array_f32(slot%array_size))
-            array_f32 = 0.0_c_float
-            if (allocated(slot%array_init_values)) then
-                do i = 1, size(slot%array_init_values)
-                    if (len_trim(slot%array_init_values(i)) > 0) then
-                        read (slot%array_init_values(i), *, iostat=io_stat) &
-                            array_f32(i)
-                        if (io_stat /= 0) then
-                            error_msg = 'malformed real initializer: '// &
-                                       slot%array_init_values(i)
-                            return
-                        end if
-                    end if
-                end do
-            end if
-            elem_type = lr_type_f32_s(context%session%handle)
-            gtype = lr_type_array_s(context%session%handle, elem_type, &
-                                   int(slot%array_size, c_int64_t))
-            init_ptr = c_loc(array_f32)
-            init_size = int(slot%array_size, c_size_t) * 4_c_size_t
-        case (VALUE_F64)
-            allocate (array_f64(slot%array_size))
-            array_f64 = 0.0_c_double
-            if (allocated(slot%array_init_values)) then
-                do i = 1, size(slot%array_init_values)
-                    if (len_trim(slot%array_init_values(i)) > 0) then
-                        read (slot%array_init_values(i), *, iostat=io_stat) &
-                            array_f64(i)
-                        if (io_stat /= 0) then
-                            error_msg = 'malformed double initializer: '// &
-                                       slot%array_init_values(i)
-                            return
-                        end if
-                    end if
-                end do
-            end if
-            elem_type = lr_type_f64_s(context%session%handle)
-            gtype = lr_type_array_s(context%session%handle, elem_type, &
-                                   int(slot%array_size, c_int64_t))
-            init_ptr = c_loc(array_f64)
-            init_size = int(slot%array_size, c_size_t) * 8_c_size_t
-        case default
-            error_msg = 'unsupported array COMMON variable kind'
-        end select
-        if (len_trim(error_msg) > 0) return
-        global_id = lr_session_global(context%session%handle, c_name, gtype, &
-                                      c_false_local, init_ptr, init_size)
-        if (global_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not create COMMON global'
-        end if
-    end subroutine emit_array_common_global
 
     subroutine fold_array_element_i32(init_text, init_value, error_msg)
         use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
@@ -1200,8 +1157,8 @@
     subroutine bind_common_block_symbols(arena, node, node_index, context, &
                                          error_msg)
         ! Body-side binding: rebind this occurrence's own COMMON member names
-        ! as addressed references into their canonical (block_name,
-        ! pos_in_block) slot globals. Resolving only this node's own layout
+        ! as addressed references into their block's storage global at their
+        ! own byte offsets. Resolving only this node's own layout
         ! (rather than a whole-arena name search) keeps binding unambiguous
         ! when another unit reuses the same block name with different member
         ! spellings (#1578, F2018 8.10.3); binding is idempotent, so reaching
@@ -1264,7 +1221,7 @@
             return
         end if
 
-        gname = common_global_name(slot%block_name, slot%pos_in_block)
+        gname = common_global_name(slot%block_name)
         call to_c_chars(gname, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
         if (global_id < 0_c_int32_t) then
@@ -1278,7 +1235,8 @@
         context%symbols(sym)%address%kind = LR_OP_KIND_GLOBAL
         context%symbols(sym)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym)%address%typ = lr_type_ptr_s(context%session%handle)
-        context%symbols(sym)%address%global_offset = 0_c_int64_t
+        context%symbols(sym)%address%global_offset = &
+            int(slot%byte_offset, c_int64_t)
         if (slot%is_array) then
             context%symbols(sym)%is_array = .true.
             context%symbols(sym)%array_rank = 1
@@ -1296,8 +1254,8 @@
     end subroutine rebind_common_symbol
 
     subroutine rebind_complex_common_symbol(slot, sym, context, error_msg)
-        ! Bind a COMMON complex scalar's re/im parts to the .re/.im globals,
-        ! matching the local-variable complex storage model (address=re,
+        ! Bind a COMMON complex scalar's re/im parts to the two halves of its
+        ! storage in the block buffer, matching the local-variable complex storage model (address=re,
         ! element_address=im) so the existing complex load/store paths work
         ! unchanged (session_program_lowering_complex.inc).
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
@@ -1305,48 +1263,42 @@
         integer, intent(in) :: sym
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: base_name, gname_re, gname_im
-        character(kind=c_char), allocatable :: c_name_re(:), c_name_im(:)
-        integer(c_int32_t) :: global_id_re, global_id_im
+        character(len=:), allocatable :: gname
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: global_id
+        integer :: half_bytes
 
-        base_name = common_global_name(slot%block_name, slot%pos_in_block)
-        gname_re = base_name//'.re'
-        gname_im = base_name//'.im'
-        call to_c_chars(gname_re, c_name_re)
-        call to_c_chars(gname_im, c_name_im)
-        global_id_re = lr_session_intern(context%session%handle, c_name_re)
-        if (global_id_re < 0_c_int32_t) then
-            error_msg = 'COMMON global not found: '//gname_re
+        gname = common_global_name(slot%block_name)
+        call to_c_chars(gname, c_name)
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'COMMON global not found: '//gname
             return
         end if
-        global_id_im = lr_session_intern(context%session%handle, c_name_im)
-        if (global_id_im < 0_c_int32_t) then
-            error_msg = 'COMMON global not found: '//gname_im
-            return
-        end if
+        half_bytes = common_kind_bytes(slot%value_kind)/2
         context%symbols(sym)%value_kind = slot%value_kind
         context%symbols(sym)%has_address = .true.
         context%symbols(sym)%is_reference = .true.
         context%symbols(sym)%is_common_bound = .true.
         context%symbols(sym)%address%kind = LR_OP_KIND_GLOBAL
-        context%symbols(sym)%address%payload = int(global_id_re, c_int64_t)
+        context%symbols(sym)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym)%address%typ = lr_type_ptr_s(context%session%handle)
-        context%symbols(sym)%address%global_offset = 0_c_int64_t
+        context%symbols(sym)%address%global_offset = &
+            int(slot%byte_offset, c_int64_t)
         context%symbols(sym)%element_address%kind = LR_OP_KIND_GLOBAL
-        context%symbols(sym)%element_address%payload = int(global_id_im, c_int64_t)
+        context%symbols(sym)%element_address%payload = int(global_id, c_int64_t)
         context%symbols(sym)%element_address%typ = &
             lr_type_ptr_s(context%session%handle)
-        context%symbols(sym)%element_address%global_offset = 0_c_int64_t
+        context%symbols(sym)%element_address%global_offset = &
+            int(slot%byte_offset + half_bytes, c_int64_t)
         call set_empty(error_msg)
     end subroutine rebind_complex_common_symbol
 
-    function common_global_name(block_name, pos_in_block) result(gname)
+    function common_global_name(block_name) result(gname)
+        ! One storage global per COMMON block; members address into it.
         character(len=*), intent(in) :: block_name
-        integer, intent(in) :: pos_in_block
         character(len=:), allocatable :: gname
-        character(len=32) :: idx_text
-        write (idx_text, '(I0)') pos_in_block
-        gname = '.ffc.common.'//block_name//'.'//trim(idx_text)
+        gname = '.ffc.common.'//block_name
     end function common_global_name
 
     ! --- text parsing helpers (shared with the EQUIVALENCE scraper) ---

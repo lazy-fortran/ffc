@@ -182,7 +182,7 @@ module session_program_lowering_types
         character(len=:), allocatable :: block_name
         character(len=:), allocatable :: var_name
         integer :: value_kind = VALUE_I32
-        integer :: pos_in_block = 0
+        integer :: byte_offset = 0
         logical :: has_init = .false.
         character(len=:), allocatable :: init_text
         logical :: is_array = .false.
