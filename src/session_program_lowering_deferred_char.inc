@@ -33,7 +33,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, name, error_msg)
             if (len_trim(error_msg) > 0) return
-            idx = find_symbol(context, trim(name))
+            idx = find_symbol_compat(context, trim(name))
             if (idx > 0) then
                 symbol_index = idx
                 out_name = trim(name)
@@ -402,7 +402,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, lit_value, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, lit_value)
+            symbol_index = find_symbol_compat(context, lit_value)
             if (symbol_index <= 0 .or. &
                 context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) then
                 error_msg = 'character argument is not declared: '//trim(lit_value)
@@ -461,7 +461,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
             else if (is_identifier(arena, arg_indices(i))) then
                 call get_identifier_name(arena, arg_indices(i), id_name, error_msg)
                 if (len_trim(error_msg) > 0) return
-                symbol_index = find_symbol(context, id_name)
+                symbol_index = find_symbol_compat(context, id_name)
                 if (symbol_index > 0 .and. &
                     context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
                     call prepare_deferred_char_actual(arena, arg_indices(i), &
@@ -753,7 +753,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         else if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, err)
             if (len_trim(err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) return
             if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
                 .and. .not. context%symbols(symbol_index)%is_deferred_character) &

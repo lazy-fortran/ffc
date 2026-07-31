@@ -89,7 +89,7 @@
             ! A complex array element reference (a(i)): recognized by the
             ! declared array symbol's element kind, same as the identifier case.
             if (.not. allocated(node%name)) return
-            sym = find_symbol(context, node%name)
+            sym = find_symbol_compat(context, node%name)
             if (sym <= 0) return
             if (.not. context%symbols(sym)%is_array) return
             is_c = context%symbols(sym)%value_kind == want_kind
@@ -97,7 +97,7 @@
             if (.not. is_identifier(arena, node_index)) return
             call get_identifier_name(arena, node_index, name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, name)
+            sym = find_symbol_compat(context, name)
             if (sym <= 0) return
             is_c = context%symbols(sym)%value_kind == want_kind
         end select
@@ -280,7 +280,7 @@
                                           error_msg)
         type is (call_or_subscript_node)
             sym = 0
-            if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
+            if (allocated(rhs%name)) sym = find_symbol_compat(context, rhs%name)
             if (sym > 0) then
                 if (context%symbols(sym)%is_array .and. &
                     context%symbols(sym)%value_kind == VALUE_C4) then
@@ -298,7 +298,7 @@
             if (is_identifier(arena, rhs_index)) then
                 call get_identifier_name(arena, rhs_index, name, error_msg)
                 if (len_trim(error_msg) > 0) return
-                sym = find_symbol(context, name)
+                sym = find_symbol_compat(context, name)
             end if
             if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_C4) then
                 call load_complex_identifier(arena, rhs_index, context, VALUE_C4, &
@@ -393,7 +393,7 @@
                                           error_msg)
         type is (call_or_subscript_node)
             sym = 0
-            if (allocated(rhs%name)) sym = find_symbol(context, rhs%name)
+            if (allocated(rhs%name)) sym = find_symbol_compat(context, rhs%name)
             if (sym > 0) then
                 if (context%symbols(sym)%is_array .and. &
                     context%symbols(sym)%value_kind == VALUE_C8) then
@@ -411,7 +411,7 @@
             if (is_identifier(arena, rhs_index)) then
                 call get_identifier_name(arena, rhs_index, name, error_msg)
                 if (len_trim(error_msg) > 0) return
-                sym = find_symbol(context, name)
+                sym = find_symbol_compat(context, name)
             end if
             if (sym > 0 .and. context%symbols(sym)%value_kind == VALUE_C8) then
                 call load_complex_identifier(arena, rhs_index, context, VALUE_C8, &
@@ -613,7 +613,7 @@
         end if
         call get_identifier_name(arena, rhs_index, src_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        src_idx = find_symbol(context, src_name)
+        src_idx = find_symbol_compat(context, src_name)
         if (src_idx <= 0) then
             error_msg = tag//' rhs not declared: '//trim(src_name)
             return
@@ -760,7 +760,7 @@
         if (is_identifier(arena, node%arg_indices(1))) then
             call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, arg_name)
+            sym = find_symbol_compat(context, arg_name)
             if (sym <= 0) return
             if (context%symbols(sym)%is_array) return
             matches = context%symbols(sym)%value_kind == want_kind
@@ -786,7 +786,7 @@
             if (arg%base_expr_index > 0) return
             if (.not. allocated(arg%name)) return
             if (.not. allocated(arg%arg_indices)) return
-            sym = find_symbol(context, arg%name)
+            sym = find_symbol_compat(context, arg%name)
             if (sym <= 0) return
             if (.not. context%symbols(sym)%is_array) return
             matches = context%symbols(sym)%value_kind == want_kind
@@ -817,7 +817,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, arg_name)
+        sym = find_symbol_compat(context, arg_name)
         if (want_imag) then
             slot = context%symbols(sym)%element_address
         else
@@ -905,7 +905,7 @@
                 call set_empty(error_msg)
                 return
             end if
-            sym = find_symbol(context, base_name)
+            sym = find_symbol_compat(context, base_name)
             if (sym <= 0) return
             vk = context%symbols(sym)%value_kind
             if (vk /= VALUE_C4 .and. vk /= VALUE_C8) return
@@ -926,7 +926,7 @@
         type is (call_or_subscript_node)
             if (base%base_expr_index > 0) return
             if (.not. allocated(base%name)) return
-            sym = find_symbol(context, base%name)
+            sym = find_symbol_compat(context, base%name)
             if (sym <= 0) return
             vk = context%symbols(sym)%value_kind
             if (vk /= VALUE_C4 .and. vk /= VALUE_C8) return

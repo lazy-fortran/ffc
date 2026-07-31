@@ -133,7 +133,7 @@
         else if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
                     call lower_f32_expression(arena, node_index, context, &
@@ -448,7 +448,7 @@
         else if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_F32) then
                     call lower_f32_expression(arena, node_index, context, &
@@ -710,7 +710,7 @@
 
         value_kind = VALUE_I32
         if (.not. allocated(node%name)) return
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_array .and. &
             .not. context%symbols(symbol_index)%is_allocatable) return

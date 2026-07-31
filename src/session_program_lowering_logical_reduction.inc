@@ -277,7 +277,7 @@
         if (is_identifier(arena, idx)) then
             call get_identifier_name(arena, idx, name, name_err)
             if (len_trim(name_err) == 0) then
-                s = find_symbol(context, name)
+                s = find_symbol_compat(context, name)
                 if (s > 0) then
                     if (context%symbols(s)%is_array .or. &
                         (context%symbols(s)%is_allocatable .and. &
@@ -599,7 +599,7 @@
         if (is_identifier(arena, idx)) then
             call get_identifier_name(arena, idx, name, name_err)
             if (len_trim(name_err) == 0) then
-                s = find_symbol(context, name)
+                s = find_symbol_compat(context, name)
                 if (s > 0) then
                     if (context%symbols(s)%is_array) then
                         sym = s

@@ -122,7 +122,7 @@
         end if
         call identifier_name(arena, obj_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) then
             error_msg = 'data statement target was not declared: '//trim(name)
             return
@@ -220,7 +220,7 @@
         ! its variable, so resolve the control inside the loop, not before it.
         select type (idn => arena%entries(obj_index)%node)
         type is (io_implied_do_node)
-            var_sym = find_symbol(context, idn%var_name)
+            var_sym = find_symbol_compat(context, idn%var_name)
         class default
             error_msg = 'data implied-do node expected'
             return
@@ -287,7 +287,7 @@
 
         select type (tgt => arena%entries(obj_index)%node)
         type is (call_or_subscript_node)
-            sym = find_symbol(context, tgt%name)
+            sym = find_symbol_compat(context, tgt%name)
             if (sym <= 0) then
                 error_msg = 'data statement target was not declared: '//tgt%name
                 return
@@ -371,7 +371,7 @@
                 error_msg = 'data implied-do has no control variable'
                 return
             end if
-            var_sym = find_symbol(context, idn%var_name)
+            var_sym = find_symbol_compat(context, idn%var_name)
             if (var_sym <= 0) then
                 error_msg = 'data implied-do control variable not declared: '// &
                             idn%var_name

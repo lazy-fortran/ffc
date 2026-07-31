@@ -174,6 +174,11 @@
             call destroy(context%session)
             return
         end if
+        call assert_declaration_collection_complete(context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -274,6 +279,21 @@
         call destroy(context%session)
         call set_empty(error_msg)
     end subroutine lower_program_to_liric_path
+
+    subroutine assert_declaration_collection_complete(context, error_msg)
+        !! Executable lowering may only begin after all declaration bindings
+        !! have been collected. Keep this guard at the transition from global
+        !! setup to procedure/body emission so new lowering paths cannot bypass
+        !! the scoped declaration model (#332).
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (.not. context%declaration_collection_complete) then
+            error_msg = 'executable lowering started before declaration collection completed'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine assert_declaration_collection_complete
 
     function unit_prefix_from_path(path) result(prefix)
         ! A short, bounded, collision-resistant token for a module object's

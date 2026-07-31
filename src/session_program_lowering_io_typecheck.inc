@@ -165,7 +165,7 @@
             if (c == '_') cycle
             return
         end do
-        sym = find_symbol(context, t)
+        sym = find_symbol_compat(context, t)
         if (sym <= 0) return
         select case (context%symbols(sym)%value_kind)
         case (VALUE_I32, VALUE_I64, VALUE_I8, VALUE_I16, VALUE_F32, VALUE_F64, &

@@ -19,7 +19,7 @@
             is_file_unit_read = .true.
             return
         end if
-        sym = find_symbol(context, trim(node%unit_spec))
+        sym = find_symbol_compat(context, trim(node%unit_spec))
         if (sym > 0) is_file_unit_read = context%symbols(sym)%is_file_unit .or. &
                                          context%symbols(sym)%has_unit_const
     end function is_file_unit_read
@@ -208,7 +208,7 @@
         if (.not. allocated(node%io_control_list)) return
         call io_control_value(node%io_control_list, 'iostat', var_name)
         if (len_trim(var_name) == 0) return
-        sym = find_symbol(context, var_name)
+        sym = find_symbol_compat(context, var_name)
         if (sym <= 0) then
             error_msg = 'iostat target was not declared: '//trim(var_name)
             return
@@ -332,7 +332,7 @@
         call set_empty(error_msg)
         call identifier_name(arena, node_index, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, var_name)
+        sym = find_symbol_compat(context, var_name)
         if (sym <= 0) then
             error_msg = 'read target was not declared: '//trim(var_name)
             return

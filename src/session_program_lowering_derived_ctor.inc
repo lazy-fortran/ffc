@@ -41,7 +41,7 @@
         if (is_identifier(arena, node%value_index)) then
             call get_identifier_name(arena, node%value_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            src_index = find_symbol(context, id_name)
+            src_index = find_symbol_compat(context, id_name)
             if (src_index <= 0) return
             if (.not. context%symbols(src_index)%is_derived) return
             if (context%symbols(src_index)%is_array) return

@@ -8,7 +8,7 @@
         is_internal_write = .false.
         if (.not. allocated(node%unit_spec)) return
         if (trim(node%unit_spec) == '*') return
-        symbol_index = find_symbol(context, trim(node%unit_spec))
+        symbol_index = find_symbol_compat(context, trim(node%unit_spec))
         if (symbol_index <= 0) return
         is_internal_write = &
             context%symbols(symbol_index)%value_kind == VALUE_CHARACTER .and. &
@@ -98,7 +98,7 @@
             return
         end if
 
-        symbol_index = find_symbol(context, trim(node%unit_spec))
+        symbol_index = find_symbol_compat(context, trim(node%unit_spec))
         if (context%symbols(symbol_index)%is_deferred_character) then
             call unsupported_feature_error('internal write', node%line, &
                 node%column, 'internal write target must be a fixed-length '// &

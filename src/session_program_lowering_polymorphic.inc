@@ -183,7 +183,7 @@
         ! Bind the associate name to the selector's derived storage. For
         ! `select type (v)` the names coincide and the symbol is already bound.
         if (trim(assoc_name) /= trim(sel_name)) then
-            idx = find_symbol(context, assoc_name)
+            idx = find_symbol_compat(context, assoc_name)
             if (idx <= 0) then
                 call grow_symbols(context)
                 idx = context%symbol_count + 1

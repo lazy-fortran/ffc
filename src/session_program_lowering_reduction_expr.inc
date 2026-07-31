@@ -38,7 +38,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) return
             if (.not. is_elementwise_array_operand(context, sym)) return
             if (context%symbols(sym)%value_kind /= vk) return
@@ -108,7 +108,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) then
                 error_msg = 'reduction expression identifier was not declared: '// &
                             trim(id_name)

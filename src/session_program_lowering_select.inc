@@ -352,7 +352,7 @@
         end if
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) is_character_selector = &
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
@@ -819,7 +819,7 @@
         call select_type_selector(arena, selector_idx, sel_name, &
                                   assoc_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sel_index = find_symbol(context, sel_name)
+        sel_index = find_symbol_compat(context, sel_name)
         if (sel_index <= 0) then
             error_msg = 'select type selector was not declared: '//trim(sel_name)
             return
@@ -1081,7 +1081,7 @@
             if (.not. emit_i32_load(context%session, data_ptr, typed_value, &
                                     error_msg)) return
         end if
-        idx = find_symbol(context, assoc_name)
+        idx = find_symbol_compat(context, assoc_name)
         if (idx <= 0) then
             call grow_symbols(context)
             idx = context%symbol_count + 1
@@ -1155,7 +1155,7 @@
         end if
         call get_identifier_name(arena, node%selector_index, sel_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sel_index = find_symbol(context, sel_name)
+        sel_index = find_symbol_compat(context, sel_name)
         if (sel_index <= 0) then
             call unsupported_feature_error('select rank statement', node%line, &
                 node%column, 'select rank selector was not declared: '// &
@@ -1259,7 +1259,7 @@
         if (.not. is_identifier(arena, node%var_indices(1))) return
         call get_identifier_name(arena, node%var_indices(1), name, err)
         if (len_trim(err) > 0) return
-        idx = find_symbol(context, name)
+        idx = find_symbol_compat(context, name)
         if (idx <= 0) return
         allocate_targets_class_star = &
             context%symbols(idx)%value_kind == VALUE_CLASS_STAR
@@ -1280,7 +1280,7 @@
         call set_empty(error_msg)
         call get_identifier_name(arena, node%var_indices(1), name, error_msg)
         if (len_trim(error_msg) > 0) return
-        idx = find_symbol(context, name)
+        idx = find_symbol_compat(context, name)
         if (idx <= 0) then
             error_msg = 'allocate target is not declared: '//trim(name)
             return

@@ -95,7 +95,7 @@
             type is (array_slice_node)
                 call get_identifier_name(arena, arg%array_index, arg_name, err)
                 if (len_trim(err) > 0) return
-                sym = find_symbol(context, arg_name)
+                sym = find_symbol_compat(context, arg_name)
                 if (sym <= 0) return
                 ok = context%symbols(sym)%is_array .and. &
                      context%symbols(sym)%value_kind == vk
@@ -119,7 +119,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
         if (len_trim(err) > 0) return
-        sym = find_symbol(context, arg_name)
+        sym = find_symbol_compat(context, arg_name)
         if (sym <= 0) return
         ! A 1-D allocatable reduces over its element kind just like a fixed
         ! array, so the result print kind follows the allocatable element kind.
@@ -175,7 +175,7 @@
         if (is_identifier(arena, arg_idx)) then
             call get_identifier_name(arena, arg_idx, id_name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) return
             select case (context%symbols(sym)%value_kind)
             case (VALUE_F32)
@@ -205,8 +205,8 @@
         if (len_trim(err) > 0) return
         call get_identifier_name(arena, node%arg_indices(2), b_name, err)
         if (len_trim(err) > 0) return
-        a_sym = find_symbol(context, a_name)
-        b_sym = find_symbol(context, b_name)
+        a_sym = find_symbol_compat(context, a_name)
+        b_sym = find_symbol_compat(context, b_name)
         if (a_sym <= 0 .or. b_sym <= 0) return
         ok = context%symbols(a_sym)%is_array .and. &
              context%symbols(a_sym)%array_rank == 1 .and. &
@@ -469,7 +469,7 @@
                 return
             end if
         end if
-        sym = find_symbol(context, suffix)
+        sym = find_symbol_compat(context, suffix)
         if (sym > 0) then
             if (context%symbols(sym)%has_i32_constant) then
                 is_f64 = context%symbols(sym)%i32_constant == 8_c_int64_t

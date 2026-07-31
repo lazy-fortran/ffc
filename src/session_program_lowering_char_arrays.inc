@@ -191,7 +191,7 @@
 
         is_dummy = .false.
         if (.not. allocated(node%var_name)) return
-        index = find_symbol(context, node%var_name)
+        index = find_symbol_compat(context, node%var_name)
         if (index <= 0) return
         if (context%symbols(index)%is_parameter) is_dummy = .true.
     end function character_array_is_dummy
@@ -210,7 +210,7 @@
         integer :: index
         integer :: dim_count
 
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate array declaration: '//trim(name)
             return
         end if
@@ -369,7 +369,7 @@
             error_msg = 'character array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'character array was not declared: '//trim(node%name)
             return
@@ -595,7 +595,7 @@
                 call declare_allocatable(context, node%var_names(i), 1, &
                                          VALUE_CHARACTER, error_msg)
                 if (len_trim(error_msg) > 0) return
-                symbol_index = find_symbol(context, node%var_names(i))
+                symbol_index = find_symbol_compat(context, node%var_names(i))
                 if (symbol_index > 0) &
                     context%symbols(symbol_index)%character_length = 0
             end do
@@ -603,7 +603,7 @@
             call declare_allocatable(context, node%var_name, 1, VALUE_CHARACTER, &
                                      error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, node%var_name)
+            symbol_index = find_symbol_compat(context, node%var_name)
             if (symbol_index > 0) &
                 context%symbols(symbol_index)%character_length = 0
         else
@@ -651,7 +651,7 @@
         if (.not. allocated(target%arg_indices)) return
         if (size(target%arg_indices) /= 1) return
 
-        symbol_index = find_symbol(context, target%name)
+        symbol_index = find_symbol_compat(context, target%name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_allocatable) return
         if (context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) return

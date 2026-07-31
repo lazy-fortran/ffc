@@ -100,7 +100,7 @@
         call set_empty(error_msg)
         call identifier_name(arena, node_index, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, var_name)
+        sym = find_symbol_compat(context, var_name)
         if (sym <= 0) then
             error_msg = 'read target was not declared: '//trim(var_name)
             return

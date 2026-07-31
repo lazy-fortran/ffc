@@ -34,7 +34,7 @@
             ! Skip if already explicitly declared
             if (name_is_explicitly_declared(context, id_name)) cycle
             ! Skip if already registered (from a prior inferred seed)
-            sym_idx = find_symbol(context, id_name)
+            sym_idx = find_symbol_compat(context, id_name)
             if (sym_idx > 0) cycle
             ! Try to register from inferred type
             call try_seed_inferred_symbol(arena, i, id_name, context, error_msg)

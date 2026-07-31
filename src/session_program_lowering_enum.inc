@@ -58,7 +58,7 @@
         integer :: index
 
         call set_empty(error_msg)
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate enumerator declaration: '//trim(name)
             return
         end if

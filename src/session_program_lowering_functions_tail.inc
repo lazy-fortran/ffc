@@ -1206,7 +1206,7 @@
         if (has_binding) then
             index = find_symbol_for_binding(context, binding)
         else
-            index = find_symbol(context, name)
+            index = find_symbol_compat(context, name)
         end if
         if (index > 0 .and. .not. has_binding) then
             error_msg = 'duplicate function parameter: '//trim(name)

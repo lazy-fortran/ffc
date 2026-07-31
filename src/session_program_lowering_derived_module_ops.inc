@@ -539,7 +539,7 @@
                         trim(param%name)
             return
         end if
-        if (find_symbol(context, trim(local_name)) > 0) return
+        if (find_symbol_compat(context, trim(local_name)) > 0) return
         call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(local_name)
@@ -578,7 +578,7 @@
         if (.not. imported) return
         value_kind = value_kind_of_token(trim(var%kind))
         if (value_kind == 0) return
-        if (find_symbol(context, trim(local_name)) > 0) return
+        if (find_symbol_compat(context, trim(local_name)) > 0) return
         if (allocated(var%c_name) .and. len_trim(var%c_name) > 0) then
             mangled = trim(var%c_name)
         else
@@ -670,7 +670,7 @@
                 call eval_i32_constant(context%arena, init_index, context, &
                                        constant_value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (find_symbol(context, trim(use_node%rename_list(i)%s)) > 0) then
+                if (find_symbol_compat(context, trim(use_node%rename_list(i)%s)) > 0) then
                     error_msg = 'duplicate use rename local name: '// &
                                 trim(use_node%rename_list(i)%s)
                     return
@@ -742,7 +742,7 @@
                 call set_empty(error_msg)
                 return
             end if
-            if (find_symbol(context, local_name) > 0) then
+            if (find_symbol_compat(context, local_name) > 0) then
                 error_msg = 'duplicate use rename local name: '//local_name
                 return
             end if
@@ -821,7 +821,7 @@
                 'scalar parameters', error_msg)
             return
         end if
-        if (find_symbol(context, local_name) > 0) then
+        if (find_symbol_compat(context, local_name) > 0) then
             error_msg = 'duplicate use rename local name: '//trim(local_name)
             return
         end if
@@ -1192,7 +1192,7 @@
             call get_declaration_var_name(arena, param_idx, decl_name, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. use_only_wants(use_node, trim(decl_name))) cycle
-            if (find_symbol(context, decl_name) > 0) cycle
+            if (find_symbol_compat(context, decl_name) > 0) cycle
             call get_declaration_type_name(arena, param_idx, decl_type_name, &
                                            error_msg)
             if (len_trim(error_msg) > 0) return

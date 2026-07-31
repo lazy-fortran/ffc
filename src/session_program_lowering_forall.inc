@@ -35,7 +35,7 @@
 
         ! Ensure every index has an i32 loop symbol before lowering any bounds.
         do k = 1, node%num_indices
-            sym = find_symbol(context, trim(node%index_names(k)))
+            sym = find_symbol_compat(context, trim(node%index_names(k)))
             if (sym <= 0) then
                 call define_i32_symbol(context, trim(node%index_names(k)), &
                                        error_msg)

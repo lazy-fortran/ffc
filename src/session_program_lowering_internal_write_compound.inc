@@ -21,7 +21,7 @@
         end if
         item_total = size(node%arg_indices)
 
-        symbol_index = find_symbol(context, trim(node%unit_spec))
+        symbol_index = find_symbol_compat(context, trim(node%unit_spec))
         if (context%symbols(symbol_index)%is_deferred_character) then
             call unsupported_feature_error('internal write', node%line, &
                 node%column, 'internal write target must be a fixed-length '// &

@@ -48,6 +48,7 @@ module session_program_lowering
         resolve_identifier_binding, BINDING_DECLARATION, &
         BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
         BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
+        ASSOCIATION_USE, &
         BINDING_ASSOCIATE_NAME
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
@@ -397,7 +398,7 @@ contains
         if (len_trim(name) == 0) return
         ! The declaration has just run, so the newest same-named slot is the
         ! one it produced. This is the last place text is used as a key.
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         call resolve_name_at_node(context%arena, node_index, name, binding, &
             resolve_error)
@@ -773,7 +774,7 @@ contains
         integer :: symbol_index
 
         call set_empty(error_msg)
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         select case (value_kind)
         case (VALUE_F32)
@@ -835,7 +836,7 @@ contains
         integer :: symbol_index
 
         call set_empty(error_msg)
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         if (context%symbols(symbol_index)%is_runtime_fixed_character) then
             call lower_runtime_fixed_char_assignment(context%arena, init_index, &
@@ -892,7 +893,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index <= 0) then
             call define_local_class_star_symbol(context, name, error_msg)
             return
@@ -921,7 +922,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate class(*) declaration: '//trim(name)
             return
         end if
@@ -970,7 +971,7 @@ contains
         else
             value_kind = VALUE_I32
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'parameter declaration did not match a dummy argument: '// &
                 trim(node%name)
@@ -1032,7 +1033,7 @@ contains
             if (len_trim(binding_error) == 0 .and. binding%found) &
                 has_current_binding = .true.
         end if
-        text_index = find_symbol(context, name)
+        text_index = find_symbol_compat(context, name)
         existing_index = text_index
         if (has_current_binding) then
             binding_index = find_symbol_for_binding(context, binding)
@@ -1346,7 +1347,7 @@ contains
                 return
             end if
             if (allocated(target%name) .and. allocated(target%arg_indices)) then
-                symbol_index = find_symbol(context, target%name)
+                symbol_index = find_symbol_compat(context, target%name)
                 if (symbol_index > 0) then
                     if (context%symbols(symbol_index)%is_allocatable) then
                         call lower_array_element_assignment(arena, node, target, &
@@ -1369,7 +1370,7 @@ contains
         end select
         call identifier_name(arena, node%target_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = 'assignment target was not declared: '//trim(name)
             return
@@ -1941,7 +1942,7 @@ contains
         end if
         call get_identifier_name(arena, arg_indices(1), var_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, var_name)
+        symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) then
             error_msg = trim(name)//' argument is not declared: '//trim(var_name)
             return
@@ -2345,7 +2346,13 @@ contains
             context%function_node_indices(1:size(tmp_indices)) = tmp_indices
     end subroutine grow_function_names
 
-    integer function find_symbol(context, name) result(index)
+    integer function find_symbol_compat(context, name) result(index)
+        !! Compatibility lookup for symbols synthesized without a FortFront
+        !! declaration (for example inferred locals, DO variables, and ABI
+        !! temporaries). Reference sites with an AST node must use
+        !! resolve_symbol_at_node so declaration identity is consulted first.
+        !! Keep this adapter private while the remaining synthetic-symbol
+        !! paths migrate away from textual lookup (#332).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         integer :: i
@@ -2362,15 +2369,15 @@ contains
                 return
             end if
         end do
-    end function find_symbol
+    end function find_symbol_compat
 
     integer function find_symbol_same_scope(context, name) result(index)
-        ! Like find_symbol, but ignores symbols belonging to an enclosing scope
-        ! (index <= block_scope_floor). A declaration that re-uses a name from an
-        ! outer BLOCK scope is a legal shadow, not a duplicate (#280).
+        ! Like find_symbol_compat, but ignores symbols belonging to an enclosing
+        ! scope (index <= block_scope_floor). A declaration that re-uses a name
+        ! from an outer BLOCK scope is a legal shadow, not a duplicate (#280).
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0 .and. index <= context%block_scope_floor) index = 0
     end function find_symbol_same_scope
 
@@ -2380,12 +2387,13 @@ contains
         !!
         !! FortFront owns name resolution: it maps the reference to a
         !! declaration binding, and the binding table maps that identity to a
-        !! symbol slot. Only when the reference has no FortFront binding, or
-        !! the bound declaration has no lowering symbol yet, does this fall
-        !! back to the historical text lookup — that fallback still carries
-        !! the symbols ffc synthesises without a declaration (inferred
-        !! lazy-Fortran locals, DO variables, ABI temporaries), which the
-        !! remaining scope issues will migrate.
+        !! symbol slot. Local bindings must resolve to an exact symbol identity.
+        !! Host- and USE-associated symbols may additionally use the private
+        !! compatibility adapter because module and .fmod import paths can
+        !! materialize legacy storage without carrying the local binding table
+        !! entry. The same exception covers inferred lazy-Fortran symbols that
+        !! have no collected declaration record. Collected direct/local
+        !! bindings never fall through to a flat name scan (#332).
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: node_index
         character(len=*), intent(in) :: name
@@ -2395,21 +2403,23 @@ contains
 
         index = 0
         if (node_index <= 0) then
-            index = find_symbol(context, name)
+            index = find_symbol_compat(context, name)
             return
         end if
         call resolve_name_at_node(context%arena, node_index, name, binding, &
             resolve_error)
         if (len_trim(resolve_error) == 0 .and. binding%found) then
-            bound = context%binding_table%find_binding( &
-                binding%declaration_node_index, &
-                binding%declaration_entity_index, binding%scope_node_index)
+            bound = find_symbol_for_binding(context, binding)
             if (symbol_slot_holds_binding(context, bound, binding)) then
                 index = bound
                 return
             end if
+            if (binding%association /= ASSOCIATION_HOST .and. &
+                binding%association /= ASSOCIATION_USE .and. &
+                find_declaration_record(context, binding) > 0) return
         end if
-        index = find_symbol(context, name)
+        if (len_trim(resolve_error) > 0) return
+        index = find_symbol_compat(context, name)
     end function resolve_symbol_at_node
 
     integer function find_symbol_for_binding(context, binding) result(index)

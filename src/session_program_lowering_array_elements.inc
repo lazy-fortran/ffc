@@ -33,7 +33,7 @@
 
         call identifier_name(arena, slice_node%array_index, source_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        source_index = find_symbol(context, source_name)
+        source_index = find_symbol_compat(context, source_name)
         if (source_index <= 0) then
             error_msg = 'array section base was not declared: '//trim(source_name)
             return
@@ -491,7 +491,7 @@
             call set_empty(error_msg)
             return
         end if
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) return
         if (.not. context%symbols(sym)%is_array .and. &
             .not. context%symbols(sym)%is_allocatable) return
@@ -631,7 +631,7 @@
         if (is_identifier(arena, expr_index)) then
             call get_identifier_name(arena, expr_index, id_name, err)
             if (len_trim(err) > 0) return
-            i = find_symbol(context, id_name)
+            i = find_symbol_compat(context, id_name)
             if (i > 0) then
                 if (is_elementwise_array_operand(context, i)) sym = i
             end if
@@ -847,7 +847,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'whole-array expression identifier was not declared: '// &
                             trim(id_name)
@@ -1661,7 +1661,7 @@
 
         vk = VALUE_I32
         if (allocated(target%name)) then
-            sym_idx = find_symbol(context, target%name)
+            sym_idx = find_symbol_compat(context, target%name)
             if (sym_idx > 0) vk = context%symbols(sym_idx)%value_kind
         end if
 
@@ -1781,7 +1781,7 @@
             return
         end if
 
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'array identifier was not declared: '//trim(node%name)
             return
@@ -2023,7 +2023,7 @@
         integer :: symbol_index
 
         if (allocated(node%name)) then
-            symbol_index = find_symbol(context, node%name)
+            symbol_index = find_symbol_compat(context, node%name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_allocatable) then
                     call lower_allocatable_element_address(arena, node, &
@@ -2057,7 +2057,7 @@
             error_msg = 'real array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'real array identifier was not declared: '//trim(node%name)
             return
@@ -2150,7 +2150,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_array .or. &
                     context%symbols(symbol_index)%value_kind /= VALUE_I32) then
@@ -2376,7 +2376,7 @@
         if (.not. is_identifier(arena, idx)) return
         call get_identifier_name(arena, idx, name, name_err)
         if (len_trim(name_err) > 0) return
-        s = find_symbol(context, name)
+        s = find_symbol_compat(context, name)
         if (s <= 0) return
         if (.not. context%symbols(s)%is_array) return
         if (context%symbols(s)%is_allocatable) return

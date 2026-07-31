@@ -15,7 +15,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, array_name)
+        sym = find_symbol_compat(context, array_name)
         if (sym <= 0) then
             error_msg = 'lbound: array not declared: '//trim(array_name)
             return
@@ -58,7 +58,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, array_name)
+        sym = find_symbol_compat(context, array_name)
         if (sym <= 0) then
             error_msg = 'ubound: array not declared: '//trim(array_name)
             return
@@ -141,7 +141,7 @@
         if (is_identifier(arena, left_idx)) then
             call get_identifier_name(arena, left_idx, name, name_err)
             if (len_trim(name_err) == 0) then
-                sym = find_symbol(context, name)
+                sym = find_symbol_compat(context, name)
                 if (sym > 0) then
                     if (context%symbols(sym)%is_array) then
                         mask_sym = sym
@@ -155,7 +155,7 @@
         if (is_identifier(arena, right_idx)) then
             call get_identifier_name(arena, right_idx, name, name_err)
             if (len_trim(name_err) == 0) then
-                sym = find_symbol(context, name)
+                sym = find_symbol_compat(context, name)
                 if (sym > 0) then
                     if (context%symbols(sym)%is_array) then
                         mask_sym = sym
@@ -325,7 +325,7 @@
 
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, mask_name)
+        sym = find_symbol_compat(context, mask_name)
         if (sym <= 0) then
             error_msg = 'count: array not declared: '//trim(mask_name)
             return
@@ -397,7 +397,7 @@
 
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, mask_name)
+        sym = find_symbol_compat(context, mask_name)
         if (sym <= 0) then
             error_msg = 'any: array not declared: '//trim(mask_name)
             return
@@ -472,7 +472,7 @@
 
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, mask_name)
+        sym = find_symbol_compat(context, mask_name)
         if (sym <= 0) then
             error_msg = 'all: array not declared: '//trim(mask_name)
             return
@@ -636,7 +636,7 @@
         if (.not. is_identifier(arena, idx)) return
         call get_identifier_name(arena, idx, name, err)
         if (len_trim(err) > 0) return
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) return
         if (.not. is_elementwise_array_operand(context, sym)) sym = 0
     end function whole_array_symbol
@@ -697,7 +697,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, array_name)
+        sym = find_symbol_compat(context, array_name)
         if (sym <= 0) then
             error_msg = trim(which)//': array not declared: '//trim(array_name)
             return
@@ -716,7 +716,7 @@
             if (is_identifier(arena, value_node)) then
                 call get_identifier_name(arena, value_node, name, error_msg)
                 if (len_trim(error_msg) > 0) return
-                i = find_symbol(context, name)
+                i = find_symbol_compat(context, name)
                 if (i > 0) then
                     if (context%symbols(i)%is_array) then
                         mask_sym = i

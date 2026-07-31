@@ -252,7 +252,7 @@
             if (rank < 1) cycle
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym_index = find_symbol(context, name)
+            sym_index = find_symbol_compat(context, name)
             if (sym_index <= 0) then
                 error_msg = 'assumed-shape dummy was not registered: '// &
                             trim(name)
@@ -287,7 +287,7 @@
 
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = find_symbol_compat(context, id_name)
         if (symbol_index <= 0) then
             error_msg = 'allocatable array argument was not declared: '// &
                         trim(id_name)
@@ -324,7 +324,7 @@
         end if
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = find_symbol_compat(context, id_name)
         if (symbol_index <= 0) then
             error_msg = 'array argument was not declared: '//trim(id_name)
             return

@@ -41,7 +41,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             if (context%symbols(index)%is_parameter .and. &
                 .not. context%symbols(index)%is_array .and. &
@@ -128,7 +128,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             ! A pre-bound allocatable derived result (class(t)/type(t) function
             ! result, or a re-declaration of an already-defined instance): its

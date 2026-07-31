@@ -642,7 +642,7 @@
         if (is_identifier(arena, node%value_index)) then
             call get_identifier_name(arena, node%value_index, src_name, id_err)
             if (len_trim(id_err) == 0) then
-                src_sym = find_symbol(context, src_name)
+                src_sym = find_symbol_compat(context, src_name)
                 if (src_sym > 0) then
                     if (context%symbols(src_sym)%is_array .and. &
                         .not. context%symbols(src_sym)%is_allocatable .and. &

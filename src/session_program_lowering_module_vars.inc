@@ -805,7 +805,7 @@
         integer :: sym_idx
 
         call set_empty(error_msg)
-        if (find_symbol(context, var_name) > 0) return
+        if (find_symbol_compat(context, var_name) > 0) return
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
@@ -939,7 +939,7 @@
                 if (.not. node_exists(arena, param_idx)) cycle
                 select type (node => arena%entries(param_idx)%node)
                 type is (declaration_node)
-                    if (find_symbol(context, node%var_name) > 0) cycle
+                    if (find_symbol_compat(context, node%var_name) > 0) cycle
                     if (node%is_array .or. node%is_multi_declaration) cycle
                     call declaration_value_kind(node, value_kind, kind_err, &
                                                 context)

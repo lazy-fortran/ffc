@@ -429,7 +429,7 @@
       ! An integer(8)/(1)/(2) array element must load through its own width;
       ! reject here instead of silently misreading through an i32-width GEP.
       if (allocated(node%name)) then
-          symbol_index = find_symbol(context, node%name)
+          symbol_index = find_symbol_compat(context, node%name)
           if (symbol_index > 0) then
               if (context%symbols(symbol_index)%value_kind == VALUE_I64 .or. &
                   context%symbols(symbol_index)%value_kind == VALUE_I8 .or. &

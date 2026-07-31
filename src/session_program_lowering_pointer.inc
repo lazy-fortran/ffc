@@ -127,7 +127,7 @@
         call define_declared_array_symbol(context, node, name, array_lower_bound, &
                                           array_size, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index <= 0) then
             error_msg = 'target array declaration lost its symbol: '//trim(name)
             return
@@ -158,7 +158,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             ! Re-declaration (e.g. dummy refresh): just record the attributes.
             context%symbols(index)%is_pointer = .true.
@@ -191,7 +191,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
 
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index > 0) then
             ! A dummy argument already has its own pass-by-reference storage, so a
             ! `target` attribute on it needs no new slot; just record the flag.
@@ -206,7 +206,7 @@
         end if
         call define_symbol(context, name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = 'pointer/target declaration lost its symbol: '//trim(name)
             return
@@ -280,7 +280,7 @@
 
         call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        ptr_index = find_symbol(context, ptr_name)
+        ptr_index = find_symbol_compat(context, ptr_name)
         if (ptr_index > 0 .and. context%symbols(ptr_index)%is_proc_pointer) then
             call lower_proc_pointer_assignment(arena, node, context, error_msg)
             return
@@ -300,7 +300,7 @@
         end if
         call get_identifier_name(arena, node%target_index, target_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        target_index = find_symbol(context, target_name)
+        target_index = find_symbol_compat(context, target_name)
         if (target_index <= 0) then
             error_msg = 'pointer assignment source was not declared: '// &
                         trim(target_name)
@@ -405,7 +405,7 @@
         do i = 1, size(node%pointer_indices)
             call get_identifier_name(arena, node%pointer_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, name)
+            symbol_index = find_symbol_compat(context, name)
             if (symbol_index <= 0) then
                 error_msg = 'nullify argument was not declared: '//trim(name)
                 return
@@ -449,7 +449,7 @@
         end if
         call get_identifier_name(arena, arg_indices(1), ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        ptr_idx = find_symbol(context, ptr_name)
+        ptr_idx = find_symbol_compat(context, ptr_name)
         if (ptr_idx <= 0) then
             error_msg = 'associated argument was not declared: '//trim(ptr_name)
             return
@@ -475,7 +475,7 @@
         end if
         call get_identifier_name(arena, arg_indices(2), target_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        tgt_idx = find_symbol(context, target_name)
+        tgt_idx = find_symbol_compat(context, target_name)
         if (tgt_idx <= 0) then
             error_msg = 'associated second argument was not declared: '// &
                         trim(target_name)
@@ -526,7 +526,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: idx
 
-        idx = find_symbol(context, name)
+        idx = find_symbol_compat(context, name)
         if (idx > 0) then
             ! Already declared (e.g. a dummy re-declaration); benign.
             call set_empty(error_msg)
@@ -562,7 +562,7 @@
 
         call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        ptr_idx = find_symbol(context, ptr_name)
+        ptr_idx = find_symbol_compat(context, ptr_name)
         if (ptr_idx <= 0) then
             error_msg = 'procedure pointer was not declared: '//trim(ptr_name)
             return
@@ -584,7 +584,7 @@
             return
         end if
         ! Check whether target is another procedure pointer being copied.
-        target_idx = find_symbol(context, target_name)
+        target_idx = find_symbol_compat(context, target_name)
         if (target_idx > 0 .and. context%symbols(target_idx)%is_proc_pointer) then
             ! Copy the callee ptr from the source slot into the destination slot.
             if (.not. emit_ptr_load(context%session, &
@@ -621,7 +621,7 @@
         character(len=*), intent(in) :: name
         integer :: idx
 
-        idx = find_symbol(context, name)
+        idx = find_symbol_compat(context, name)
         ok = idx > 0 .and. context%symbols(idx)%is_proc_pointer
     end function is_proc_pointer_call
 
@@ -637,7 +637,7 @@
         integer, allocatable :: copyback_indices(:)
         integer :: idx
 
-        idx = find_symbol(context, node%name)
+        idx = find_symbol_compat(context, node%name)
         if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
                                 callee_ptr, error_msg)) return
         if (allocated(node%arg_indices)) then
@@ -669,7 +669,7 @@
 
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        idx = find_symbol(context, name)
+        idx = find_symbol_compat(context, name)
         if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
                                 callee_ptr, error_msg)) return
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
