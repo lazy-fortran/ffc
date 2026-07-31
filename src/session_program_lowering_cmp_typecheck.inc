@@ -82,7 +82,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) return
             cls = comparison_value_kind_class( &
                   context%symbols(symbol_index)%value_kind)

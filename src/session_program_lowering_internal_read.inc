@@ -8,7 +8,7 @@
         is_internal_read = .false.
         if (.not. allocated(node%unit_spec)) return
         if (trim(node%unit_spec) == '*') return
-        symbol_index = find_symbol(context, trim(node%unit_spec))
+        symbol_index = find_symbol_compat(context, trim(node%unit_spec))
         if (symbol_index <= 0) return
         is_internal_read = &
             context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
@@ -43,7 +43,7 @@
             return
         end if
 
-        buf_index = find_symbol(context, trim(node%unit_spec))
+        buf_index = find_symbol_compat(context, trim(node%unit_spec))
         if (.not. context%symbols(buf_index)%has_character_value) then
             call unsupported_feature_error('internal read', node%line, &
                 node%column, 'internal read source must be assigned first', &
@@ -53,7 +53,7 @@
 
         call identifier_name(arena, node%var_indices(1), target_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        target_index = find_symbol(context, target_name)
+        target_index = find_symbol_compat(context, target_name)
         if (target_index <= 0) then
             error_msg = 'internal read target was not declared: '//trim(target_name)
             return

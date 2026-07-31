@@ -178,7 +178,7 @@
             unit_number = int(context%next_file_unit)
             context%next_file_unit = context%next_file_unit + 1_c_int32_t
             uval_op = i32_immediate(context%session, int(unit_number, c_int64_t))
-            sym = find_symbol(context, trim(nuvar))
+            sym = find_symbol_compat(context, trim(nuvar))
             if (sym > 0) then
                 if (.not. context%symbols(sym)%has_address) then
                     if (.not. emit_i32_alloca(context%session, &
@@ -207,7 +207,7 @@
                 call track_literal_unit(context, unit_number, file_handle, &
                                          error_msg)
             else
-                sym = find_symbol(context, trim(ustr))
+                sym = find_symbol_compat(context, trim(ustr))
                 if (sym <= 0) then
                     error_msg = 'open unit= variable not declared: '//trim(ustr)
                     return
@@ -326,11 +326,11 @@
         integer :: sym
 
         write (pseudo_name, '(A,I0)') '.unit.', unit_number
-        sym = find_symbol(context, trim(pseudo_name))
+        sym = find_symbol_compat(context, trim(pseudo_name))
         if (sym <= 0) then
             call define_symbol(context, trim(pseudo_name), VALUE_C_PTR, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, trim(pseudo_name))
+            sym = find_symbol_compat(context, trim(pseudo_name))
         end if
         if (.not. context%symbols(sym)%is_file_unit) then
             if (.not. emit_ptr_alloca(context%session, ptr_slot, error_msg)) return
@@ -354,11 +354,11 @@
 
         call set_empty(error_msg)
         write (pseudo_name, '(A,I0)') '.unit.', unit_number
-        sym = find_symbol(context, trim(pseudo_name))
+        sym = find_symbol_compat(context, trim(pseudo_name))
         if (sym <= 0) then
             call define_symbol(context, trim(pseudo_name), VALUE_C_PTR, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, trim(pseudo_name))
+            sym = find_symbol_compat(context, trim(pseudo_name))
         end if
         context%symbols(sym)%file_ptr_address = slot
         context%symbols(sym)%is_file_unit = .true.
@@ -441,10 +441,10 @@
         read (plain, *, iostat=ios) unit_number
         if (ios == 0) then
             write (pseudo_name, '(A,I0)') '.unit.', unit_number
-            sym = find_symbol(context, trim(pseudo_name))
+            sym = find_symbol_compat(context, trim(pseudo_name))
         else
             unit_number = -1
-            sym = find_symbol(context, trim(plain))
+            sym = find_symbol_compat(context, trim(plain))
             if (sym > 0) then
                 if (context%symbols(sym)%has_unit_const) &
                     unit_number = context%symbols(sym)%unit_const
@@ -518,7 +518,7 @@
                                  error_msg)) return
         call alias_unit_to_slot(context, unit_number, ptr_slot, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, file_unit_pseudo_name(unit_number))
+        sym = find_symbol_compat(context, file_unit_pseudo_name(unit_number))
     end subroutine connect_implicit_unit
 
     ! --- file-unit WRITE -----------------------------------------------------
@@ -537,7 +537,7 @@
             is_file_unit_write = .true.
             return
         end if
-        sym = find_symbol(context, trim(node%unit_spec))
+        sym = find_symbol_compat(context, trim(node%unit_spec))
         if (sym <= 0) return
         is_file_unit_write = context%symbols(sym)%is_file_unit .or. &
                              context%symbols(sym)%has_unit_const
@@ -597,7 +597,7 @@
         if (.not. allocated(node%io_control_list)) return
         call io_control_value(node%io_control_list, 'iostat', var_name)
         if (len_trim(var_name) == 0) return
-        sym = find_symbol(context, var_name)
+        sym = find_symbol_compat(context, var_name)
         if (sym <= 0) then
             error_msg = 'iostat target was not declared: '//trim(var_name)
             return

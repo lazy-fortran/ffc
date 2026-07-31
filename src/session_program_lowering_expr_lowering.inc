@@ -40,7 +40,7 @@
             return
         end select
 
-        symbol_index = find_symbol(context, arg_name)
+        symbol_index = find_symbol_compat(context, arg_name)
         if (symbol_index <= 0) then
             error_msg = 'present argument is not a dummy: '//trim(arg_name)
             return
@@ -649,7 +649,7 @@
                 if (.not. is_contained_function_reference(node, context) .and. &
                     (node%is_array_access .or. &
                      is_declared_array_element_ref(node, context))) then
-                    symbol_index = find_symbol(context, node%name)
+                    symbol_index = find_symbol_compat(context, node%name)
                     if (symbol_index > 0) then
                         is_f32 = context%symbols(symbol_index)%value_kind == VALUE_F32
                     end if
@@ -1100,7 +1100,7 @@
                 if (.not. is_contained_function_reference(node, context) .and. &
                     (node%is_array_access .or. &
                      is_declared_array_element_ref(node, context))) then
-                    symbol_index = find_symbol(context, node%name)
+                    symbol_index = find_symbol_compat(context, node%name)
                     if (symbol_index > 0) then
                         is_f64 = context%symbols(symbol_index)%value_kind == VALUE_F64
                     end if
@@ -1347,7 +1347,7 @@
             error_msg = 'integer(8) array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'integer(8) array identifier was not declared: '// &
                         trim(node%name)
@@ -1516,7 +1516,7 @@
             error_msg = 'integer(1) array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'integer(1) array identifier was not declared: '// &
                         trim(node%name)
@@ -1649,7 +1649,7 @@
             error_msg = 'integer(2) array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'integer(2) array identifier was not declared: '// &
                         trim(node%name)

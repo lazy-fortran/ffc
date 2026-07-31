@@ -77,7 +77,7 @@
         logical :: step_is_runtime
 
         value = i32_immediate(context%session, 0_c_int64_t)
-        loop_symbol_index = find_symbol(context, var_name)
+        loop_symbol_index = find_symbol_compat(context, var_name)
         if (loop_symbol_index <= 0) then
             error_msg = 'DO loop variable was not declared: '//trim(var_name)
             return

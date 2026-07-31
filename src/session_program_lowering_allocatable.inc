@@ -65,7 +65,7 @@
                                          value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (value_kind == VALUE_CHARACTER) then
-                    symbol_index = find_symbol(context, node%var_names(i))
+                    symbol_index = find_symbol_compat(context, node%var_names(i))
                     if (symbol_index > 0) &
                         context%symbols(symbol_index)%character_length = &
                             character_length
@@ -75,7 +75,7 @@
             call declare_allocatable(context, node%var_name, rank, value_kind, &
                                      error_msg)
             if (len_trim(error_msg) == 0 .and. value_kind == VALUE_CHARACTER) then
-                symbol_index = find_symbol(context, node%var_name)
+                symbol_index = find_symbol_compat(context, node%var_name)
                 if (symbol_index > 0) &
                     context%symbols(symbol_index)%character_length = &
                         character_length
@@ -151,7 +151,7 @@
              size(node%shape_indices) == 0)) then
             call get_identifier_name(arena, node%var_indices(1), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, name)
+            symbol_index = find_symbol_compat(context, name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_allocatable .and. &
                     context%symbols(symbol_index)%array_rank == 0) then
@@ -168,7 +168,7 @@
             return
         end if
 
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             call unsupported_feature_error('allocate statement', node%line, &
                 node%column, 'allocate target is not declared: '//trim(name), &
@@ -272,7 +272,7 @@
         if (is_identifier(arena, vi)) then
             call get_identifier_name(arena, vi, name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, name)
+            symbol_index = find_symbol_compat(context, name)
             if (symbol_index <= 0) return
             if (context%symbols(symbol_index)%is_allocatable .and. &
                 context%symbols(symbol_index)%array_rank == 0) then
@@ -288,7 +288,7 @@
             call set_empty(error_msg)
             return
         end if
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_allocatable) return
 
@@ -369,7 +369,7 @@
             call set_empty(error_msg)
             return
         end if
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) return
         if (context%symbols(sym)%value_kind /= VALUE_I32) return
         call assign_i32_to_symbol(context, sym, &
@@ -399,7 +399,7 @@
         call get_identifier_name(arena, node%var_indices(1), name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             call unsupported_feature_error('allocate statement', node%line, &
                 node%column, 'allocate target is not declared: '//trim(name), &
@@ -584,7 +584,7 @@
                     return
                 end if
                 inner_name = trim(adjustl(expr(open_paren + 1:close_paren - 1)))
-                symbol_index = find_symbol(context, inner_name)
+                symbol_index = find_symbol_compat(context, inner_name)
                 if (symbol_index <= 0 .or. &
                     context%symbols(max(symbol_index, 1))%value_kind /= &
                     VALUE_CHARACTER) then
@@ -602,7 +602,7 @@
         if (verify(trim(expr), &
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
             == 0) then
-            symbol_index = find_symbol(context, trim(expr))
+            symbol_index = find_symbol_compat(context, trim(expr))
             if (symbol_index <= 0) then
                 error_msg = 'length variable is not declared: '//trim(expr)
                 return
@@ -654,7 +654,7 @@
         end if
         call get_identifier_name(arena, node%var_indices(1), target_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        target_sym = find_symbol(context, target_name)
+        target_sym = find_symbol_compat(context, target_name)
         if (target_sym > 0) then
             if (context%symbols(target_sym)%is_allocatable .and. &
                 context%symbols(target_sym)%array_rank == 0) then
@@ -670,8 +670,8 @@
         call get_identifier_name(arena, source_expr, source_name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        target_sym = find_symbol(context, target_name)
-        source_sym = find_symbol(context, source_name)
+        target_sym = find_symbol_compat(context, target_name)
+        source_sym = find_symbol_compat(context, source_name)
         if (target_sym <= 0 .or. source_sym <= 0) then
             error_msg = 'mold/source allocate references an undeclared variable'
             return
@@ -1079,7 +1079,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, name, err)
         if (len_trim(err) > 0) return
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) return
         scalar = .not. context%symbols(sym)%is_array .and. &
                  .not. context%symbols(sym)%is_allocatable .and. &
@@ -1203,7 +1203,7 @@
             return
         end if
 
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             call unsupported_feature_error('deallocate statement', node%line, &
                 node%column, 'deallocate target is not declared: '//trim(name), &
@@ -1294,8 +1294,8 @@
         if (len_trim(error_msg) > 0) return
         call get_identifier_name(arena, arg_indices(2), to_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        from_sym = find_symbol(context, from_name)
-        to_sym   = find_symbol(context, to_name)
+        from_sym = find_symbol_compat(context, from_name)
+        to_sym   = find_symbol_compat(context, to_name)
         if (from_sym <= 0 .or. .not. context%symbols(from_sym)%is_allocatable) then
             error_msg = 'move_alloc: from argument is not an allocatable: '// &
                         trim(from_name)
@@ -1359,7 +1359,7 @@
         if (is_contained_function_reference(node, context)) return
         nargs = size(node%arg_indices)
         if (nargs < 1 .or. nargs > 2) return
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_allocatable) return
         rank = context%symbols(symbol_index)%array_rank
@@ -1384,7 +1384,7 @@
         if (is_contained_function_reference(node, context)) return
         nargs = size(node%arg_indices)
         if (nargs < 1 .or. nargs > 2) return
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_array) return
         if (context%symbols(symbol_index)%is_allocatable) return
@@ -1571,7 +1571,7 @@
             error_msg = 'character allocatable assignment target has no name'
             return
         end if
-        symbol_index = find_symbol(context, target%name)
+        symbol_index = find_symbol_compat(context, target%name)
         if (symbol_index <= 0) then
             error_msg = 'character allocatable array was not declared: '// &
                         trim(target%name)
@@ -1613,7 +1613,7 @@
             error_msg = 'character allocatable print target has no name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'character allocatable array was not declared: '// &
                         trim(node%name)
@@ -1703,7 +1703,7 @@
         type(lr_operand_desc_t) :: descriptor, zero
         integer :: index, k
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             ! The allocatable array function result was pre-registered onto the
             ! caller's descriptor (param 0). Its body declaration re-states the
@@ -1793,7 +1793,7 @@
         call identifier_name(arena, arg_indices(1), name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = 'allocated argument was not declared: '//trim(name)
             return

@@ -147,7 +147,7 @@
         integer :: sym
 
         call set_empty(error_msg)
-        sym = find_symbol(context, var_name)
+        sym = find_symbol_compat(context, var_name)
         if (sym <= 0) then
             error_msg = 'inquire '//trim(kind_label)//'= target was not '// &
                         'declared: '//trim(var_name)
@@ -194,7 +194,7 @@
         path_ptr = printf_format_ptr(context%session, path_id)
 
         if (len_trim(exist_var) > 0) then
-            sym = find_symbol(context, exist_var)
+            sym = find_symbol_compat(context, exist_var)
             if (sym <= 0) then
                 error_msg = 'inquire exist= target was not declared: '// &
                             trim(exist_var)
@@ -279,9 +279,9 @@
         read (unit_str, *, iostat=ios) unit_number
         if (ios == 0) then
             write (pseudo_name, '(A,I0)') '.unit.', unit_number
-            sym = find_symbol(context, trim(pseudo_name))
+            sym = find_symbol_compat(context, trim(pseudo_name))
         else
-            sym = find_symbol(context, trim(unit_str))
+            sym = find_symbol_compat(context, trim(unit_str))
         end if
         if (sym > 0) is_opened = context%symbols(sym)%is_file_unit
 

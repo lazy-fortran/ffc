@@ -303,7 +303,7 @@
             end if
             call get_identifier_name(arena, stmt%target_index, name, error_msg)
             if (len_trim(error_msg) > 0) return
-            target_symbol = find_symbol(context, name)
+            target_symbol = find_symbol_compat(context, name)
             if (target_symbol <= 0) then
                 error_msg = 'WHERE assignment target was not declared: '//trim(name)
                 return
@@ -418,7 +418,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, name, err)
         if (len_trim(err) > 0) return
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) then
             sym = 0
             return

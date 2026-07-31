@@ -1225,7 +1225,7 @@
                                    node, slots, slot_count, error_msg)
         if (len_trim(error_msg) > 0) return
         do i = 1, slot_count
-            sym = find_symbol(context, slots(i)%var_name)
+            sym = find_symbol_compat(context, slots(i)%var_name)
             if (sym <= 0) then
                 call declare_pending_common_symbol(context, slots(i)%var_name, &
                                                    sym)

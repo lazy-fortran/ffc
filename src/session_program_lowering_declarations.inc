@@ -52,6 +52,10 @@
 
         is_collectable = .false.
         if (node_index <= 0) return
+        ! FortFront-inserted declarations are legacy inferred symbols. They
+        ! intentionally stay on the compatibility path until their lowering
+        ! storage is migrated to binding identity (#332).
+        if (node%is_inferred) return
         ! DIMENSION contributes shape to a later typed declaration, and EXTERNAL
         ! contributes a procedure name. Neither introduces scalar/array storage.
         if (declaration_is_bare_dimension(node)) return
@@ -540,7 +544,7 @@
         end if
 
         name = node%var_name
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             ! Already collected by the parameter pre-pass (used for derived-type
             ! array component bounds). Re-declaring the same integer parameter is
@@ -584,7 +588,7 @@
         integer :: index
 
         name = node%var_name
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate parameter declaration: '//trim(name)
             return
         end if
@@ -597,7 +601,7 @@
 
         call define_symbol(context, name, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index <= 0) then
             error_msg = 'parameter declaration did not register a symbol: '// &
                         trim(name)
@@ -678,7 +682,7 @@
 
         call define_character_symbol(context, name, len(literal_text), error_msg)
         if (len_trim(error_msg) > 0) return
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index <= 0) then
             error_msg = 'character parameter did not register a symbol: '// &
                         trim(name)
@@ -735,7 +739,7 @@
             call get_identifier_name(context%arena, node_index, id_name, &
                                      id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) return
             if (.not. &
                 allocated(context%symbols(symbol_index)%character_constant_text)) &
@@ -972,7 +976,7 @@
             end if
             if (found) return
         end if
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_parameter) return
         if (.not. context%symbols(symbol_index)%has_i32_constant) return

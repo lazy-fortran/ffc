@@ -1424,7 +1424,7 @@
                     source%symbols(i)%binding_entity_index
                 binding%scope_node_index = source%symbols(i)%binding_scope_index
                 if (find_symbol_for_binding(destination, binding) > 0) cycle
-            else if (find_symbol(destination, trim(source%symbols(i)%name)) > 0) then
+            else if (find_symbol_compat(destination, trim(source%symbols(i)%name)) > 0) then
                 cycle
             end if
             call grow_symbols(destination)
@@ -2686,7 +2686,7 @@
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
-            context%current_function_result_index = find_symbol(context, result_name)
+            context%current_function_result_index = find_symbol_compat(context, result_name)
         end if
         ! The result binding is synthetic in FortFront (its identity is the
         ! function scope), so publish it before any specification or executable

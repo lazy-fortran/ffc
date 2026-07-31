@@ -99,7 +99,7 @@
                                                   member_count, error_msg)
                 if (len_trim(error_msg) > 0) return
                 do i = 1, member_count
-                    sym = find_symbol(context, trim(names(i)))
+                    sym = find_symbol_compat(context, trim(names(i)))
                     if (sym <= 0) cycle
                     call rebind_equivalence_symbol(group_index, kinds(i), sym, &
                                                    context, error_msg)

@@ -957,7 +957,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, lit_value, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, lit_value)
+            symbol_index = find_symbol_compat(context, lit_value)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
                     .and. context%symbols(symbol_index)%has_character_value) then
@@ -997,7 +997,7 @@
         end if
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) &
                 is_char = context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
             return

@@ -139,7 +139,7 @@
         if (is_identifier(arena, arg_index)) then
             call get_identifier_name(arena, arg_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) then
                 error_msg = 'huge argument was not declared: '//trim(id_name)
                 return
@@ -274,7 +274,7 @@
         else if (is_identifier(arena, arg_index)) then
             call get_identifier_name(arena, arg_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) then
                 error_msg = 'range argument was not declared: '//trim(id_name)
                 return
@@ -535,7 +535,7 @@
         else if (is_identifier(arena, arg_index)) then
             call get_identifier_name(arena, arg_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) then
                 error_msg = 'digits argument was not declared: '//trim(id_name)
                 return

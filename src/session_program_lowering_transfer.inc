@@ -77,7 +77,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (.not. context%symbols(symbol_index)%is_array) &
                     kind = context%symbols(symbol_index)%value_kind
@@ -113,7 +113,7 @@
             if (node%is_array_access .or. &
                 is_declared_array_element_ref(node, context) .or. &
                 is_allocatable_element_ref(node, context)) then
-                symbol_index = find_symbol(context, node%name)
+                symbol_index = find_symbol_compat(context, node%name)
                 if (symbol_index > 0) &
                     kind = context%symbols(symbol_index)%value_kind
             end if

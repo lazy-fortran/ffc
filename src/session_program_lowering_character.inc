@@ -7,7 +7,7 @@
         integer :: existing_index
         integer :: source_index
 
-        existing_index = find_symbol(context, name)
+        existing_index = find_symbol_compat(context, name)
         if (existing_index > 0) then
             if (context%in_internal_function .and. &
                 existing_index == context%current_function_result_index) then
@@ -90,7 +90,7 @@
 
         call define_deferred_character_symbol(context, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = &
                 'internal error defining runtime-length character local: '// &
@@ -152,7 +152,7 @@
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
             /= 0) return
 
-        source_index = find_symbol(context, inner)
+        source_index = find_symbol_compat(context, inner)
         if (source_index <= 0) return
         if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) &
             source_index = 0
@@ -243,7 +243,7 @@
 
         ! No FortFront binding: a symbol ffc synthesised without a declaration
         ! of its own still resolves by name, as it did before #329.
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%has_i32_constant) return
         if (context%symbols(symbol_index)%i32_constant <= 0) return
@@ -275,7 +275,7 @@
         if (verify(expr, &
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
             == 0) then
-            symbol_index = find_symbol(context, expr)
+            symbol_index = find_symbol_compat(context, expr)
             if (symbol_index <= 0) return
             runtime_character_length = &
                 .not. context%symbols(symbol_index)%has_i32_constant
@@ -339,7 +339,7 @@
         if (len(token) == 0) return
         if (verify(token(1:1), &
             'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_') /= 0) return
-        symbol_index = find_symbol(context, token)
+        symbol_index = find_symbol_compat(context, token)
         if (symbol_index <= 0) return
         token_is_runtime_symbol = &
             .not. context%symbols(symbol_index)%has_i32_constant
@@ -353,7 +353,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
@@ -553,7 +553,7 @@
 
         call get_identifier_name(arena, value_index, src_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        src_index = find_symbol(context, src_name)
+        src_index = find_symbol_compat(context, src_name)
         if (src_index <= 0 .or. &
             context%symbols(max(src_index, 1))%value_kind /= VALUE_CHARACTER) then
             call unsupported_feature_error('character assignment', 0, 0, &
@@ -689,7 +689,7 @@
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
 
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
@@ -795,7 +795,7 @@
             call get_identifier_name(arena, node%arg_indices(1), id_name, &
                                      error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
         else
             call unsupported_feature_error('len/len_trim argument', node%line, &
                 node%column, 'direct LIRIC session only supports len/len_trim '// &
@@ -1131,7 +1131,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0 .or. &
                 context%symbols(max(symbol_index, 1))%value_kind /= &
                 VALUE_CHARACTER) then
@@ -1181,7 +1181,7 @@
         integer :: symbol_index
 
         symbol_index = 0
-        if (allocated(node%name)) symbol_index = find_symbol(context, node%name)
+        if (allocated(node%name)) symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index > 0) then
             if (context%symbols(symbol_index)%is_allocatable) then
                 ! An allocatable character array addresses its element pointer
@@ -1301,7 +1301,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) &
                 is_char = context%symbols(symbol_index)%value_kind == &
                           VALUE_CHARACTER

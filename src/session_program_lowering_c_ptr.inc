@@ -15,7 +15,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate c_ptr declaration: '//trim(name)
             return
         end if
@@ -100,7 +100,7 @@
                 call set_empty(error_msg)
                 return
             end if
-            symbol_index = find_symbol(context, name)
+            symbol_index = find_symbol_compat(context, name)
             if (symbol_index <= 0) then
                 error_msg = 'c_ptr identifier was not declared: '//trim(name)
                 return
@@ -150,7 +150,7 @@
         end if
         call get_identifier_name(arena, arg_indices(1), name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = 'c_loc argument was not declared: '//trim(name)
             return
@@ -223,7 +223,7 @@
         end if
         call get_identifier_name(arena, arg_indices(2), name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, name)
+        symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
             error_msg = 'c_f_pointer target was not declared: '//trim(name)
             return

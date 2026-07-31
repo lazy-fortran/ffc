@@ -23,7 +23,7 @@
             error_msg = 'complex array access requires an array name'
             return
         end if
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) then
             error_msg = 'complex array identifier was not declared: '// &
                         trim(node%name)
@@ -199,7 +199,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, nm, err)
         if (len_trim(err) > 0) return
-        sym = find_symbol(context, nm)
+        sym = find_symbol_compat(context, nm)
         if (sym <= 0) return
         if (.not. context%symbols(sym)%is_array) then
             sym = 0

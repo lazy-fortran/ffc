@@ -299,7 +299,7 @@
         ! dummy (f(a, a+1)) whose binding must not shadow the caller's variable.
         do k = 1, n
             dummy_name = trim(context%statement_functions(sf)%arg_names(k))
-            slot = find_symbol(context, dummy_name)
+            slot = find_symbol_compat(context, dummy_name)
             dummy_kinds(k) = VALUE_I32
             if (slot > 0) dummy_kinds(k) = context%symbols(slot)%value_kind
             call lower_scalar_expression_kind(arena, arg_indices(k), &
@@ -308,7 +308,7 @@
         end do
         do k = 1, n
             dummy_name = trim(context%statement_functions(sf)%arg_names(k))
-            slot = find_symbol(context, dummy_name)
+            slot = find_symbol_compat(context, dummy_name)
             if (slot > 0) then
                 had_symbol(k) = .true.
                 saved_slots(k) = slot
@@ -338,6 +338,7 @@
         ! A by-value binding: the identifier resolves to the operand directly,
         ! never to storage, so reference/address paths stay disabled.
         sym%is_parameter = .true.
+        sym%is_statement_function_argument = .true.
         sym%has_address = .false.
         sym%is_reference = .false.
     end subroutine set_bound_arg_symbol

@@ -116,7 +116,7 @@
         end if
         call get_identifier_name(arena, idx, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = find_symbol_compat(context, id_name)
         if (symbol_index > 0) then
             if (context%symbols(symbol_index)%has_i32_constant) has_var = .false.
             return
@@ -154,11 +154,11 @@
         if (.not. declaration_bound_is_variable_driven(node, context)) return
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do k = 1, size(node%var_names)
-                if (find_symbol(context, node%var_names(k)) > 0) return
+                if (find_symbol_compat(context, node%var_names(k)) > 0) return
             end do
             is_local = .true.
         else if (allocated(node%var_name)) then
-            is_local = find_symbol(context, node%var_name) <= 0
+            is_local = find_symbol_compat(context, node%var_name) <= 0
         end if
     end function declaration_is_runtime_local_array
 
@@ -175,7 +175,7 @@
         is_rebind = .false.
         if (.not. declaration_is_runtime_rank1(node, context)) return
         if (allocated(node%var_name)) then
-            index = find_symbol(context, node%var_name)
+            index = find_symbol_compat(context, node%var_name)
             if (index > 0) then
                 if (context%symbols(index)%is_array_result) is_rebind = .true.
             end if
@@ -183,7 +183,7 @@
         end if
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do k = 1, size(node%var_names)
-                index = find_symbol(context, node%var_names(k))
+                index = find_symbol_compat(context, node%var_names(k))
                 if (index > 0) then
                     if (context%symbols(index)%is_array_result) is_rebind = .true.
                 end if
@@ -436,7 +436,7 @@
                 'contained procedure', error_msg)
             return
         end if
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         ! Guard the symbol-table access on its own line: .or. does not
         ! short-circuit, so index <= 0 must gate the array read separately.
         if (index <= 0) then
@@ -563,7 +563,7 @@
             ! runtime extent arguments already loaded for this dummy (one per
             ! dimension, rank-1 or rank-2) by bind_hidden_extent_params before
             ! this declaration ran.
-            index = find_symbol(context, name)
+            index = find_symbol_compat(context, name)
             if (dim_count >= 1 .and. dim_count <= 2 .and. index > 0) then
                 if (all(context%symbols(index)%has_runtime_dim_size(1:dim_count))) &
                         then
@@ -1284,7 +1284,7 @@
             call fold_scoped_i32_name(arena, context, node_index, id_name, &
                                       constant_value, scoped_found, error_msg)
             if (len_trim(error_msg) == 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%has_i32_constant .and. &
                     context%symbols(symbol_index)%is_transient_i32_constant) then
@@ -1636,7 +1636,7 @@
         if (is_identifier(arena, arg_index)) then
             call get_identifier_name(arena, arg_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, id_name)
+            sym = find_symbol_compat(context, id_name)
             if (sym <= 0) then
                 error_msg = 'kind argument was not declared: '//trim(id_name)
                 return
@@ -1714,7 +1714,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, id_name)
+        sym = find_symbol_compat(context, id_name)
         if (sym > 0) then
             if (.not. context%symbols(sym)%is_array) sym = 0
         end if
@@ -1841,7 +1841,7 @@
         end if
         call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, id_name)
+        sym = find_symbol_compat(context, id_name)
         if (sym <= 0) then
             error_msg = 'len argument was not declared: '//trim(id_name)
             return
@@ -1905,7 +1905,7 @@
         if (binding_index > 0) then
             index = binding_index
         else
-            index = find_symbol(context, name)
+            index = find_symbol_compat(context, name)
         end if
         is_dummy = .false.
         if (index > 0) then
@@ -2436,7 +2436,7 @@
             ! needs no explicit declaration. When it is not an existing symbol,
             ! bind a temporary i32 slot for the loop and drop it afterwards.
             created_temp = .false.
-            vsym = find_symbol(context, dnode%var_name)
+            vsym = find_symbol_compat(context, dnode%var_name)
             if (vsym <= 0) then
                 call grow_symbols(context)
                 vsym = context%symbol_count + 1
@@ -2843,7 +2843,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, name)
+            sym = find_symbol_compat(context, name)
             if (sym > 0) scalar = .not. is_elementwise_array_operand(context, sym)
         end if
     end function is_scalar_broadcast_rhs
@@ -2871,7 +2871,7 @@
             call get_identifier_name(arena, rhs%arg_indices(1), source_name, &
                                      error_msg)
             if (len_trim(error_msg) > 0) return
-            source_index = find_symbol(context, source_name)
+            source_index = find_symbol_compat(context, source_name)
             if (source_index <= 0) then
                 error_msg = 'shape argument was not declared: '//trim(source_name)
                 return
@@ -2931,7 +2931,7 @@
         call get_identifier_name(arena, node%arg_indices(1), source_name, &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
-        source_index = find_symbol(context, source_name)
+        source_index = find_symbol_compat(context, source_name)
         if (source_index <= 0) then
             error_msg = 'shape argument was not declared: '//trim(source_name)
             return
@@ -2987,7 +2987,7 @@
         end block
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        source_index = find_symbol(context, array_name)
+        source_index = find_symbol_compat(context, array_name)
         if (source_index <= 0) then
             error_msg = 'size argument was not declared: '//trim(array_name)
             return
@@ -3133,7 +3133,7 @@
 
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        source_index = find_symbol(context, array_name)
+        source_index = find_symbol_compat(context, array_name)
         if (source_index <= 0) then
             error_msg = trim(reduction_name)//' argument was not declared: '// &
                         trim(array_name)
@@ -3583,7 +3583,7 @@
         call get_identifier_name(arena, node%arg_indices(arg_pos), arg_name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        symbol_index = find_symbol(context, arg_name)
+        symbol_index = find_symbol_compat(context, arg_name)
         if (symbol_index <= 0) then
             error_msg = trim(intrinsic_name)//' '//trim(arg_role)// &
                         ' was not declared: '//trim(arg_name)
@@ -4092,7 +4092,7 @@
         if (is_identifier(arena, mask_index)) then
             call get_identifier_name(arena, mask_index, name, err)
             if (len_trim(err) > 0) return
-            sym = find_symbol(context, name)
+            sym = find_symbol_compat(context, name)
             if (sym <= 0) return
             if (context%symbols(sym)%is_array) extent = &
                 context%symbols(sym)%array_size
@@ -4124,7 +4124,7 @@
         end if
         call get_identifier_name(arena, mask_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) then
             error_msg = 'pack/unpack mask was not declared: '//trim(name)
             return
@@ -4222,7 +4222,7 @@
             end if
             call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            source_index = find_symbol(context, name)
+            source_index = find_symbol_compat(context, name)
             if (source_index <= 0) then
                 error_msg = 'pack array was not declared: '//trim(name)
                 return
@@ -4404,7 +4404,7 @@
             end if
             call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
             if (len_trim(error_msg) > 0) return
-            vector_index = find_symbol(context, name)
+            vector_index = find_symbol_compat(context, name)
             if (vector_index <= 0 .or. .not. &
                 context%symbols(max(vector_index, 1))%is_array) then
                 error_msg = 'unpack vector must be a declared array: '//trim(name)
@@ -4421,7 +4421,7 @@
             if (is_identifier(arena, rhs%arg_indices(3))) then
                 call get_identifier_name(arena, rhs%arg_indices(3), name, &
                                          name_err)
-                if (len_trim(name_err) == 0) field_sym = find_symbol(context, name)
+                if (len_trim(name_err) == 0) field_sym = find_symbol_compat(context, name)
             end if
             if (field_sym > 0) then
                 field_is_scalar = .not. context%symbols(field_sym)%is_array
@@ -4456,7 +4456,7 @@
         call get_identifier_name(arena, node%arg_indices(arg_pos), arg_name, &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, arg_name)
+        symbol_index = find_symbol_compat(context, arg_name)
         if (symbol_index <= 0) then
             error_msg = trim(intrinsic_name)//' mask was not declared: '// &
                         trim(arg_name)
@@ -4730,7 +4730,7 @@
                                 call get_identifier_name(arena, sn%arg_indices(1), &
                                                          arg_name, error_msg)
                                 if (len_trim(error_msg) > 0) return
-                                shape_sym = find_symbol(context, arg_name)
+                                shape_sym = find_symbol_compat(context, arg_name)
                                 if (shape_sym > 0) then
                                     if (context%symbols(shape_sym)%is_array) return
                                 end if
@@ -4898,7 +4898,7 @@
         end if
         call get_identifier_name(arena, source_index, arg_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        source_sym = find_symbol(context, arg_name)
+        source_sym = find_symbol_compat(context, arg_name)
         if (source_sym <= 0) then
             error_msg = 'reshape source array was not declared: '//trim(arg_name)
             return

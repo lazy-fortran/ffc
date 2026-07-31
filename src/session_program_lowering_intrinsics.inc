@@ -1414,12 +1414,12 @@
             return
         end if
 
-        a_index = find_symbol(context, a_name)
+        a_index = find_symbol_compat(context, a_name)
         if (a_index <= 0) then
             error_msg = 'dot_product first argument was not declared: '//trim(a_name)
             return
         end if
-        b_index = find_symbol(context, b_name)
+        b_index = find_symbol_compat(context, b_name)
         if (b_index <= 0) then
             error_msg = 'dot_product second argument was not declared: '//trim(b_name)
             return
@@ -1493,12 +1493,12 @@
             error_msg = 'dot_product requires exactly two array arguments'
             return
         end if
-        a_index = find_symbol(context, a_name)
+        a_index = find_symbol_compat(context, a_name)
         if (a_index <= 0) then
             error_msg = 'dot_product first argument not declared: '//trim(a_name)
             return
         end if
-        b_index = find_symbol(context, b_name)
+        b_index = find_symbol_compat(context, b_name)
         if (b_index <= 0) then
             error_msg = 'dot_product second argument not declared: '//trim(b_name)
             return
@@ -1560,12 +1560,12 @@
             error_msg = 'dot_product requires exactly two array arguments'
             return
         end if
-        a_index = find_symbol(context, a_name)
+        a_index = find_symbol_compat(context, a_name)
         if (a_index <= 0) then
             error_msg = 'dot_product first argument not declared: '//trim(a_name)
             return
         end if
-        b_index = find_symbol(context, b_name)
+        b_index = find_symbol_compat(context, b_name)
         if (b_index <= 0) then
             error_msg = 'dot_product second argument not declared: '//trim(b_name)
             return
@@ -1696,7 +1696,7 @@
             return
         end if
 
-        symbol_index = find_symbol(context, var_name)
+        symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) then
             error_msg = 'get_command_argument value variable is not declared: '// &
                         trim(var_name)

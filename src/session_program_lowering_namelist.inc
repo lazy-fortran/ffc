@@ -118,7 +118,7 @@
         integer :: sym, vk
 
         call set_empty(error_msg)
-        sym = find_symbol(context, name)
+        sym = find_symbol_compat(context, name)
         if (sym <= 0) then
             call unsupported_feature_error('namelist member', line, col, &
                 'namelist member not declared: '//name, error_msg)

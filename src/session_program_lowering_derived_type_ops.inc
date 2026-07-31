@@ -356,7 +356,7 @@
                 'value expression', error_msg)
             return
         end if
-        symbol_index = find_symbol(context, node%var_name)
+        symbol_index = find_symbol_compat(context, node%var_name)
         if (symbol_index <= 0) then
             error_msg = 'derived initializer target not defined: '//trim(node%var_name)
             return
@@ -447,7 +447,7 @@
             error_msg = 'conflicting derived array declaration: '//trim(name)
             return
         end if
-        if (find_symbol(context, name) > 0) then
+        if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate derived array declaration: '//trim(name)
             return
         end if
@@ -488,7 +488,7 @@
         integer :: slot_count
         integer :: index
 
-        index = find_symbol(context, name)
+        index = find_symbol_compat(context, name)
         if (index > 0) then
             ! Re-declaring the pre-bound function result variable (result(p)
             ! with type(t) :: p inside the body) is a no-op; its storage is the
@@ -713,7 +713,7 @@
 
         call component_base_name(arena, base_index, base_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, base_name)
+        symbol_index = find_symbol_compat(context, base_name)
         if (symbol_index <= 0) then
             error_msg = 'component base was not declared: '//trim(base_name)
             return
@@ -870,7 +870,7 @@
         if (.not. is_identifier(arena, base_var_index)) return
         call get_identifier_name(arena, base_var_index, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, var_name)
+        symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_derived) return
         type_index = context%symbols(symbol_index)%derived_type_index
@@ -1002,7 +1002,7 @@
         pct = index(name, '%')
         var_name = trim(name(1:pct - 1))
         method_name = trim(name(pct + 1:))
-        symbol_index = find_symbol(context, var_name)
+        symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) then
             error_msg = 'type-bound call base was not declared: '//var_name
             return
@@ -1350,7 +1350,7 @@
         if (is_identifier(arena, value_index)) then
             call get_identifier_name(arena, value_index, name, error_msg)
             if (len_trim(error_msg) > 0) return
-            sym = find_symbol(context, name)
+            sym = find_symbol_compat(context, name)
             if (sym <= 0) then
                 error_msg = 'array component assignment rhs was not declared: '// &
                             trim(name)
@@ -1639,7 +1639,7 @@
         end if
         call get_identifier_name(arena, value_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
-        src_sym = find_symbol(context, name)
+        src_sym = find_symbol_compat(context, name)
         if (src_sym <= 0) then
             error_msg = 'allocatable array component assignment rhs was not '// &
                         'declared: '//trim(name)
@@ -1982,7 +1982,7 @@
         if (is_identifier(arena, base_index)) then
             call get_identifier_name(arena, base_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(id_name)
                 return
@@ -2008,7 +2008,7 @@
                 error_msg = 'only one-dimensional derived arrays are supported'
                 return
             end if
-            symbol_index = find_symbol(context, base%name)
+            symbol_index = find_symbol_compat(context, base%name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(base%name)
                 return
@@ -2227,7 +2227,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(id_name)
                 return
@@ -2261,7 +2261,7 @@
                 error_msg = 'only one-dimensional derived arrays are supported'
                 return
             end if
-            symbol_index = find_symbol(context, base%name)
+            symbol_index = find_symbol_compat(context, base%name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(base%name)
                 return
@@ -2628,7 +2628,7 @@
         if (is_identifier(arena, base_index)) then
             call get_identifier_name(arena, base_index, id_name, err)
             if (len_trim(err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = find_symbol_compat(context, id_name)
         else
             select type (base => arena%entries(base_index)%node)
             type is (call_or_subscript_node)
@@ -2640,7 +2640,7 @@
                                                            context)
                     return
                 end if
-                if (allocated(base%name)) symbol_index = find_symbol(context, base%name)
+                if (allocated(base%name)) symbol_index = find_symbol_compat(context, base%name)
             type is (component_access_node)
                 outer_type = component_base_type_index(arena, &
                                                        base%base_expr_index, context)

@@ -188,7 +188,7 @@
         ! existing (enclosing-scope) slot onto this saved global rather than
         ! rejecting it as a duplicate. A genuine same-scope duplicate already
         ! addresses this saved global, so this rebind is idempotent.
-        existing_idx = find_symbol(context, name)
+        existing_idx = find_symbol_compat(context, name)
         if (existing_idx > 0) then
             sym_idx = existing_idx
         else
