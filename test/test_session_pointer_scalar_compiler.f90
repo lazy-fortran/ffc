@@ -1,5 +1,5 @@
 program test_session_pointer_scalar
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
 
     print *, '=== direct session scalar pointer/target compiler test ==='
@@ -30,6 +30,27 @@ program test_session_pointer_scalar
         'stop p'//new_line('a')// &
         'end program main', 9, &
         '/tmp/ffc_session_pointer_read_test')) stop 1
+
+    ! A bare POINTER statement uses the implicit integer type rule for iptr.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'integer, target :: i'//new_line('a')// &
+        'pointer :: iptr'//new_line('a')// &
+        'i = 7'//new_line('a')// &
+        'iptr => i'//new_line('a')// &
+        'iptr = 11'//new_line('a')// &
+        'stop i'//new_line('a')// &
+        'end program main', 11, &
+        '/tmp/ffc_session_pointer_statement_test')) stop 1
+
+    ! A bare pointer still rejects association to a non-TARGET entity.
+    if (.not. expect_error_contains( &
+        'program main'//new_line('a')// &
+        'integer :: i'//new_line('a')// &
+        'pointer :: iptr'//new_line('a')// &
+        'iptr => i'//new_line('a')// &
+        'end program main', 'right of => is not a target or pointer', &
+        '/tmp/ffc_session_pointer_statement_negative')) stop 1
 
     print *, 'PASS: scalar integer pointer/target, => , associated, nullify'
 end program test_session_pointer_scalar
