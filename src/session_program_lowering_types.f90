@@ -188,6 +188,20 @@ module session_program_lowering_types
         character(len=:), allocatable :: array_init_values(:)
     end type common_slot_t
 
+    ! One member of an EQUIVALENCE group (#370). `byte_offset` is the storage
+    ! offset of the designated element inside the member itself (nonzero only
+    ! for an array-element designator); `start_offset` is where the member's
+    ! own storage begins inside the group global, once every member's
+    ! designated element has been aligned on the shared association point.
+    type, public :: equiv_member_t
+        character(len=:), allocatable :: var_name
+        integer :: value_kind = VALUE_I32
+        logical :: is_array = .false.
+        integer :: array_size = 0
+        integer :: byte_offset = 0
+        integer :: start_offset = 0
+    end type equiv_member_t
+
     type, public :: symbol_t
         ! `name` is display data (diagnostics, mangling), not identity.
         ! Identity is the FortFront binding below, when this symbol came

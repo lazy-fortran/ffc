@@ -233,7 +233,7 @@ module session_program_lowering
         MAX_GENERIC_SPECIFICS, &
         MODVAR_OK, MODVAR_UNSUPPORTED, &
         common_slot_t, COMMON_MAX_SLOTS, &
-        EQUIV_MAX_MEMBERS, &
+        EQUIV_MAX_MEMBERS, equiv_member_t, &
         ARRAY_MAX_RANK, &
         namelist_group_t, &
         statement_function_t, &
