@@ -83,6 +83,79 @@
         end select
     end function module_declaration_is_array
 
+    logical function module_declaration_is_allocatable(arena, node_index)
+        ! An ALLOCATABLE module array: its storage is a descriptor global rather
+        ! than static element bytes.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        module_declaration_is_allocatable = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            if (.not. decl%is_allocatable) return
+            if (decl%is_pointer) return
+            ! A scalar allocatable is not a descriptor-backed array; it keeps
+            ! whatever handling it had before.
+            module_declaration_is_allocatable = decl%is_array .or. &
+                                                allocated(decl%dimension_indices)
+        end select
+    end function module_declaration_is_allocatable
+
+    subroutine module_allocatable_array_info(arena, var_idx, value_kind, rank, &
+                                             context, error_msg)
+        ! Resolve the element kind and rank of a module-scope allocatable array.
+        ! Only the rank-1/rank-2 numeric and logical element kinds whose local
+        ! descriptor paths are complete are in scope; anything else keeps its
+        ! previous clean diagnostic.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: rank
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: type_name, kind_err
+        integer :: line, column
+
+        value_kind = VALUE_I32
+        rank = 1
+        call set_empty(error_msg)
+        line = get_node_line(arena, var_idx)
+        column = get_node_column(arena, var_idx)
+        if (.not. node_exists(arena, var_idx)) then
+            error_msg = 'module array declaration is missing'
+            return
+        end if
+        select type (decl => arena%entries(var_idx)%node)
+        type is (declaration_node)
+            if (allocated(decl%dimension_indices)) rank = size(decl%dimension_indices)
+        class default
+            error_msg = 'module export is not a declaration'
+            return
+        end select
+        if (rank < 1 .or. rank > 2) then
+            error_msg = 'only rank-1 and rank-2 allocatable module arrays are '// &
+                        'stored as descriptor globals'
+            return
+        end if
+        call get_declaration_type_name(arena, var_idx, type_name, kind_err)
+        if (len_trim(kind_err) > 0) then
+            error_msg = kind_err
+            return
+        end if
+        call type_name_value_kind(type_name, line, column, value_kind, &
+                                  kind_err, context)
+        if (len_trim(kind_err) > 0) then
+            error_msg = kind_err
+            return
+        end if
+        select case (value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+        case default
+            error_msg = 'direct LIRIC session stores only integer(4), real, '// &
+                        'and logical allocatable module arrays'
+        end select
+    end subroutine module_allocatable_array_info
+
     subroutine module_array_variable_kind(arena, var_idx, value_kind, status, &
                                            context, error_msg)
         ! Classify a module-level ARRAY declaration. A fixed-size rank-1 array of
@@ -104,6 +177,17 @@
         call set_empty(error_msg)
         line = get_node_line(arena, var_idx)
         column = get_node_column(arena, var_idx)
+        if (module_declaration_is_allocatable(arena, var_idx)) then
+            call module_allocatable_array_info(arena, var_idx, value_kind, &
+                                               array_size, context, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('module variable', line, column, &
+                    trim(error_msg), error_msg)
+                return
+            end if
+            status = MODVAR_OK
+            return
+        end if
         call module_array_variable_info(arena, var_idx, context, value_kind, &
                                         array_size, array_lower, error_msg)
         if (len_trim(error_msg) > 0) then
@@ -344,6 +428,11 @@
                                                      context, error_msg)
             return
         end if
+        if (module_declaration_is_allocatable(arena, var_idx)) then
+            call emit_module_allocatable_descriptor_global(var_name, module_name, &
+                                                           context, error_msg)
+            return
+        end if
         if (module_declaration_is_array(arena, var_idx)) then
             call emit_module_array_variable_global(arena, var_idx, value_kind, &
                 var_name, module_name, context, error_msg)
@@ -381,6 +470,81 @@
         end if
         call set_empty(error_msg)
     end subroutine emit_module_variable_global
+
+    subroutine emit_module_allocatable_descriptor_global(var_name, module_name, &
+                                                         context, error_msg)
+        ! A module-scope allocatable array is a zero-initialised 40-byte
+        ! descriptor global with the same layout declare_allocatable gives a
+        ! local (data ptr, lower1, upper1, lower2, upper2). data == 0 marks it
+        ! unallocated, which is exactly the required initial state, so every
+        ! existing descriptor path works unchanged on the global address.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int8_t, &
+                                               c_int32_t, c_int64_t, c_loc, &
+                                               c_size_t, c_ptr
+        use liric_session_bindings, only: lr_type_i8_s, lr_type_array_s
+        character(len=*), intent(in) :: var_name
+        character(len=*), intent(in) :: module_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int8_t), target :: init_bytes(ALLOC_DESCRIPTOR_BYTES)
+        type(c_ptr) :: gtype
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        init_bytes = 0_c_int8_t
+        mangled = module_procedure_mangled(module_name, trim(var_name))
+        call to_c_chars(mangled, c_name)
+        gtype = lr_type_array_s(context%session%handle, &
+            lr_type_i8_s(context%session%handle), &
+            int(ALLOC_DESCRIPTOR_BYTES, c_int64_t))
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+            c_false_local, c_loc(init_bytes), &
+            int(ALLOC_DESCRIPTOR_BYTES, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create allocatable module global: '// &
+                        trim(mangled)
+            return
+        end if
+    end subroutine emit_module_allocatable_descriptor_global
+
+    subroutine bind_one_module_allocatable_variable(arena, var_idx, sym_name, &
+                                                    global_id, context, error_msg)
+        ! Bind a module-scope allocatable array onto its descriptor global so the
+        ! module's procedures and a using program share one allocation state.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        character(len=*), intent(in) :: sym_name
+        integer(c_int32_t), intent(in) :: global_id
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym_idx, value_kind, rank
+
+        call module_allocatable_array_info(arena, var_idx, value_kind, rank, &
+                                           context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call grow_symbols(context)
+        sym_idx = context%symbol_count + 1
+        context%symbols(sym_idx) = symbol_t()
+        context%symbols(sym_idx)%name = trim(sym_name)
+        context%symbols(sym_idx)%value_kind = value_kind
+        context%symbols(sym_idx)%is_allocatable = .true.
+        context%symbols(sym_idx)%array_rank = rank
+        context%symbols(sym_idx)%allocatable_descriptor_address%kind = &
+            LR_OP_KIND_GLOBAL
+        context%symbols(sym_idx)%allocatable_descriptor_address%payload = &
+            int(global_id, c_int64_t)
+        context%symbols(sym_idx)%allocatable_descriptor_address%typ = &
+            lr_type_ptr_s(context%session%handle)
+        context%symbols(sym_idx)%allocatable_descriptor_address%global_offset = &
+            0_c_int64_t
+        context%symbol_count = sym_idx
+        call set_empty(error_msg)
+    end subroutine bind_one_module_allocatable_variable
 
     subroutine emit_module_array_variable_global(arena, var_idx, value_kind, &
                                                  var_name, module_name, context, &
@@ -816,6 +980,11 @@
         if (value_kind == VALUE_DERIVED) then
             call bind_one_derived_module_variable(arena, var_idx, trim(var_name), &
                                                   global_id, context, error_msg)
+            return
+        end if
+        if (module_declaration_is_allocatable(arena, var_idx)) then
+            call bind_one_module_allocatable_variable(arena, var_idx, &
+                trim(var_name), global_id, context, error_msg)
             return
         end if
         if (module_declaration_is_array(arena, var_idx)) then

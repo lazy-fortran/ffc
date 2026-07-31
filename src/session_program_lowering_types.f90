@@ -175,6 +175,9 @@ module session_program_lowering_types
     ! arrays. Per-dimension lower bounds and extents are stored inline in
     ! symbol_t, so this caps those fixed arrays (Fortran 2003 max rank).
     integer, parameter, public :: ARRAY_MAX_RANK = 7
+    ! Byte size of an allocatable array descriptor: data pointer plus the
+    ! lower/upper bound pair of each of the two supported dimensions, all i64.
+    integer, parameter, public :: ALLOC_DESCRIPTOR_BYTES = 40
     type, public :: common_slot_t
         character(len=:), allocatable :: block_name
         character(len=:), allocatable :: var_name

@@ -1649,7 +1649,7 @@
 
         reason = ''
         column = 1
-        call strip_source_comment(line, code)
+        call strip_char_length_source_comment(line, code)
         if (len_trim(code) == 0) return
         lowered = lowercase_text(mask_string_literals(code))
 
@@ -1824,7 +1824,7 @@
     end function statement_is_implicit
 
     ! Drop a trailing comment, honouring character literals.
-    subroutine strip_source_comment(line, code)
+    subroutine strip_char_length_source_comment(line, code)
         character(len=*), intent(in) :: line
         character(len=:), allocatable, intent(out) :: code
         character :: quote
@@ -1845,7 +1845,7 @@
                 return
             end if
         end do
-    end subroutine strip_source_comment
+    end subroutine strip_char_length_source_comment
 
     ! Replace the contents of character literals with a filler so that a scan
     ! for keywords and parentheses never reads inside a literal. The quotes
