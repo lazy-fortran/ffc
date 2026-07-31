@@ -8,10 +8,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: g_norm, g_field
         type(lr_operand_desc_t) :: x, mode, digits, width, buf, tmp, p, pe1, ex
+        type(lr_operand_desc_t) :: exp_digits
         type(lr_operand_desc_t) :: cond, nullptr, zptr
         integer(c_int32_t) :: entry, finite, nonfinite, eblk, enblk
         integer(c_int32_t) :: ezero, enonzero
-        type(c_ptr), target :: params(5)
+        type(c_ptr), target :: params(6)
         type(c_ptr) :: out_addr
         character(kind=c_char), allocatable :: c_name(:)
         type(lr_error_t) :: error
@@ -24,11 +25,11 @@
         ! The "#" flag keeps the decimal point when the fractional digit count
         ! is zero (gfortran's Ew.0/ENw.0 print "3.E+00"; plain %.0f drops it).
         if (.not. create_cstring_operand(session, '.ffc.een.field', &
-                                         '%#*.*fE%c%02d', g_field, error_msg)) &
+                                         '%#*.*fE%c%0*d', g_field, error_msg)) &
             return
         call begin_e_en_helper(session, params, c_name, status, error)
         if (.not. status_ok(status, error, error_msg)) return
-        call e_en_params(session, x, mode, digits, width, buf)
+        call e_en_params(session, x, mode, digits, width, buf, exp_digits)
         call create_e_en_blocks(session, entry, finite, nonfinite, eblk, enblk, &
                                 ezero, enonzero)
         if (.not. set_liric_block(session, entry, error_msg)) return
@@ -50,13 +51,13 @@
             return
         if (.not. set_liric_block(session, ezero, error_msg)) return
         if (.not. emit_scaled_field(session, x, ex, digits, width, buf, g_field, &
-                                    error_msg)) return
+                                    exp_digits, error_msg)) return
         if (.not. set_liric_block(session, enonzero, error_msg)) return
         if (.not. emit_e_field(session, x, ex, digits, width, buf, g_field, &
-                               error_msg)) return
+                               exp_digits, error_msg)) return
         if (.not. set_liric_block(session, enblk, error_msg)) return
         if (.not. emit_en_field(session, x, ex, digits, width, buf, g_field, &
-                                error_msg)) return
+                                exp_digits, error_msg)) return
         if (.not. set_liric_block(session, nonfinite, error_msg)) return
         if (.not. copy_nonfinite_field(session, tmp, width, buf, error_msg)) return
         call clear_liric_error(error)
@@ -68,7 +69,7 @@
     end function synthesize_e_en_format_helper
     subroutine begin_e_en_helper(session, params, c_name, status, error)
         type(liric_session_t), intent(inout) :: session
-        type(c_ptr), target, intent(out) :: params(5)
+        type(c_ptr), target, intent(out) :: params(6)
         character(kind=c_char), allocatable, intent(out) :: c_name(:)
         integer(c_int), intent(out) :: status
         type(lr_error_t), intent(out) :: error
@@ -77,21 +78,25 @@
         params(3) = lr_type_i32_s(session%handle)
         params(4) = lr_type_i32_s(session%handle)
         params(5) = lr_type_ptr_s(session%handle)
+        params(6) = lr_type_i32_s(session%handle)
         call clear_liric_error(error)
         call to_c_chars(E_EN_FORMAT_HELPER, c_name)
         status = lr_session_func_begin(session%handle, c_name, &
                                        lr_type_i32_s(session%handle), &
-                                       c_loc(params), 5_c_int32_t, c_false, &
+                                       c_loc(params), 6_c_int32_t, c_false, &
                                        error)
     end subroutine begin_e_en_helper
-    subroutine e_en_params(session, x, mode, digits, width, buf)
+    subroutine e_en_params(session, x, mode, digits, width, buf, exp_digits)
         type(liric_session_t), intent(in) :: session
         type(lr_operand_desc_t), intent(out) :: x, mode, digits, width, buf
+        type(lr_operand_desc_t), intent(out) :: exp_digits
         x = typed_param(session, 0_c_int32_t, lr_type_f64_s(session%handle))
         mode = typed_param(session, 1_c_int32_t, lr_type_i32_s(session%handle))
         digits = typed_param(session, 2_c_int32_t, lr_type_i32_s(session%handle))
         width = typed_param(session, 3_c_int32_t, lr_type_i32_s(session%handle))
         buf = typed_param(session, 4_c_int32_t, lr_type_ptr_s(session%handle))
+        exp_digits = typed_param(session, 5_c_int32_t, &
+                                 lr_type_i32_s(session%handle))
     end subroutine e_en_params
     subroutine create_e_en_blocks(session, entry, finite, nonfinite, eblk, enblk, &
                                   ezero, enonzero)
@@ -149,9 +154,10 @@
         parse_e_en_exponent = .true.
     end function parse_e_en_exponent
     logical function emit_e_field(session, x, ex, digits, width, buf, g_field, &
-                                  error_msg)
+                                  exp_digits, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: x, ex, digits, width, buf, g_field
+        type(lr_operand_desc_t), intent(in) :: exp_digits
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: e_exp
         emit_e_field = .false.
@@ -159,12 +165,13 @@
                                   i32_immediate(session, 1_c_int64_t), e_exp, &
                                   error_msg)) return
         emit_e_field = emit_scaled_field(session, x, e_exp, digits, width, buf, &
-                                         g_field, error_msg)
+                                         g_field, exp_digits, error_msg)
     end function emit_e_field
     logical function emit_en_field(session, x, ex, digits, width, buf, g_field, &
-                                   error_msg)
+                                   exp_digits, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: x, ex, digits, width, buf, g_field
+        type(lr_operand_desc_t), intent(in) :: exp_digits
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: ex_f64, third, div, floored, quotient, e_exp
         emit_en_field = .false.
@@ -178,21 +185,26 @@
                                   i32_immediate(session, 3_c_int64_t), e_exp, &
                                   error_msg)) return
         emit_en_field = emit_scaled_field(session, x, e_exp, digits, width, buf, &
-                                          g_field, error_msg)
+                                          g_field, exp_digits, error_msg)
     end function emit_en_field
     logical function emit_scaled_field(session, x, e_exp, digits, width, buf, &
-                                       g_field, error_msg)
+                                       g_field, exp_digits, error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: x, e_exp, digits, width, buf
-        type(lr_operand_desc_t), intent(in) :: g_field
+        type(lr_operand_desc_t), intent(in) :: g_field, exp_digits
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: abs_exp, exp_f64, scale, mant, field_width
+        type(lr_operand_desc_t) :: exp_room
         type(lr_operand_desc_t) :: args(8), cond
         integer(c_int32_t) :: neg, pos
         emit_scaled_field = .false.
         if (.not. scaled_mantissa(session, x, e_exp, mant, error_msg)) return
-        if (.not. emit_i32_binary(session, LR_OP_SUB, width, &
-                                  i32_immediate(session, 4_c_int64_t), &
+        ! The exponent occupies "E", the sign, and exp_digits digits, so the
+        ! mantissa field takes the remaining width.
+        if (.not. emit_i32_binary(session, LR_OP_ADD, exp_digits, &
+                                  i32_immediate(session, 2_c_int64_t), &
+                                  exp_room, error_msg)) return
+        if (.not. emit_i32_binary(session, LR_OP_SUB, width, exp_room, &
                                   field_width, error_msg)) return
         if (.not. emit_liric_i32_icmp(session, LR_CMP_SLT, e_exp, &
                                       i32_immediate(session, 0_c_int64_t), &
@@ -205,10 +217,11 @@
                                   i32_immediate(session, 0_c_int64_t), e_exp, &
                                   abs_exp, error_msg)) return
         if (.not. snprintf_scaled(session, buf, g_field, field_width, digits, &
-                                  mant, '-', abs_exp, error_msg)) return
+                                  mant, '-', abs_exp, exp_digits, error_msg)) &
+            return
         if (.not. set_liric_block(session, pos, error_msg)) return
         if (.not. snprintf_scaled(session, buf, g_field, field_width, digits, &
-                                  mant, '+', e_exp, error_msg)) return
+                                  mant, '+', e_exp, exp_digits, error_msg)) return
         emit_scaled_field = .true.
     end function emit_scaled_field
     logical function scaled_mantissa(session, x, e_exp, mant, error_msg)
@@ -234,13 +247,14 @@
         scaled_mantissa = .true.
     end function scaled_mantissa
     logical function snprintf_scaled(session, buf, g_field, field_width, digits, &
-                                     mant, sign_ch, abs_exp, error_msg)
+                                     mant, sign_ch, abs_exp, exp_digits, &
+                                     error_msg)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: buf, g_field, field_width, digits
-        type(lr_operand_desc_t), intent(in) :: mant, abs_exp
+        type(lr_operand_desc_t), intent(in) :: mant, abs_exp, exp_digits
         character, intent(in) :: sign_ch
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: args(8)
+        type(lr_operand_desc_t) :: args(9)
         snprintf_scaled = .false.
         args(1) = buf
         args(2) = i64_immediate(session, 256_c_int64_t)
@@ -249,7 +263,8 @@
         args(5) = digits
         args(6) = mant
         args(7) = i32_immediate(session, int(iachar(sign_ch), c_int64_t))
-        args(8) = abs_exp
+        args(8) = exp_digits
+        args(9) = abs_exp
         if (.not. emit_c_call(session, 'snprintf', args, &
                               lr_type_i32_s(session%handle), 3_c_int32_t, &
                               c_true, error_msg)) return
@@ -283,21 +298,28 @@
                                          error_msg)
     end function return_zero
     logical function emit_e_en_format_call(session, value, mode, digits, width, &
-                                           buf, error_msg)
+                                           buf, error_msg, exp_digits)
+        ! exp_digits is the Ew.dEe exponent digit count; it defaults to the
+        ! standard two-digit exponent when the descriptor omits Ee.
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: value
         integer, intent(in) :: mode, digits, width
         type(lr_operand_desc_t), intent(in) :: buf
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: args(5)
+        integer, intent(in), optional :: exp_digits
+        integer :: exp_width
+        type(lr_operand_desc_t) :: args(6)
         args(1) = value
         args(2) = i32_immediate(session, int(mode, c_int64_t))
         args(3) = i32_immediate(session, int(digits, c_int64_t))
         args(4) = i32_immediate(session, int(width, c_int64_t))
         args(5) = buf
+        exp_width = 2
+        if (present(exp_digits)) exp_width = exp_digits
+        args(6) = i32_immediate(session, int(exp_width, c_int64_t))
         emit_e_en_format_call = emit_c_call(session, E_EN_FORMAT_HELPER, args, &
                                             lr_type_i32_s(session%handle), &
-                                            5_c_int32_t, c_false, error_msg)
+                                            6_c_int32_t, c_false, error_msg)
     end function emit_e_en_format_call
     logical function declare_e_en_libc(session, error_msg)
         type(liric_session_t), intent(inout) :: session
