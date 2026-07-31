@@ -520,9 +520,10 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: constant_value
-        integer :: index, io_stat
+        integer :: index, io_stat, existing_idx
         character(len=:), allocatable :: local_name
         logical :: imported
+        logical :: rebind, skip
 
         call set_empty(error_msg)
         if (.not. allocated(param%name)) return
@@ -539,9 +540,13 @@
                         trim(param%name)
             return
         end if
-        if (find_symbol_compat(context, trim(local_name)) > 0) return
-        call grow_symbols(context)
-        index = context%symbol_count + 1
+        call check_use_rename_collision(context, trim(local_name), &
+                                        trim(use_node%module_name), &
+                                        trim(param%name), existing_idx, &
+                                        rebind, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call use_import_symbol_slot(context, existing_idx, rebind, index, skip)
+        if (skip) return
         context%symbols(index)%name = trim(local_name)
         context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%value = i32_immediate(context%session, &
@@ -549,7 +554,9 @@
         context%symbols(index)%is_parameter = .true.
         context%symbols(index)%has_i32_constant = .true.
         context%symbols(index)%i32_constant = constant_value
-        context%symbol_count = index
+        call record_use_rename_source(context, index, &
+                                      trim(use_node%module_name), &
+                                      trim(param%name))
     end subroutine import_fmod_parameter
 
     subroutine import_fmod_variable(use_node, var, context, error_msg)
@@ -567,8 +574,9 @@
         character(len=:), allocatable :: local_name
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
-        integer :: sym_idx, value_kind
+        integer :: sym_idx, value_kind, existing_idx
         logical :: imported
+        logical :: rebind, skip
 
         call set_empty(error_msg)
         if (.not. allocated(var%name)) return
@@ -578,7 +586,14 @@
         if (.not. imported) return
         value_kind = value_kind_of_token(trim(var%kind))
         if (value_kind == 0) return
-        if (find_symbol_compat(context, trim(local_name)) > 0) return
+        call check_use_rename_collision(context, trim(local_name), &
+                                        trim(use_node%module_name), &
+                                        trim(var%name), existing_idx, rebind, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (existing_idx > 0) then
+            if (.not. rebind) return
+        end if
         if (allocated(var%c_name) .and. len_trim(var%c_name) > 0) then
             mangled = trim(var%c_name)
         else
@@ -591,8 +606,8 @@
             error_msg = 'module variable global not found: '//trim(mangled)
             return
         end if
-        call grow_symbols(context)
-        sym_idx = context%symbol_count + 1
+        call use_import_symbol_slot(context, existing_idx, rebind, sym_idx, skip)
+        if (skip) return
         context%symbols(sym_idx)%name = trim(local_name)
         context%symbols(sym_idx)%value_kind = value_kind
         context%symbols(sym_idx)%has_address = .true.
@@ -601,8 +616,91 @@
         context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
-        context%symbol_count = sym_idx
+        call record_use_rename_source(context, sym_idx, &
+                                      trim(use_node%module_name), &
+                                      trim(var%name))
     end subroutine import_fmod_variable
+
+    subroutine check_use_rename_collision(context, local_name, module_name, &
+                                          remote_name, existing_idx, rebind, &
+                                          error_msg)
+        ! Classify a USE import of module_name::remote_name under local_name
+        ! against the symbols already registered in this unit.
+        !   existing_idx == 0                 the local name is free.
+        !   existing_idx > 0, rebind = .true. the local name is held by a
+        !       symbol with no recorded import origin; it adopts this remote
+        !       binding and the caller rebinds that slot in place.
+        !   existing_idx > 0, rebind = .false. the very same remote binding is
+        !       already imported under this local name; the repeat is valid
+        !       (F2018 19.5.2) and the caller skips it.
+        ! A different remote binding under an already-bound local name is
+        ! ambiguous and rejected.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: local_name
+        character(len=*), intent(in) :: module_name
+        character(len=*), intent(in) :: remote_name
+        integer, intent(out) :: existing_idx
+        logical, intent(out) :: rebind
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        rebind = .false.
+        call set_empty(error_msg)
+        existing_idx = find_symbol_compat(context, local_name)
+        if (existing_idx <= 0) return
+        if (.not. allocated(context%symbols(existing_idx)%use_rename_module)) then
+            rebind = .true.
+            return
+        end if
+        if (.not. allocated(context%symbols(existing_idx)%use_rename_remote)) &
+            return
+        if (same_name(context%symbols(existing_idx)%use_rename_module, &
+                      module_name)) then
+            if (same_name(context%symbols(existing_idx)%use_rename_remote, &
+                          remote_name)) return
+        end if
+        error_msg = 'ambiguous use rename local name: '//trim(local_name)
+    end subroutine check_use_rename_collision
+
+    subroutine use_import_symbol_slot(context, existing_idx, rebind, sym_idx, &
+                                      skip)
+        ! Pick the symbol table slot a USE import writes into: the adopted
+        ! existing slot, or a fresh one. skip = .true. when the same binding is
+        ! already imported and nothing must be written.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: existing_idx
+        logical, intent(in) :: rebind
+        integer, intent(out) :: sym_idx
+        logical, intent(out) :: skip
+
+        skip = .false.
+        sym_idx = 0
+        if (existing_idx > 0) then
+            if (.not. rebind) then
+                skip = .true.
+                return
+            end if
+            sym_idx = existing_idx
+            context%symbols(sym_idx) = symbol_t()
+            return
+        end if
+        call grow_symbols(context)
+        sym_idx = context%symbol_count + 1
+        context%symbol_count = sym_idx
+    end subroutine use_import_symbol_slot
+
+    subroutine record_use_rename_source(context, sym_idx, module_name, &
+                                        remote_name)
+        ! Remember the remote binding a renamed local symbol came from so a
+        ! later import of the same binding is recognised as a repeat.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym_idx
+        character(len=*), intent(in) :: module_name
+        character(len=*), intent(in) :: remote_name
+
+        if (sym_idx <= 0) return
+        context%symbols(sym_idx)%use_rename_module = trim(module_name)
+        context%symbols(sym_idx)%use_rename_remote = trim(remote_name)
+    end subroutine record_use_rename_source
 
     subroutine import_use_renames(arena, export_idx, use_node, context, error_msg)
         ! use m, only: local => remote binds module symbol `remote` under the
@@ -622,6 +720,9 @@
         integer :: line
         integer :: column
         integer :: symbol_idx
+        integer :: existing_idx
+        logical :: rebind
+        logical :: skip
         character(len=:), allocatable :: decl_name
         character(len=:), allocatable :: decl_type_name
 
@@ -670,13 +771,18 @@
                 call eval_i32_constant(context%arena, init_index, context, &
                                        constant_value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (find_symbol_compat(context, trim(use_node%rename_list(i)%s)) > 0) then
-                    error_msg = 'duplicate use rename local name: '// &
-                                trim(use_node%rename_list(i)%s)
-                    return
+                call check_use_rename_collision(context, &
+                    trim(use_node%rename_list(i)%s), &
+                    trim(context%module_exports(export_idx)%module_name), &
+                    trim(use_node%rename_list(i + 1)%s), existing_idx, &
+                    rebind, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call use_import_symbol_slot(context, existing_idx, rebind, &
+                                            symbol_idx, skip)
+                if (skip) then
+                    found = .true.
+                    exit
                 end if
-                call grow_symbols(context)
-                symbol_idx = context%symbol_count + 1
                 context%symbols(symbol_idx)%name = trim(use_node%rename_list(i)%s)
                 context%symbols(symbol_idx)%value_kind = VALUE_I32
                 context%symbols(symbol_idx)%value = i32_immediate(context%session, &
@@ -684,7 +790,9 @@
                 context%symbols(symbol_idx)%is_parameter = .true.
                 context%symbols(symbol_idx)%has_i32_constant = .true.
                 context%symbols(symbol_idx)%i32_constant = constant_value
-                context%symbol_count = symbol_idx
+                call record_use_rename_source(context, symbol_idx, &
+                    trim(context%module_exports(export_idx)%module_name), &
+                    trim(use_node%rename_list(i + 1)%s))
                 found = .true.
                 exit
             end do
@@ -723,7 +831,8 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: found
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, var_idx, value_kind, status, sym_idx
+        integer :: i, var_idx, value_kind, status, sym_idx, existing_idx
+        logical :: rebind, skip
         integer(c_int32_t) :: global_id
         character(len=:), allocatable :: var_name, mangled, name_err
         character(kind=c_char), allocatable :: c_name(:)
@@ -742,9 +851,15 @@
                 call set_empty(error_msg)
                 return
             end if
-            if (find_symbol_compat(context, local_name) > 0) then
-                error_msg = 'duplicate use rename local name: '//local_name
-                return
+            call check_use_rename_collision(context, local_name, &
+                trim(context%module_exports(export_idx)%module_name), &
+                remote_name, existing_idx, rebind, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (existing_idx > 0) then
+                if (.not. rebind) then
+                    found = .true.
+                    return
+                end if
             end if
             mangled = module_procedure_mangled( &
                 trim(context%module_exports(export_idx)%module_name), &
@@ -762,8 +877,12 @@
                 found = .true.
                 return
             end if
-            call grow_symbols(context)
-            sym_idx = context%symbol_count + 1
+            call use_import_symbol_slot(context, existing_idx, rebind, &
+                                        sym_idx, skip)
+            if (skip) then
+                found = .true.
+                return
+            end if
             context%symbols(sym_idx)%name = local_name
             context%symbols(sym_idx)%value_kind = value_kind
             context%symbols(sym_idx)%has_address = .true.
@@ -773,7 +892,9 @@
             context%symbols(sym_idx)%address%typ = &
                 lr_type_ptr_s(context%session%handle)
             context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
-            context%symbol_count = sym_idx
+            call record_use_rename_source(context, sym_idx, &
+                trim(context%module_exports(export_idx)%module_name), &
+                remote_name)
             found = .true.
             return
         end do
@@ -1067,6 +1188,13 @@
                 return
             end if
         end do
+        ! A generic interface declared by the module is an export too: it is
+        ! registered under its generic name when the module is lowered in this
+        ! unit, so ONLY may name it (#371).
+        if (find_generic(context, name) > 0) then
+            module_exports_name = .true.
+            return
+        end if
         ! Module procedures are not recorded in module_exports_t (only data
         ! symbols are), so resolve a procedure name against the module body
         ! itself (#263). A USE-only of a contained function or subroutine is a

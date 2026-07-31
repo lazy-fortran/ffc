@@ -134,7 +134,6 @@ initialization_25.f90 # owner=lazy-fortran/ffc#387; reason=require valid constan
 initialization_28.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 initialization_7.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 inline_sum_2.f90 # owner=lazy-fortran/ffc#359; reason=capture dummy-bound extents on entry
-interface_17.f90 # owner=lazy-fortran/ffc#371; reason=distinguish valid and ambiguous USE renames
 interface_20.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 interface_21.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 interface_23.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
@@ -310,7 +309,6 @@ unexpected_interface.f90 # owner=lazy-fortran/fortfront#2896; reason=reject cons
 unf_io_convert_2.f90 # scope=vendor; reason=GNU CONVERT unformatted I/O extension
 unlimited_polymorphic_14.f90 # owner=lazy-fortran/ffc#419; reason=owns scalar SELECT TYPE guard dispatch and CLASS DEFAULT
 unsigned_37.f90 # owner=lazy-fortran/fortfront#2894; reason=reject malformed or disallowed literal forms
-use_11.f90 # owner=lazy-fortran/ffc#371; reason=distinguish valid and ambiguous USE renames
 use_15.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 use_16.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 use_19.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
@@ -318,7 +316,6 @@ use_31.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construc
 use_9.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 use_iso_c_binding.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 use_rename_11.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
-use_rename_4.f90 # owner=lazy-fortran/ffc#371; reason=distinguish valid and ambiguous USE renames
 use_rename_5.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 used_types_23.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
 used_types_25.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions

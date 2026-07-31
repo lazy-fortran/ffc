@@ -303,6 +303,13 @@ module session_program_lowering_types
         ! kept so a later constant's initializer can fold a reference to
         ! this one (z_pad = x_pad // y_pad) at compile time.
         character(len=:), allocatable :: character_constant_text
+        ! Remote binding this symbol was imported from by a USE rename
+        ! (module name plus the name used inside that module). Repeating the
+        ! same remote binding under the same local name is valid; a second,
+        ! different remote binding under that local name is ambiguous
+        ! (F2018 19.5.2).
+        character(len=:), allocatable :: use_rename_module
+        character(len=:), allocatable :: use_rename_remote
     end type symbol_t
 
     ! One resolved declaration record. The binding triple is the identity;
