@@ -371,7 +371,17 @@
                     ! exactly as before fixed-size module arrays were supported.
                     if (module_symbol_is_private(arena, mod_node, trim(decl_name))) &
                         cycle
-                    if (decl%is_array) then
+                    if (module_declaration_is_allocatable(arena, &
+                            mod_node%declaration_indices(j))) then
+                        block
+                            integer :: ma_kind, ma_rank
+                            character(len=:), allocatable :: ma_err
+                            call module_allocatable_array_info(arena, &
+                                mod_node%declaration_indices(j), ma_kind, &
+                                ma_rank, context, ma_err)
+                            if (len_trim(ma_err) > 0) cycle
+                        end block
+                    else if (decl%is_array) then
                         block
                             integer :: mv_kind, mv_size, mv_lower
                             character(len=:), allocatable :: mv_err

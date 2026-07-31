@@ -236,6 +236,7 @@ module session_program_lowering
         common_slot_t, COMMON_MAX_SLOTS, &
         EQUIV_MAX_MEMBERS, equiv_member_t, &
         ARRAY_MAX_RANK, &
+        ALLOC_DESCRIPTOR_BYTES, &
         namelist_group_t, &
         statement_function_t, &
         MAX_STMT_FN_ARGS, &
