@@ -2029,7 +2029,11 @@
                 if (.not. emit_free(context%session, data_ptr, error_msg)) return
                 if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
                                          slot_address, error_msg)) return
-                if (is_alloc_array) then
+                if (is_alloc_array .or. &
+                    component_access_is_alloc_char(arena, target, context)) then
+                    ! Both an array descriptor and a deferred-length character
+                    ! descriptor carry an i64 extent/length at +8; zero it so
+                    ! the component reads as empty and unallocated (#402).
                     if (.not. emit_i64_store_at(context%session, &
                             i64_immediate(context%session, 0_c_int64_t), &
                             slot_address, 8_c_int64_t, error_msg)) return

@@ -47,6 +47,13 @@
             component_slot_width = 4
             return
         end if
+        ! A deferred-length allocatable character component carries the
+        ! canonical 16-byte character descriptor inline: data pointer at +0 and
+        ! i64 length at +8 (#402).
+        if (component_is_alloc_char(context, type_index, comp_index)) then
+            component_slot_width = 4
+            return
+        end if
         if (component_is_allocatable(context, type_index, comp_index) .or. &
             component_is_pointer(context, type_index, comp_index)) then
             component_slot_width = 2
@@ -106,6 +113,22 @@
         component_is_allocatable = &
             context%derived_types(type_index)%component_is_allocatable(comp_index)
     end function component_is_allocatable
+
+    logical function component_is_alloc_char(context, type_index, comp_index)
+        ! True for a scalar allocatable deferred-length character component,
+        ! whose inline storage is the canonical character descriptor.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_alloc_char = .false.
+        if (.not. component_is_allocatable(context, type_index, comp_index)) return
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_value_kind)) return
+        component_is_alloc_char = &
+            context%derived_types(type_index)%component_value_kind(comp_index) == &
+            VALUE_CHARACTER
+    end function component_is_alloc_char
 
     logical function component_is_pointer(context, type_index, comp_index)
         ! True for a scalar data-pointer component (inline target address).
@@ -207,6 +230,7 @@
         integer, intent(in) :: base_slot
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: c, nested, abs_slot, e, w
+        integer :: indirect_slots
         integer(c_int64_t), allocatable :: words(:)
         type(lr_operand_desc_t) :: addr
 
@@ -239,9 +263,15 @@
                 cycle
             end if
             if (component_is_indirect(context, type_index, c)) then
+                ! A deferred-length allocatable character component spans the
+                ! four slots of its inline descriptor (data pointer + length);
+                ! every other indirect component is a bare 8-byte address.
+                indirect_slots = 2
+                if (component_is_alloc_char(context, type_index, c)) &
+                    indirect_slots = 4
                 call null_allocatable_component_slots(context, symbol_index, &
-                                                      outer_slots, abs_slot, 2, &
-                                                      error_msg)
+                                                      outer_slots, abs_slot, &
+                                                      indirect_slots, error_msg)
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
@@ -1490,6 +1520,14 @@
             comp_index = 0
             if (type_index > 0) comp_index = find_derived_component(context, &
                 type_index, target%component_name)
+            if (comp_index > 0) then
+                if (component_is_alloc_char(context, type_index, comp_index)) then
+                    call store_alloc_char_component(arena, node%value_index, &
+                        component_address, context, error_msg)
+                    value = i32_immediate(context%session, 0_c_int64_t)
+                    return
+                end if
+            end if
             dest_len = 0
             if (comp_index > 0) dest_len = derived_component_char_length(context, &
                 type_index, comp_index)
@@ -2138,6 +2176,24 @@
         if (component_index <= 0) return
         is_alloc = component_is_alloc_array(context, type_index, component_index)
     end function component_access_is_alloc_array
+
+    logical function component_access_is_alloc_char(arena, node, context) &
+            result(is_alloc_char)
+        ! True when a component_access node names a deferred-length allocatable
+        ! character component.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: type_index, component_index
+
+        is_alloc_char = .false.
+        type_index = component_base_type_index(arena, node%base_expr_index, context)
+        if (type_index <= 0) return
+        component_index = find_derived_component(context, type_index, &
+                                                 node%component_name)
+        if (component_index <= 0) return
+        is_alloc_char = component_is_alloc_char(context, type_index, component_index)
+    end function component_access_is_alloc_char
 
     logical function component_access_is_indirect(arena, node, context) &
             result(is_indirect)
@@ -2867,6 +2923,7 @@
         type(lr_operand_desc_t), intent(out) :: data_ptr
         type(lr_operand_desc_t), intent(out) :: length
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr
         integer :: type_index, comp_index, char_len
 
         type_index = component_base_type_index(arena, node%base_expr_index, context)
@@ -2876,6 +2933,16 @@
         if (type_index <= 0 .or. comp_index <= 0) then
             error_msg = 'derived type character component expression is not '// &
                         'declared: '//trim(node%component_name)
+            return
+        end if
+        if (component_is_alloc_char(context, type_index, comp_index)) then
+            ! Deferred length: read the inline descriptor instead of a static
+            ! width, so the operand pair follows the current allocation (#402).
+            call lower_derived_component_address(arena, node, context, slot_addr, &
+                error_msg, 'derived type character component expression')
+            if (len_trim(error_msg) > 0) return
+            call load_alloc_char_descriptor(context, slot_addr, data_ptr, length, &
+                                            error_msg)
             return
         end if
         char_len = derived_component_char_length(context, type_index, comp_index)

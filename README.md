@@ -205,7 +205,13 @@ components so an inner type's own defaults show up inline (`x%c%field`). A
 scalar allocatable component of intrinsic numeric or logical type
 (`integer, allocatable :: v`) holds an inline data pointer that starts null;
 `allocate(x%v)`, component read/write, `allocated(x%v)`, and `deallocate(x%v)`
-manage it. A rank-1 allocatable array component of intrinsic numeric or logical
+manage it. A deferred-length allocatable character component
+(`character(len=:), allocatable :: s`) holds the canonical character descriptor
+inline (data pointer plus i64 length) and starts unallocated; assignment
+allocates to the right-hand side length and deep-copies the bytes, reading,
+`len`, comparison, concatenation, and `print` follow the current length, a
+whole-derived copy (`y = x`) gives the destination its own buffer, and
+`deallocate(x%s)` frees the owned data once and clears the descriptor. A rank-1 allocatable array component of intrinsic numeric or logical
 type (`integer, allocatable :: v(:)`) holds an inline 16-byte descriptor (data
 pointer plus i64 element extent) that starts null; `allocate(x%v(n))` with a
 runtime extent, element read/write `x%v(i)`, `allocated(x%v)`, `size(x%v)`, and

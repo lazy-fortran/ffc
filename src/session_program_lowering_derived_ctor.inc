@@ -65,6 +65,14 @@
         call set_empty(error_msg)
         type_index = context%symbols(dest_index)%derived_type_index
         slots = total_component_slots(context, type_index)
+        ! The destination's own allocatable character data is released before
+        ! its descriptor is overwritten, so each owned buffer is freed exactly
+        ! once (#402). Self-assignment keeps its data and needs no release.
+        if (dest_index /= src_index) then
+            call release_derived_alloc_char_components(context, dest_index, &
+                                                       type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         do s = 0, slots - 1
             if (.not. emit_i32_array_element_addr(context%session, &
                     context%symbols(src_index)%array_size, &
@@ -97,12 +105,24 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: c, elem_bytes, inner_bytes
         logical :: is_array_comp
+        type(lr_operand_desc_t) :: char_slot
 
         call set_empty(error_msg)
         do c = 1, context%derived_types(type_index)%component_count
             is_array_comp = component_is_alloc_array(context, type_index, c)
             if (.not. is_array_comp .and. &
                 .not. component_is_allocatable(context, type_index, c)) cycle
+            if (component_is_alloc_char(context, type_index, c)) then
+                ! A deferred-length character component's byte span lives in its
+                ! inline descriptor, not in a fixed element size, so it re-owns
+                ! its data through the character descriptor path (#402).
+                call alloc_char_component_slot_address(context, dest_index, &
+                    type_index, c, char_slot, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call reown_alloc_char_component(context, char_slot, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             elem_bytes = int(allocatable_elem_size( &
                              component_kind(context, type_index, c)))
             if (is_array_comp) then
@@ -175,6 +195,54 @@
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine deep_copy_one_alloc_component
+
+    subroutine alloc_char_component_slot_address(context, symbol_index, &
+                                                 type_index, comp_index, addr, &
+                                                 error_msg)
+        ! Address of the inline character descriptor of component comp_index in
+        ! the derived scalar held by symbol_index.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index, comp_index
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, &
+                i32_immediate(context%session, &
+                    int(component_start_slot(context, type_index, comp_index), &
+                        c_int64_t)), addr, error_msg)) return
+    end subroutine alloc_char_component_slot_address
+
+    subroutine release_derived_alloc_char_components(context, symbol_index, &
+                                                     type_index, error_msg)
+        ! free() every allocatable character component of a derived scalar and
+        ! clear its descriptor. free(NULL) is a no-op, so an unallocated
+        ! component is handled without a branch.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr, data_ptr
+        integer :: c
+
+        call set_empty(error_msg)
+        do c = 1, context%derived_types(type_index)%component_count
+            if (.not. component_is_alloc_char(context, type_index, c)) cycle
+            call alloc_char_component_slot_address(context, symbol_index, &
+                                                   type_index, c, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_load(context%session, addr, data_ptr, error_msg)) &
+                return
+            if (.not. emit_free(context%session, data_ptr, error_msg)) return
+            if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                     addr, error_msg)) return
+            if (.not. emit_i64_store_at(context%session, &
+                    i64_immediate(context%session, 0_c_int64_t), addr, &
+                    8_c_int64_t, error_msg)) return
+        end do
+    end subroutine release_derived_alloc_char_components
 
     subroutine lower_derived_constructor_assignment(arena, call_index, context, &
             symbol_index, type_index, handled, error_msg)
