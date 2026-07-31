@@ -428,6 +428,11 @@
         character(len=:), allocatable :: ptr_name, target_name
         integer :: ptr_index, target_index
 
+        ! obj%p => proc binds a procedure-pointer component (#372).
+        if (is_proc_pointer_component_access(arena, node%pointer_index, context)) then
+            call lower_proc_component_assignment(arena, node, context, error_msg)
+            return
+        end if
         call get_identifier_name(arena, node%pointer_index, ptr_name, error_msg)
         if (len_trim(error_msg) > 0) return
         ptr_index = find_symbol_compat(context, ptr_name)
@@ -654,6 +659,13 @@
             error_msg = 'associated requires one or two arguments'
             return
         end if
+        ! A procedure-pointer component operand has no compile-time association
+        ! flag; compare its stored callee address at run time instead (#372).
+        if (associated_uses_proc_component(arena, arg_indices, context)) then
+            call lower_proc_pointer_associated(arena, arg_indices, context, &
+                                               value, error_msg)
+            return
+        end if
         if (.not. is_identifier(arena, arg_indices(1))) then
             error_msg = 'associated first argument must be a pointer variable'
             return
@@ -753,6 +765,10 @@
         ! Allocate a ptr slot on the stack; address stores the slot address.
         if (.not. emit_ptr_alloca(context%session, &
                                   context%symbols(idx)%address, error_msg)) return
+        ! A fresh procedure pointer is disassociated: null the slot so a runtime
+        ! association test reads false before any => binding (#372).
+        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                 context%symbols(idx)%address, error_msg)) return
         context%symbols(idx)%has_address = .true.
         context%symbol_count = idx
         call set_empty(error_msg)
@@ -782,18 +798,21 @@
             error_msg = 'left of => is not a procedure pointer: '//trim(ptr_name)
             return
         end if
+        ! null() clears the association and nulls the slot.
+        if (pointer_target_is_null(arena, node%target_index)) then
+            context%symbols(ptr_idx)%is_associated = .false.
+            if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                     context%symbols(ptr_idx)%address, &
+                                     error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. is_identifier(arena, node%target_index)) then
             error_msg = 'procedure pointer assignment requires a procedure name'
             return
         end if
         call get_identifier_name(arena, node%target_index, target_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        ! null() clears the association.
-        if (same_name(target_name, 'null')) then
-            context%symbols(ptr_idx)%is_associated = .false.
-            call set_empty(error_msg)
-            return
-        end if
         ! Check whether target is another procedure pointer being copied.
         target_idx = find_symbol_compat(context, target_name)
         if (target_idx > 0 .and. context%symbols(target_idx)%is_proc_pointer) then
@@ -930,3 +949,237 @@
                                           error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_void_proc_ptr_call
+
+    logical function is_proc_pointer_component_access(arena, node_index, context) &
+        result(is_proc)
+        ! True when node_index is obj%p naming a procedure-pointer component
+        ! (#372). Unresolvable component references answer .false. so the
+        ! caller's other paths keep their own diagnostics.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: sym, type_index, comp_index
+        character(len=:), allocatable :: comp_name, local_error
+
+        is_proc = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        select type (acc => arena%entries(node_index)%node)
+        type is (component_access_node)
+        class default
+            return
+        end select
+        call resolve_component_ref(arena, node_index, context, sym, type_index, &
+                                   comp_index, comp_name, local_error)
+        if (len_trim(local_error) > 0) return
+        is_proc = component_kind(context, type_index, comp_index) == VALUE_PROC_PTR
+    end function is_proc_pointer_component_access
+
+    logical function associated_uses_proc_component(arena, arg_indices, context) &
+        result(uses)
+        ! True when either ASSOCIATED argument is a procedure-pointer component.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(in) :: context
+
+        uses = .false.
+        if (.not. allocated(arg_indices)) return
+        if (size(arg_indices) < 1 .or. size(arg_indices) > 2) return
+        uses = is_proc_pointer_component_access(arena, arg_indices(1), context)
+        if (uses) return
+        if (size(arg_indices) < 2) return
+        uses = is_proc_pointer_component_access(arena, arg_indices(2), context)
+    end function associated_uses_proc_component
+
+    logical function pointer_target_is_null(arena, node_index) result(is_null)
+        ! True for the null() intrinsic reference on the right of =>, whether it
+        ! reaches us as a bare identifier or as an argumentless call node.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: name, local_error
+
+        is_null = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, local_error)
+            if (len_trim(local_error) > 0) return
+            is_null = same_name(name, 'null')
+            return
+        end if
+        select type (target_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(target_node%name)) return
+            is_null = same_name(target_node%name, 'null')
+        end select
+    end function pointer_target_is_null
+
+    subroutine proc_component_slot_address(arena, access_index, context, addr, &
+                                           error_msg)
+        ! Address of the inline pointer slot holding obj%p's callee address.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: comp_name
+        integer :: sym, type_index, comp_index
+
+        call resolve_component_ref(arena, access_index, context, sym, type_index, &
+                                   comp_index, comp_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (component_kind(context, type_index, comp_index) /= VALUE_PROC_PTR) then
+            error_msg = 'component is not a procedure pointer: '//trim(comp_name)
+            return
+        end if
+        call component_element_address_at(context, sym, type_index, comp_index, 0, &
+                                          addr, error_msg)
+    end subroutine proc_component_slot_address
+
+    subroutine load_proc_pointer_operand(arena, node_index, context, ptr_value, &
+                                         error_msg)
+        ! Callee address currently held by a procedure-pointer entity: either a
+        ! procedure-pointer component obj%p or a scalar procedure pointer.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: ptr_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr
+        character(len=:), allocatable :: name
+        integer :: idx
+
+        if (is_proc_pointer_component_access(arena, node_index, context)) then
+            call proc_component_slot_address(arena, node_index, context, addr, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_load(context%session, addr, ptr_value, error_msg)) &
+                return
+            call set_empty(error_msg)
+            return
+        end if
+        if (.not. is_identifier(arena, node_index)) then
+            error_msg = 'expected a procedure pointer variable or component'
+            return
+        end if
+        call get_identifier_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        idx = find_symbol_compat(context, name)
+        if (idx <= 0) then
+            error_msg = 'procedure pointer was not declared: '//trim(name)
+            return
+        end if
+        if (.not. context%symbols(idx)%is_proc_pointer) then
+            error_msg = 'not a procedure pointer: '//trim(name)
+            return
+        end if
+        if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
+                                ptr_value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine load_proc_pointer_operand
+
+    subroutine proc_target_address(arena, node_index, context, ptr_value, error_msg)
+        ! Callee address of a => target or of ASSOCIATED's second argument: a
+        ! procedure-pointer entity (loaded) or a named procedure (its symbol).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: ptr_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+        integer :: idx
+
+        if (is_proc_pointer_component_access(arena, node_index, context)) then
+            call load_proc_pointer_operand(arena, node_index, context, ptr_value, &
+                                           error_msg)
+            return
+        end if
+        if (.not. is_identifier(arena, node_index)) then
+            error_msg = 'procedure pointer target must be a procedure name or '// &
+                        'a procedure pointer'
+            return
+        end if
+        call get_identifier_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        idx = find_symbol_compat(context, name)
+        if (idx > 0) then
+            if (context%symbols(idx)%is_proc_pointer) then
+                call load_proc_pointer_operand(arena, node_index, context, &
+                                               ptr_value, error_msg)
+                return
+            end if
+            ! A declared data object never has a compatible procedure interface.
+            error_msg = 'procedure pointer target is not a procedure: '//trim(name)
+            return
+        end if
+        call to_c_chars(trim(call_emit_name(context%arena, name, context)), c_name)
+        symbol_id = lr_session_intern(context%session%handle, c_name)
+        if (symbol_id < 0_c_int32_t) then
+            error_msg = 'could not intern procedure symbol: '//trim(name)
+            return
+        end if
+        ptr_value%kind = LR_OP_KIND_GLOBAL
+        ptr_value%payload = int(symbol_id, c_int64_t)
+        ptr_value%typ = lr_type_ptr_s(context%session%handle)
+        ptr_value%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+    end subroutine proc_target_address
+
+    subroutine lower_proc_component_assignment(arena, node, context, error_msg)
+        ! obj%p => proc / obj%p => other%q / obj%p => null(): store the callee
+        ! address into the component's inline pointer slot (#372).
+        type(ast_arena_t), intent(in) :: arena
+        type(pointer_assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_addr, callee
+
+        call proc_component_slot_address(arena, node%pointer_index, context, &
+                                         slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (pointer_target_is_null(arena, node%target_index)) then
+            callee = null_ptr_operand(context)
+        else
+            call proc_target_address(arena, node%target_index, context, callee, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (.not. emit_ptr_store(context%session, callee, slot_addr, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine lower_proc_component_assignment
+
+    subroutine lower_proc_pointer_associated(arena, arg_indices, context, value, &
+                                             error_msg)
+        ! associated(obj%p) / associated(obj%p, target) with a run-time callee
+        ! address comparison (#372). F2018 16.9.20: a disassociated pointer is
+        ! never associated with a target, so the identity test is ANDed with the
+        ! non-null test.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: ptr_value, target_value, nonnull, same
+
+        call load_proc_pointer_operand(arena, arg_indices(1), context, ptr_value, &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, ptr_value, &
+                null_ptr_operand(context), nonnull, error_msg)) return
+        if (size(arg_indices) == 1) then
+            value = nonnull
+            call set_empty(error_msg)
+            return
+        end if
+        call proc_target_address(arena, arg_indices(2), context, target_value, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, ptr_value, &
+                target_value, same, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, nonnull, same, &
+                                  value, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_proc_pointer_associated
