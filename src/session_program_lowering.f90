@@ -2623,4 +2623,5 @@ contains
     include 'session_program_lowering_reject_const_overflow.inc'
     include 'session_program_lowering_reject_alloc.inc'
     include 'session_program_lowering_reject_result.inc'
+    include 'session_program_lowering_reject_generic.inc'
 end module session_program_lowering

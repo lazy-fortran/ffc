@@ -75,24 +75,30 @@ contains
 
     logical function test_overloaded_assignment()
         ! interface assignment(=) routes `x = rhs` to assign_doubled(x, rhs).
+        ! The left-hand side is a derived type: F2018 C1503 forbids redefining
+        ! an assignment that is already defined intrinsically, so an
+        ! integer = integer defined assignment would not be conforming.
         character(len=*), parameter :: source = &
             'module am'//new_line('a')// &
             '  implicit none'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer :: val = 0'//new_line('a')// &
+            '  end type box_t'//new_line('a')// &
             '  interface assignment(=)'//new_line('a')// &
             '    module procedure assign_doubled'//new_line('a')// &
             '  end interface'//new_line('a')// &
             'contains'//new_line('a')// &
             '  subroutine assign_doubled(lhs, rhs)'//new_line('a')// &
-            '    integer, intent(out) :: lhs'//new_line('a')// &
+            '    type(box_t), intent(out) :: lhs'//new_line('a')// &
             '    integer, intent(in) :: rhs'//new_line('a')// &
-            '    lhs = rhs * 2'//new_line('a')// &
+            '    lhs%val = rhs * 2'//new_line('a')// &
             '  end subroutine assign_doubled'//new_line('a')// &
             'end module am'//new_line('a')// &
             'program main'//new_line('a')// &
             '  use am'//new_line('a')// &
-            '  integer :: x'//new_line('a')// &
+            '  type(box_t) :: x'//new_line('a')// &
             '  x = 21'//new_line('a')// &
-            '  stop x'//new_line('a')// &
+            '  stop x%val'//new_line('a')// &
             'end program main'
 
         ! x = 21 dispatches to assign_doubled -> 21 * 2 = 42

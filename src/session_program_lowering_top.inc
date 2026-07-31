@@ -556,6 +556,8 @@
         if (len_trim(error_msg) > 0) return
         call check_alloc_pointer_targets(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_generic_interface_forms(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call check_storage_association_restrictions(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_result_and_entry_rules(arena, error_msg)
