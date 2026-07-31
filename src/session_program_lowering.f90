@@ -2610,6 +2610,7 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
     include 'session_program_lowering_reject_checks.inc'
+    include 'session_program_lowering_reject_array_ctor.inc'
     include 'session_program_lowering_reject_const_init.inc'
     include 'session_program_lowering_reject_const_overflow.inc'
 end module session_program_lowering
