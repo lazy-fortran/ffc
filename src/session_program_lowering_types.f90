@@ -232,7 +232,8 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: address
         logical :: is_parameter = .false.
         ! A dummy argument of the current procedure. Its storage is borrowed
-        ! from the caller, so scope exit never finalizes it (#403).
+        ! from the caller, so scope exit never finalizes it (#403), and a
+        ! data-pointer result may legitimately return it (#407).
         logical :: is_dummy_argument = .false.
         ! Temporary by-value override used while inlining a statement function;
         ! it is resolved by its synthetic name until the body expression is
@@ -316,9 +317,6 @@ module session_program_lowering_types
         ! address came from a data-pointer function result (#407). ASSOCIATED
         ! compares that address against null instead of folding is_associated.
         logical :: has_runtime_association = .false.
-        ! A dummy argument of the procedure being lowered. Its storage belongs
-        ! to the caller, so a data-pointer result may legitimately return it.
-        logical :: is_dummy_argument = .false.
         ! Procedure pointer (#245 B3d): `address` holds the ptr alloca slot;
         ! after assignment `value` holds the loaded callee ptr operand.
         logical :: is_proc_pointer = .false.
