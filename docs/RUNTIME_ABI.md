@@ -389,6 +389,44 @@ assigned monotonically as types are collected. Nothing references these
 constants yet; later polymorphism slices compare a value's type pointer
 against them.
 
+## Scalar class descriptor
+
+A polymorphic scalar (`class(t)` dummy, local, or allocatable) is described by
+one 32-byte, 8-byte-aligned descriptor. It is the single canonical convention
+for scalar polymorphism; no lowering path may invent a competing one. The
+Fortran-side definition and its accessors live in
+`src/ffc_polymorphic_descriptor.f90`.
+
+```
+struct ffc_polymorphic_descriptor_t {
+    i8*  data;           // offset  0: address of the value's storage
+    i64  declared_type;  // offset  8: declared type identity
+    i64  dynamic_type;   // offset 16: dynamic type identity
+    i32  ownership;      // offset 24: 0 none, 1 borrowed, 2 owned
+};                       // 32 bytes total (4 bytes tail padding)
+```
+
+- Both identities are the `id` field of the `ffc_type_info_t` constant of the
+  named type. Ids are dense and monotonic within one linked program, so they
+  are stable for the life of that program and are only ever compared for
+  equality. Id `0` is reserved and means "no type": a null descriptor reads as
+  `data == 0, declared_type == 0, dynamic_type == 0, ownership == 0`.
+- `declared_type` is the type written in the declaration and never changes for
+  a given entity. `dynamic_type` is the type of the value currently stored and
+  is what `select type` and type-bound dispatch consult. They are equal for a
+  base value and differ exactly when the value is an extension.
+- A descriptor with a null `data` address but an associated `dynamic_type` is
+  invalid and is rejected when the descriptor is built; an unallocated or
+  unassociated class entity is the fully null descriptor instead.
+- `ownership` records who frees `data`. A class dummy borrows its actual
+  argument's storage: the callee never frees it and the storage outlives the
+  call. An allocatable class value owns its storage; releasing the descriptor
+  yields the address to free exactly once and resets the descriptor, so a
+  borrowed or already released descriptor yields a null address and no double
+  free is possible.
+- The descriptor never aliases the value: `data` points at storage held
+  elsewhere, and copying a descriptor copies a reference, never the value.
+
 ## Module artefact format
 
 `ffc -c <source>.f90` writes one `<modulename>.fmod` next to the object file
