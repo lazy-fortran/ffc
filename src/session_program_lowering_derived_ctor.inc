@@ -133,15 +133,24 @@
     logical function constructor_component_storeable(context, type_index, &
             comp_index)
         ! A component the structure-constructor path can store: a scalar
-        ! integer, real, logical, or fixed-length character living in its own
-        ! slots (no nested derived, array, or c_ptr components).
+        ! integer, real, logical, or fixed-length character, or a nested plain
+        ! derived scalar whose leaves use the same representation.
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
+        integer :: nested_type
+        integer :: nested_count
 
         constructor_component_storeable = .false.
-        if (context%derived_types(type_index)%component_type_index(comp_index) /= 0) &
+        nested_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (nested_type /= 0) then
+            if (component_is_alloc_array(context, type_index, comp_index)) return
+            nested_count = nested_element_count(context, type_index, comp_index)
+            if (nested_count /= 1) return
+            constructor_component_storeable = &
+                plain_constructor_type_supported(context, nested_type)
             return
+        end if
         select case (component_kind(context, type_index, comp_index))
         case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
             if (context%derived_types(type_index)%component_array_size(comp_index) &
@@ -151,6 +160,41 @@
                 > 0) constructor_component_storeable = .true.
         end select
     end function constructor_component_storeable
+
+    recursive logical function plain_constructor_type_supported(context, type_index) &
+            result(supported)
+        ! A nested constructor is only accepted when every leaf is a scalar
+        ! component already supported by the direct constructor path. Arrays,
+        ! allocatables, pointers, and character components with dynamic storage
+        ! remain outside this issue.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer :: c, nested_type
+
+        supported = .false.
+        if (type_index <= 0 .or. type_index > context%derived_type_count) return
+        if (context%derived_types(type_index)%component_count <= 0) return
+        do c = 1, context%derived_types(type_index)%component_count
+            if (component_is_allocatable(context, type_index, c) .or. &
+                component_is_alloc_array(context, type_index, c)) return
+            nested_type = context%derived_types(type_index)% &
+                          component_type_index(c)
+            if (nested_type /= 0) then
+                if (nested_element_count(context, type_index, c) /= 1) return
+                if (.not. plain_constructor_type_supported(context, nested_type)) &
+                    return
+            else
+                select case (component_kind(context, type_index, c))
+                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, &
+                      VALUE_CHARACTER)
+                    continue
+                case default
+                    return
+                end select
+            end if
+        end do
+        supported = .true.
+    end function plain_constructor_type_supported
 
     subroutine map_constructor_args(arena, call_index, context, type_index, &
             comp_value_index)
@@ -275,8 +319,19 @@
         type(lr_operand_desc_t) :: addr, val
         integer :: comp_kind
         integer :: dest_len
+        integer :: nested_type
+        type(lr_operand_desc_t) :: nested_address
 
         comp_kind = component_kind(context, type_index, comp_index)
+        nested_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (nested_type /= 0) then
+            call emit_component_slot_address(context, symbol_index, type_index, &
+                                             comp_index, nested_address, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_nested_constructor_value(arena, context, nested_address, &
+                                               nested_type, value_index, error_msg)
+            return
+        end if
         call emit_component_slot_address(context, symbol_index, type_index, &
                                          comp_index, addr, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -297,6 +352,198 @@
         if (len_trim(error_msg) > 0) return
         call emit_typed_component_store(context, comp_kind, val, addr, error_msg)
     end subroutine emit_constructor_component
+
+    subroutine emit_nested_constructor_value(arena, context, base_address, &
+                                             type_index, value_index, error_msg)
+        ! Store a nested structure constructor into the already-addressed
+        ! component span. A different derived type is rejected before any
+        ! component store is emitted.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index
+        integer, intent(in) :: value_index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. is_derived_constructor_call(arena, value_index, context, &
+                                              type_index)) then
+            error_msg = 'incompatible derived type constructor argument for '// &
+                        trim(context%derived_types(type_index)%name)
+            return
+        end if
+        if (constructor_uses_user_routine(context, &
+                context%derived_types(type_index)%name)) then
+            error_msg = 'derived type constructor conflicts with a user procedure: '// &
+                        trim(context%derived_types(type_index)%name)
+            return
+        end if
+        call emit_nested_constructor_at_address(arena, value_index, context, &
+                                                base_address, type_index, error_msg)
+    end subroutine emit_nested_constructor_value
+
+    subroutine emit_nested_constructor_at_address(arena, call_index, context, &
+                                                  base_address, type_index, &
+                                                  error_msg)
+        ! Recursively map and store a plain constructor at an arbitrary byte
+        ! address. This is the nested counterpart of the top-level symbol path.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: call_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: component_values(:)
+        integer :: c
+        logical :: supported
+
+        call set_empty(error_msg)
+        supported = plain_constructor_type_supported(context, type_index)
+        if (.not. supported) then
+            error_msg = 'unsupported nested derived type constructor: '// &
+                        trim(context%derived_types(type_index)%name)
+            return
+        end if
+        call map_constructor_args(arena, call_index, context, type_index, &
+                                   component_values)
+        if (.not. allocated(component_values)) then
+            error_msg = 'incompatible derived type constructor argument for '// &
+                        trim(context%derived_types(type_index)%name)
+            return
+        end if
+        do c = 1, context%derived_types(type_index)%component_count
+            if (component_values(c) <= 0 .and. &
+                .not. context%derived_types(type_index)%component_has_default(c)) then
+                error_msg = 'missing component in derived type constructor: '// &
+                            trim(context%derived_types(type_index)%component_names(c))
+                return
+            end if
+        end do
+        do c = 1, context%derived_types(type_index)%component_count
+            if (component_values(c) > 0) then
+                call emit_constructor_component_at_address(arena, context, &
+                    base_address, type_index, c, component_values(c), error_msg)
+            else
+                call emit_constructor_default_at_address(context, base_address, &
+                    type_index, c, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine emit_nested_constructor_at_address
+
+    subroutine emit_constructor_component_at_address(arena, context, base_address, &
+                                                     type_index, comp_index, &
+                                                     value_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index, comp_index, value_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: component_address
+        type(lr_operand_desc_t) :: component_value
+        integer :: comp_kind, nested_type
+        integer :: dest_len
+
+        call component_address_from_base(context, base_address, type_index, &
+                                         comp_index, component_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        nested_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (nested_type /= 0) then
+            call emit_nested_constructor_value(arena, context, component_address, &
+                                               nested_type, value_index, error_msg)
+            return
+        end if
+        comp_kind = component_kind(context, type_index, comp_index)
+        if (comp_kind == VALUE_CHARACTER) then
+            dest_len = derived_component_char_length(context, type_index, comp_index)
+            if (dest_len <= 0) then
+                error_msg = 'derived type character component constructor '// &
+                            'argument has no fixed length'
+                return
+            end if
+            call store_char_component_value(arena, value_index, component_address, &
+                                            dest_len, context, error_msg)
+            return
+        end if
+        call lower_component_rhs_value(arena, value_index, comp_kind, context, &
+                                       component_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_typed_component_store(context, comp_kind, &
+                                        component_value, component_address, &
+                                        error_msg)
+    end subroutine emit_constructor_component_at_address
+
+    subroutine component_address_from_base(context, base_address, type_index, &
+                                           comp_index, component_address, &
+                                           error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index, comp_index
+        type(lr_operand_desc_t), intent(out) :: component_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: byte_offset
+
+        byte_offset = int(component_start_slot(context, type_index, comp_index), &
+                          c_int64_t) * 4_c_int64_t
+        if (.not. emit_ptr_offset(context%session, base_address, byte_offset, &
+                                  component_address, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine component_address_from_base
+
+    recursive subroutine emit_constructor_default_at_address(context, base_address, &
+                                                             type_index, comp_index, &
+                                                             error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index, comp_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: component_address
+        integer :: nested_type
+        integer(c_int64_t) :: default_value
+
+        call component_address_from_base(context, base_address, type_index, &
+                                         comp_index, component_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        nested_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (nested_type /= 0) then
+            call emit_nested_defaults_at_address(context, component_address, &
+                                                 nested_type, error_msg)
+            return
+        end if
+        if (component_kind(context, type_index, comp_index) == VALUE_CHARACTER) then
+            error_msg = 'character defaults in nested derived constructors are '// &
+                        'not supported'
+            return
+        end if
+        default_value = context%derived_types(type_index)% &
+                        component_default_value(comp_index)
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, default_value), component_address, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_constructor_default_at_address
+
+    recursive subroutine emit_nested_defaults_at_address(context, base_address, &
+                                                         type_index, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: c
+
+        call set_empty(error_msg)
+        do c = 1, context%derived_types(type_index)%component_count
+            if (.not. context%derived_types(type_index)% &
+                    component_has_default(c)) then
+                error_msg = 'missing component in nested derived type constructor: '// &
+                            trim(context%derived_types(type_index)%component_names(c))
+                return
+            end if
+            call emit_constructor_default_at_address(context, base_address, &
+                                                     type_index, c, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine emit_nested_defaults_at_address
 
     subroutine emit_constructor_default(context, symbol_index, type_index, &
             comp_index, error_msg)
