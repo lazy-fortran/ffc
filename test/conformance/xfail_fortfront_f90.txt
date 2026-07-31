@@ -54,7 +54,6 @@ issue_2418_intrinsic_keywords_declared.f90 # owner=lazy-fortran/ffc#342; reason=
 issue_2419_data_variable_in_allocate.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 issue_2450_procedure_interfaces.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_2452_roundtrip_timeout.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
-issue_2453_character_array_constructor.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 issue_2455_nested_array_constructor.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 issue_2455_nested_function_args.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
