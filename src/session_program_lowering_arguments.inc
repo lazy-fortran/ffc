@@ -32,11 +32,11 @@
         call set_empty(error_msg)
     end subroutine store_reference_value
 
-    subroutine prepare_reference_args(arena, arg_indices, context, default_kind, &
+    subroutine prepare_reference_args(arena, actual_indices, context, default_kind, &
                                       callee_name, args, copyback_indices, &
                                       error_msg, self_position)
         type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: arg_indices(:)
+        integer, intent(in) :: actual_indices(:)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: default_kind
         character(len=*), intent(in) :: callee_name
@@ -49,9 +49,16 @@
         integer :: hidden_count
         integer :: sp
         integer :: param_count
+        ! Actual arguments in dummy-argument order: keyword actuals are moved
+        ! to the slot their dummy name selects, and a slot no actual reaches
+        ! holds 0 (an omitted optional, passed as a null reference).
+        integer, allocatable :: arg_indices(:)
 
         sp = 0
         if (present(self_position)) sp = self_position
+        call resolve_keyword_actuals(arena, context, actual_indices, callee_name, &
+                                     sp, arg_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
         visible_count = size(arg_indices)
         hidden_count = callee_hidden_extent_count(context, callee_name)
 
@@ -86,6 +93,12 @@
         copyback_indices = 0
 
         do i = 1, size(arg_indices)
+            if (arg_indices(i) <= 0) then
+                ! Keyword association skipped this dummy: it is optional and
+                ! absent, which the reference ABI encodes as a null pointer.
+                args(i) = absent_optional_operand(context)
+                cycle
+            end if
             call check_scalar_actual_compatibility(arena, arg_indices(i), context, &
                 callee_name, call_arg_param_pos(i, sp), error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1962,3 +1975,148 @@ integer function expression_value_kind(arena, node_index, context, &
             end if
         end select
     end function declaration_is_intent_in
+
+    logical function is_keyword_actual(arena, idx, dummy_name, value_index)
+        ! An actual written as dummy=expr parses as an assignment node whose
+        ! target names the dummy and whose value is the expression actually
+        ! passed (F2018 15.5.1). A CALL statement's argument list also flags
+        ! the node is_keyword_argument, but a function reference's does not,
+        ! so the shape of the node is what identifies it: an assignment can
+        ! never appear as an actual argument in any other role.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: dummy_name
+        integer, intent(out) :: value_index
+
+        is_keyword_actual = .false.
+        dummy_name = ''
+        value_index = 0
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (assignment_node)
+            if (.not. node_exists(arena, nd%target_index)) return
+            select type (tgt => arena%entries(nd%target_index)%node)
+            type is (identifier_node)
+                if (.not. allocated(tgt%name)) return
+                dummy_name = trim(tgt%name)
+                value_index = nd%value_index
+                is_keyword_actual = .true.
+            end select
+        end select
+    end function is_keyword_actual
+
+    integer function dummy_name_position(dummy_names, count, dummy_name) &
+            result(pos)
+        ! Slot of dummy_name in the callee's dummy list, or 0 when it names no
+        ! dummy of that procedure.
+        character(len=*), intent(in) :: dummy_names(:)
+        integer, intent(in) :: count
+        character(len=*), intent(in) :: dummy_name
+        integer :: i
+
+        pos = 0
+        do i = 1, min(count, size(dummy_names))
+            if (same_name(dummy_names(i), dummy_name)) then
+                pos = i
+                return
+            end if
+        end do
+    end function dummy_name_position
+
+    subroutine resolve_keyword_actuals(arena, context, actual_indices, &
+                                       callee_name, self_position, mapped, &
+                                       error_msg)
+        ! Reorder the call's actual arguments into the callee's dummy order
+        ! (#408). Positional actuals fill the leading slots; each keyword actual
+        ! goes to the slot its dummy name selects. Slots no actual reaches stay
+        ! 0, which the caller passes as an absent optional. A call without
+        ! keyword actuals keeps its written order untouched.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: actual_indices(:)
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: self_position
+        integer, allocatable, intent(out) :: mapped(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64), allocatable :: dummy_names(:)
+        integer, allocatable :: slots(:)
+        character(len=:), allocatable :: kw_name
+        integer :: i, pos, name_count, value_index, last
+        logical :: seen_keyword
+
+        call set_empty(error_msg)
+        mapped = actual_indices
+        seen_keyword = .false.
+        do i = 1, size(actual_indices)
+            if (is_keyword_actual(arena, actual_indices(i), kw_name, &
+                                  value_index)) seen_keyword = .true.
+        end do
+        if (.not. seen_keyword) return
+        ! A type-bound call carries an implicit passed-object receiver, whose
+        ! slot the keyword mapping below does not model.
+        if (self_position > 0) return
+
+        call callee_dummy_names(arena, context, callee_name, dummy_names, &
+                                name_count)
+        if (name_count < 0) then
+            error_msg = 'keyword argument in call to '//trim(callee_name)// &
+                ' requires a visible explicit interface'
+            return
+        end if
+        allocate (slots(name_count))
+        slots = 0
+        seen_keyword = .false.
+        do i = 1, size(actual_indices)
+            if (is_keyword_actual(arena, actual_indices(i), kw_name, &
+                                  value_index)) then
+                seen_keyword = .true.
+                pos = dummy_name_position(dummy_names, name_count, kw_name)
+                if (pos <= 0) then
+                    error_msg = 'Keyword actual '//kw_name//' in call to '// &
+                        trim(callee_name)//' names no dummy argument'
+                    return
+                end if
+                if (slots(pos) /= 0) then
+                    error_msg = 'Dummy argument '//kw_name//' of '// &
+                        trim(callee_name)//' is supplied more than once'
+                    return
+                end if
+                slots(pos) = value_index
+            else
+                if (seen_keyword) then
+                    error_msg = 'Positional actual in call to '// &
+                        trim(callee_name)//' appears after a keyword argument'
+                    return
+                end if
+                if (i > name_count) then
+                    error_msg = 'More actual than formal arguments in call to '// &
+                        trim(callee_name)
+                    return
+                end if
+                slots(i) = actual_indices(i)
+            end if
+        end do
+        last = 0
+        do i = 1, name_count
+            if (slots(i) /= 0) last = i
+        end do
+        deallocate (mapped)
+        allocate (mapped(last))
+        do i = 1, last
+            mapped(i) = slots(i)
+        end do
+    end subroutine resolve_keyword_actuals
+
+    type(lr_operand_desc_t) function absent_optional_operand(context) &
+            result(operand)
+        ! The reference-ABI encoding of an absent optional dummy: a null
+        ! pointer, matching the trailing padding in
+        ! emit_call_with_optional_padding.
+        type(lowering_context_t), intent(in) :: context
+
+        operand%kind = LR_OP_KIND_IMM_I64
+        operand%payload = 0_c_int64_t
+        operand%typ = lr_type_ptr_s(context%session%handle)
+        operand%global_offset = 0_c_int64_t
+    end function absent_optional_operand

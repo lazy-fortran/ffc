@@ -380,6 +380,7 @@
         character(len=:), allocatable :: mangled
         character(len=:), allocatable :: local_name
         integer, allocatable :: arg_kinds(:)
+        character(len=64), allocatable :: arg_names(:)
         integer :: return_kind
         logical :: forced, imported
 
@@ -407,10 +408,41 @@
         end if
         call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_names(proc, arg_names)
         mangled = module_procedure_mangled(module_name, trim(proc%name))
         call add_external_procedure(context, trim(local_name), mangled, &
-                                    return_kind, proc%nargs, .true., arg_kinds)
+                                    return_kind, proc%nargs, .true., arg_kinds, &
+                                    arg_names)
     end subroutine import_fmod_procedure
+
+    subroutine parse_fmod_arg_names(proc, arg_names)
+        ! Split the .fmod arg_names token string into per-dummy names, which a
+        ! call site uses to place keyword actuals (#408). An artefact written
+        ! before those names existed yields blanks, and keyword association
+        ! against that signature is then rejected rather than guessed.
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=64), allocatable, intent(out) :: arg_names(:)
+        character(len=:), allocatable :: rest
+        integer :: n, sep
+
+        allocate (arg_names(max(proc%nargs, 0)))
+        if (proc%nargs <= 0) return
+        arg_names = ''
+        if (.not. allocated(proc%arg_names)) return
+        rest = trim(adjustl(proc%arg_names))
+        n = 0
+        do while (len_trim(rest) > 0 .and. n < proc%nargs)
+            sep = index(rest, ' ')
+            n = n + 1
+            if (sep == 0) then
+                arg_names(n) = rest
+                rest = ''
+            else
+                arg_names(n) = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+        end do
+    end subroutine parse_fmod_arg_names
 
     subroutine parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         ! Split the .fmod arg_kinds token string into per-argument value kinds.

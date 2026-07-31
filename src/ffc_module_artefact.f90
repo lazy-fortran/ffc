@@ -51,6 +51,9 @@ module ffc_module_artefact
         character(len=:), allocatable :: name
         character(len=:), allocatable :: kind
         character(len=:), allocatable :: arg_kinds
+        ! Space-joined dummy-argument names (e.g. "hi lo"), so a using unit
+        ! can associate keyword actuals with this signature (#408).
+        character(len=:), allocatable :: arg_names
         integer :: nargs = 0
     end type fmod_procedure_t
 
@@ -146,6 +149,8 @@ contains
                 write (unit, '(A,I0)') 'nargs = ', info%procedures(i)%nargs
                 write (unit, '(A)') 'arg_kinds = "'// &
                     field(info%procedures(i)%arg_kinds)//'"'
+                write (unit, '(A)') 'arg_names = "'// &
+                    field(info%procedures(i)%arg_names)//'"'
             end do
         end if
 
@@ -240,6 +245,7 @@ contains
                 procs(nproc)%name = ''
                 procs(nproc)%kind = ''
                 procs(nproc)%arg_kinds = ''
+                procs(nproc)%arg_names = ''
                 procs(nproc)%nargs = 0
                 cycle
             else if (line == '[[generic]]') then
@@ -290,6 +296,7 @@ contains
                 if (key == 'name') procs(nproc)%name = unquote(val)
                 if (key == 'kind') procs(nproc)%kind = unquote(val)
                 if (key == 'arg_kinds') procs(nproc)%arg_kinds = unquote(val)
+                if (key == 'arg_names') procs(nproc)%arg_names = unquote(val)
                 if (key == 'nargs') then
                     read (val, *, iostat=io_read) procs(nproc)%nargs
                     if (io_read /= 0) procs(nproc)%nargs = 0
