@@ -236,6 +236,8 @@
 
         call read_fmod(path, info, error_msg)
         if (len_trim(error_msg) > 0) return
+        call validate_fmod_use_names(use_node, info, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
@@ -281,18 +283,22 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: rest, token
+        character(len=:), allocatable :: local_name
         integer :: sep, ext_idx, next
         integer :: p
+        logical :: imported
 
         call set_empty(error_msg)
         if (.not. allocated(gen%name)) return
         if (len_trim(gen%name) == 0) return
-        if (.not. use_only_wants(use_node, trim(gen%name))) return
+        call resolve_fmod_import_name(use_node, trim(gen%name), local_name, &
+                                      imported)
+        if (.not. imported) return
         if (.not. allocated(gen%specifics)) return
-        if (find_generic(context, trim(gen%name)) > 0) return
+        if (find_generic(context, trim(local_name)) > 0) return
         call grow_generics(context)
         next = context%generic_count + 1
-        context%generics(next)%generic_name = trim(gen%name)
+        context%generics(next)%generic_name = trim(local_name)
         context%generics(next)%specific_count = 0
         rest = trim(adjustl(gen%specifics))
         do while (len_trim(rest) > 0)
@@ -372,20 +378,26 @@
         character(len=:), allocatable, intent(out) :: error_msg
         logical, intent(in), optional :: force
         character(len=:), allocatable :: mangled
+        character(len=:), allocatable :: local_name
         integer, allocatable :: arg_kinds(:)
         integer :: return_kind
-        logical :: forced
+        logical :: forced, imported
 
         call set_empty(error_msg)
         forced = .false.
         if (present(force)) forced = force
         if (.not. allocated(proc%name)) return
         if (len_trim(proc%name) == 0) return
-        if (.not. forced) then
-            if (.not. use_only_wants(use_node, trim(proc%name))) return
+        if (forced) then
+            local_name = trim(proc%name)
+            imported = .true.
+        else
+            call resolve_fmod_import_name(use_node, trim(proc%name), &
+                                          local_name, imported)
         end if
-        if (external_procedure_index(context, trim(proc%name)) > 0) return
-        if (contained_function_kind(context, trim(proc%name)) /= 0) return
+        if (.not. imported) return
+        if (external_procedure_index(context, trim(local_name)) > 0) return
+        if (contained_function_kind(context, trim(local_name)) /= 0) return
         if (trim(proc%kind) == 'subroutine') then
             return_kind = VALUE_SUBROUTINE
         else if (trim(proc%kind) == 'integer') then
@@ -396,7 +408,7 @@
         call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         if (len_trim(error_msg) > 0) return
         mangled = module_procedure_mangled(module_name, trim(proc%name))
-        call add_external_procedure(context, trim(proc%name), mangled, &
+        call add_external_procedure(context, trim(local_name), mangled, &
                                     return_kind, proc%nargs, .true., arg_kinds)
     end subroutine import_fmod_procedure
 
@@ -509,11 +521,15 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: constant_value
         integer :: index, io_stat
+        character(len=:), allocatable :: local_name
+        logical :: imported
 
         call set_empty(error_msg)
         if (.not. allocated(param%name)) return
         if (len_trim(param%name) == 0) return
-        if (.not. use_only_wants(use_node, trim(param%name))) return
+        call resolve_fmod_import_name(use_node, trim(param%name), local_name, &
+                                      imported)
+        if (.not. imported) return
         ! Only integer named constants are importable today.
         if (.not. allocated(param%kind)) return
         if (trim(param%kind) /= 'integer') return
@@ -523,10 +539,10 @@
                         trim(param%name)
             return
         end if
-        if (find_symbol(context, trim(param%name)) > 0) return
+        if (find_symbol(context, trim(local_name)) > 0) return
         call grow_symbols(context)
         index = context%symbol_count + 1
-        context%symbols(index)%name = trim(param%name)
+        context%symbols(index)%name = trim(local_name)
         context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%value = i32_immediate(context%session, &
                                                       constant_value)
@@ -548,17 +564,21 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: mangled
+        character(len=:), allocatable :: local_name
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: global_id
         integer :: sym_idx, value_kind
+        logical :: imported
 
         call set_empty(error_msg)
         if (.not. allocated(var%name)) return
         if (len_trim(var%name) == 0) return
-        if (.not. use_only_wants(use_node, trim(var%name))) return
+        call resolve_fmod_import_name(use_node, trim(var%name), local_name, &
+                                      imported)
+        if (.not. imported) return
         value_kind = value_kind_of_token(trim(var%kind))
         if (value_kind == 0) return
-        if (find_symbol(context, trim(var%name)) > 0) return
+        if (find_symbol(context, trim(local_name)) > 0) return
         if (allocated(var%c_name) .and. len_trim(var%c_name) > 0) then
             mangled = trim(var%c_name)
         else
@@ -573,7 +593,7 @@
         end if
         call grow_symbols(context)
         sym_idx = context%symbol_count + 1
-        context%symbols(sym_idx)%name = trim(var%name)
+        context%symbols(sym_idx)%name = trim(local_name)
         context%symbols(sym_idx)%value_kind = value_kind
         context%symbols(sym_idx)%has_address = .true.
         context%symbols(sym_idx)%is_reference = .true.
@@ -843,6 +863,136 @@
             end if
         end do
     end function use_only_wants
+
+    subroutine resolve_fmod_import_name(use_node, remote_name, local_name, &
+                                        imported)
+        ! Resolve the local spelling of a .fmod export. A rename maps the
+        ! remote export to its local name; an ONLY list admits unrenamed names
+        ! only when they are explicitly listed. A renamed remote name is not
+        ! also imported under its original spelling.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: remote_name
+        character(len=:), allocatable, intent(out) :: local_name
+        logical, intent(out) :: imported
+        integer :: i
+
+        local_name = trim(remote_name)
+        imported = .true.
+        if (allocated(use_node%rename_list)) then
+            do i = 1, size(use_node%rename_list) - 1, 2
+                if (.not. allocated(use_node%rename_list(i)%s)) cycle
+                if (.not. allocated(use_node%rename_list(i + 1)%s)) cycle
+                if (same_name(use_node%rename_list(i + 1)%s, remote_name)) then
+                    local_name = trim(use_node%rename_list(i)%s)
+                    return
+                end if
+            end do
+        end if
+        if (.not. use_node%has_only) return
+
+        imported = .false.
+        if (.not. allocated(use_node%only_list)) return
+        do i = 1, size(use_node%only_list)
+            if (.not. allocated(use_node%only_list(i)%s)) cycle
+            if (same_name(use_node%only_list(i)%s, remote_name)) then
+                imported = .true.
+                return
+            end if
+        end do
+    end subroutine resolve_fmod_import_name
+
+    subroutine validate_fmod_use_names(use_node, info, error_msg)
+        ! Validate every remote name mentioned by ONLY or a rename against the
+        ! exports recorded in the .fmod. Without this check an unrecognised
+        ! name would disappear during import and fail later as an unrelated
+        ! undeclared identifier.
+        type(use_statement_node), intent(in) :: use_node
+        type(module_info_t), intent(in) :: info
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        character(len=:), allocatable :: name
+
+        call set_empty(error_msg)
+        if (use_node%has_only .and. allocated(use_node%only_list)) then
+            do i = 1, size(use_node%only_list)
+                if (.not. allocated(use_node%only_list(i)%s)) cycle
+                name = trim(use_node%only_list(i)%s)
+                if (.not. fmod_exports_name(info, name)) then
+                    error_msg = 'use only: name is not exported by module '// &
+                        trim(use_node%module_name)//': '//name
+                    return
+                end if
+            end do
+        end if
+        if (.not. allocated(use_node%rename_list)) return
+        do i = 2, size(use_node%rename_list), 2
+            if (.not. allocated(use_node%rename_list(i)%s)) cycle
+            name = trim(use_node%rename_list(i)%s)
+            if (.not. fmod_exports_name(info, name)) then
+                error_msg = 'use only: name is not exported by module '// &
+                    trim(use_node%module_name)//': '//name
+                return
+            end if
+        end do
+    end subroutine validate_fmod_use_names
+
+    logical function fmod_exports_name(info, name)
+        type(module_info_t), intent(in) :: info
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        fmod_exports_name = .false.
+        if (allocated(info%parameters)) then
+            do i = 1, size(info%parameters)
+                if (allocated(info%parameters(i)%name)) then
+                    if (same_name(info%parameters(i)%name, name)) then
+                        fmod_exports_name = .true.
+                        return
+                    end if
+                end if
+            end do
+        end if
+        if (allocated(info%derived_types)) then
+            do i = 1, size(info%derived_types)
+                if (allocated(info%derived_types(i)%name)) then
+                    if (same_name(info%derived_types(i)%name, name)) then
+                        fmod_exports_name = .true.
+                        return
+                    end if
+                end if
+            end do
+        end if
+        if (allocated(info%variables)) then
+            do i = 1, size(info%variables)
+                if (allocated(info%variables(i)%name)) then
+                    if (same_name(info%variables(i)%name, name)) then
+                        fmod_exports_name = .true.
+                        return
+                    end if
+                end if
+            end do
+        end if
+        if (allocated(info%procedures)) then
+            do i = 1, size(info%procedures)
+                if (allocated(info%procedures(i)%name)) then
+                    if (same_name(info%procedures(i)%name, name)) then
+                        fmod_exports_name = .true.
+                        return
+                    end if
+                end if
+            end do
+        end if
+        if (allocated(info%generics)) then
+            do i = 1, size(info%generics)
+                if (allocated(info%generics(i)%name)) then
+                    if (same_name(info%generics(i)%name, name)) then
+                        fmod_exports_name = .true.
+                        return
+                    end if
+                end if
+            end do
+        end if
+    end function fmod_exports_name
 
     subroutine validate_use_only_names(arena, export_idx, use_node, context, &
                                        error_msg)

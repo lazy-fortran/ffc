@@ -255,7 +255,10 @@ across `use`, in the same file or across separate compilation. A module
 subroutine or integer function with integer, real, or logical scalar arguments
 is callable from a separately compiled program: its signature round-trips
 through the `.fmod` and the two objects link, each keeping its own string and
-format literals (#284). A named generic interface over such procedures also
+format literals (#284). A separately compiled module's `use, only:` list and
+rename (`local => remote`) are checked against the `.fmod` exports and preserve
+the remote name for linking (#328). A named generic interface over such
+procedures also
 round-trips through the `.fmod`, so a `use`-associated generic call in a
 separately compiled program resolves to the specific matching its first
 argument's kind. A module that exports only contained procedures still writes a
