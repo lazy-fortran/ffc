@@ -586,6 +586,13 @@ module session_program_lowering_types
         integer :: operator_count = 0
         logical :: in_internal_function = .false.
         logical :: in_internal_subroutine = .false.
+        ! Alternate-return ABI (#353). A subroutine with `*` dummies takes one
+        ! hidden trailing i32-by-reference selector parameter at 0-based
+        ! position altret_param_index; `return n` stores n into it. The caller
+        ! allocates the slot, zeroes it, and branches on the loaded value.
+        ! altret_slot_count is the number of `*` dummies (0 means none).
+        integer :: altret_slot_count = 0
+        integer :: altret_param_index = -1
         ! Name of the contained procedure currently being lowered. Lets an
         ! assumed-shape dummy a(:) recover its extent from the caller's actual.
         character(len=:), allocatable :: current_proc_name

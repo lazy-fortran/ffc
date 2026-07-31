@@ -9,6 +9,9 @@
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
+        integer :: visible_param_count
+        integer :: altret_count
+        integer :: hidden_altret_count
         integer :: hidden_extent_count
         integer :: table_function_index
         logical :: terminated
@@ -58,6 +61,17 @@
         ! time (an allocatable actual) carries one hidden i64 extent argument
         ! appended after the visible parameters (#W2 runtime-extent ABI).
         hidden_extent_count = callee_hidden_extent_count(context, trim(node%name))
+        ! Each `*` dummy is a positional alternate-return slot, not a passed
+        ! argument: the slots collapse into one hidden trailing selector
+        ! parameter (#353).
+        altret_count = alt_return_slot_count(arena, node%param_indices)
+        visible_param_count = param_count - altret_count
+        hidden_altret_count = 0
+        if (altret_count > 0) hidden_altret_count = 1
+        context%altret_slot_count = altret_count
+        if (altret_count > 0) then
+            context%altret_param_index = visible_param_count + hidden_extent_count
+        end if
         if (present(emit_name_override)) then
             emit_name = trim(emit_name_override)
         else
@@ -65,7 +79,8 @@
                 context%current_proc_node_index, node%name, node%bind_c_clause)
         end if
         if (.not. begin_void_subroutine(context%session, emit_name, &
-                param_count + hidden_extent_count, error_msg)) return
+                visible_param_count + hidden_extent_count + hidden_altret_count, &
+                error_msg)) return
 
         call materialize_host_character_globals(context, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -76,7 +91,8 @@
 
         if (hidden_extent_count > 0) then
             call bind_hidden_extent_params(arena, node%param_indices, context, &
-                                           trim(node%name), param_count, error_msg)
+                                           trim(node%name), visible_param_count, &
+                                           error_msg)
             if (len_trim(error_msg) > 0) return
         end if
 
@@ -1123,6 +1139,7 @@
         character(len=:), allocatable :: name
         integer :: offset
         integer :: i
+        integer :: slot
         integer :: value_kind
         integer :: rvk
 
@@ -1132,7 +1149,12 @@
         rvk = 0
         if (present(return_value_kind)) rvk = return_value_kind
         if (.not. allocated(param_indices)) return
+        slot = 0
         do i = 1, size(param_indices)
+            ! An alternate-return slot is positional, carries no name and no
+            ! passed argument; it never occupies a parameter position (#353).
+            if (is_alternate_return_dummy(arena, param_indices(i))) cycle
+            slot = slot + 1
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
             value_kind = VALUE_I32
@@ -1149,12 +1171,172 @@
                     end if
                 end if
             end if
-            call define_parameter_symbol(context, name, i - 1 + offset, &
+            call define_parameter_symbol(context, name, slot - 1 + offset, &
                                          value_kind, error_msg, &
                                          parameter_node_index=param_indices(i))
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters
+
+    subroutine split_alt_return_args(arena, arg_indices, alt_labels)
+        ! Remove `*label` alternate-return specifiers from an actual argument
+        ! list and report their statement labels in call order (#353).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(inout) :: arg_indices(:)
+        integer, allocatable, intent(out) :: alt_labels(:)
+        integer, allocatable :: plain(:)
+        integer, allocatable :: labels(:)
+        integer :: i, plain_count, label_count, label
+
+        allocate(alt_labels(0))
+        if (.not. allocated(arg_indices)) return
+        if (size(arg_indices) == 0) return
+        allocate(plain(size(arg_indices)))
+        allocate(labels(size(arg_indices)))
+        plain_count = 0
+        label_count = 0
+        do i = 1, size(arg_indices)
+            label = get_alternate_return_label(arena, arg_indices(i))
+            if (label > 0) then
+                label_count = label_count + 1
+                labels(label_count) = label
+            else
+                plain_count = plain_count + 1
+                plain(plain_count) = arg_indices(i)
+            end if
+        end do
+        if (label_count == 0) return
+        deallocate(alt_labels)
+        allocate(alt_labels(label_count))
+        alt_labels = labels(1:label_count)
+        deallocate(arg_indices)
+        allocate(arg_indices(plain_count))
+        arg_indices = plain(1:plain_count)
+    end subroutine split_alt_return_args
+
+    subroutine emit_alt_return_call(arena, node_index, emit_name, args, &
+                                    alt_labels, copyback_indices, context, &
+                                    error_msg)
+        ! Call a subroutine with alternate-return specifiers: pass a zeroed
+        ! hidden selector slot as the trailing argument, then branch to the
+        ! n-th caller label when the callee stored n (#353). Selector 0 (a
+        ! plain RETURN) falls through to the statement after the CALL.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: emit_name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        integer, intent(in) :: alt_labels(:)
+        integer, intent(in) :: copyback_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: call_args(:)
+        type(lr_operand_desc_t) :: slot, selector, ordinal, condition
+        integer(c_int32_t) :: target_block, next_block
+        character(len=16) :: label_text
+        logical :: found
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. context%in_labeled_body) then
+            call unsupported_feature_error('alternate return call', &
+                get_node_line(arena, node_index), &
+                get_node_column(arena, node_index), &
+                'a call with alternate-return arguments is only lowered '// &
+                'inside a body carrying statement labels', error_msg)
+            return
+        end if
+        if (.not. emit_i32_alloca(context%session, slot, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), slot, &
+                error_msg)) return
+        allocate(call_args(size(args) + 1))
+        if (size(args) > 0) call_args(1:size(args)) = args
+        call_args(size(args) + 1) = slot
+        if (.not. emit_void_call(context%session, emit_name, call_args, &
+                                 error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_load(context%session, slot, selector, error_msg)) &
+            return
+        do i = 1, size(alt_labels)
+            write (label_text, '(i0)') alt_labels(i)
+            target_block = find_label_block(context, trim(label_text), found)
+            if (.not. found) then
+                error_msg = 'alternate return targets undefined statement '// &
+                            'label: '//trim(label_text)
+                return
+            end if
+            ordinal = i32_immediate(context%session, int(i, c_int64_t))
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, selector, &
+                                          ordinal, condition, error_msg)) return
+            next_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, condition, &
+                                        target_block, next_block, error_msg)) &
+                return
+            if (.not. set_liric_block(context%session, next_block, error_msg)) &
+                return
+            context%current_block_id = next_block
+        end do
+    end subroutine emit_alt_return_call
+
+    subroutine lower_alternate_return(arena, node_index, context, error_msg)
+        ! `return n` inside a subroutine with alternate-return dummies stores
+        ! the selector n into the hidden trailing selector parameter; the
+        ! caller branches on it (#353). A plain RETURN leaves the slot at the
+        ! zero the caller wrote, which means "continue after the CALL".
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: has_selector
+        integer :: selector_index
+        integer(c_int64_t) :: literal
+        character(len=:), allocatable :: parse_error
+        type(lr_operand_desc_t) :: selector, slot
+
+        call set_empty(error_msg)
+        call get_return_selector(arena, node_index, has_selector, selector_index)
+        if (.not. has_selector) return
+        if (selector_index <= 0) then
+            error_msg = 'alternate return is missing its selector expression'
+            return
+        end if
+        if (context%altret_slot_count <= 0 .or. context%altret_param_index < 0) then
+            error_msg = 'alternate return used in a subroutine that declares '// &
+                        'no alternate-return dummy'
+            return
+        end if
+        call parse_i32_constant(arena, selector_index, literal, 'selector', &
+                                parse_error)
+        if (len_trim(parse_error) == 0) then
+            if (literal < 1_c_int64_t .or. &
+                literal > int(context%altret_slot_count, c_int64_t)) then
+                error_msg = 'alternate return selector is outside the '// &
+                            'declared alternate-return slots'
+                return
+            end if
+        end if
+        call lower_i32_expression(arena, selector_index, context, selector, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        slot = ptr_param(context%session, context%altret_param_index)
+        if (.not. emit_i32_store(context%session, selector, slot, error_msg)) &
+            return
+    end subroutine lower_alternate_return
+
+    integer function alt_return_slot_count(arena, param_indices) result(count)
+        ! Number of `*` alternate-return dummies in a dummy argument list.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer :: i
+
+        count = 0
+        if (.not. allocated(param_indices)) return
+        do i = 1, size(param_indices)
+            if (is_alternate_return_dummy(arena, param_indices(i))) &
+                count = count + 1
+        end do
+    end function alt_return_slot_count
 
     subroutine parameter_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena

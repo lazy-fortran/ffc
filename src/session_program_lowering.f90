@@ -50,7 +50,9 @@ module session_program_lowering
         BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
         BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
         ASSOCIATION_USE, &
-        BINDING_ASSOCIATE_NAME
+        BINDING_ASSOCIATE_NAME, &
+        get_alternate_return_label, get_return_selector, &
+        is_alternate_return_dummy
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
@@ -1858,6 +1860,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, call_name
         integer, allocatable :: arg_indices(:)
+        integer, allocatable :: alt_labels(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         integer :: call_arg_count
@@ -1874,6 +1877,9 @@ contains
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
             error_msg)
         if (len_trim(error_msg) > 0) return
+        ! `*label` actual arguments are alternate-return specifiers, not passed
+        ! arguments: split them off before argument analysis (#353).
+        call split_alt_return_args(arena, arg_indices, alt_labels)
         ! Resolve generic -> specific (#249 B7c).
         call_arg_count = 0
         call_arg_kinds = VALUE_I32
@@ -1938,6 +1944,12 @@ contains
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
             call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (size(alt_labels) > 0) then
+            call emit_alt_return_call(arena, node_index, &
+                call_emit_name(arena, call_name, context), args, alt_labels, &
+                copyback_indices, context, error_msg)
+            return
+        end if
         if (.not. emit_call_with_optional_padding(context, &
             call_emit_name(arena, call_name, context), args, error_msg)) &
             return
