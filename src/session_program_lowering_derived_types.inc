@@ -851,14 +851,14 @@ subroutine collect_component_declaration(component_index, parent_line, &
             call declaration_value_kind(component, value_kind, error_msg, context)
             if (len_trim(error_msg) > 0) return
             ! A scalar allocatable component of intrinsic numeric/logical type
-            ! stores an inline data pointer (descriptor-in-struct). Array,
-            ! character, pointer, and c_ptr allocatables stay unsupported.
-            comp_allocatable = component%is_allocatable .and. &
-                               .not. component%is_array .and. &
-                               .not. component%is_pointer
+            ! or character type stores an inline data pointer
+            ! (descriptor-in-struct). Array, pointer, and c_ptr allocatables
+            ! stay unsupported.
+            comp_allocatable = component_is_scalar_allocatable(component)
             if (comp_allocatable) then
                 select case (value_kind)
-                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, &
+                      VALUE_CHARACTER)
                 case default
                     comp_allocatable = .false.
                 end select
@@ -890,7 +890,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call component_array_count(component, context, array_size, &
                                            error_msg)
                 if (len_trim(error_msg) > 0) return
-            else if (value_kind == VALUE_CHARACTER) then
+            else if (value_kind == VALUE_CHARACTER .and. .not. comp_allocatable) then
                 ! Reuse array_size as the component's slot count: a character
                 ! value occupies ceil((len+1)/4) byte-storage slots at width 1,
                 ! the extra byte holding the load-time NUL terminator.
@@ -1192,6 +1192,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     'components are not supported; only scalar', error_msg)
                 return
             end if
+            ! A scalar allocatable character component stores an inline data
+            ! pointer instead of inline bytes, so a deferred length is fine
+            ! at layout time (#360).
+            if (component_is_scalar_allocatable(component)) then
+                call set_empty(error_msg)
+                return
+            end if
             ! A fixed positive length is required; deferred/runtime-length
             ! character components have no static slot footprint.
             call validate_character_component_length(component, context, error_msg)
@@ -1311,6 +1318,14 @@ subroutine collect_component_declaration(component_index, parent_line, &
                        word == 'pass' .or. word == 'private' .or. &
                        word == 'public'
     end function is_proc_component_attribute
+    logical function component_is_scalar_allocatable(component) result(is_scalar)
+        ! True for a scalar (non-array, non-pointer) allocatable component,
+        ! which is laid out as an inline data pointer.
+        type(declaration_node), intent(in) :: component
+
+        is_scalar = component%is_allocatable .and. .not. component%is_array &
+                    .and. .not. component%is_pointer
+    end function component_is_scalar_allocatable
 
     logical function component_alloc_array_rank_one(component) result(is_rank_one)
         ! True when an allocatable array component declares exactly one dimension.
