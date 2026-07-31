@@ -3,11 +3,13 @@ program ffc_main
     use ffc_module_artefact, only: FFC_FMOD_VERSION
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, &
-        compile_frontend_from_file, INPUT_MODE_LAZY, &
+        compile_frontend_from_file, compile_frontend_from_string, &
+        INPUT_MODE_LAZY, &
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
         lower_program_to_liric_object
     use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
+    use ffc_include_expansion, only: expand_source_includes
     implicit none
 
     type(compiler_frontend_options_t) :: frontend_options
@@ -19,6 +21,8 @@ program ffc_main
     character(len=:), allocatable :: primary_diag
     character(len=CLI_PATH_LEN) :: output_file
     character(len=CLI_PATH_LEN), allocatable :: search_paths(:)
+    character(len=:), allocatable :: program_source
+    character(len=:), allocatable :: include_error
     integer :: nargs, i
 
     nargs = command_argument_count()
@@ -53,6 +57,14 @@ program ffc_main
     do i = 1, size(opts%link_inputs)
         call append_path(search_paths, dirname(trim(opts%link_inputs(i))))
     end do
+
+    ! INCLUDE lines are expanded textually before the frontend sees the source,
+    ! so included declarations take part in semantic analysis in place. When the
+    ! input file itself cannot be read, program_source stays unallocated and the
+    ! frontend's own file diagnostic is used instead.
+    call expand_source_includes(trim(opts%input_file), opts%include_paths, &
+        program_source, include_error)
+    if (len_trim(include_error) > 0) call report_failure(include_error)
 
     ! A .lf file is lazy Fortran by definition: compile it under lazy inference,
     ! which standardizes the AST so inferred declarations (including function
@@ -92,8 +104,13 @@ contains
         frontend_options%input_mode = input_mode
         frontend_options%standardize = standardize
 
-        call compile_frontend_from_file(trim(opts%input_file), frontend_result, &
-            frontend_options)
+        if (allocated(program_source)) then
+            call compile_frontend_from_string(program_source, frontend_result, &
+                frontend_options)
+        else
+            call compile_frontend_from_file(trim(opts%input_file), &
+                frontend_result, frontend_options)
+        end if
         if (.not. frontend_result%success()) then
             diag_msg = trim(frontend_result%diagnostic_text)
             return

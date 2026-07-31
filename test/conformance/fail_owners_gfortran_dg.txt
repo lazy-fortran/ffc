@@ -28,7 +28,6 @@ block_proc_ptr_1.f90 # owner=lazy-fortran/ffc#362; reason=pass shaped arrays thr
 blockdata_1.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA initialization
 blockdata_8.f90 # owner=lazy-fortran/fortfront#2896; reason=reject constructs in forbidden program sections
 bom_error.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
-bom_include.f90 # owner=lazy-fortran/ffc#354; reason=owns source-relative INCLUDE expansion and retained ingestion diagnostics
 bound_resolve_after_error_1.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
 bounds_check_3.f90 # owner=lazy-fortran/ffc#337; reason=owns triplet section bounds, stride sign, omitted bounds, and zero extents
 c_f_pointer_shape_test.f90 # owner=lazy-fortran/ffc#394; reason=require SHAPE for array C_F_POINTER targets
@@ -134,7 +133,7 @@ initialization_23.f90 # owner=lazy-fortran/ffc#388; reason=reject incompatible a
 initialization_25.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 initialization_28.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 initialization_7.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
-inline_sum_2.f90 # owner=lazy-fortran/ffc#354; reason=owns source-relative INCLUDE expansion
+inline_sum_2.f90 # owner=lazy-fortran/ffc#359; reason=capture dummy-bound extents on entry
 interface_17.f90 # owner=lazy-fortran/ffc#371; reason=distinguish valid and ambiguous USE renames
 interface_20.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 interface_21.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
