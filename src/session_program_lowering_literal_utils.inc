@@ -282,6 +282,21 @@
         end if
     end function is_boz_literal_text
 
+    logical function node_is_boz_literal(arena, node_index) result(is_boz)
+        !! True when the arena node is a literal whose spelling is a
+        !! BOZ-literal-constant. Non-literal nodes and missing nodes are not.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: value, literal_type, err
+
+        is_boz = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        call get_literal_info(arena, node_index, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        is_boz = is_boz_literal_text(value)
+    end function node_is_boz_literal
+
     logical function is_boz_designator(c)
         character(len=1), intent(in) :: c
 
