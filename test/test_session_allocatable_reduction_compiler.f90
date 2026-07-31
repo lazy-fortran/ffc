@@ -15,6 +15,8 @@ program test_session_allocatable_reduction_compiler
     if (.not. test_integer_sum()) all_passed = .false.
     if (.not. test_real_sum_product()) all_passed = .false.
     if (.not. test_minval_maxval()) all_passed = .false.
+    if (.not. test_realloc_on_assign()) all_passed = .false.
+    if (.not. test_assign_to_unallocated()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable reductions lower through direct LIRIC session'
@@ -74,5 +76,49 @@ contains
             source, '           1           3'//new_line('a'), &
             '/tmp/ffc_alloc_reduce_mm')
     end function test_minval_maxval
+
+    logical function test_realloc_on_assign()
+        ! Intrinsic assignment from an array expression whose extent differs from
+        ! the currently allocated extent reallocates the destination first
+        ! (F2018 10.2.1.3), so SIZE and the values follow the right-hand side.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:), b(:)'//new_line('a')// &
+            '  allocate(a(2))'//new_line('a')// &
+            '  a = [9, 9]'//new_line('a')// &
+            '  print *, size(a), sum(a)'//new_line('a')// &
+            '  allocate(b(4))'//new_line('a')// &
+            '  b = [1, 2, 3, 4]'//new_line('a')// &
+            '  a = b + 1'//new_line('a')// &
+            '  print *, size(a), sum(a)'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            'end program main'
+
+        test_realloc_on_assign = expect_output( &
+            source, &
+            '           2          18'//new_line('a')// &
+            '           4          14'//new_line('a'), &
+            '/tmp/ffc_alloc_realloc_assign')
+    end function test_realloc_on_assign
+
+    logical function test_assign_to_unallocated()
+        ! Assignment of an array expression to an unallocated allocatable
+        ! allocates the destination to the right-hand side shape.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:), b(:)'//new_line('a')// &
+            '  allocate(b(3))'//new_line('a')// &
+            '  b = [7, 8, 9]'//new_line('a')// &
+            '  a = b'//new_line('a')// &
+            '  print *, size(a), sum(a)'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            'end program main'
+
+        test_assign_to_unallocated = expect_output( &
+            source, '           3          24'//new_line('a'), &
+            '/tmp/ffc_alloc_assign_unalloc')
+    end function test_assign_to_unallocated
 
 end program test_session_allocatable_reduction_compiler
