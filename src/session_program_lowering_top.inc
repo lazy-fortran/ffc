@@ -962,6 +962,9 @@
             call lower_deallocate_statement(arena, node, context, error_msg)
         type is (return_node)
             if (context%in_internal_subroutine) then
+                call lower_alternate_return(arena, node_index, context, &
+                                            error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (.not. emit_ret_void(context%session, error_msg)) return
                 context%current_block_terminated = .true.
             else if (context%in_internal_function) then

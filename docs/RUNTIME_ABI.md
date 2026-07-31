@@ -217,6 +217,26 @@ contents; the next call through `fp` picks up the new address.
   dummies are supported by-reference integer, real, or logical scalars. General
   top-level external-procedure signatures remain outside this ABI slice.
 
+### Alternate returns
+
+Each `*` in a dummy argument list is a distinct positional alternate-return
+slot, not a named dummy: it occupies no parameter position and takes no
+argument. A subroutine that declares one or more `*` dummies carries one hidden
+trailing `i32`-by-reference selector parameter, appended after the visible
+pointer parameters and after any hidden assumed-shape extent arguments. `return
+n` stores `n` into that slot and returns; a plain `RETURN` (or falling off the
+end) leaves the slot untouched.
+
+The caller allocates the selector slot, stores `0` into it, drops each `*label`
+actual argument from the passed argument list, and passes the slot's address as
+the trailing argument. After the call it loads the selector and branches to the
+block of the `n`-th `*label` argument when the value is `n`; `0` (and any value
+outside `1..n`) falls through to the statement after the `CALL`, as the standard
+requires. Because the branch targets are statement labels, a call with
+alternate-return arguments is lowered only inside a body that carries statement
+labels. `return n` with `n` outside the declared slot count is rejected at
+compile time.
+
 ### Assumed-shape runtime extent (W2)
 
 A rank-1 or rank-2 assumed-shape dummy (`a(:)` or `a(:,:)`) whose actual has no
