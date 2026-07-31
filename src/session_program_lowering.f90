@@ -53,6 +53,7 @@ module session_program_lowering
         BINDING_ASSOCIATE_NAME, &
         get_alternate_return_label, get_return_selector, &
         is_alternate_return_dummy
+    use liric_session_runtime_bindings, only: install_runtime_archive
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
