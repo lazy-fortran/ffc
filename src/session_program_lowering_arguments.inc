@@ -691,7 +691,8 @@
 
         element_count = 0_c_int64_t
         known = .false.
-        call describe_array_section(arena, node, context, info, error_msg)
+        call describe_array_section(arena, node, context, info, error_msg, &
+                                    allow_derived=.true.)
         if (len_trim(error_msg) > 0) return
         if (info%result_rank == 0) then
             first_linear = array_section_source_linear_index(info, 0_c_int64_t)
@@ -1043,7 +1044,8 @@
         if (.not. node_exists(arena, node_index)) return
         select type (slice => arena%entries(node_index)%node)
         type is (array_slice_node)
-            call describe_array_section(arena, slice, context, info, err)
+            call describe_array_section(arena, slice, context, info, err, &
+                                        allow_derived=.true.)
             if (len_trim(err) > 0) return
             if (info%result_rank /= 1) return
             keep = info%kept_dims(1)
@@ -1073,12 +1075,20 @@
 
         select type (slice => arena%entries(node_index)%node)
         type is (array_slice_node)
-            call describe_array_section(arena, slice, context, info, error_msg)
+            call describe_array_section(arena, slice, context, info, error_msg, &
+                                        allow_derived=.true.)
             if (len_trim(error_msg) > 0) return
             src = info%source_index
             first_linear = array_section_source_linear_index(info, 0_c_int64_t)
             vk = context%symbols(src)%value_kind
             arr_size = context%symbols(src)%array_size
+            if (vk == VALUE_DERIVED) then
+                ! Derived storage is a flat i32 slot array: one element spans
+                ! slots(type) slots, so the linear element index scales.
+                first_linear = first_linear* &
+                    int(total_component_slots(context, &
+                        context%symbols(src)%derived_type_index), c_int64_t)
+            end if
             index_op = i32_immediate(context%session, first_linear)
             select case (vk)
             case (VALUE_F32)

@@ -923,11 +923,50 @@ subroutine collect_component_declaration(component_index, parent_line, &
             call add_derived_component(context, type_index, component%var_name, &
                 component%line, component%column, .false., 0_c_int64_t, &
                 span, VALUE_DERIVED, error_msg, nested_type_index)
+            if (len_trim(error_msg) > 0) return
+            call record_component_leading_extent(component, context, type_index, &
+                                                 error_msg)
         else
             error_msg = 'derived type component declaration did not expose a name'
             return
         end if
     end subroutine collect_nested_derived_component
+
+    subroutine record_component_leading_extent(component, context, type_index, &
+                                               error_msg)
+        ! Store the leading extent of a rank-2 fixed-size derived array
+        ! component so comp(i,j) can linearise column-major.
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: extent, lower_value
+        integer :: comp_index
+
+        call set_empty(error_msg)
+        if (.not. component%is_array) return
+        if (.not. allocated(component%dimension_indices)) return
+        if (size(component%dimension_indices) /= 2) return
+        if (.not. node_exists(context%arena, component%dimension_indices(1))) return
+        select type (dim_node => &
+                     context%arena%entries(component%dimension_indices(1))%node)
+        type is (range_expression_node)
+            call eval_i32_constant(context%arena, dim_node%start_index, context, &
+                                   lower_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(context%arena, dim_node%end_index, context, &
+                                   extent, error_msg)
+            if (len_trim(error_msg) > 0) return
+            extent = extent - lower_value + 1_c_int64_t
+        class default
+            call eval_i32_constant(context%arena, component%dimension_indices(1), &
+                                   context, extent, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end select
+        if (extent < 0_c_int64_t) extent = 0_c_int64_t
+        comp_index = context%derived_types(type_index)%component_count
+        context%derived_types(type_index)%component_dim1(comp_index) = int(extent)
+    end subroutine record_component_leading_extent
 
     subroutine collect_alloc_derived_array_component(component, context, &
                                                      type_index, elem_type_index, &
@@ -1223,6 +1262,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_is_allocatable(8))
             allocate(context%derived_types(type_index)%component_is_alloc_array(8))
             allocate(context%derived_types(type_index)%component_char_length(8))
+            allocate(context%derived_types(type_index)%component_dim1(8))
             context%derived_types(type_index)%component_has_default = .false.
             context%derived_types(type_index)%component_default_value = 0_c_int64_t
             context%derived_types(type_index)%component_array_size = 1
@@ -1231,6 +1271,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             context%derived_types(type_index)%component_is_allocatable = .false.
             context%derived_types(type_index)%component_is_alloc_array = .false.
             context%derived_types(type_index)%component_char_length = 0
+            context%derived_types(type_index)%component_dim1 = 0
             context%derived_types(type_index)%component_count = 0
             return
         end if
@@ -1250,6 +1291,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             logical, allocatable :: old_ia(:)
             logical, allocatable :: old_iaa(:)
             integer, allocatable :: old_cl(:)
+            integer, allocatable :: old_d1(:)
             associate (dt => context%derived_types(type_index))
                 old_hd = dt%component_has_default
                 old_dv = dt%component_default_value
@@ -1259,6 +1301,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 old_ia = dt%component_is_allocatable
                 old_iaa = dt%component_is_alloc_array
                 old_cl = dt%component_char_length
+                old_d1 = dt%component_dim1
                 deallocate(dt%component_has_default)
                 deallocate(dt%component_default_value)
                 deallocate(dt%component_array_size)
@@ -1267,6 +1310,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(dt%component_is_allocatable)
                 deallocate(dt%component_is_alloc_array)
                 deallocate(dt%component_char_length)
+                deallocate(dt%component_dim1)
                 allocate(dt%component_has_default(new_size))
                 allocate(dt%component_default_value(new_size))
                 allocate(dt%component_array_size(new_size))
@@ -1275,6 +1319,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 allocate(dt%component_is_allocatable(new_size))
                 allocate(dt%component_is_alloc_array(new_size))
                 allocate(dt%component_char_length(new_size))
+                allocate(dt%component_dim1(new_size))
                 dt%component_has_default = .false.
                 dt%component_default_value = 0_c_int64_t
                 dt%component_array_size = 1
@@ -1283,6 +1328,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_is_allocatable = .false.
                 dt%component_is_alloc_array = .false.
                 dt%component_char_length = 0
+                dt%component_dim1 = 0
                 dt%component_has_default(1:old_size) = old_hd
                 dt%component_default_value(1:old_size) = old_dv
                 dt%component_array_size(1:old_size) = old_as
@@ -1291,6 +1337,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_is_allocatable(1:old_size) = old_ia
                 dt%component_is_alloc_array(1:old_size) = old_iaa
                 dt%component_char_length(1:old_size) = old_cl
+                dt%component_dim1(1:old_size) = old_d1
             end associate
         end block
     end subroutine grow_derived_type_components

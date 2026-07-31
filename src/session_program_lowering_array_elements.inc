@@ -1,10 +1,14 @@
     subroutine describe_array_section(arena, slice_node, context, info, &
-                                      error_msg)
+                                      error_msg, allow_derived)
         type(ast_arena_t), intent(in) :: arena
         type(array_slice_node), intent(in) :: slice_node
         type(lowering_context_t), intent(in) :: context
         type(array_section_info_t), intent(out) :: info
         character(len=:), allocatable, intent(out) :: error_msg
+        ! Derived-element sections carry no value semantics here; only the
+        ! argument paths, which pass a section by reference, may ask for one.
+        logical, intent(in), optional :: allow_derived
+        logical :: derived_ok
         character(len=:), allocatable :: source_name
         integer :: source_index
         integer :: source_rank
@@ -42,9 +46,17 @@
             error_msg = 'array section requires an array: '//trim(source_name)
             return
         end if
+        derived_ok = .false.
+        if (present(allow_derived)) derived_ok = allow_derived
         select case (context%symbols(source_index)%value_kind)
         case (VALUE_I32, VALUE_F32, VALUE_F64)
             ! supported element types for array sections
+        case (VALUE_DERIVED)
+            if (.not. derived_ok) then
+                error_msg = 'array sections support integer, real(4), and '// &
+                            'real(8) arrays'
+                return
+            end if
         case default
             error_msg = 'array sections support integer, real(4), and real(8) arrays'
             return

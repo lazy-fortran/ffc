@@ -445,6 +445,7 @@
         character(len=:), allocatable :: name
         integer :: lower_bound, n_elems, slots, index
         integer :: binding_index
+        logical :: is_dummy
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: binding_error
 
@@ -465,20 +466,43 @@
                 binding_index = find_symbol_for_binding(context, binding)
             end if
         end if
+        is_dummy = .false.
+        index = 0
         if (binding_index > 0) then
             if (context%symbols(binding_index)%is_array .and. &
                 context%symbols(binding_index)%is_derived .and. &
                 context%symbols(binding_index)%derived_type_index == &
                 derived_type_index) then
+                ! One symbol reached through both the type-collection and the
+                ! array-collection visit: the second visit denotes the same
+                ! declaration, not a redeclaration.
                 call set_empty(error_msg)
                 return
             end if
-            error_msg = 'conflicting derived array declaration: '//trim(name)
-            return
+            if (context%symbols(binding_index)%is_parameter .and. &
+                .not. context%symbols(binding_index)%is_array .and. &
+                .not. context%symbols(binding_index)%is_derived) then
+                ! A derived-array dummy: the parameter pointer is the base
+                ! address of the caller's contiguous derived storage.
+                is_dummy = .true.
+                index = binding_index
+            else
+                error_msg = 'conflicting derived array declaration: '//trim(name)
+                return
+            end if
         end if
-        if (find_symbol_compat(context, name) > 0) then
-            error_msg = 'duplicate derived array declaration: '//trim(name)
-            return
+        if (.not. is_dummy) then
+            index = find_symbol_compat(context, name)
+            if (index > 0) then
+                if (context%symbols(index)%is_parameter .and. &
+                    .not. context%symbols(index)%is_array .and. &
+                    .not. context%symbols(index)%is_derived) then
+                    is_dummy = .true.
+                else
+                    error_msg = 'duplicate derived array declaration: '//trim(name)
+                    return
+                end if
+            end if
         end if
         call get_array_bounds(node, context, lower_bound, n_elems, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -489,15 +513,26 @@
             return
         end if
 
-        call grow_symbols(context)
+        if (.not. is_dummy) then
+            call grow_symbols(context)
+            index = context%symbol_count + 1
+        end if
         slots = total_component_slots(context, derived_type_index)
-        index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_DERIVED
         context%symbols(index)%is_derived = .true.
         context%symbols(index)%is_array = .true.
         context%symbols(index)%derived_type_index = derived_type_index
         context%symbols(index)%array_size = n_elems * slots
+        context%symbols(index)%array_lower_bound = lower_bound
+        call record_derived_array_shape(node, context, index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (is_dummy) then
+            context%symbols(index)%element_address = &
+                context%symbols(index)%address
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. emit_i32_array_alloca(context%session, n_elems * slots, &
                 context%symbols(index)%element_address, error_msg)) then
             error_msg = 'derived_array_alloca['//trim(name)//']: '//error_msg
@@ -506,6 +541,154 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine lower_derived_array_declaration
+
+    subroutine record_derived_array_shape(node, context, index, error_msg)
+        ! Fold each declared dimension of a derived array so element addressing
+        ! can linearise a rank-n subscript in column-major order.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim_count, dim_index, i
+        integer(c_int64_t) :: lower_value, upper_value, extent
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%dimension_indices)) return
+        dim_count = size(node%dimension_indices)
+        context%symbols(index)%array_rank = dim_count
+        do i = 1, dim_count
+            dim_index = node%dimension_indices(i)
+            if (.not. node_exists(context%arena, dim_index)) cycle
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                call eval_i32_constant(context%arena, dim_node%start_index, &
+                                       context, lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(context%arena, dim_node%end_index, &
+                                       context, upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value - lower_value + 1_c_int64_t
+            class default
+                lower_value = 1_c_int64_t
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value
+            end select
+            if (extent < 0_c_int64_t) extent = 0_c_int64_t
+            context%symbols(index)%array_dim_lowers(i) = int(lower_value)
+            context%symbols(index)%array_dim_sizes(i) = int(extent)
+        end do
+    end subroutine record_derived_array_shape
+
+    subroutine derived_array_slot_offset(arena, arg_indices, context, &
+                                         symbol_index, slots, offset, error_msg)
+        ! Column-major slot offset of a rank-n derived array element: the
+        ! subscripts collapse to one linear element index, scaled by the number
+        ! of i32 slots one element of the derived type occupies.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: slots
+        type(lr_operand_desc_t), intent(out) :: offset
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: sub_val, zero_based, term, acc, summed
+        integer :: rank, i, lower, stride
+
+        rank = size(arg_indices)
+        if (rank < 1) then
+            error_msg = 'derived array element requires at least one subscript'
+            return
+        end if
+        if (rank > 1) then
+            if (context%symbols(symbol_index)%array_rank /= rank) then
+                error_msg = 'derived array subscript rank does not match the '// &
+                            'declared shape'
+                return
+            end if
+        end if
+        stride = 1
+        do i = 1, rank
+            lower = 1
+            if (context%symbols(symbol_index)%array_rank >= i) then
+                lower = context%symbols(symbol_index)%array_dim_lowers(i)
+            end if
+            call lower_i32_expression(arena, arg_indices(i), context, sub_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                    i32_immediate(context%session, int(lower, c_int64_t)), &
+                    zero_based, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                    i32_immediate(context%session, int(stride, c_int64_t)), &
+                    term, error_msg)) return
+            if (i == 1) then
+                acc = term
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, term, &
+                        summed, error_msg)) return
+                acc = summed
+            end if
+            if (i < rank) then
+                stride = stride * context%symbols(symbol_index)%array_dim_sizes(i)
+            end if
+        end do
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, &
+                i32_immediate(context%session, int(slots, c_int64_t)), offset, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine derived_array_slot_offset
+
+    subroutine component_zero_based_index(arena, arg_indices, context, base_type, &
+                                          comp_index, zero_based, error_msg)
+        ! Zero-based element index of a derived array component reference
+        ! comp(i) or comp(i,j). A rank-2 component linearises column-major with
+        ! the leading extent recorded at collection time.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: base_type
+        integer, intent(in) :: comp_index
+        type(lr_operand_desc_t), intent(out) :: zero_based
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: sub_val, first, second, scaled
+        integer :: dim1
+
+        if (size(arg_indices) < 1 .or. size(arg_indices) > 2) then
+            error_msg = 'only rank-1 and rank-2 derived array components are '// &
+                        'supported'
+            return
+        end if
+        call lower_i32_expression(arena, arg_indices(1), context, sub_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                i32_immediate(context%session, 1_c_int64_t), first, error_msg)) &
+            return
+        if (size(arg_indices) == 1) then
+            zero_based = first
+            call set_empty(error_msg)
+            return
+        end if
+        dim1 = context%derived_types(base_type)%component_dim1(comp_index)
+        if (dim1 <= 0) then
+            error_msg = 'rank-2 derived array component has no recorded shape'
+            return
+        end if
+        call lower_i32_expression(arena, arg_indices(2), context, sub_val, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                i32_immediate(context%session, 1_c_int64_t), second, error_msg)) &
+            return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, second, &
+                i32_immediate(context%session, int(dim1, c_int64_t)), scaled, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, first, scaled, &
+                zero_based, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine component_zero_based_index
 
     subroutine define_derived_symbol(context, node, name, derived_type_index, &
                                      error_msg)
@@ -2059,10 +2242,6 @@
                 error_msg = 'array component base requires arr(i) form'
                 return
             end if
-            if (size(base%arg_indices) /= 1) then
-                error_msg = 'only one-dimensional derived arrays are supported'
-                return
-            end if
             symbol_index = find_symbol_compat(context, base%name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(base%name)
@@ -2074,15 +2253,9 @@
             end if
             type_index = context%symbols(symbol_index)%derived_type_index
             slots = total_component_slots(context, type_index)
-            call lower_i32_expression(arena, base%arg_indices(1), context, &
-                                      sub_val, error_msg)
+            call derived_array_slot_offset(arena, base%arg_indices, context, &
+                symbol_index, slots, element_base, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
-                    error_msg)) return
-            if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
-                    i32_immediate(context%session, int(slots, c_int64_t)), &
-                    element_base, error_msg)) return
         type is (component_access_node)
             ! Nested derived base x%c: resolve x%c to (symbol, inner type, slot
             ! base) so the leaf access x%c%field adds its own start slot on top.
@@ -2103,7 +2276,8 @@
     end subroutine resolve_component_base
 
     recursive subroutine resolve_nested_component_base(arena, node, context, &
-            symbol_index, type_index, element_base, error_msg)
+            symbol_index, type_index, element_base, error_msg, &
+            owner_type_index, owner_component_index)
         ! Resolve a derived component access x%c (the base of a deeper access) to
         ! the owning symbol, the inner component's derived type index, and the
         ! slot offset of the inner aggregate within the flat instance layout.
@@ -2114,6 +2288,10 @@
         integer, intent(out) :: type_index
         type(lr_operand_desc_t), intent(out) :: element_base
         character(len=:), allocatable, intent(out) :: error_msg
+        ! Owning type and component slot of the resolved component, for callers
+        ! that need its declared shape.
+        integer, intent(out), optional :: owner_type_index
+        integer, intent(out), optional :: owner_component_index
         integer :: outer_type, component_index
         type(lr_operand_desc_t) :: base_off
 
@@ -2140,6 +2318,8 @@
                 trim(node%component_name)
             return
         end if
+        if (present(owner_type_index)) owner_type_index = outer_type
+        if (present(owner_component_index)) owner_component_index = component_index
         if (.not. emit_i32_binary(context%session, LR_OP_ADD, base_off, &
                 i32_immediate(context%session, &
                     int(component_start_slot(context, outer_type, &
@@ -2161,17 +2341,13 @@
         integer, intent(out) :: type_index
         type(lr_operand_desc_t), intent(out) :: element_base
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: array_base, sub_val, zero_based, scaled
-        integer :: inner_slots
+        type(lr_operand_desc_t) :: array_base, zero_based, scaled
+        integer :: inner_slots, outer_type, component_index
 
         symbol_index = 0
         type_index = 0
         if (.not. allocated(node%arg_indices)) then
             error_msg = 'nested derived array component requires comp(i) form'
-            return
-        end if
-        if (size(node%arg_indices) /= 1) then
-            error_msg = 'only one-dimensional derived array components are supported'
             return
         end if
         if (.not. node_exists(arena, node%base_expr_index)) then
@@ -2181,19 +2357,17 @@
         select type (acc => arena%entries(node%base_expr_index)%node)
         type is (component_access_node)
             call resolve_nested_component_base(arena, acc, context, symbol_index, &
-                                               type_index, array_base, error_msg)
+                                               type_index, array_base, error_msg, &
+                                               outer_type, component_index)
         class default
             error_msg = 'nested derived array component requires obj%comp(i) form'
             return
         end select
         if (len_trim(error_msg) > 0) return
         inner_slots = total_component_slots(context, type_index)
-        call lower_i32_expression(arena, node%arg_indices(1), context, sub_val, &
-                                  error_msg)
+        call component_zero_based_index(arena, node%arg_indices, context, &
+            outer_type, component_index, zero_based, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                i32_immediate(context%session, 1_c_int64_t), zero_based, &
-                error_msg)) return
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
                 i32_immediate(context%session, int(inner_slots, c_int64_t)), &
                 scaled, error_msg)) return
@@ -2312,10 +2486,6 @@
                 error_msg = 'derived array element requires arr(i) form'
                 return
             end if
-            if (size(base%arg_indices) /= 1) then
-                error_msg = 'only one-dimensional derived arrays are supported'
-                return
-            end if
             symbol_index = find_symbol_compat(context, base%name)
             if (symbol_index <= 0) then
                 error_msg = 'component base was not declared: '//trim(base%name)
@@ -2329,15 +2499,9 @@
             end if
             type_index = context%symbols(symbol_index)%derived_type_index
             slots = total_component_slots(context, type_index)
-            call lower_i32_expression(arena, base%arg_indices(1), context, sub_val, &
-                                      error_msg)
+            call derived_array_slot_offset(arena, base%arg_indices, context, &
+                symbol_index, slots, scaled, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
-                    error_msg)) return
-            if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
-                    i32_immediate(context%session, int(slots, c_int64_t)), scaled, &
-                    error_msg)) return
             if (.not. emit_i32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
                     context%symbols(symbol_index)%element_address, scaled, addr, &
@@ -2372,10 +2536,6 @@
             error_msg = 'nested derived array element requires comp(i) form'
             return
         end if
-        if (size(node%arg_indices) /= 1) then
-            error_msg = 'only one-dimensional derived array components are supported'
-            return
-        end if
         if (.not. node_exists(arena, node%base_expr_index)) then
             error_msg = 'nested derived array element base is not an AST node'
             return
@@ -2401,12 +2561,9 @@
                 return
             end if
             start = component_start_slot(context, base_type, comp_index)
-            call lower_i32_expression(arena, node%arg_indices(1), context, sub_val, &
-                                      error_msg)
+            call component_zero_based_index(arena, node%arg_indices, context, &
+                base_type, comp_index, zero_based, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                    i32_immediate(context%session, 1_c_int64_t), zero_based, &
-                    error_msg)) return
             if (component_is_alloc_array(context, base_type, comp_index)) then
                 if (.not. emit_ptr_offset(context%session, base_addr, &
                         int(start * 4, c_int64_t), desc_addr, error_msg)) return
