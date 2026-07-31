@@ -17,6 +17,12 @@ program test_session_read_fmod_compiler
     if (.not. test_use_module_fmod_rejects_unknown_only()) all_passed = .false.
     if (.not. test_use_module_fmod_not_found_errors()) all_passed = .false.
     if (.not. test_use_module_variable_from_fmod()) all_passed = .false.
+    if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
+    if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
+    if (.not. test_use_two_locals_one_remote()) all_passed = .false.
+    if (.not. test_use_conflicting_rename_rejected()) all_passed = .false.
+    if (.not. test_same_file_repeated_rename_is_valid()) all_passed = .false.
+    if (.not. test_same_file_conflicting_rename_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: module .fmod read-on-USE'
@@ -247,6 +253,202 @@ contains
         end if
         ok = .true.
     end function test_use_module_variable_from_fmod
+
+    subroutine write_rename_matrix_fmod(dir, error_msg)
+        ! A module exporting two distinct integer constants, so a rename
+        ! matrix can bind one local name to the same remote entity twice
+        ! (valid) or to two different remote entities (ambiguous).
+        character(len=*), intent(in) :: dir
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(module_info_t) :: info
+
+        call execute_command_line('mkdir -p '//dir)
+        info%name = 'm'
+        allocate (info%parameters(2))
+        info%parameters(1)%name = 'alpha'
+        info%parameters(1)%kind = 'integer'
+        info%parameters(1)%value = '13'
+        info%parameters(2)%name = 'beta'
+        info%parameters(2)%kind = 'integer'
+        info%parameters(2)%value = '21'
+        allocate (info%derived_types(0))
+        call write_fmod(dir//'/m.fmod', info, error_msg)
+    end subroutine write_rename_matrix_fmod
+
+    logical function run_rename_case(tag, source, expected_exit) result(ok)
+        ! Compile and run a rename matrix program, checking its exit status.
+        character(len=*), intent(in) :: tag
+        character(len=*), intent(in) :: source
+        integer, intent(in) :: expected_exit
+        character(len=*), parameter :: dir = '/tmp/ffc_read_fmod_matrix_dir'
+        character(len=*), parameter :: exe = '/tmp/ffc_read_fmod_matrix'
+        character(len=:), allocatable :: error_msg
+        integer :: exit_stat, cmd_stat
+
+        ok = .false.
+        call write_rename_matrix_fmod(dir, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod: ', trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, exe, dir, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: '//tag//' rejected: ', trim(error_msg)
+            call execute_command_line('rm -f '//dir//'/m.fmod')
+            return
+        end if
+        call execute_command_line(exe, exitstat=exit_stat, cmdstat=cmd_stat)
+        call execute_command_line('rm -f '//exe//' '//dir//'/m.fmod')
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: '//tag//' binary did not run'
+            return
+        end if
+        if (exit_stat /= expected_exit) then
+            print *, 'FAIL: '//tag//' expected exit ', expected_exit, &
+                ' got ', exit_stat
+            return
+        end if
+        ok = .true.
+    end function run_rename_case
+
+    logical function test_use_repeated_rename_is_valid() result(ok)
+        ! Importing the same remote binding under the same local name from two
+        ! USE statements is not ambiguous (F2018 19.5.2).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use m, only: alias => alpha'//new_line('a')// &
+            '  use m, only: alias => alpha'//new_line('a')// &
+            '  stop alias'//new_line('a')// &
+            'end program main'
+
+        ok = run_rename_case('repeated rename', source, 13)
+    end function test_use_repeated_rename_is_valid
+
+    logical function test_use_repeated_rename_one_statement() result(ok)
+        ! The same repetition within a single ONLY list is equally valid.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use m, only: alias => alpha, alias => alpha'//new_line('a')// &
+            '  stop alias'//new_line('a')// &
+            'end program main'
+
+        ok = run_rename_case('repeated rename in one statement', source, 13)
+    end function test_use_repeated_rename_one_statement
+
+    logical function test_use_two_locals_one_remote() result(ok)
+        ! One remote binding may reach two distinct local names.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use m, only: first => alpha'//new_line('a')// &
+            '  use m, only: second => alpha'//new_line('a')// &
+            '  stop first + second'//new_line('a')// &
+            'end program main'
+
+        ok = run_rename_case('two locals one remote', source, 26)
+    end function test_use_two_locals_one_remote
+
+    logical function test_use_conflicting_rename_rejected() result(ok)
+        ! Two distinct remote bindings under one local name stay ambiguous.
+        character(len=*), parameter :: dir = '/tmp/ffc_read_fmod_matrix_dir'
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use m, only: alias => alpha'//new_line('a')// &
+            '  use m, only: alias => beta'//new_line('a')// &
+            '  stop alias'//new_line('a')// &
+            'end program main'
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call write_rename_matrix_fmod(dir, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod: ', trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, '/tmp/ffc_read_fmod_ambiguous', dir, &
+            error_msg)
+        call execute_command_line('rm -f /tmp/ffc_read_fmod_ambiguous '// &
+            dir//'/m.fmod')
+        if (len_trim(error_msg) == 0) then
+            print *, 'FAIL: conflicting USE rename was accepted'
+            return
+        end if
+        if (index(error_msg, 'ambiguous') == 0) then
+            print *, 'FAIL: wrong conflicting-rename diagnostic: ', &
+                trim(error_msg)
+            return
+        end if
+        ok = .true.
+    end function test_use_conflicting_rename_rejected
+
+    function same_file_rename_source(first, second) result(source)
+        ! A module and a using program in one file, so the renames resolve
+        ! against in-arena module exports rather than a .fmod.
+        character(len=*), intent(in) :: first
+        character(len=*), intent(in) :: second
+        character(len=:), allocatable :: source
+
+        source = 'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer, parameter :: alpha = 13'//new_line('a')// &
+            '  integer, parameter :: beta = 21'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m, only: '//first//new_line('a')// &
+            '  use m, only: '//second//new_line('a')// &
+            '  stop alias'//new_line('a')// &
+            'end program main'
+    end function same_file_rename_source
+
+    logical function test_same_file_repeated_rename_is_valid() result(ok)
+        ! Repeating one remote binding under one local name must not be
+        ! reported as a duplicate when the module is in the same file.
+        character(len=*), parameter :: exe = '/tmp/ffc_same_file_rename'
+        character(len=:), allocatable :: error_msg
+        integer :: exit_stat, cmd_stat
+
+        ok = .false.
+        call compile_with_include( &
+            same_file_rename_source('alias => alpha', 'alias => alpha'), &
+            exe, '/tmp/ffc_read_fmod_empty', error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: same-file repeated rename rejected: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line(exe, exitstat=exit_stat, cmdstat=cmd_stat)
+        call execute_command_line('rm -f '//exe)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL: same-file repeated rename binary did not run'
+            return
+        end if
+        if (exit_stat /= 13) then
+            print *, 'FAIL: same-file repeated rename exit ', exit_stat
+            return
+        end if
+        ok = .true.
+    end function test_same_file_repeated_rename_is_valid
+
+    logical function test_same_file_conflicting_rename_rejected() result(ok)
+        ! Distinct remote bindings under one local name stay ambiguous.
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call compile_with_include( &
+            same_file_rename_source('alias => alpha', 'alias => beta'), &
+            '/tmp/ffc_same_file_ambiguous', '/tmp/ffc_read_fmod_empty', &
+            error_msg)
+        call execute_command_line('rm -f /tmp/ffc_same_file_ambiguous')
+        if (len_trim(error_msg) == 0) then
+            print *, 'FAIL: same-file conflicting rename was accepted'
+            return
+        end if
+        if (index(error_msg, 'ambiguous') == 0) then
+            print *, 'FAIL: wrong same-file conflicting diagnostic: ', &
+                trim(error_msg)
+            return
+        end if
+        ok = .true.
+    end function test_same_file_conflicting_rename_rejected
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source
