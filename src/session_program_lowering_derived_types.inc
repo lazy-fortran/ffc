@@ -1611,3 +1611,277 @@ subroutine collect_component_declaration(component_index, parent_line, &
         context%module_exports(export_idx)%enum_indices(1:old_size) = old_indices
         deallocate(old_indices)
     end subroutine grow_module_export_enum_indices
+
+    ! ---------------------------------------------------------------------
+    ! Derived-type definition constraints checked on the source form (#390).
+    !
+    ! FortFront folds a contained procedure of a module and the component list
+    ! of a module-scope type away before the arena is handed to ffc, so the
+    ! typed nodes no longer carry the attributes these rules need. The source
+    ! form is therefore the earliest - and here the only - layer with enough
+    ! information:
+    !
+    !   * a BIND(C) derived type must have at least one component
+    !     (gfortran: "with BIND(C) attribute ... has no components");
+    !   * an INTENT(OUT) dummy argument of a type with default initialization
+    !     may not be an assumed-size array, because the default initializer
+    !     would have to be applied to an unknown number of elements
+    !     (gfortran: "is ASSUMED SIZE and so cannot have a default
+    !     initializer");
+    !   * a SELECT TYPE guard is spelled TYPE IS; TYPEIS is not a keyword and
+    !     is parsed as a malformed type definition
+    !     (gfortran: "Mangled derived type definition").
+    ! ---------------------------------------------------------------------
+    subroutine check_derived_type_definition_forms(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source, init_types
+        logical :: found
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        call scan_derived_type_bodies(source, init_types, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_assumed_size_dt_dummies(source, init_types, error_msg)
+    end subroutine check_derived_type_definition_forms
+
+    subroutine scan_derived_type_bodies(source, init_types, error_msg)
+        !! Walk every derived-type definition in the source. Reports the empty
+        !! BIND(C) type and the mangled TYPEIS guard, and returns the
+        !! '|'-delimited set of type names that have a default-initialized
+        !! component.
+        character(len=*), intent(in) :: source
+        character(len=:), allocatable, intent(out) :: init_types
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: line, code, packed, name, type_name
+        logical :: in_body, is_bind_c, has_component, is_header
+        integer :: pos, line_no, header_line
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        init_types = '|'
+        in_body = .false.
+        is_bind_c = .false.
+        has_component = .false.
+        header_line = 0
+        type_name = ''
+        pos = 1
+        line_no = 0
+        do while (pos <= len(source))
+            call next_source_line(source, pos, line)
+            line_no = line_no + 1
+            code = statement_code_text(line)
+            if (len_trim(code) == 0) cycle
+            packed = remove_blanks(code)
+            if (in_body) then
+                if (len(packed) >= 7) then
+                    if (packed(1:7) == 'endtype') then
+                        if (is_bind_c .and. .not. has_component) then
+                            write (location, '(" at line ",I0)') header_line
+                            error_msg = 'derived type '''//trim(type_name)// &
+                                ''' with BIND(C) attribute has no components'// &
+                                trim(location)
+                            return
+                        end if
+                        in_body = .false.
+                        cycle
+                    end if
+                end if
+                if (is_type_body_keyword(packed)) cycle
+                has_component = .true.
+                if (has_default_initializer(code)) then
+                    if (index(init_types, '|'//trim(type_name)//'|') == 0) then
+                        init_types = init_types//trim(type_name)//'|'
+                    end if
+                end if
+                cycle
+            end if
+            if (first_word_of(code) == 'typeis') then
+                write (location, '(" at line ",I0)') line_no
+                error_msg = 'mangled derived type definition'//trim(location)
+                return
+            end if
+            call derived_type_header_info(code, name, is_bind_c, is_header)
+            if (.not. is_header) cycle
+            in_body = .true.
+            has_component = .false.
+            header_line = line_no
+            type_name = name
+        end do
+    end subroutine scan_derived_type_bodies
+
+    subroutine check_assumed_size_dt_dummies(source, init_types, error_msg)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: init_types
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: line, code, packed, type_name, dummy
+        integer :: pos, line_no, close_paren
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        pos = 1
+        line_no = 0
+        do while (pos <= len(source))
+            call next_source_line(source, pos, line)
+            line_no = line_no + 1
+            code = statement_code_text(line)
+            if (len_trim(code) == 0) cycle
+            packed = remove_blanks(code)
+            if (len(packed) < 6) cycle
+            if (packed(1:5) /= 'type(') cycle
+            if (index(packed, 'intent(out)') == 0) cycle
+            if (index(packed, '(*)') == 0) cycle
+            close_paren = index(packed, ')')
+            if (close_paren <= 6) cycle
+            type_name = packed(6:close_paren - 1)
+            if (index(init_types, '|'//trim(type_name)//'|') == 0) cycle
+            dummy = declared_entity_name(packed)
+            write (location, '(" at line ",I0)') line_no
+            error_msg = 'INTENT(OUT) dummy argument '''//trim(dummy)// &
+                ''' is ASSUMED SIZE and so cannot have a default initializer'// &
+                trim(location)
+            return
+        end do
+    end subroutine check_assumed_size_dt_dummies
+
+    subroutine derived_type_header_info(code, name, is_bind_c, is_header)
+        !! Decide whether a lowered statement opens a derived-type definition,
+        !! and if so return its name and whether it carries BIND(C).
+        character(len=*), intent(in) :: code
+        character(len=:), allocatable, intent(out) :: name
+        logical, intent(out) :: is_bind_c, is_header
+        character(len=:), allocatable :: rest
+        integer :: dc
+
+        call set_empty(name)
+        is_bind_c = .false.
+        is_header = .false.
+        if (len(code) < 6) return
+        if (code(1:4) /= 'type') return
+        if (code(5:5) /= ' ' .and. code(5:5) /= ',' .and. code(5:5) /= ':') return
+        rest = adjustl(code(5:))
+        if (len_trim(rest) == 0) return
+        is_bind_c = index(remove_blanks(rest), 'bind(c)') > 0
+        dc = index(rest, '::')
+        if (dc > 0) then
+            name = first_word_of(adjustl(rest(dc + 2:)))
+        else
+            if (rest(1:1) == ',') return
+            name = first_word_of(rest)
+        end if
+        if (len_trim(name) == 0) return
+        if (trim(name) == 'is') return
+        is_header = .true.
+    end subroutine derived_type_header_info
+
+    logical function is_type_body_keyword(packed) result(is_keyword)
+        character(len=*), intent(in) :: packed
+
+        select case (trim(packed))
+        case ('private', 'public', 'sequence', 'contains')
+            is_keyword = .true.
+        case default
+            is_keyword = .false.
+        end select
+    end function is_type_body_keyword
+
+    logical function has_default_initializer(code) result(has_init)
+        !! True when a component declaration carries '= value' (but not the
+        !! pointer initializer '=>' nor a relational operator).
+        character(len=*), intent(in) :: code
+        integer :: i
+
+        has_init = .false.
+        do i = 1, len(code)
+            if (code(i:i) /= '=') cycle
+            if (i > 1) then
+                if (scan(code(i - 1:i - 1), '=/<>') > 0) cycle
+            end if
+            if (i < len(code)) then
+                if (scan(code(i + 1:i + 1), '=>') > 0) cycle
+            end if
+            has_init = .true.
+            return
+        end do
+    end function has_default_initializer
+
+    function declared_entity_name(packed) result(name)
+        !! First entity name declared after '::' in a packed declaration.
+        character(len=*), intent(in) :: packed
+        character(len=:), allocatable :: name, rest
+        integer :: dc, stop_at
+
+        name = ''
+        dc = index(packed, '::')
+        if (dc == 0) return
+        rest = packed(dc + 2:)
+        if (len_trim(rest) == 0) return
+        stop_at = scan(rest, ',(')
+        if (stop_at == 0) then
+            name = trim(rest)
+        else
+            name = trim(rest(:stop_at - 1))
+        end if
+    end function declared_entity_name
+
+    subroutine next_source_line(source, pos, line)
+        character(len=*), intent(in) :: source
+        integer, intent(inout) :: pos
+        character(len=:), allocatable, intent(out) :: line
+        integer :: next_nl
+
+        next_nl = index(source(pos:), new_line('a'))
+        if (next_nl == 0) then
+            line = source(pos:)
+            pos = len(source) + 1
+        else
+            line = source(pos:pos + next_nl - 2)
+            pos = pos + next_nl
+        end if
+    end subroutine next_source_line
+
+    function statement_code_text(line) result(code)
+        !! Lowered, comment-stripped, left-justified statement text.
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: code
+        integer :: comment_pos
+
+        comment_pos = index(line, '!')
+        if (comment_pos == 1) then
+            code = ''
+            return
+        else if (comment_pos > 1) then
+            code = lowercase_text(line(:comment_pos - 1))
+        else
+            code = lowercase_text(line)
+        end if
+        code = trim(adjustl(code))
+    end function statement_code_text
+
+    function remove_blanks(text) result(packed)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: packed
+        integer :: i
+
+        packed = ''
+        do i = 1, len(text)
+            if (text(i:i) == ' ' .or. text(i:i) == char(9)) cycle
+            packed = packed//text(i:i)
+        end do
+    end function remove_blanks
+
+    function first_word_of(text) result(word)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: word
+        character(len=:), allocatable :: trimmed
+        integer :: stop_at
+
+        trimmed = adjustl(text)
+        stop_at = scan(trimmed, ' '//char(9)//',(:')
+        if (stop_at == 0) then
+            word = trim(trimmed)
+        else
+            word = trim(trimmed(:stop_at - 1))
+        end if
+    end function first_word_of

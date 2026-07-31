@@ -2130,3 +2130,347 @@
             i = i + 1
         end do
     end subroutine concatenated_literal_text
+
+    ! ---------------------------------------------------------------------
+    ! Derived-type definition and component-access constraints (#390).
+    !
+    ! Three rules are checked here against typed nodes, because the arena
+    ! carries the declared attributes each one needs:
+    !
+    !   * a component declared PRIVATE is accessible only inside the module
+    !     that defines the type, so neither a component reference nor a
+    !     structure constructor for that type is valid outside it
+    !     (gfortran: "is a PRIVATE component of");
+    !   * a DATA statement object may not be reached through an allocatable
+    !     component, whose storage does not exist before execution
+    !     (gfortran: "Allocatable component or deferred-shaped array");
+    !   * a function result declared CLASS must be allocatable or a pointer,
+    !     since a result variable is never a dummy argument
+    !     (gfortran: "CLASS variable ... must be dummy, allocatable or
+    !     pointer").
+    ! ---------------------------------------------------------------------
+    subroutine check_private_component_access(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, module_idx
+        character(len=:), allocatable :: type_name, comp_name
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (component_access_node)
+                if (.not. allocated(nd%component_name)) cycle
+                call designator_type_name(arena, nd%base_expr_index, type_name)
+                if (len_trim(type_name) == 0) cycle
+                if (.not. component_is_private(arena, type_name, &
+                                               nd%component_name, module_idx)) cycle
+                if (node_within(arena, n, module_idx)) cycle
+                error_msg = private_component_message(arena, n, &
+                                                      nd%component_name, type_name)
+                return
+            type is (call_or_subscript_node)
+                if (.not. allocated(nd%name)) cycle
+                call first_private_component(arena, nd%name, comp_name, module_idx)
+                if (len_trim(comp_name) == 0) cycle
+                if (node_within(arena, n, module_idx)) cycle
+                error_msg = private_component_message(arena, n, comp_name, nd%name)
+                return
+            end select
+        end do
+    end subroutine check_private_component_access
+
+    function private_component_message(arena, node_index, comp_name, type_name) &
+        result(message)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: comp_name, type_name
+        character(len=:), allocatable :: message
+        character(len=64) :: location
+
+        write (location, '(" at line ",I0,", column ",I0)') &
+            get_node_line(arena, node_index), get_node_column(arena, node_index)
+        message = 'component '''//trim(comp_name)//''' is a PRIVATE '// &
+            'component of '''//trim(type_name)//''''//trim(location)
+    end function private_component_message
+
+    logical function component_is_private(arena, type_name, comp_name, module_idx)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: type_name, comp_name
+        integer, intent(out) :: module_idx
+        integer :: decl, type_idx
+
+        module_idx = 0
+        component_is_private = .false.
+        decl = derived_component_decl(arena, type_name, comp_name, type_idx)
+        if (decl <= 0) return
+        select type (dn => arena%entries(decl)%node)
+        type is (declaration_node)
+            if (.not. allocated(dn%accessibility)) return
+            if (trim(lowercase_text(dn%accessibility)) /= 'private') return
+        class default
+            return
+        end select
+        module_idx = enclosing_module_index(arena, type_idx)
+        if (module_idx <= 0) return
+        component_is_private = .true.
+    end function component_is_private
+
+    subroutine first_private_component(arena, type_name, comp_name, module_idx)
+        !! Name of the first PRIVATE component of the named derived type, and
+        !! the module that defines the type. Empty when the name is not a
+        !! module derived type or has no private component.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable, intent(out) :: comp_name
+        integer, intent(out) :: module_idx
+        integer :: type_idx, i, comp
+
+        call set_empty(comp_name)
+        module_idx = 0
+        type_idx = derived_type_node_index(arena, type_name)
+        if (type_idx <= 0) return
+        select type (td => arena%entries(type_idx)%node)
+        type is (derived_type_node)
+            if (.not. allocated(td%component_indices)) return
+            do i = 1, size(td%component_indices)
+                comp = td%component_indices(i)
+                if (.not. node_exists(arena, comp)) cycle
+                select type (dn => arena%entries(comp)%node)
+                type is (declaration_node)
+                    if (.not. allocated(dn%accessibility)) cycle
+                    if (trim(lowercase_text(dn%accessibility)) /= 'private') cycle
+                    if (.not. allocated(dn%var_name)) cycle
+                    comp_name = trim(dn%var_name)
+                    module_idx = enclosing_module_index(arena, type_idx)
+                    if (module_idx <= 0) call set_empty(comp_name)
+                    return
+                end select
+            end do
+        end select
+    end subroutine first_private_component
+
+    integer function derived_type_node_index(arena, type_name) result(type_idx)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: type_name
+        integer :: n
+        character(len=:), allocatable :: wanted
+
+        type_idx = 0
+        wanted = trim(lowercase_text(type_name))
+        if (len(wanted) == 0) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (derived_type_node)
+                if (.not. allocated(nd%name)) cycle
+                if (trim(lowercase_text(nd%name)) /= wanted) cycle
+                type_idx = n
+                return
+            end select
+        end do
+    end function derived_type_node_index
+
+    integer function derived_component_decl(arena, type_name, comp_name, type_idx) &
+        result(decl)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: type_name, comp_name
+        integer, intent(out) :: type_idx
+        integer :: i, comp
+        character(len=:), allocatable :: wanted
+
+        decl = 0
+        wanted = trim(lowercase_text(comp_name))
+        type_idx = derived_type_node_index(arena, type_name)
+        if (type_idx <= 0) return
+        select type (td => arena%entries(type_idx)%node)
+        type is (derived_type_node)
+            if (.not. allocated(td%component_indices)) return
+            do i = 1, size(td%component_indices)
+                comp = td%component_indices(i)
+                if (.not. node_exists(arena, comp)) cycle
+                select type (dn => arena%entries(comp)%node)
+                type is (declaration_node)
+                    if (.not. allocated(dn%var_name)) cycle
+                    if (trim(lowercase_text(dn%var_name)) /= wanted) cycle
+                    decl = comp
+                    return
+                end select
+            end do
+        end select
+    end function derived_component_decl
+
+    integer function enclosing_module_index(arena, node_index) result(module_idx)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer :: cur, guard
+
+        module_idx = 0
+        cur = node_index
+        guard = 0
+        do while (cur > 0)
+            guard = guard + 1
+            if (guard > arena%size) return
+            if (.not. node_exists(arena, cur)) return
+            select type (nd => arena%entries(cur)%node)
+            type is (module_node)
+                module_idx = cur
+                return
+            end select
+            cur = arena%entries(cur)%parent_index
+        end do
+    end function enclosing_module_index
+
+    logical function node_within(arena, node_index, ancestor) result(within)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, ancestor
+        integer :: cur, guard
+
+        within = .false.
+        if (ancestor <= 0) return
+        cur = node_index
+        guard = 0
+        do while (cur > 0)
+            if (cur == ancestor) then
+                within = .true.
+                return
+            end if
+            guard = guard + 1
+            if (guard > arena%size) return
+            if (.not. node_exists(arena, cur)) return
+            cur = arena%entries(cur)%parent_index
+        end do
+    end function node_within
+
+    recursive subroutine designator_type_name(arena, idx, type_name)
+        !! Declared derived-type name of a designator (identifier, array
+        !! element, or component reference). Empty when it is not a derived
+        !! type entity or cannot be resolved from declarations alone.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: type_name
+        character(len=:), allocatable :: base_type
+        integer :: decl, comp, type_idx
+
+        call set_empty(type_name)
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (identifier_node)
+            if (.not. allocated(nd%name)) return
+            decl = declaration_index_for_name(arena, nd%name)
+            if (decl <= 0) return
+            call declared_derived_type_name(arena, decl, type_name)
+        type is (component_access_node)
+            if (.not. allocated(nd%component_name)) return
+            call designator_type_name(arena, nd%base_expr_index, base_type)
+            if (len_trim(base_type) == 0) return
+            comp = derived_component_decl(arena, base_type, nd%component_name, &
+                                          type_idx)
+            if (comp <= 0) return
+            call declared_derived_type_name(arena, comp, type_name)
+        type is (call_or_subscript_node)
+            if (nd%base_expr_index > 0) then
+                call designator_type_name(arena, nd%base_expr_index, type_name)
+                return
+            end if
+            if (.not. allocated(nd%name)) return
+            decl = declaration_index_for_name(arena, nd%name)
+            if (decl <= 0) return
+            call declared_derived_type_name(arena, decl, type_name)
+        end select
+    end subroutine designator_type_name
+
+    subroutine declared_derived_type_name(arena, decl, type_name)
+        !! 'type(t)' / 'class(t)' spelled on a declaration reduced to 't'.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: decl
+        character(len=:), allocatable, intent(out) :: type_name
+        character(len=:), allocatable :: spec
+        integer :: open_paren, close_paren
+
+        call set_empty(type_name)
+        if (.not. node_exists(arena, decl)) return
+        select type (dn => arena%entries(decl)%node)
+        type is (declaration_node)
+            if (.not. allocated(dn%type_name)) return
+            spec = trim(lowercase_text(dn%type_name))
+        class default
+            return
+        end select
+        open_paren = index(spec, '(')
+        close_paren = index(spec, ')', back=.true.)
+        if (open_paren <= 1) return
+        if (close_paren <= open_paren + 1) return
+        select case (trim(spec(:open_paren - 1)))
+        case ('type', 'class')
+            type_name = trim(adjustl(spec(open_paren + 1:close_paren - 1)))
+        case default
+            call set_empty(type_name)
+        end select
+    end subroutine declared_derived_type_name
+
+    subroutine check_data_allocatable_components(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, i
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (data_statement_node)
+                if (.not. allocated(nd%object_indices)) cycle
+                do i = 1, size(nd%object_indices)
+                    call check_data_object_components(arena, nd%object_indices(i), &
+                                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end select
+        end do
+    end subroutine check_data_allocatable_components
+
+    recursive subroutine check_data_object_components(arena, idx, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base_type
+        character(len=64) :: location
+        integer :: j, comp, type_idx
+
+        call set_empty(error_msg)
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (io_implied_do_node)
+            if (.not. allocated(nd%object_indices)) return
+            do j = 1, size(nd%object_indices)
+                call check_data_object_components(arena, nd%object_indices(j), &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        type is (call_or_subscript_node)
+            call check_data_object_components(arena, nd%base_expr_index, error_msg)
+        type is (component_access_node)
+            call check_data_object_components(arena, nd%base_expr_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. allocated(nd%component_name)) return
+            call designator_type_name(arena, nd%base_expr_index, base_type)
+            if (len_trim(base_type) == 0) return
+            comp = derived_component_decl(arena, base_type, nd%component_name, &
+                                          type_idx)
+            if (comp <= 0) return
+            select type (dn => arena%entries(comp)%node)
+            type is (declaration_node)
+                if (.not. dn%is_allocatable) return
+            class default
+                return
+            end select
+            write (location, '(" at line ",I0,", column ",I0)') &
+                get_node_line(arena, idx), get_node_column(arena, idx)
+            error_msg = 'allocatable component '''//trim(nd%component_name)// &
+                ''' of '''//trim(base_type)//''' cannot appear in a DATA '// &
+                'statement'//trim(location)
+        end select
+    end subroutine check_data_object_components
+
