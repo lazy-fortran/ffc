@@ -43,6 +43,17 @@
             is_f64 = real_intrinsic_is_f64(arena, node, context)
             return
         end if
+        ! aint(a, kind) and anint(a, kind) take their result kind from the
+        ! selector, independent of the argument kind.
+        if (real_conversion_intrinsic(node%name)) then
+            if (allocated(node%arg_indices)) then
+                if (size(node%arg_indices) >= 2) then
+                    is_f64 = real_conversion_kind_is_f64(arena, &
+                                                         node%arg_indices(2))
+                    return
+                end if
+            end if
+        end if
         ! dble() always returns real(8), regardless of argument kind.
         if (same_name(node%name, 'dble')) then
             is_f64 = .true.
@@ -67,6 +78,32 @@
             end if
         end do
     end function is_f64_intrinsic_expression
+
+    logical function real_conversion_intrinsic(name) result(is_conversion)
+        !! True for the AINT/ANINT real conversions, which accept an optional
+        !! KIND selector that fixes the result width.
+        character(len=*), intent(in) :: name
+
+        is_conversion = same_name(name, 'aint') .or. same_name(name, 'anint')
+    end function real_conversion_intrinsic
+
+    logical function real_conversion_kind_is_f64(arena, kind_index) result(is_f64)
+        !! Result width of an AINT/ANINT KIND selector. A foldable 8 selects
+        !! f64; anything unfoldable keeps the conservative wide result, matching
+        !! how REAL(A, KIND) treats named constants.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: kind_index
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: kind_error
+
+        call parse_i32_constant(arena, kind_index, kind_value, 'real kind', &
+                                kind_error)
+        if (len_trim(kind_error) > 0) then
+            is_f64 = .true.
+        else
+            is_f64 = kind_value == 8_c_int64_t
+        end if
+    end function real_conversion_kind_is_f64
 
     logical function is_real_array_reduction(arena, node, context, vk) result(ok)
         !! True when node is a sum/product/maxval/minval/norm2 call whose first

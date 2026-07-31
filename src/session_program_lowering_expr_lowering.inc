@@ -662,6 +662,15 @@
                     ! kind of their argument, so a nested sqrt(sqrt(x)) is f32
                     ! exactly when its argument is. Recurse on the first argument.
                     ! abs() of a complex(4) yields a real(4) magnitude.
+                    ! aint/anint take their result kind from a KIND selector.
+                    if (allocated(node%arg_indices)) then
+                        if (size(node%arg_indices) >= 2 .and. &
+                            real_conversion_intrinsic(node%name)) then
+                            is_f32 = .not. real_conversion_kind_is_f64(arena, &
+                                node%arg_indices(2))
+                            return
+                        end if
+                    end if
                     if (allocated(node%arg_indices)) then
                         if (size(node%arg_indices) >= 1) then
                             if (same_name(node%name, 'abs') .and. &

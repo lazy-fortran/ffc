@@ -336,7 +336,11 @@ constant. A local variable declared `character(len=len(other))`, where
 lower to libm: `sqrt`, `exp`,
 `log`, `log10`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`,
 `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `erf`, `erfc`, `gamma`,
-`log_gamma`, and `hypot`. The real numeric-model inquiry intrinsics `tiny`,
+`log_gamma`, and `hypot`. The real conversions `aint` (truncate toward zero)
+and `anint` (round half away from zero) lower to libm `trunc`/`round` on
+`real(4)` and `real(8)` operands, elementally over a whole real array, and
+accept an optional `KIND` selector of 4 or 8 that fixes the result kind; any
+other `KIND` is rejected. The real numeric-model inquiry intrinsics `tiny`,
 `huge`, and `epsilon` of a real argument (kind 4 or 8) lower to the constant
 real value for the argument's kind, usable in real expressions, conditions, and
 `print`. Scalar `transfer(source, mold)` reinterprets `source`'s bit pattern as
