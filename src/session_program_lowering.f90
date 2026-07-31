@@ -345,8 +345,17 @@ contains
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: enclosing_declaration_index
 
+        ! Publish this declaration as the scope anchor for the specification
+        ! expressions it contains (#329). A declaration nests only through a
+        ! derived-type definition, whose components lower on their own path,
+        ! so saving and restoring the previous value is enough to keep a
+        ! stale anchor from leaking into an unrelated declaration.
+        enclosing_declaration_index = context%current_declaration_index
+        context%current_declaration_index = node_index
         call lower_declaration_entities(node_in, node_index, context, error_msg)
+        context%current_declaration_index = enclosing_declaration_index
         if (len_trim(error_msg) > 0) return
         call register_declaration_bindings(context, node_in, node_index)
     end subroutine lower_declaration
