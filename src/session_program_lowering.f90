@@ -54,6 +54,12 @@ module session_program_lowering
         get_alternate_return_label, get_return_selector, &
         is_alternate_return_dummy
     use liric_session_runtime_bindings, only: install_runtime_archive
+    use ffc_polymorphic_descriptor, only: &
+        POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, &
+        POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, &
+        POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, &
+        POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, &
+        POLYMORPHIC_DESCRIPTOR_SIZE, POLYMORPHIC_OWNERSHIP_BORROWED
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &

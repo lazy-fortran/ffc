@@ -274,6 +274,15 @@ module session_program_lowering_types
         logical :: is_runtime_array = .false.
         logical :: is_derived = .false.
         integer :: derived_type_index = 0
+        ! Polymorphism (#417). is_polymorphic marks an entity declared class(t):
+        ! derived_type_index stays the DECLARED type, while the dynamic type is
+        ! a runtime value living in the scalar class descriptor the caller
+        ! built. dynamic_type_address is the address of that descriptor's
+        ! dynamic_type field; class_descriptor_address is the descriptor base.
+        logical :: is_polymorphic = .false.
+        logical :: has_dynamic_type_address = .false.
+        type(lr_operand_desc_t) :: dynamic_type_address
+        type(lr_operand_desc_t) :: class_descriptor_address
         type(lr_operand_desc_t) :: element_address
         ! A rank-1 array function result bound to the sret buffer (param 0). The
         ! body array declaration rebinds its shape/element kind onto this symbol's

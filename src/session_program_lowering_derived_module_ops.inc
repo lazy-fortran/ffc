@@ -107,6 +107,34 @@
         end if
     end subroutine extracted_derived_type_name
 
+    logical function declaration_is_class_polymorphic(node)
+        ! True when a declaration is spelled class(t) for a derived type t.
+        type(declaration_node), intent(in) :: node
+
+        declaration_is_class_polymorphic = .false.
+        if (.not. allocated(node%type_name)) return
+        ! An allocatable or pointer class entity keeps its existing
+        ! allocatable/pointer descriptor ABI until #421 gives it a dynamic
+        ! type; only a plain class(t) scalar takes the class descriptor.
+        if (node%is_allocatable) return
+        if (node%is_pointer) return
+        declaration_is_class_polymorphic = is_class_derived_type_spec(node%type_name)
+    end function declaration_is_class_polymorphic
+
+    logical function is_class_derived_type_spec(type_spec)
+        ! True for class(t) naming a derived type t, i.e. a polymorphic scalar
+        ! whose declared type is t. type(t) is monomorphic and class(*) is
+        ! unlimited polymorphic; neither matches here.
+        character(len=*), intent(in) :: type_spec
+        character(len=:), allocatable :: lowered
+
+        is_class_derived_type_spec = .false.
+        lowered = trim(lowercase_text(type_spec))
+        if (len_trim(lowered) < 6) return
+        if (lowered(1:6) /= 'class(') return
+        is_class_derived_type_spec = is_derived_type_spec(type_spec)
+    end function is_class_derived_type_spec
+
     logical function is_derived_type_spec(type_spec)
         character(len=*), intent(in) :: type_spec
         character(len=:), allocatable :: type_name

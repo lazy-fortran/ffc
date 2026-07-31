@@ -344,6 +344,105 @@
         end do
     end function callee_dummy_is_class_star
 
+    subroutine dummy_class_declared_type(arena, body_indices, param_name, &
+                                         type_name)
+        ! Declared type name of a class(t) dummy, empty when the dummy is not
+        ! declared class(t). Mirrors dummy_is_class_star, but selects exactly
+        ! the polymorphic-derived spelling the class descriptor ABI covers.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        character(len=:), allocatable, intent(out) :: type_name
+        integer :: i, k
+        logical :: matches
+
+        type_name = ''
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. is_class_derived_type_spec(decl%type_name)) cycle
+                ! An allocatable or pointer class dummy aliases the caller's
+                ! own allocatable/pointer descriptor; that ABI is unchanged
+                ! here and gains its dynamic identity with #421.
+                if (decl%is_allocatable) cycle
+                if (decl%is_pointer) cycle
+                matches = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == trim(param_name)) matches = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) &
+                            matches = .true.
+                    end do
+                end if
+                if (matches) then
+                    call extracted_derived_type_name(decl%type_name, type_name)
+                    return
+                end if
+            end select
+        end do
+    end subroutine dummy_class_declared_type
+
+    subroutine callee_dummy_class_declared_type(arena, callee_name, param_pos, &
+                                                type_name)
+        ! Declared type name of the callee's param_pos-th dummy when that dummy
+        ! is class(t); empty otherwise.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable, intent(out) :: type_name
+        integer :: n
+        character(len=:), allocatable :: name, name_err
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        type_name = ''
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (allocated(sb_node%name)) then
+                    if (same_name(sb_node%name, callee_name)) then
+                        if (.not. allocated(sb_node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(sb_node%param_indices)) return
+                        call parameter_name(arena, sb_node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        call dummy_class_declared_type(arena, &
+                            sb_node%body_indices, name, type_name)
+                        return
+                    end if
+                end if
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (allocated(fn_node%name)) then
+                    if (same_name(fn_node%name, callee_name)) then
+                        if (.not. allocated(fn_node%param_indices)) return
+                        if (param_pos < 1 .or. &
+                            param_pos > size(fn_node%param_indices)) return
+                        call parameter_name(arena, fn_node%param_indices(param_pos), &
+                                            name, name_err)
+                        if (len_trim(name_err) > 0) return
+                        call dummy_class_declared_type(arena, &
+                            fn_node%body_indices, name, type_name)
+                        return
+                    end if
+                end if
+            end if
+        end do
+    end subroutine callee_dummy_class_declared_type
+
     logical function dummy_is_array(arena, body_indices, param_name)
         ! A dummy is an array when a body declaration names it with an array
         ! spec (is_array). Mirrors dummy_is_character for the array-argument ABI.
