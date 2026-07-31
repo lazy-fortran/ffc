@@ -953,3 +953,116 @@ integer function resolve_concat_operand(arena, node_index, context, &
             offset = next_offset
         end do
     end subroutine emit_concat_copies
+
+    subroutine load_alloc_char_descriptor(context, slot_address, data_ptr, &
+                                          length, error_msg)
+        ! (data pointer, i32 length) of the canonical character descriptor a
+        ! deferred-length allocatable component holds inline: pointer at +0 and
+        ! i64 length at +8. An unallocated component reads as (null, 0).
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: slot_address
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: length64
+
+        if (.not. emit_ptr_load(context%session, slot_address, data_ptr, &
+                                error_msg)) return
+        if (.not. emit_i64_load_at(context%session, slot_address, 8_c_int64_t, &
+                                   length64, error_msg)) return
+        if (.not. emit_liric_i64_to_i32(context%session, length64, length, &
+                                        error_msg)) return
+        call set_empty(error_msg)
+    end subroutine load_alloc_char_descriptor
+
+    subroutine store_alloc_char_component(arena, value_index, slot_address, &
+                                          context, error_msg)
+        ! obj%s = <character expression> for a deferred-length allocatable
+        ! component: allocate len+1 bytes, deep-copy the right-hand side bytes,
+        ! NUL-terminate for the print/compare paths, then free whatever the
+        ! component owned before and publish the new descriptor. The copy
+        ! precedes the free, so a self-referential right-hand side stays valid,
+        ! and each owned buffer is released exactly once.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lr_operand_desc_t), intent(in) :: slot_address
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: src_data, src_len, src_len64, total
+        type(lr_operand_desc_t) :: new_ptr, term_addr, old_ptr
+
+        call char_expr_operands(arena, value_index, context, src_data, src_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, src_len, src_len64, &
+                                        error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, src_len64, &
+                i64_immediate(context%session, 1_c_int64_t), total, error_msg)) &
+            return
+        if (.not. emit_malloc(context%session, total, new_ptr, error_msg)) return
+        if (.not. emit_memcpy(context%session, new_ptr, src_data, src_len64, &
+                              error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, new_ptr, src_len64, &
+                                  term_addr, error_msg)) return
+        if (.not. emit_i8_store(context%session, &
+                i8_immediate(context%session, 0_c_int64_t), term_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_load(context%session, slot_address, old_ptr, &
+                                error_msg)) return
+        if (.not. emit_free(context%session, old_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, new_ptr, slot_address, &
+                                 error_msg)) return
+        if (.not. emit_i64_store_at(context%session, src_len64, slot_address, &
+                                    8_c_int64_t, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine store_alloc_char_component
+
+    subroutine reown_alloc_char_component(context, slot_address, error_msg)
+        ! After a whole-derived slot copy the destination's character descriptor
+        ! still points at the source's buffer. Give the destination its own copy
+        ! so the two values are independent; an unallocated descriptor (null
+        ! pointer) is left alone and stays unallocated.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: slot_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: shared_ptr, length64, total, new_ptr, term_addr
+        type(lr_operand_desc_t) :: is_allocated
+        integer(c_int32_t) :: copy_block, done_block
+
+        if (.not. emit_ptr_load(context%session, slot_address, shared_ptr, &
+                                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, shared_ptr, &
+                null_ptr_operand(context), is_allocated, error_msg)) return
+        copy_block = create_liric_block(context%session)
+        done_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, is_allocated, copy_block, &
+                                    done_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, copy_block, error_msg)) return
+        context%current_block_id = copy_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i64_load_at(context%session, slot_address, 8_c_int64_t, &
+                                   length64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, length64, &
+                i64_immediate(context%session, 1_c_int64_t), total, error_msg)) &
+            return
+        if (.not. emit_malloc(context%session, total, new_ptr, error_msg)) return
+        if (.not. emit_memcpy(context%session, new_ptr, shared_ptr, length64, &
+                              error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, new_ptr, length64, &
+                                  term_addr, error_msg)) return
+        if (.not. emit_i8_store(context%session, &
+                i8_immediate(context%session, 0_c_int64_t), term_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_store(context%session, new_ptr, slot_address, &
+                                 error_msg)) return
+        if (.not. emit_liric_br(context%session, done_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, done_block, error_msg)) return
+        context%current_block_id = done_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine reown_alloc_char_component
