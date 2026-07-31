@@ -228,6 +228,12 @@
             error_msg = 'c_f_pointer target was not declared: '//trim(name)
             return
         end if
+        ! F2018 18.2.3.3: SHAPE is optional only when FPTR is scalar. An array
+        ! FPTR without SHAPE has no extents to take, so reject it here.
+        if (context%symbols(symbol_index)%is_array) then
+            error_msg = 'Expected SHAPE argument to C_F_POINTER with array FPTR'
+            return
+        end if
         ! Bind the Fortran pointer to the C address: the pointer adopts cp's
         ! address as its storage, so a later read of p dereferences that address
         ! (emit_*_load) and yields the value the C pointer refers to.
