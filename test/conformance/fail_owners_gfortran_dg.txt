@@ -161,14 +161,6 @@ module_equivalence_6.f90 # owner=lazy-fortran/ffc#370; reason=fold named constan
 module_procedure_2.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 module_procedure_4.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 modulo_1.f90 # owner=lazy-fortran/ffc#453; reason=owns typed intrinsic arguments, validation, and result kind
-namelist_1.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_2.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_33.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_4.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_75.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_92.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_93.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
-namelist_98.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
 namelist_use.f90 # owner=lazy-fortran/ffc#436; reason=owns scalar NAMELIST groups and omitted/order-independent member conversion
 non_module_public.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 old_style_init.f90 # owner=lazy-fortran/ffc#383; reason=enforce DATA object and initializer restrictions
@@ -240,7 +232,6 @@ pr96087.f90 # owner=lazy-fortran/ffc#373; reason=reallocate allocatables from ru
 pr96099_1.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr96099_2.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr96102.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
-pr99368.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
 present_1.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
 print_fmt_2.f90 # owner=lazy-fortran/fortfront#2897; reason=reject unclassifiable execution expressions
 private_type_6.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
