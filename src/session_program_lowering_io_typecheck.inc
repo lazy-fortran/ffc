@@ -188,3 +188,526 @@
             end if
         end do
     end function io_spec_upper
+
+    ! I/O control-list constraints (#385). Several invalid control lists never
+    ! reach the typed AST: the parser drops the statement and the program would
+    ! otherwise compile silently. They are validated on the statement text, the
+    ! earliest layer that still holds them, with quote-aware tokenising so no
+    ! valid form is flagged.
+    subroutine check_io_control_source(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source, stmt
+        logical :: found
+        integer :: pos, line_no, stmt_line
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        pos = 1
+        line_no = 0
+        do while (pos <= len(source))
+            call next_io_source_statement(source, pos, line_no, stmt, stmt_line)
+            if (len_trim(stmt) == 0) cycle
+            call check_io_statement_text(stmt, stmt_line, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_io_control_source
+
+    ! Take the next logical statement: one source line with its comment removed
+    ! and any '&' continuations appended.
+    subroutine next_io_source_statement(source, pos, line_no, stmt, stmt_line)
+        character(len=*), intent(in) :: source
+        integer, intent(inout) :: pos, line_no
+        character(len=:), allocatable, intent(out) :: stmt
+        integer, intent(out) :: stmt_line
+        character(len=:), allocatable :: line
+        integer :: next_nl, n
+
+        call set_empty(stmt)
+        stmt_line = line_no + 1
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else if (next_nl == 1) then
+                line = ''
+                pos = pos + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            line_no = line_no + 1
+            line = strip_data_source_comment(line)
+            line = trim(adjustl(line))
+            n = len(line)
+            if (n > 0) then
+                if (line(1:1) == '&') then
+                    line = trim(adjustl(line(2:)))
+                    n = len(line)
+                end if
+            end if
+            if (n > 0) then
+                if (line(n:n) == '&') then
+                    stmt = stmt//' '//line(1:n - 1)
+                    cycle
+                end if
+            end if
+            stmt = stmt//' '//line
+            return
+        end do
+    end subroutine next_io_source_statement
+
+    subroutine check_io_statement_text(stmt, line_no, error_msg)
+        character(len=*), intent(in) :: stmt
+        integer, intent(in) :: line_no
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: code, low, kw, list, tail
+        character(len=64) :: location
+        integer :: open_p, close_p, n
+
+        call set_empty(error_msg)
+        code = trim(adjustl(stmt))
+        n = len(code)
+        if (n == 0) return
+        write (location, '(" at line ",I0)') line_no
+        if (io_paren_balance(code) /= 0) then
+            error_msg = 'unbalanced parentheses in statement'//trim(location)
+            return
+        end if
+        code = trim(adjustl(strip_statement_label(code)))
+        n = len(code)
+        if (n == 0) return
+        low = lowercase_text(code)
+        kw = leading_io_keyword(low)
+        select case (kw)
+        case ('print')
+            if (code(n:n) == ',') then
+                error_msg = 'output item list required after comma in '// &
+                    'PRINT statement'//trim(location)
+                return
+            end if
+            call check_io_output_items(code(len(kw) + 1:), location, error_msg)
+        case ('write', 'read', 'open', 'inquire', 'close', 'rewind', &
+              'backspace', 'endfile')
+            call io_statement_paren_span(code, open_p, close_p)
+            if (open_p == 0) return
+            if (close_p <= open_p) return
+            list = code(open_p + 1:close_p - 1)
+            call check_io_control_list(list, kw, location, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (kw /= 'write') return
+            tail = code(close_p + 1:)
+            call check_io_output_items(tail, location, error_msg)
+        end select
+    end subroutine check_io_statement_text
+
+    ! Apply every control-list constraint to one comma-separated specifier list.
+    subroutine check_io_control_list(list, kw, location, error_msg)
+        character(len=*), intent(in) :: list, kw, location
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg, name, val
+        integer :: n, p, arg_start, arg_end, idx
+        logical :: has_unit
+
+        call set_empty(error_msg)
+        n = len(list)
+        p = 1
+        idx = 0
+        has_unit = .false.
+        do while (p <= n)
+            call next_io_spec_arg(list, n, p, arg_start, arg_end)
+            if (arg_start == 0) exit
+            arg = list(arg_start:arg_end)
+            call split_io_spec_arg(arg, name, val)
+            idx = idx + 1
+            if (len(name) == 0) then
+                if (is_dec_io_spec(lowercase_text(trim(adjustl(arg))))) then
+                    error_msg = io_spec_upper(trim(adjustl(arg)))// &
+                        ' specifier is a DEC extension'//trim(location)
+                    return
+                end if
+                if (idx == 1) then
+                    has_unit = .true.
+                    call check_io_unit_value(val, kw, location, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                cycle
+            end if
+            if (name == 'unit') then
+                has_unit = .true.
+                call check_io_unit_value(val, kw, location, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
+            if (is_dec_io_spec(name)) then
+                error_msg = io_spec_upper(name)// &
+                    ' specifier is a DEC extension'//trim(location)
+                return
+            end if
+            if (name == 'end' .and. kw == 'write') then
+                error_msg = 'END= specifier is not allowed in an output '// &
+                    'statement'//trim(location)
+                return
+            end if
+            if (.not. is_character_io_spec(name)) cycle
+            if (io_value_is_array(val)) then
+                error_msg = io_spec_upper(name)//' specifier must be scalar'// &
+                    trim(location)
+                return
+            end if
+            if (io_value_nondefault_kind(val)) then
+                error_msg = io_spec_upper(name)//' specifier must be a '// &
+                    'character string of default kind'//trim(location)
+                return
+            end if
+        end do
+        if (kw /= 'write') return
+        if (has_unit) return
+        error_msg = 'UNIT not specified in WRITE statement'//trim(location)
+    end subroutine check_io_control_list
+
+    subroutine check_io_unit_value(val, kw, location, error_msg)
+        character(len=*), intent(in) :: val, kw, location
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: t
+        integer :: i
+        logical :: digits
+
+        call set_empty(error_msg)
+        t = trim(adjustl(val))
+        if (len(t) == 0) return
+        if (kw == 'write') then
+            if (t(1:1) == '''' .or. t(1:1) == '"') then
+                error_msg = 'Invalid form of WRITE statement: a character '// &
+                    'literal cannot be a unit'//trim(location)
+                return
+            end if
+        end if
+        if (t(1:1) /= '-') return
+        if (len(t) < 2) return
+        digits = .true.
+        do i = 2, len(t)
+            if (t(i:i) < '0' .or. t(i:i) > '9') digits = .false.
+        end do
+        if (.not. digits) return
+        error_msg = 'UNIT number cannot be negative'//trim(location)
+    end subroutine check_io_unit_value
+
+    ! A BOZ literal constant has no type and can never be an output item.
+    subroutine check_io_output_items(items, location, error_msg)
+        character(len=*), intent(in) :: items, location
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: low
+        integer :: i, n, close_q
+        character :: c, prev, qc
+        logical :: is_boz
+
+        call set_empty(error_msg)
+        low = lowercase_text(items)
+        n = len(low)
+        i = 1
+        do while (i < n)
+            c = low(i:i)
+            if (c == '''' .or. c == '"') then
+                ! A plain character literal: skip it whole so its content
+                ! cannot be mistaken for a radix prefix.
+                qc = c
+                i = i + 1
+                do while (i <= n)
+                    if (low(i:i) == qc) exit
+                    i = i + 1
+                end do
+                i = i + 1
+                cycle
+            end if
+            if (c /= 'b' .and. c /= 'o' .and. c /= 'z') then
+                i = i + 1
+                cycle
+            end if
+            qc = low(i + 1:i + 1)
+            if (qc /= '''' .and. qc /= '"') then
+                i = i + 1
+                cycle
+            end if
+            is_boz = .true.
+            if (i > 1) then
+                prev = low(i - 1:i - 1)
+                if (prev == '_') is_boz = .false.
+                if (prev >= 'a' .and. prev <= 'z') is_boz = .false.
+                if (prev >= '0' .and. prev <= '9') is_boz = .false.
+            end if
+            close_q = index(low(i + 2:), qc)
+            if (close_q == 0) then
+                i = i + 1
+                cycle
+            end if
+            close_q = i + 1 + close_q
+            if (is_boz) then
+                if (.not. is_boz_digits(low(i + 2:close_q - 1), c)) then
+                    is_boz = .false.
+                end if
+            end if
+            if (is_boz) then
+                error_msg = 'BOZ literal constant cannot appear in an '// &
+                    'output IO list'//trim(location)
+                return
+            end if
+            i = close_q + 1
+        end do
+    end subroutine check_io_output_items
+
+    ! Digits valid for a BOZ radix prefix: binary, octal, or hexadecimal.
+    logical function is_boz_digits(text, radix) result(ok)
+        character(len=*), intent(in) :: text
+        character, intent(in) :: radix
+        integer :: i
+        character :: c
+
+        ok = .false.
+        if (len(text) == 0) return
+        do i = 1, len(text)
+            c = text(i:i)
+            select case (radix)
+            case ('b')
+                if (c /= '0' .and. c /= '1') return
+            case ('o')
+                if (c < '0' .or. c > '7') return
+            case default
+                if (c >= '0' .and. c <= '9') cycle
+                if (c < 'a' .or. c > 'f') return
+            end select
+        end do
+        ok = .true.
+    end function is_boz_digits
+
+    ! Split "name=value" into a lowercased specifier name and its value text.
+    ! A positional item yields an empty name.
+    subroutine split_io_spec_arg(arg, name, val)
+        character(len=*), intent(in) :: arg
+        character(len=:), allocatable, intent(out) :: name, val
+        character(len=:), allocatable :: t, head
+        integer :: eqp, i
+        character :: c
+
+        call set_empty(name)
+        t = trim(adjustl(arg))
+        val = t
+        eqp = io_top_level_equals(t)
+        if (eqp <= 1) return
+        head = trim(adjustl(t(1:eqp - 1)))
+        if (len(head) == 0) return
+        c = head(1:1)
+        if (.not. ((c >= 'a' .and. c <= 'z') .or. (c >= 'A' .and. c <= 'Z'))) &
+            return
+        do i = 2, len(head)
+            c = head(i:i)
+            if (c >= 'a' .and. c <= 'z') cycle
+            if (c >= 'A' .and. c <= 'Z') cycle
+            if (c >= '0' .and. c <= '9') cycle
+            if (c == '_') cycle
+            return
+        end do
+        name = lowercase_text(head)
+        val = trim(adjustl(t(eqp + 1:)))
+    end subroutine split_io_spec_arg
+
+    ! Position of the first '=' outside quotes and nesting, 0 when absent.
+    integer function io_top_level_equals(text) result(eqp)
+        character(len=*), intent(in) :: text
+        integer :: i, depth
+        character :: qc
+
+        eqp = 0
+        depth = 0
+        i = 1
+        do while (i <= len(text))
+            if (text(i:i) == '''' .or. text(i:i) == '"') then
+                qc = text(i:i)
+                i = i + 1
+                do while (i <= len(text))
+                    if (text(i:i) == qc) exit
+                    i = i + 1
+                end do
+            else if (text(i:i) == '(' .or. text(i:i) == '[') then
+                depth = depth + 1
+            else if (text(i:i) == ')' .or. text(i:i) == ']') then
+                if (depth > 0) depth = depth - 1
+            else if (depth == 0 .and. text(i:i) == '=') then
+                eqp = i
+                return
+            end if
+            i = i + 1
+        end do
+    end function io_top_level_equals
+
+    logical function io_value_is_array(val) result(is_array)
+        character(len=*), intent(in) :: val
+        character(len=:), allocatable :: t
+
+        is_array = .false.
+        t = trim(adjustl(val))
+        if (len(t) == 0) return
+        if (t(1:1) == '[') then
+            is_array = .true.
+            return
+        end if
+        if (len(t) < 2) return
+        if (t(1:2) == '(/') is_array = .true.
+    end function io_value_is_array
+
+    ! True when the specifier value is a character value of a kind other than
+    ! default: char(c, k) with k /= 1, or a kind-prefixed literal k_'...'.
+    logical function io_value_nondefault_kind(val) result(bad)
+        character(len=*), intent(in) :: val
+        character(len=:), allocatable :: t, low, inner, arg2, kindtext
+        integer :: n, p, arg_start, arg_end, i, upos
+
+        bad = .false.
+        t = trim(adjustl(val))
+        if (len(t) < 2) return
+        low = lowercase_text(t)
+        upos = index(low, '_')
+        if (upos > 1) then
+            if (low(upos + 1:upos + 1) == '''' .or. &
+                low(upos + 1:upos + 1) == '"') then
+                kindtext = low(1:upos - 1)
+                if (io_text_is_integer(kindtext)) then
+                    if (kindtext /= '1') bad = .true.
+                    return
+                end if
+            end if
+        end if
+        if (len(low) < 6) return
+        if (low(1:5) /= 'char(') return
+        if (low(len(low):len(low)) /= ')') return
+        inner = t(6:len(t) - 1)
+        n = len(inner)
+        p = 1
+        call next_io_spec_arg(inner, n, p, arg_start, arg_end)
+        if (arg_start == 0) return
+        call next_io_spec_arg(inner, n, p, arg_start, arg_end)
+        if (arg_start == 0) return
+        arg2 = trim(adjustl(inner(arg_start:arg_end)))
+        i = io_top_level_equals(arg2)
+        if (i > 0) arg2 = trim(adjustl(arg2(i + 1:)))
+        if (.not. io_text_is_integer(arg2)) return
+        if (arg2 /= '1') bad = .true.
+    end function io_value_nondefault_kind
+
+    logical function io_text_is_integer(text) result(is_int)
+        character(len=*), intent(in) :: text
+        integer :: i
+
+        is_int = .false.
+        if (len_trim(text) == 0) return
+        do i = 1, len_trim(text)
+            if (text(i:i) < '0' .or. text(i:i) > '9') return
+        end do
+        is_int = .true.
+    end function io_text_is_integer
+
+    integer function io_paren_balance(text) result(balance)
+        character(len=*), intent(in) :: text
+        integer :: i
+        character :: qc
+
+        balance = 0
+        i = 1
+        do while (i <= len(text))
+            if (text(i:i) == '''' .or. text(i:i) == '"') then
+                qc = text(i:i)
+                i = i + 1
+                do while (i <= len(text))
+                    if (text(i:i) == qc) exit
+                    i = i + 1
+                end do
+            else if (text(i:i) == '(') then
+                balance = balance + 1
+            else if (text(i:i) == ')') then
+                balance = balance - 1
+            end if
+            i = i + 1
+        end do
+    end function io_paren_balance
+
+    function strip_statement_label(code) result(rest)
+        character(len=*), intent(in) :: code
+        character(len=:), allocatable :: rest
+        integer :: i
+
+        i = 1
+        do while (i <= len(code))
+            if (code(i:i) < '0' .or. code(i:i) > '9') exit
+            i = i + 1
+        end do
+        if (i == 1) then
+            rest = code
+        else
+            rest = code(i:)
+        end if
+    end function strip_statement_label
+
+    function leading_io_keyword(low) result(kw)
+        character(len=*), intent(in) :: low
+        character(len=:), allocatable :: kw
+        integer :: i
+
+        i = 1
+        do while (i <= len(low))
+            if (low(i:i) < 'a' .or. low(i:i) > 'z') exit
+            i = i + 1
+        end do
+        if (i == 1) then
+            kw = ''
+        else
+            kw = low(1:i - 1)
+        end if
+    end function leading_io_keyword
+
+    ! Bounds of the control-list parentheses in an I/O statement.
+    subroutine io_statement_paren_span(code, open_p, close_p)
+        character(len=*), intent(in) :: code
+        integer, intent(out) :: open_p, close_p
+        integer :: i, depth
+        character :: qc
+
+        open_p = 0
+        close_p = 0
+        depth = 0
+        i = 1
+        do while (i <= len(code))
+            if (code(i:i) == '''' .or. code(i:i) == '"') then
+                qc = code(i:i)
+                i = i + 1
+                do while (i <= len(code))
+                    if (code(i:i) == qc) exit
+                    i = i + 1
+                end do
+            else if (code(i:i) == '(') then
+                depth = depth + 1
+                if (depth == 1) open_p = i
+            else if (code(i:i) == ')') then
+                depth = depth - 1
+                if (depth == 0) then
+                    close_p = i
+                    return
+                end if
+            end if
+            i = i + 1
+        end do
+    end subroutine io_statement_paren_span
+
+    ! DEC I/O extension specifiers. Without -fdec they are not Fortran, and the
+    ! standard has no equivalent, so they are rejected rather than ignored.
+    logical function is_dec_io_spec(name) result(is_dec)
+        character(len=*), intent(in) :: name
+
+        select case (trim(name))
+        case ('carriagecontrol', 'share', 'shared', 'noshared', 'readonly')
+            is_dec = .true.
+        case default
+            is_dec = .false.
+        end select
+    end function is_dec_io_spec

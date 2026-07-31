@@ -145,10 +145,6 @@ interface_operator_2.f90 # owner=lazy-fortran/fortfront#2893; reason=require mat
 interface_operator_3.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 invalid_name.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
 invalid_procedure_name.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
-io_constraints_15.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
-io_constraints_16.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
-io_constraints_4.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
-io_invalid_1.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 iomsg_1.f90 # owner=lazy-fortran/ffc#427; reason=owns stable IOSTAT/IOMSG results for EOF, invalid unit, OPEN, and CLOSE
 iostat_2.f90 # owner=lazy-fortran/ffc#427; reason=owns nonzero status for invalid CLOSE controls
 iso_c_binding_char_1.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
@@ -174,8 +170,6 @@ namelist_92.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member con
 namelist_93.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
 namelist_98.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
 namelist_use.f90 # owner=lazy-fortran/ffc#436; reason=owns scalar NAMELIST groups and omitted/order-independent member conversion
-negative_unit_check.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
-newunit_6.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 non_module_public.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 old_style_init.f90 # owner=lazy-fortran/ffc#383; reason=enforce DATA object and initializer restrictions
 oldstyle_1.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA initialization
@@ -203,7 +197,6 @@ pr19936_2.f90 # owner=lazy-fortran/fortfront#2898; reason=reject malformed itera
 pr19936_3.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr39695_2.f90 # owner=lazy-fortran/ffc#379; reason=enforce function-result and ENTRY rules
 pr39695_3.f90 # owner=lazy-fortran/ffc#379; reason=enforce function-result and ENTRY rules
-pr40839.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr56520.f90 # owner=lazy-fortran/fortfront#2897; reason=reject unclassifiable execution expressions
 pr61669.f90 # owner=lazy-fortran/fortfront#2896; reason=reject constructs in forbidden program sections
 pr66465.f90 # owner=lazy-fortran/ffc#372; reason=lower ASSOCIATED for procedure components
@@ -221,16 +214,12 @@ pr77414.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-as
 pr77583.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 pr78719_2.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
 pr85798.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
-pr87922.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr88025.f90 # owner=lazy-fortran/ffc#384; reason=require valid character length expressions
 pr88048.f90 # owner=lazy-fortran/ffc#383; reason=enforce DATA object and initializer restrictions
-pr88269.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr88328.f90 # owner=lazy-fortran/ffc#386; reason=reject invalid array indexing and shape expressions
-pr88552.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr89943_3.f90 # owner=lazy-fortran/fortfront#2900; reason=enforce submodule declaration consistency
 pr89943_4.f90 # owner=lazy-fortran/fortfront#2900; reason=enforce submodule declaration consistency
 pr91564.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
-pr91650_1.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr91660_1.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr91715.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr91959.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
@@ -253,7 +242,6 @@ pr96099_2.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type 
 pr96102.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
 pr99368.f90 # owner=lazy-fortran/ffc#389; reason=enforce NAMELIST member constraints
 present_1.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
-print_2.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 print_fmt_2.f90 # owner=lazy-fortran/fortfront#2897; reason=reject unclassifiable execution expressions
 private_type_6.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
 proc_decl_7.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches

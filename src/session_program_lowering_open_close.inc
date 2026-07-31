@@ -141,6 +141,16 @@
                               error_msg)
         if (len_trim(error_msg) > 0) return
 
+        ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
+        ! STATUS='SCRATCH'; without either there is nothing to connect to.
+        if (len_trim(nuvar) > 0 .and. len_trim(fpath) == 0) then
+            if (trim(sstr) /= 'scratch') then
+                error_msg = 'NEWUNIT specifier must have FILE= or '// &
+                    'STATUS=''SCRATCH'' in OPEN statement'
+                return
+            end if
+        end if
+
         ! Unit 6 is preconnected to stdout: OPEN reconfigures that connection
         ! rather than opening a distinct file, so its sign mode also governs
         ! PRINT and WRITE(*,...), which share the same connection (#280).
