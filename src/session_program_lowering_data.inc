@@ -504,3 +504,312 @@
         if (len_trim(error_msg) > 0) return
         value = int(v64)
     end subroutine data_fold_const_int
+
+    ! DATA statement object and initializer restrictions (#383).
+    !
+    ! A data-stmt-object must be a variable that is definable at
+    ! initialization time: not a named constant, not a pointer, and not an
+    ! entity that already carries a declaration initializer. A data-stmt-value
+    ! must be a constant expression, so every name it references has to be a
+    ! named constant, and its type must agree with the object's type class.
+    ! Each of these is checked before lowering, where the typed declarations
+    ! are the earliest layer that carries the attributes.
+    subroutine check_data_statement_restrictions(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (data_statement_node)
+                call check_one_data_statement(arena, nd, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_data_statement_restrictions
+
+    subroutine check_one_data_statement(arena, node, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(data_statement_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bound, obj_class
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%object_indices)) return
+        bound = '|'
+        do i = 1, size(node%object_indices)
+            call collect_implied_do_names(arena, node%object_indices(i), bound)
+        end do
+        if (allocated(node%value_indices)) then
+            do i = 1, size(node%value_indices)
+                call collect_implied_do_names(arena, node%value_indices(i), bound)
+            end do
+        end if
+        obj_class = ''
+        do i = 1, size(node%object_indices)
+            call check_data_object_node(arena, node%object_indices(i), &
+                                        obj_class, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        if (.not. allocated(node%value_indices)) return
+        do i = 1, size(node%value_indices)
+            call check_data_value_node(arena, node%value_indices(i), obj_class, &
+                                       bound, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine check_one_data_statement
+
+    recursive subroutine collect_implied_do_names(arena, idx, bound)
+        !! Append every implied-do control variable name reachable from idx to
+        !! the '|'-delimited membership string. Those names are bound by the
+        !! DATA statement itself, so they are not required to be constants.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(inout) :: bound
+        integer :: j
+
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (io_implied_do_node)
+            if (allocated(nd%var_name)) then
+                bound = bound//trim(lowercase_text(nd%var_name))//'|'
+            end if
+            if (.not. allocated(nd%object_indices)) return
+            do j = 1, size(nd%object_indices)
+                call collect_implied_do_names(arena, nd%object_indices(j), bound)
+            end do
+        end select
+    end subroutine collect_implied_do_names
+
+    recursive subroutine check_data_object_node(arena, idx, obj_class, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(inout) :: obj_class
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: j, decl
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (io_implied_do_node)
+            if (.not. allocated(nd%object_indices)) return
+            do j = 1, size(nd%object_indices)
+                call check_data_object_node(arena, nd%object_indices(j), &
+                                            obj_class, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            return
+        end select
+        call data_base_name(arena, idx, name)
+        if (len_trim(name) == 0) return
+        decl = declaration_index_for_name(arena, name)
+        if (decl <= 0) return
+        obj_class = data_type_class_of_declaration(arena, decl)
+        call check_data_object_attributes(arena, decl, name, idx, error_msg)
+    end subroutine check_data_object_node
+
+    subroutine check_data_object_attributes(arena, decl, name, idx, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: decl, idx
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+
+        call set_empty(error_msg)
+        write (location, '(" at line ",I0,", column ",I0)') &
+            get_node_line(arena, idx), get_node_column(arena, idx)
+        select type (dn => arena%entries(decl)%node)
+        type is (declaration_node)
+            if (dn%is_parameter) then
+                error_msg = 'named constant '''//trim(name)//''' shall not '// &
+                    'appear in a DATA statement'//trim(location)
+            else if (dn%is_pointer) then
+                error_msg = 'data-stmt-object '''//trim(name)//''' has the '// &
+                    'POINTER attribute'//trim(location)
+            else if (dn%has_initializer) then
+                error_msg = 'symbol '''//trim(name)//''' already is '// &
+                    'initialized in its declaration'//trim(location)
+            end if
+        end select
+    end subroutine check_data_object_attributes
+
+    recursive subroutine check_data_value_node(arena, idx, obj_class, bound, &
+                                               error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=*), intent(in) :: obj_class, bound
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, val_class
+        character(len=64) :: location
+        integer :: j, decl
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, idx)) return
+        call check_data_value_children(arena, idx, obj_class, bound, error_msg)
+        if (len_trim(error_msg) > 0) return
+        val_class = data_value_type_class(arena, idx)
+        write (location, '(" at line ",I0,", column ",I0)') &
+            get_node_line(arena, idx), get_node_column(arena, idx)
+        if (len(obj_class) > 0 .and. len(val_class) > 0) then
+            if (obj_class /= val_class) then
+                error_msg = 'incompatible types in DATA statement: '// &
+                    obj_class//' object with '//val_class//' value'// &
+                    trim(location)
+                return
+            end if
+        end if
+        call data_base_name(arena, idx, name)
+        if (len_trim(name) == 0) return
+        if (index(bound, '|'//trim(lowercase_text(name))//'|') > 0) return
+        decl = declaration_index_for_name(arena, name)
+        if (decl <= 0) return
+        j = decl
+        select type (dn => arena%entries(j)%node)
+        type is (declaration_node)
+            if (.not. dn%is_parameter) then
+                error_msg = 'symbol '''//trim(name)//''' must be a '// &
+                    'PARAMETER in DATA statement'//trim(location)
+            end if
+        end select
+    end subroutine check_data_value_node
+
+    recursive subroutine check_data_value_children(arena, idx, obj_class, bound, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=*), intent(in) :: obj_class, bound
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op, err
+        integer :: j, li, ri, ln, cl
+
+        call set_empty(error_msg)
+        if (is_binary_op(arena, idx)) then
+            call get_binary_op_info(arena, idx, op, li, ri, ln, cl, err)
+            if (len_trim(err) > 0) return
+            call check_data_value_node(arena, li, '', bound, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call check_data_value_node(arena, ri, obj_class, bound, error_msg)
+            return
+        end if
+        select type (nd => arena%entries(idx)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(nd%arg_indices)) return
+            do j = 1, size(nd%arg_indices)
+                call check_data_value_node(arena, nd%arg_indices(j), '', bound, &
+                                           error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        type is (io_implied_do_node)
+            if (.not. allocated(nd%object_indices)) return
+            do j = 1, size(nd%object_indices)
+                call check_data_value_node(arena, nd%object_indices(j), &
+                                           obj_class, bound, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end select
+    end subroutine check_data_value_children
+
+    subroutine data_base_name(arena, idx, name)
+        !! The name a DATA object or value expression is rooted at: the
+        !! identifier itself, or the array name of an element reference.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: name
+
+        name = ''
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (identifier_node)
+            if (allocated(nd%name)) name = trim(nd%name)
+        type is (call_or_subscript_node)
+            if (allocated(nd%name)) name = trim(nd%name)
+        end select
+    end subroutine data_base_name
+
+    integer function declaration_index_for_name(arena, name) result(idx)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer :: n, k
+
+        idx = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (declaration_node)
+                if (allocated(nd%var_name)) then
+                    if (same_name(nd%var_name, name)) then
+                        idx = n
+                        return
+                    end if
+                end if
+                if (.not. allocated(nd%var_names)) cycle
+                do k = 1, size(nd%var_names)
+                    if (same_name(trim(nd%var_names(k)), name)) then
+                        idx = n
+                        return
+                    end if
+                end do
+            end select
+        end do
+    end function declaration_index_for_name
+
+    function data_type_class_of_declaration(arena, decl) result(cls)
+        !! 'character' or 'numeric' for a declaration, '' when unknown.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: decl
+        character(len=:), allocatable :: cls
+
+        cls = ''
+        if (.not. node_exists(arena, decl)) return
+        select type (dn => arena%entries(decl)%node)
+        type is (declaration_node)
+            if (.not. allocated(dn%type_name)) return
+            cls = data_type_class_of_name(dn%type_name)
+        end select
+    end function data_type_class_of_declaration
+
+    function data_type_class_of_name(type_name) result(cls)
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable :: cls, low
+
+        cls = ''
+        low = trim(lowercase_text(type_name))
+        if (len(low) >= 9) then
+            if (low(1:9) == 'character') then
+                cls = 'character'
+                return
+            end if
+        end if
+        select case (low)
+        case ('integer', 'real', 'logical', 'complex', 'double precision')
+            cls = 'numeric'
+        end select
+    end function data_type_class_of_name
+
+    function data_value_type_class(arena, idx) result(cls)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable :: cls, name
+        integer :: decl
+
+        cls = ''
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (literal_node)
+            if (nd%literal_kind == LITERAL_STRING) then
+                cls = 'character'
+            else
+                cls = 'numeric'
+            end if
+            return
+        end select
+        call data_base_name(arena, idx, name)
+        if (len_trim(name) == 0) return
+        decl = declaration_index_for_name(arena, name)
+        if (decl <= 0) return
+        cls = data_type_class_of_declaration(arena, decl)
+    end function data_value_type_class
