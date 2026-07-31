@@ -273,8 +273,13 @@ global (honouring `use, only:`). A fixed-size rank-1 module array of
 its extent a literal or compile-time named constant (`dimension(m)`) and any
 plain array-constructor initialiser folded into the static bytes; host
 association and `use` bind that global, so element access, whole-array ops, and
-`size` inquiries all reach the one storage, while allocatable/pointer/character/
-runtime-sized module arrays stay a clean diagnostic. A file whose
+`size` inquiries all reach the one storage. A rank-1/rank-2 module-scope
+`allocatable` array of the same element kinds is instead a zero-initialised
+40-byte descriptor global, so it starts unallocated and `allocate` (including a
+multi-object `allocate(a(n), b(m))`), `deallocate`, `size`, and element access
+in module procedures and using units all share that one descriptor;
+pointer/character/derived-element and rank > 2 module arrays stay a clean
+diagnostic. A file whose
 top-level units are one or more modules with no main program is a valid
 translation unit: it lowers to a no-op main, so it compiles to an object with
 `-c` (each module's procedures under their mangled symbols) and links to an
