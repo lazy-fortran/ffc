@@ -11,7 +11,6 @@ array_slice_stride.lf # owner=lazy-fortran/ffc#337; reason=represent array secti
 boolean_assign_bare_false.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 boolean_assign_bare_true.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 debug_mixed_constructs.lf # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-docs_character_arrays.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 docs_unsigned_integers.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 error_missing_then.lf # scope=harness; reason=FortFront Lazy parser rejection fixture
 implicit_do_print.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
