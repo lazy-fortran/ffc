@@ -80,6 +80,9 @@
                                             proc_name)
                     if (len_trim(proc_name) == 0) cycle
                     decl_line = pointer_declaration_line(arena, proc_name)
+                    if (decl_line <= 0) then
+                        decl_line = pointer_statement_line(arena, proc_name)
+                    end if
                     if (decl_line <= 0) cycle
                     write (location, '(" at line ",I0)') decl_line
                     error_msg = 'POINTER attribute conflicts with ABSTRACT '// &
@@ -535,8 +538,108 @@
             if (len_trim(error_msg) > 0) return
             call check_parenthesised_actual_line(arena, code, line_no, error_msg)
             if (len_trim(error_msg) > 0) return
+            call check_present_source_line(code, line_no, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine check_pointer_source_forms
+
+    ! Line of a POINTER attribute statement (POINTER :: a, b) naming name,
+    ! or 0. The attribute-statement form carries no type and does not reach
+    ! the typed AST as a declaration, so it is read from the source.
+    integer function pointer_statement_line(arena, name) result(line_no)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: source, line, code, low, list
+        integer :: pos, next_nl, current, rest, starts(32), ends(32), n_names, k
+
+        line_no = 0
+        call get_pointer_source_lines(arena, source)
+        if (len(source) == 0) return
+        pos = 1
+        current = 0
+        do while (pos <= len(source))
+            next_nl = index(source(pos:), new_line('a'))
+            if (next_nl == 0) then
+                line = source(pos:)
+                pos = len(source) + 1
+            else
+                line = source(pos:pos + next_nl - 2)
+                pos = pos + next_nl
+            end if
+            current = current + 1
+            call strip_line_comment(line, code)
+            low = trim(adjustl(lowercase_text(code)))
+            if (len(low) < 9) cycle
+            if (low(1:7) /= 'pointer') cycle
+            if (is_fortran_identifier_char(low(8:8))) cycle
+            rest = 8
+            do while (rest <= len(low))
+                if (low(rest:rest) /= ' ') exit
+                rest = rest + 1
+            end do
+            if (rest > len(low)) cycle
+            if (low(rest:rest) == '(') cycle
+            if (rest + 1 <= len(low)) then
+                if (low(rest:rest + 1) == '::') rest = rest + 2
+            end if
+            if (rest > len(low)) cycle
+            list = low(rest:)
+            call top_level_args(list, starts, ends, n_names)
+            do k = 1, n_names
+                if (.not. same_name(trim(adjustl(list(starts(k):ends(k)))), &
+                                    name)) cycle
+                line_no = current
+                return
+            end do
+        end do
+    end function pointer_statement_line
+
+    ! PRESENT applied to anything but a bare name, read from the source.
+    ! The typed AST does not expose the argument of PRESENT in every scope,
+    ! so the constraint is also enforced on the statement text.
+    subroutine check_present_source_line(code, line_no, error_msg)
+        character(len=*), intent(in) :: code
+        integer, intent(in) :: line_no
+        character(len=:), allocatable, intent(inout) :: error_msg
+        character(len=:), allocatable :: low, arg_text
+        integer :: open_pos, close_pos, cursor
+        character(len=64) :: location
+
+        low = lowercase_text(code)
+        cursor = 1
+        do
+            call find_call_paren(low, 'present', cursor, open_pos)
+            if (open_pos <= 0) return
+            cursor = open_pos + 1
+            call matching_paren(low, open_pos, close_pos)
+            if (close_pos <= open_pos) return
+            arg_text = trim(adjustl(low(open_pos + 1:close_pos - 1)))
+            if (is_plain_identifier(arg_text)) cycle
+            if (len_trim(arg_text) == 0) cycle
+            write (location, '(" at line ",I0)') line_no
+            error_msg = 'argument of PRESENT'//trim(location)// &
+                ' must be an optional dummy argument name and '// &
+                'must not be a subobject'
+            return
+        end do
+    end subroutine check_present_source_line
+
+    ! A name is a plain identifier: a letter followed by letters, digits
+    ! or underscores, with nothing else attached.
+    logical function is_plain_identifier(text) result(plain)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: trimmed
+        integer :: i
+
+        plain = .false.
+        trimmed = trim(adjustl(text))
+        if (len(trimmed) == 0) return
+        if (index('abcdefghijklmnopqrstuvwxyz', trimmed(1:1)) == 0) return
+        do i = 2, len(trimmed)
+            if (.not. is_fortran_identifier_char(trimmed(i:i))) return
+        end do
+        plain = .true.
+    end function is_plain_identifier
 
     subroutine get_pointer_source_lines(arena, source)
         type(ast_arena_t), intent(in) :: arena
