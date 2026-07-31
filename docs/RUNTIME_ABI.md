@@ -469,6 +469,69 @@ components = [
   `use, only:` names and rename targets are validated against the records; a
   local rename keeps the recorded remote name for storage and linkage.
 
+## Runtime archives
+
+`ffc` packages its runtime support code into LIRIC runtime archives, one per
+target/backend pair. The archives are data artifacts: nothing links against
+them, and this slice does not load them into an ffc session.
+
+The standalone CMake project in `runtime/` builds them. `runtime/ffc_runtime.c`
+is compiled to LLVM bitcode with `clang -emit-llvm -c`, and
+`liric_runtime_archive` packages that bitcode once per backend.
+
+### Artifact names
+
+Archives are written to a target-qualified directory,
+`<build>/artifacts/<target>/`, so archives for different targets never
+collide. Within it the names are:
+
+| Backend | Artifact |
+|---|---|
+| isel | `ffc-runtime-v2-isel.lrarch` |
+| copy-patch | `ffc-runtime-v2-copy-patch.lrarch` |
+| llvm | `ffc-runtime-v2-llvm.lrarch` (only when LLVM is available) |
+
+`v2` is the artifact naming version. It is bumped when the artifact layout or
+the packaged payload contract changes, and is independent of the LIRIC archive
+format version recorded inside each file.
+
+The LIRIC session backend `default` is an alias for copy-patch and has no
+artifact of its own: a consumer asking for `default` selects
+`ffc-runtime-v2-copy-patch.lrarch`.
+
+The `llvm` artifact is produced only when the configuration opts in with
+`-DFFC_RUNTIME_ENABLE_LLVM=ON` and the LIRIC build exposes the LLVM backend, so
+a LIRIC build without LLVM never silently omits a requested artifact.
+
+### Archive format
+
+Each file is a LIRIC runtime archive. Its header is the 8-byte magic
+`LRARCH1\0`, then little-endian `u32` format version, `u32` backend code,
+`u32` target-name length, `u64` IR text length, and `u64` blob-package length.
+The current format version is 2. The backend code is the LIRIC session backend
+enumerator: 1 for isel, 2 for copy-patch, 3 for LLVM. Because the backend is
+recorded in the file, two archives built for different backends are never
+byte-identical.
+
+### Payload
+
+The archive carries the runtime's LIRIC IR text plus a compiled blob package.
+This slice defines exactly one entry point:
+
+- `int _ffc_runtime_probe(void)` returns 42. It exists so a consumer can
+  confirm end to end that the archive it selected actually resolves.
+
+Runtime entry points for file units, formatted output, IOSTAT/IOMSG, and
+descriptor allocation are added by their own issues.
+
+### Dependencies
+
+`clang` and `liric_runtime_archive` are both required. Either one missing fails
+configuration with a named `ffc runtime dependency missing: <name>` diagnostic;
+neither is silently skipped. The archive tool is located through
+`-DLIRIC_BUILD_DIR=`, the `LIRIC_BUILD_DIR` environment variable, or a sibling
+LIRIC checkout.
+
 ## Unsupported ABI Work
 
 - #53: array descriptors, allocatables, and pointer representation.
