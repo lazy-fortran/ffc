@@ -1,0 +1,14 @@
+# Cases with no behavioral oracle for the fortfront-f90 suite.
+# Format: path # noref=CATEGORY; reason=text
+# Approved categories:
+#   undefined-runtime-value      printed values depend on undefined data;
+#                                both compilers must build and exit zero.
+#   missing-external-definition  a referenced definition lives outside the
+#                                suite; the reference must not build either.
+#   compile-only                 not a runnable program; ffc -c must succeed
+#                                and the reference must not link.
+issue_104_if_condition_identifiers.f90 # noref=undefined-runtime-value; reason=branches on undefined identifiers
+issue_2349_data_implied_do.f90 # noref=undefined-runtime-value; reason=prints partially initialized DATA storage
+undefined_var_segfault.f90 # noref=undefined-runtime-value; reason=reads an undefined variable
+external_tool_example.f90 # noref=missing-external-definition; reason=uses FortFront modules defined outside this suite
+library_usage_ast_node_position.f90 # noref=missing-external-definition; reason=uses FortFront modules defined outside this suite

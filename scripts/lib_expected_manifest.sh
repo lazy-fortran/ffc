@@ -103,6 +103,59 @@ validate_expected_manifest() {
     done < "$source"
 }
 
+validate_noref_category() {
+    local source="$1" line_number="$2" category="$3"
+    case "$category" in
+        undefined-runtime-value|missing-external-definition|compile-only) ;;
+        *) manifest_error "$source" "$line_number" \
+            "unapproved noref category: $category" ;;
+    esac
+}
+
+# validate_noref_manifest <source> <lookup_tsv>
+# Parse a NOREF manifest into "<path><TAB><category>" lines. Each entry needs an
+# approved category and a nonempty reason, so no case is marked NOREF without a
+# stated justification.
+validate_noref_manifest() {
+    local source="$1" lookup="$2" line line_number=0 path metadata
+    local category reason
+    declare -A seen_noref_paths=()
+    : > "$lookup"
+    [ -f "$source" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        line_number=$((line_number + 1))
+        line=$(trim_manifest_field "$line")
+        [ -z "$line" ] && continue
+        [[ "$line" == \#* ]] && continue
+        if [[ "$line" != *' # '* ]]; then
+            manifest_error "$source" "$line_number" "malformed delimiter"
+            return 1
+        fi
+        path=$(trim_manifest_field "${line%% # *}")
+        metadata=${line#* # }
+        validate_manifest_path "$source" "$line_number" "$path" || return 1
+        if [[ "$metadata" != noref=* || "$metadata" != *'; reason='* ]]; then
+            manifest_error "$source" "$line_number" \
+                "noref category and reason are required"
+            return 1
+        fi
+        category=$(trim_manifest_field "${metadata%%; reason=*}")
+        category=${category#noref=}
+        reason=$(trim_manifest_field "${metadata#*; reason=}")
+        validate_noref_category "$source" "$line_number" "$category" || return 1
+        if [ -z "$reason" ]; then
+            manifest_error "$source" "$line_number" "reason is required"
+            return 1
+        fi
+        if [[ -v "seen_noref_paths[$path]" ]]; then
+            manifest_error "$source" "$line_number" "duplicate path: $path"
+            return 1
+        fi
+        seen_noref_paths["$path"]=1
+        printf '%s\t%s\n' "$path" "$category" >> "$lookup"
+    done < "$source"
+}
+
 manifest_owner_references() {
     sed -n 's/^[^#]* # owner=\([^;]*\); reason=.*/\1/p' "$1"
 }

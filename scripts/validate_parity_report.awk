@@ -154,7 +154,8 @@ function require_digest(key,    digest) {
 function row_field_allowed(key) {
     return key == "suite" || key == "file" || key == "status" ||
         key == "ffc_exit" || key == "ref_exit" || key == "note" ||
-        key == "noref" || key == "warning_expectation"
+        key == "noref" || key == "noref_reason" ||
+        key == "warning_expectation"
 }
 
 function summary_field_allowed(key) {
@@ -223,8 +224,15 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         corpus_files_digest >> summaries
 }
 
+function noref_reason_allowed(reason) {
+    return reason == "reference-rejected" ||
+        reason == "undefined-runtime-value" ||
+        reason == "missing-external-definition" ||
+        reason == "compile-only"
+}
+
 function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
-        is_noref, warning) {
+        is_noref, noref_reason, warning) {
     for (key in field_value) {
         if (!row_field_allowed(key)) report_error("unknown result field: " key)
     }
@@ -256,9 +264,17 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
         if (status != "PASS" && status != "XPASS") {
             report_error("NOREF row has incompatible status: " status)
         }
-        if (!has_ffc || field_value["ref_exit"] == 0) {
+        if (!has_ffc) report_error("NOREF row has incompatible exit fields")
+        noref_reason = require_string("noref_reason")
+        if (!noref_reason_allowed(noref_reason)) {
+            report_error("unapproved noref reason: " noref_reason)
+        }
+        if (noref_reason == "reference-rejected" &&
+                field_value["ref_exit"] == 0) {
             report_error("NOREF row has incompatible exit fields")
         }
+    } else if ("noref_reason" in field_value) {
+        report_error("noref_reason without noref")
     }
     warning = 0
     if ("warning_expectation" in field_value) {
