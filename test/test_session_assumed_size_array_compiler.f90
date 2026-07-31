@@ -9,6 +9,7 @@ program test_session_assumed_size_array
     all_passed = .true.
     if (.not. test_rank1_bare_star()) all_passed = .false.
     if (.not. test_rank2_last_dim_star()) all_passed = .false.
+    if (.not. test_leading_dimension_dummy()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: assumed-size dummies lower through direct LIRIC'
@@ -66,5 +67,44 @@ contains
         test_rank2_last_dim_star = expect_output(source, expected, &
             '/tmp/ffc_session_assumed_size_r2')
     end function test_rank2_last_dim_star
+
+    logical function test_leading_dimension_dummy()
+        ! LAPACK-style external subroutine: the leading dimensions of a(lda, *)
+        ! and b(ldb, *) are dummy arguments whose actuals are named constants
+        ! spelled exactly like the dummies. Both leading dimensions must
+        ! resolve so the column stride addresses the caller's storage.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'integer, parameter :: lda = 4, ldb = 5, n = 3'//new_line('a')// &
+            'real :: a(lda, n), b(ldb, n)'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'do j = 1, n'//new_line('a')// &
+            'do i = 1, lda'//new_line('a')// &
+            'a(i, j) = real(i + (j - 1)*lda)'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'b = -1.0'//new_line('a')// &
+            'call copy_matrix(lda, n, a, lda, b, ldb)'//new_line('a')// &
+            'print *, b(1, 1), b(4, 3), b(5, 1)'//new_line('a')// &
+            'end program main'//new_line('a')// &
+            'subroutine copy_matrix(m, n, a, lda, b, ldb)'//new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'integer, intent(in) :: m, n, lda, ldb'//new_line('a')// &
+            'real, intent(in) :: a(lda, *)'//new_line('a')// &
+            'real, intent(inout) :: b(ldb, *)'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'do j = 1, n'//new_line('a')// &
+            'do i = 1, m'//new_line('a')// &
+            'b(i, j) = a(i, j)'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'end subroutine'
+        character(len=*), parameter :: expected = &
+            '   1.00000000       12.0000000      -1.00000000    '//new_line('a')
+
+        test_leading_dimension_dummy = expect_output(source, expected, &
+            '/tmp/ffc_session_assumed_size_lda')
+    end function test_leading_dimension_dummy
 
 end program test_session_assumed_size_array

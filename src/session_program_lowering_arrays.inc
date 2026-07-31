@@ -1446,15 +1446,46 @@
         ! The actual must not reference the dummy being resolved - directly
         ! (a) or inside a subexpression (a/b). current_proc_name never advances
         ! to the caller, so folding such an actual re-enters this routine on the
-        ! same name forever (sin_02 stack overflow). Bail as non-constant.
+        ! same name forever (sin_02 stack overflow). The one safe case is an
+        ! actual that is exactly the dummy's own spelling (LAPACK style:
+        ! `call copy(a, lda, ...)` against `A(LDA, *)`): resolve it in the
+        ! caller's scope only, which terminates because it never re-enters here.
         if (expr_refs_name(arena, actual_index, name)) then
-            error_msg = 'compile-time integer parameter was not declared: '// &
-                        trim(name)
+            call fold_caller_scope_i32_name(arena, context, actual_index, name, &
+                                            constant_value, error_msg)
             return
         end if
         call eval_i32_constant(arena, actual_index, context, constant_value, &
                                error_msg)
     end subroutine fold_i32_constant_from_call_site
+
+    subroutine fold_caller_scope_i32_name(arena, context, actual_index, name, &
+                                          constant_value, error_msg)
+        ! Fold an actual argument that is the bare identifier `name`, resolved
+        ! in the scope of the call site rather than the callee. The callee's
+        ! dummy of the same spelling is deliberately not consulted, so this
+        ! never recurses back into the call-site fold.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: actual_index
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: constant_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: actual_name, name_err
+        type(declaration_binding_t) :: binding
+
+        constant_value = 0_c_int64_t
+        error_msg = 'compile-time integer parameter was not declared: '//trim(name)
+        if (.not. is_identifier(arena, actual_index)) return
+        call get_identifier_name(arena, actual_index, actual_name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. same_name(actual_name, name)) return
+        call resolve_name_at_node(arena, actual_index, actual_name, binding, &
+                                  name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. binding%found) return
+        call fold_i32_binding(arena, context, binding, constant_value, error_msg)
+    end subroutine fold_caller_scope_i32_name
 
     ! Constant-fold selected_int_kind / selected_real_kind so they may appear
     ! in a compile-time integer parameter initializer (kind selection).
