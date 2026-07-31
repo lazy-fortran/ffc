@@ -13,7 +13,8 @@
 # Options:
 #   --suite SUITE       required
 #   --ffc PATH          path to ffc binary (auto-discovered if omitted)
-#   --report PATH       JSONL report path (default: /tmp/ffc_gauntlet_<suite>.jsonl)
+#   --report PATH       JSONL report path
+#                       (default: ${TMPDIR:-/tmp}/ffc_gauntlet_<suite>.jsonl)
 #   --file PATH         select one suite-relative file (repeatable)
 #   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
@@ -97,7 +98,7 @@ esac
 
 # Resolve report path
 if [ -z "$REPORT" ]; then
-    REPORT="/tmp/ffc_gauntlet_${SUITE}.jsonl"
+    REPORT="${TMPDIR:-/tmp}/ffc_gauntlet_${SUITE}.jsonl"
 fi
 
 # Ensure report directory exists
@@ -300,7 +301,7 @@ XFAIL_MANIFEST=$(resolve_xfail_manifest)
 SKIP_MANIFEST=$(resolve_skip_manifest)
 NOREF_MANIFEST=$(resolve_noref_manifest)
 EXT=$(file_extension)
-TMPDIR_WORK=$(mktemp -d /tmp/ffc_gauntlet_XXXXXX)
+TMPDIR_WORK=$(mktemp -d "${TMPDIR:-/tmp}/ffc_gauntlet_XXXXXX")
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
 SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"

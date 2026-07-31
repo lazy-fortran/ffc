@@ -1,17 +1,26 @@
 program test_parity_dashboard
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
 
-    character(len=*), parameter :: ROOT = '/tmp/ffc_parity_dashboard_test'
-    character(len=*), parameter :: REPORT_DIR = ROOT//'/reports'
-    character(len=*), parameter :: MANIFEST_DIR = ROOT//'/manifests'
-    character(len=*), parameter :: OUTPUT_ONE = ROOT//'/one.md'
-    character(len=*), parameter :: OUTPUT_TWO = ROOT//'/two.md'
-    character(len=*), parameter :: LOG_PATH = ROOT//'/failure.log'
+    ! Per-run scratch directory: concurrent runs must not share fixture paths.
+    character(len=:), allocatable :: ROOT
+    character(len=:), allocatable :: REPORT_DIR
+    character(len=:), allocatable :: MANIFEST_DIR
+    character(len=:), allocatable :: OUTPUT_ONE
+    character(len=:), allocatable :: OUTPUT_TWO
+    character(len=:), allocatable :: LOG_PATH
     character(len=64) :: fixture_source_digest
     character(len=64) :: fixture_binary_digest
     character(len=40) :: fixture_ffc_revision
     character(len=1024) :: fixture_binary_path
     logical :: passed
+
+    ROOT = make_temp_root('parity_dashboard')
+    REPORT_DIR = ROOT//'/reports'
+    MANIFEST_DIR = ROOT//'/manifests'
+    OUTPUT_ONE = ROOT//'/one.md'
+    OUTPUT_TWO = ROOT//'/two.md'
+    LOG_PATH = ROOT//'/failure.log'
 
     passed = .true.
     call write_valid_inputs()
@@ -26,13 +35,15 @@ program test_parity_dashboard
     if (.not. snapshot_negative_cases_fail()) passed = .false.
     if (.not. negative_cases_fail()) passed = .false.
 
+    ! Keep the scratch directory when something failed: it holds the logs.
     if (.not. passed) stop 1
+    call remove_temp_root(ROOT)
     print *, 'PASS: parity dashboard generation'
 
 contains
 
     subroutine write_valid_inputs()
-        call execute_command_line('rm -rf '//ROOT)
+        call execute_command_line('rm -rf '//REPORT_DIR//' '//MANIFEST_DIR)
         call execute_command_line('mkdir -p '//REPORT_DIR//' '//MANIFEST_DIR)
         call read_fixture_digests()
         call write_fortfront_f90_report(.false., fixture_ffc_revision)
@@ -366,8 +377,9 @@ contains
             ROOT//'/stale-ffc')
         call execute_command_line('touch -d 2000-01-01 '//ROOT//'/stale-ffc')
         call execute_command_line("bash -c 'source scripts/lib_conformance.sh; "// &
+            'parent=$(dirname "$(resolve_primary_checkout_root "$PWD")"); '// &
             'require_compiler_inputs_older_than_binary '//ROOT// &
-            "/stale-ffc . ../fortfront ../liric' > "// &
+            '/stale-ffc . "$parent/fortfront" "$parent/liric"'''//' > '// &
             LOG_PATH//' 2>&1', exitstat=exit_stat)
         ok = exit_stat /= 0 .and. &
             file_contains(LOG_PATH, 'compiler binary predates')

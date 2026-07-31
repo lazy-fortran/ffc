@@ -1,30 +1,38 @@
 program test_fortfront_corpus_conformance
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
 
     integer, parameter :: RUN_TIMEOUT_SECONDS = 180
     character(len=*), parameter :: SCRIPT = &
         'scripts/conformance_gauntlet.sh'
-    character(len=*), parameter :: F90_REPORT = &
-        '/tmp/ffc_fortfront_f90_corpus.jsonl'
-    character(len=*), parameter :: LF_REPORT = &
-        '/tmp/ffc_fortfront_lf_corpus.jsonl'
-    character(len=*), parameter :: F90_LOG = &
-        '/tmp/ffc_fortfront_f90_corpus.out'
-    character(len=*), parameter :: LF_LOG = &
-        '/tmp/ffc_fortfront_lf_corpus.out'
-    character(len=*), parameter :: SYNTHETIC_XPASS_REPORT = &
-        '/tmp/ffc_fortfront_synthetic_xpass.jsonl'
+    ! Per-run scratch directory: concurrent runs must not share report paths.
+    character(len=:), allocatable :: ROOT
+    character(len=:), allocatable :: F90_REPORT
+    character(len=:), allocatable :: LF_REPORT
+    character(len=:), allocatable :: F90_LOG
+    character(len=:), allocatable :: LF_LOG
+    character(len=:), allocatable :: SYNTHETIC_XPASS_REPORT
 
     integer :: failed
 
     print *, '=== fortfront corpus conformance test ==='
+
+    ROOT = make_temp_root('fortfront_corpus')
+    F90_REPORT = ROOT//'/fortfront_f90_corpus.jsonl'
+    LF_REPORT = ROOT//'/fortfront_lf_corpus.jsonl'
+    F90_LOG = ROOT//'/fortfront_f90_corpus.out'
+    LF_LOG = ROOT//'/fortfront_lf_corpus.out'
+    SYNTHETIC_XPASS_REPORT = ROOT//'/fortfront_synthetic_xpass.jsonl'
 
     failed = 0
     call verify_xpass_rejection(failed)
     call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 442, failed)
     call run_suite('fortfront-lf', LF_REPORT, LF_LOG, 264, failed)
 
+    ! Keep the scratch directory when something failed: it holds the logs.
     if (failed > 0) stop 1
+    call remove_temp_root(ROOT)
+
     print *, 'PASS: full fortfront corpus conforms to ffc xfail manifests'
 
 contains
@@ -43,7 +51,7 @@ contains
         call execute_command_line('rm -f '//report//' '//log_path)
         ! Generous per-file timeout so a single slow compile under full-suite
         ! load is not a false failure (idle compiles are well under a second).
-        cmd = 'timeout '//trim(timeout_text)//' bash '//SCRIPT// &
+        cmd = 'TMPDIR='//ROOT//' timeout '//trim(timeout_text)//' bash '//SCRIPT// &
             ' --suite '//suite//' --report '//report// &
             ' --timeout 30 > '//log_path//' 2>&1'
         call execute_command_line(cmd, exitstat=exit_stat)

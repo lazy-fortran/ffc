@@ -119,8 +119,8 @@ HAS_XPASS=0
 XPASS_FILES=""
 
 for SUITE in $SUITES; do
-    REPORT="/tmp/ffc_conformance_${SUITE}.jsonl"
-    LOG="/tmp/ffc_conformance_${SUITE}.out"
+    REPORT="${TMPDIR:-/tmp}/ffc_conformance_${SUITE}.jsonl"
+    LOG="${TMPDIR:-/tmp}/ffc_conformance_${SUITE}.out"
 
     echo "=== Running suite: $SUITE ==="
 
