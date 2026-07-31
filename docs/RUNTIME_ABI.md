@@ -50,6 +50,10 @@ is closed with ABI documentation and executable tests.
 
 ### Allocatable array descriptor
 
+The canonical array descriptor for new runtime interfaces is specified in
+`ARRAY_DESCRIPTOR_ABI.md`. Current lowering paths use the following
+representation until their descriptor migration issues land.
+
 An `integer/real/logical, allocatable :: a(:)` declaration lowers to a 40-byte,
 8-byte-aligned descriptor on the stack, zero-initialised at declaration. The
 descriptor is element-kind-agnostic; the element kind lives on the symbol and
