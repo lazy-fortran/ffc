@@ -555,6 +555,12 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, len_i64, &
                 i64_immediate(context%session, 1_c_int64_t), bytes_i64, &
                 error_msg)) return
+        ! An explicit allocate over an already-allocated deferred character is
+        ! an error in standard Fortran; releasing first keeps the descriptor
+        ! from silently leaking its former owned block if it happens anyway.
+        call release_owned_character_storage(context, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+
         if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
             return
 
@@ -562,6 +568,11 @@
                 context%symbols(symbol_index)%deferred_data, error_msg)) return
         if (.not. emit_i64_store(context%session, len_i64, &
                 context%symbols(symbol_index)%deferred_length, error_msg)) return
+        ! capacity is the requested length: the extra byte is the trailing NUL
+        ! the printers rely on, not usable character storage.
+        call set_character_storage(context, symbol_index, len_i64, &
+                                   LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
+        if (len_trim(error_msg) > 0) return
         context%symbols(symbol_index)%value = data_ptr
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
@@ -1370,15 +1381,25 @@
     end subroutine lower_one_deallocate_var
 
     subroutine lower_deallocate_deferred_char(symbol_index, context, error_msg)
-        ! deallocate(str) for a character(len=:), allocatable scalar. Mark the
-        ! descriptor unallocated by zeroing its data pointer and length. The data
-        ! slot may currently hold a static string pointer (after str = literal),
-        ! so it is not free()d here; the descriptor reset is what later reads see.
+        ! deallocate(str) for a character(len=:), allocatable scalar. Release
+        ! the storage first: the data slot may hold a static string pointer
+        ! (after str = literal) or a stack buffer, which the storage class
+        ! distinguishes from heap storage this descriptor owns, so only owned
+        ! storage is returned and it is returned exactly once. Then reset the
+        ! descriptor to the ABI null state, which is what later reads see.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
 
+        call release_owned_character_storage(context, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%has_character_ownership) then
+            if (.not. emit_i64_store(context%session, &
+                    i64_immediate(context%session, 0_c_int64_t), &
+                    context%symbols(symbol_index)%deferred_capacity, &
+                    error_msg)) return
+        end if
         if (.not. emit_i64_store(context%session, &
                 i64_immediate(context%session, 0_c_int64_t), &
                 context%symbols(symbol_index)%deferred_data, error_msg)) return

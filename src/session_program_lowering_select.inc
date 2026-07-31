@@ -325,6 +325,12 @@
                     results(1)%symbols(index)%deferred_data
                 context%symbols(index)%deferred_length = &
                     results(1)%symbols(index)%deferred_length
+                context%symbols(index)%has_character_ownership = &
+                    results(1)%symbols(index)%has_character_ownership
+                context%symbols(index)%deferred_capacity = &
+                    results(1)%symbols(index)%deferred_capacity
+                context%symbols(index)%deferred_storage = &
+                    results(1)%symbols(index)%deferred_storage
                 context%symbols(index)%character_length = &
                     results(1)%symbols(index)%character_length
                 context%symbols(index)%has_character_value = &

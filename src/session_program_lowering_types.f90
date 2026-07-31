@@ -290,6 +290,15 @@ module session_program_lowering_types
         logical :: is_runtime_fixed_character = .false.
         type(lr_operand_desc_t) :: deferred_data
         type(lr_operand_desc_t) :: deferred_length
+        ! Canonical character descriptor ownership slots, see
+        ! docs/CHARACTER_DESCRIPTOR_ABI.md: capacity at offset 16 and
+        ! storage_class at offset 24. Only a local deferred-length allocatable
+        ! scalar owns the full 32-byte record; a dummy descriptor keeps the
+        ! 16-byte {data, length} prefix, which the 32-byte record extends
+        ! compatibly, so passing it to a character(len=*) dummy is unchanged.
+        logical :: has_character_ownership = .false.
+        type(lr_operand_desc_t) :: deferred_capacity
+        type(lr_operand_desc_t) :: deferred_storage
         logical :: is_allocatable = .false.
         type(lr_operand_desc_t) :: allocatable_descriptor_address
         ! Compile-time element count of a rank-1 allocatable when the most

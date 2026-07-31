@@ -89,8 +89,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: null_byte_ptr
         type(lr_operand_desc_t) :: null_dest
         character(len=64) :: null_name
+        integer(c_int64_t) :: new_storage_class
 
         call set_empty(error_msg)
+        new_storage_class = LOWERING_CHARACTER_STORAGE_STACK
         left_is_literal = .false.
         right_is_literal = .false.
         is_self_alias = .false.
@@ -215,13 +217,21 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                           combined_text, new_ptr, error_msg)
             if (len_trim(error_msg) > 0) return
 
-            ! Store pointer and length in descriptor
+            ! Store pointer and length in descriptor. The folded literal is a
+            ! global, so this is a borrow; release any owned block first.
+            call release_owned_character_storage(context, dest_symbol_index, &
+                                                 error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_ptr_store(context%session,  &
                 new_ptr, &
                 context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
             if (.not. emit_i64_store(context%session,  &
                 i64_immediate(context%session, combined_len), &
                 context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+            call set_character_storage(context, dest_symbol_index, &
+                i64_immediate(context%session, combined_len), &
+                LOWERING_CHARACTER_STORAGE_STATIC, error_msg)
+            if (len_trim(error_msg) > 0) return
 
             context%symbols(dest_symbol_index)%value = new_ptr
             context%symbols(dest_symbol_index)%has_character_value = .true.
@@ -240,9 +250,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
             dest_symbol_index == context%current_function_result_index) then
             if (.not. emit_malloc(context%session, alloca_size, new_ptr, &
                 error_msg)) return
+            new_storage_class = LOWERING_CHARACTER_STORAGE_OWNED
         else
             if (.not. emit_alloca_bytes(context%session, alloca_size, new_ptr, &
                 error_msg)) return
+            new_storage_class = LOWERING_CHARACTER_STORAGE_STACK
         end if
 
         if (.not. emit_memcpy(context%session,  &
@@ -269,6 +281,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
             null_dest, null_byte_ptr, &
             i64_immediate(context%session, 1_c_int64_t), error_msg)) return
 
+        ! Both operands have been copied out by now, so releasing the former
+        ! owned block here is safe even when the destination is also an operand
+        ! (s = s // suffix).
+        call release_owned_character_storage(context, dest_symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session,  &
             new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
             error_msg)) return
@@ -276,6 +293,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (.not. emit_i64_store(context%session,  &
             total_len, context%symbols(dest_symbol_index)%deferred_length, &
             error_msg)) return
+        call set_character_storage(context, dest_symbol_index, total_len, &
+                                   new_storage_class, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         context%symbols(dest_symbol_index)%value = new_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.
@@ -418,10 +438,17 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
         if (len_trim(error_msg) > 0) return
 
+        ! The literal lives in a global, so the descriptor borrows it. Any heap
+        ! block the descriptor still owned is released before it is overwritten.
+        call release_owned_character_storage(context, dest_symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session, data_op, &
             context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
         if (.not. emit_i64_store(context%session, len_op, &
             context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+        call set_character_storage(context, dest_symbol_index, len_op, &
+                                   LOWERING_CHARACTER_STORAGE_STATIC, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         context%symbols(dest_symbol_index)%value = data_op
         context%symbols(dest_symbol_index)%has_character_value = .true.
@@ -597,6 +624,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end select
 
         func_name = call_emit_name(arena, call_node%name, context)
+
+        ! The callee writes its result through a fresh {data, length} return
+        ! descriptor, so the destination stops using its own descriptor here.
+        ! Release whatever heap block that descriptor still owned first, then
+        ! drop the ownership slots: the return descriptor carries none, and the
+        ! result's storage stays owned by the callee's convention (#348).
+        call release_owned_character_storage(context, dest_symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(dest_symbol_index)%has_character_ownership = .false.
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                data_addr, len_addr, error_msg)

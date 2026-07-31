@@ -668,16 +668,31 @@
             return
         end if
 
+        if (src_index == symbol_index) then
+            ! str = str keeps the descriptor exactly as it is. Releasing and
+            ! reinstalling the same pointer would be a use after free.
+            call set_empty(error_msg)
+            return
+        end if
+
         call char_length_operands(context, src_index, data_ptr, len_i32, &
                                   error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
                 error_msg)) return
 
+        ! The destination borrows the source's storage, so it takes storage
+        ! class stack: it must never free what the source still owns. Its own
+        ! former heap block is released before the rebind.
+        call release_owned_character_storage(context, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session, data_ptr, &
                 context%symbols(symbol_index)%deferred_data, error_msg)) return
         if (.not. emit_i64_store(context%session, len_i64, &
                 context%symbols(symbol_index)%deferred_length, error_msg)) return
+        call set_character_storage(context, symbol_index, len_i64, &
+                                   LOWERING_CHARACTER_STORAGE_STACK, error_msg)
+        if (len_trim(error_msg) > 0) return
         context%symbols(symbol_index)%value = data_ptr
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
@@ -794,6 +809,8 @@
         type(lr_operand_desc_t) :: descriptor
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: capacity_addr
+        type(lr_operand_desc_t) :: storage_addr
 
         if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate character declaration: '//trim(name)
@@ -807,30 +824,108 @@
         context%symbols(index)%is_deferred_character = .true.
         context%symbols(index)%has_character_value = .false.
 
-        ! One contiguous 16-byte descriptor {i8* data; i64 length}, so the
-        ! data slot is at offset 0 and the length at offset 8. This matches the
-        ! parameter ABI (bind_character_parameter_symbol), so the descriptor's
-        ! address can be passed for an intent(out)/(inout) dummy. Both fields
-        ! start zeroed for a well-defined unallocated state.
+        ! One contiguous 32-byte canonical character descriptor
+        ! {i8* data; i64 length; i64 capacity; i32 storage_class}, laid out as
+        ! docs/CHARACTER_DESCRIPTOR_ABI.md specifies. The {data, length} prefix
+        ! is unchanged, so the descriptor's address is still what a
+        ! character(len=*) dummy binds against (bind_character_parameter_symbol)
+        ! for an intent(out)/(inout) actual. Every field starts zeroed, which is
+        ! the ABI's null state: no data, zero length, zero capacity, storage
+        ! class CHARACTER_STORAGE_NULL.
         if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, 16_c_int64_t), descriptor, &
+                i64_immediate(context%session, 32_c_int64_t), descriptor, &
                 error_msg)) return
         if (.not. emit_ptr_offset(context%session, descriptor, 0_c_int64_t, &
                                   data_addr, error_msg)) return
         if (.not. emit_ptr_offset(context%session, descriptor, 8_c_int64_t, &
                                   len_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, 16_c_int64_t, &
+                                  capacity_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, 24_c_int64_t, &
+                                  storage_addr, error_msg)) return
         if (.not. emit_i64_store(context%session, &
                                  i64_immediate(context%session, 0_c_int64_t), &
                                  data_addr, error_msg)) return
         if (.not. emit_i64_store(context%session, &
                                  i64_immediate(context%session, 0_c_int64_t), &
                                  len_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                                 i64_immediate(context%session, 0_c_int64_t), &
+                                 capacity_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                                 i64_immediate(context%session, 0_c_int64_t), &
+                                 storage_addr, error_msg)) return
 
         context%symbols(index)%deferred_data = data_addr
         context%symbols(index)%deferred_length = len_addr
+        context%symbols(index)%deferred_capacity = capacity_addr
+        context%symbols(index)%deferred_storage = storage_addr
+        context%symbols(index)%has_character_ownership = .true.
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_deferred_character_symbol
+
+    subroutine set_character_storage(context, symbol_index, capacity, &
+                                     storage_class, error_msg)
+        ! Record the ownership half of the canonical character descriptor:
+        ! how many bytes are usable at data without reallocating, and which
+        ! storage class owns them (docs/CHARACTER_DESCRIPTOR_ABI.md). Symbols
+        ! whose descriptor is only the 16-byte {data, length} prefix (dummies,
+        ! runtime-fixed automatics) carry no ownership slots and are skipped.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: capacity
+        integer(c_int64_t), intent(in) :: storage_class
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%has_character_ownership) return
+
+        if (.not. emit_i64_store(context%session, capacity, &
+                context%symbols(symbol_index)%deferred_capacity, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, storage_class), &
+                context%symbols(symbol_index)%deferred_storage, error_msg)) return
+    end subroutine set_character_storage
+
+    subroutine release_owned_character_storage(context, symbol_index, error_msg)
+        ! Return the descriptor's heap block to the allocator when, and only
+        ! when, this descriptor owns it (storage class
+        ! CHARACTER_STORAGE_OWNED). Borrowed static and stack data is never
+        ! freed through the descriptor. The class is reset to
+        ! CHARACTER_STORAGE_NULL afterwards, so a second release, or a
+        ! deallocate of an already-released variable, frees nothing.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: storage_class, is_owned, data_ptr, victim
+
+        call set_empty(error_msg)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%has_character_ownership) return
+
+        if (.not. emit_i32_load(context%session, &
+                context%symbols(symbol_index)%deferred_storage, storage_class, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, storage_class, &
+                i32_immediate(context%session, LOWERING_CHARACTER_STORAGE_OWNED), &
+                is_owned, error_msg)) return
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(symbol_index)%deferred_data, data_ptr, &
+                error_msg)) return
+        ! free(NULL) is a no-op, so a borrowed descriptor selects the null
+        ! pointer and the call has no effect.
+        call select_value(context, is_owned, data_ptr, &
+                          null_ptr_operand(context), victim, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_free(context%session, victim, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), &
+                context%symbols(symbol_index)%deferred_storage, error_msg)) return
+    end subroutine release_owned_character_storage
 
     subroutine bind_character_parameter_symbol(context, symbol_index, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -1100,10 +1195,18 @@
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
                                         error_msg)) return
+        ! char_expr_operands has already materialised the trimmed buffer, so
+        ! the former owned block can be released before the rebind. The
+        ! trimmed buffer itself is stack storage the descriptor only borrows.
+        call release_owned_character_storage(context, dest_symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session, data_ptr, &
             context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
         if (.not. emit_i64_store(context%session, length64, &
             context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
+        call set_character_storage(context, dest_symbol_index, length64, &
+                                   LOWERING_CHARACTER_STORAGE_STACK, error_msg)
+        if (len_trim(error_msg) > 0) return
         context%symbols(dest_symbol_index)%value = data_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
