@@ -49,6 +49,13 @@ module session_program_lowering_types
     ! descriptor as param 0, the callee allocates into it, and the caller then
     ! moves that descriptor into the destination allocatable.
     integer, parameter, public :: VALUE_ALLOC_ARRAY_RESULT = 18
+    ! VALUE_DATA_PTR_RESULT is a scalar data POINTER function result (#407).
+    ! The function returns the target address itself, so no pointee storage is
+    ! copied: the LIRIC function returns ptr and the caller binds that address
+    ! into the left-hand pointer of a pointer assignment. A disassociated
+    ! result returns a null pointer, which the caller's ASSOCIATED tests at
+    ! run time.
+    integer, parameter, public :: VALUE_DATA_PTR_RESULT = 19
     ! Runtime type ids carried in a class(*) descriptor's type slot. Intrinsic
     ! ids are fixed and disjoint from derived-type ids (a derived type's id is
     ! its 1-based table index, always small).
@@ -293,6 +300,13 @@ module session_program_lowering_types
         logical :: is_pointer = .false.
         logical :: is_target = .false.
         logical :: is_associated = .false.
+        ! A pointer whose association state is only known at run time: its
+        ! address came from a data-pointer function result (#407). ASSOCIATED
+        ! compares that address against null instead of folding is_associated.
+        logical :: has_runtime_association = .false.
+        ! A dummy argument of the procedure being lowered. Its storage belongs
+        ! to the caller, so a data-pointer result may legitimately return it.
+        logical :: is_dummy_argument = .false.
         ! Procedure pointer (#245 B3d): `address` holds the ptr alloca slot;
         ! after assignment `value` holds the loaded callee ptr operand.
         logical :: is_proc_pointer = .false.

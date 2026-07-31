@@ -66,7 +66,8 @@ module liric_session_bindings
         begin_i64_function, &
         begin_void_subroutine, begin_ptr_function, &
         emit_ret_i32_main_exe, &
-        emit_ret_i32_operand, emit_ret_i64_operand, emit_ret_void, finish_function, &
+        emit_ret_i32_operand, emit_ret_i64_operand, emit_ret_ptr_operand, &
+        emit_ret_void, finish_function, &
         finish_and_emit_object, finish_and_emit_exe, &
         finish_and_emit_exe_objects, emit_object_no_active_function, &
         emit_i32_call, emit_i64_call, emit_ptr_call, emit_void_call, &
@@ -580,6 +581,25 @@ contains
         call set_empty(error_msg)
         emit_ret_i32_operand = .true.
     end function emit_ret_i32_operand
+
+    logical function emit_ret_ptr_operand(session, value, error_msg)
+        ! Return a pointer-typed operand (a data-pointer function result, #407).
+        ! The RET instruction takes its type from the operand itself.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_ret_ptr_operand = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        unused_vreg = emit_ret_i32(session%handle, value, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_ret_ptr_operand = .true.
+    end function emit_ret_ptr_operand
 
     logical function emit_ret_i64_operand(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session
