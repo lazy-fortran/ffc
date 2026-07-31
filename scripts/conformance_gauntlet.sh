@@ -197,9 +197,15 @@ dg_do_mode() {
     sed -n 's/.*dg-do[[:space:]]\+\([[:alnum:]_-]\+\).*/\1/p' "$1" | head -1
 }
 
+# A dg-error directive marked { xfail ... } records an error gfortran is not
+# expected to emit, so it does not make the file a negative test.
+dg_has_active_error() {
+    grep -E 'dg-error' "$1" | grep -qv 'xfail'
+}
+
 dg_test_kind() {
     local source="$1"
-    if grep -Eq 'dg-error' "$source"; then
+    if dg_has_active_error "$source"; then
         echo "negative"
         return
     fi
@@ -213,7 +219,7 @@ dg_test_kind() {
 
 dg_warning_only() {
     local source="$1"
-    grep -Eq 'dg-warning' "$source" && ! grep -Eq 'dg-error' "$source"
+    grep -Eq 'dg-warning' "$source" && ! dg_has_active_error "$source"
 }
 
 # Resolve ffc

@@ -546,6 +546,10 @@
         if (len_trim(error_msg) > 0) return
         call check_format_specifications(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_constant_initialization_exprs(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_constant_expression_overflow(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine validate_program
     subroutine lower_program_return(arena, root_index, context, value, error_msg)

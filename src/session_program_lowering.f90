@@ -11,7 +11,8 @@ module session_program_lowering
         block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
-        rewind_statement_node, io_implied_do_node, inquire_statement_node
+        rewind_statement_node, io_implied_do_node, inquire_statement_node, &
+        io_specifier_t
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
         module_procedure_node, &
         visibility_statement_node, data_statement_node, &
@@ -2586,4 +2587,6 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
     include 'session_program_lowering_reject_checks.inc'
+    include 'session_program_lowering_reject_const_init.inc'
+    include 'session_program_lowering_reject_const_overflow.inc'
 end module session_program_lowering

@@ -90,7 +90,6 @@ eor_handling_2.f90 # owner=lazy-fortran/ffc#434; reason=owns fixed-width A input
 equiv_constraint_bind_c.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 error_recovery_2.f90 # owner=lazy-fortran/fortfront#2898; reason=reject malformed iterators and delimiters
 error_recovery_3.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
-error_recovery_4.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 external_implicit_none_2.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
 external_initializer.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 f_c_string5.f90 # owner=lazy-fortran/ffc#453; reason=owns scalar conversion intrinsic dispatch; deferred character storage is dependency #349
@@ -129,9 +128,6 @@ impure_actual_1.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE ELE
 impure_assignment_1.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
 impure_assignment_2.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
 initialization_23.f90 # owner=lazy-fortran/ffc#388; reason=reject incompatible array constructor types
-initialization_25.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
-initialization_28.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
-initialization_7.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 inline_sum_2.f90 # owner=lazy-fortran/ffc#359; reason=capture dummy-bound extents on entry
 interface_20.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 interface_21.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
@@ -150,7 +146,6 @@ interface_derived_type_1.f90 # owner=lazy-fortran/fortfront#2892; reason=reject 
 interface_operator_1.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
 interface_operator_2.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
 interface_operator_3.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
-intrinsic_param_1.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 invalid_name.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
 invalid_procedure_name.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
 io_constraints_15.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
@@ -229,8 +224,6 @@ pr77391.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and p
 pr77414.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
 pr77583.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 pr78719_2.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
-pr81027.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
-pr84734.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 pr85798.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
 pr87922.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 pr88025.f90 # owner=lazy-fortran/ffc#384; reason=require valid character length expressions
@@ -245,7 +238,6 @@ pr91650_1.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list cons
 pr91660_1.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr91715.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
 pr91959.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
-pr91960_1.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 pr93423.f90 # owner=lazy-fortran/fortfront#2900; reason=enforce submodule declaration consistency
 pr93601.f90 # owner=lazy-fortran/ffc#393; reason=reject BOZ literals outside permitted contexts
 pr93603.f90 # owner=lazy-fortran/ffc#393; reason=reject BOZ literals outside permitted contexts
@@ -324,7 +316,6 @@ volatile14.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-inte
 whole_file_16.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 whole_file_24.f90 # owner=lazy-fortran/ffc#365; reason=owns allocatable derived components and function-result assignment
 whole_file_33.f90 # owner=lazy-fortran/ffc#334; reason=owns assumed-shape array dummy bounds and descriptor passing
-write_check4.f90 # owner=lazy-fortran/ffc#387; reason=require valid constant initialization expressions
 write_check5.f90 # owner=lazy-fortran/ffc#391; reason=reject malformed FORMAT descriptors
 write_invalid_format.f90 # owner=lazy-fortran/ffc#391; reason=reject malformed FORMAT descriptors
 zero_stride_1.f90 # owner=lazy-fortran/ffc#386; reason=reject invalid array indexing and shape expressions
