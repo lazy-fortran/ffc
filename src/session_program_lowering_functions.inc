@@ -1612,7 +1612,7 @@
         character(len=:), allocatable :: global_name
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t), target :: init_i32
-        integer(c_int8_t), target :: init_i8(16)
+        integer(c_int8_t), target :: init_i8(32)
         integer(c_int64_t), target :: init_i64
         real(c_float), target :: init_f32
         real(c_double), target :: init_f64
@@ -1641,10 +1641,13 @@
             init_ptr = c_loc(init_i64)
             init_size = 8_c_size_t
         case (VALUE_CHARACTER)
+            ! A host-associated character variable or result carries the
+            ! canonical 32-byte character descriptor, so its ownership half
+            ! travels with it (docs/CHARACTER_DESCRIPTOR_ABI.md).
             global_type = lr_type_array_s(context%session%handle, &
-                lr_type_i8_s(context%session%handle), 16_c_int64_t)
+                lr_type_i8_s(context%session%handle), 32_c_int64_t)
             init_ptr = c_loc(init_i8)
-            init_size = 16_c_size_t
+            init_size = 32_c_size_t
         case (VALUE_F32)
             global_type = lr_type_f32_s(context%session%handle)
             init_ptr = c_loc(init_f32)
@@ -1845,6 +1848,13 @@
             if (.not. emit_ptr_offset(context%session, &
                 context%symbols(i)%address, 8_c_int64_t, &
                 context%symbols(i)%deferred_length, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, &
+                context%symbols(i)%address, 16_c_int64_t, &
+                context%symbols(i)%deferred_capacity, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, &
+                context%symbols(i)%address, 24_c_int64_t, &
+                context%symbols(i)%deferred_storage, error_msg)) return
+            context%symbols(i)%has_character_ownership = .true.
         end do
         call set_empty(error_msg)
     end subroutine materialize_host_character_globals
@@ -1856,21 +1866,44 @@
         integer, intent(in) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: result_data_addr, result_length_addr
+        type(lr_operand_desc_t) :: result_capacity_addr, result_storage_addr
         type(lr_operand_desc_t) :: data_value, length_value
+        type(lr_operand_desc_t) :: capacity_value, storage_value
 
         call set_empty(error_msg)
         if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
             0_c_int64_t, result_data_addr, error_msg)) return
         if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
             8_c_int64_t, result_length_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
+            16_c_int64_t, result_capacity_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, ptr_param(context%session, 0), &
+            24_c_int64_t, result_storage_addr, error_msg)) return
         if (.not. emit_ptr_load(context%session, &
             context%symbols(symbol_index)%deferred_data, data_value, error_msg)) return
         if (.not. emit_i64_load(context%session, &
             context%symbols(symbol_index)%deferred_length, length_value, error_msg)) return
+        if (.not. emit_i64_load(context%session, &
+            context%symbols(symbol_index)%deferred_capacity, capacity_value, &
+            error_msg)) return
+        if (.not. emit_i64_load(context%session, &
+            context%symbols(symbol_index)%deferred_storage, storage_value, &
+            error_msg)) return
         if (.not. emit_ptr_store(context%session, data_value, result_data_addr, &
             error_msg)) return
         if (.not. emit_i64_store(context%session, length_value, result_length_addr, &
             error_msg)) return
+        if (.not. emit_i64_store(context%session, capacity_value, &
+            result_capacity_addr, error_msg)) return
+        ! Returning the descriptor transfers ownership to the caller: the class
+        ! travels with the data, and the callee's own descriptor drops back to
+        ! the null class so the block is never released twice. The result
+        ! global is reused by the next call, which reinitialises it anyway.
+        if (.not. emit_i64_store(context%session, storage_value, &
+            result_storage_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), &
+            context%symbols(symbol_index)%deferred_storage, error_msg)) return
         if (.not. emit_ret_void(context%session, error_msg)) return
         call set_empty(error_msg)
     end subroutine emit_host_character_result_return
@@ -2687,6 +2720,21 @@
                 ptr_param(context%session, 0), 8_c_int64_t, &
                 context%symbols(context%current_function_result_index)%deferred_length, &
                 error_msg)) return
+            ! The caller's return descriptor is the canonical 32-byte record,
+            ! so the result symbol also owns its capacity and storage_class
+            ! slots. Every assignment to the result then records which storage
+            ! class the returned data belongs to, which is what lets the caller
+            ! release an owned result and leave a borrowed one alone.
+            associate (rsym => &
+                context%symbols(context%current_function_result_index))
+                if (.not. emit_ptr_offset(context%session, &
+                    ptr_param(context%session, 0), 16_c_int64_t, &
+                    rsym%deferred_capacity, error_msg)) return
+                if (.not. emit_ptr_offset(context%session, &
+                    ptr_param(context%session, 0), 24_c_int64_t, &
+                    rsym%deferred_storage, error_msg)) return
+                rsym%has_character_ownership = .true.
+            end associate
             context%symbol_count = context%current_function_result_index
         else if (value_kind == VALUE_DERIVED) then
             call grow_symbols(context)

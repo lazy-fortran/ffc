@@ -643,10 +643,11 @@
     subroutine lower_deferred_identifier_assignment(arena, value_index, context, &
                                                     symbol_index, error_msg)
         ! str = other, where str is character(len=:), allocatable and other is a
-        ! character variable (fixed or deferred). Resolve other to its
-        ! {data pointer, i32 length} and store them into str's deferred
-        ! descriptor. The source content outlives the use here (a dummy or a
-        ! local), so aliasing the pointer matches gfortran's observable output.
+        ! character variable (fixed or deferred). Fortran intrinsic assignment
+        ! gives str a value, not a view: str takes its own copy of other's
+        ! bytes at other's current length. Aliasing the source pointer would
+        ! make str observe later changes to other, and would leave str
+        ! dangling once other's storage is released.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: value_index
@@ -655,7 +656,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: src_name
         integer :: src_index
-        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64
+        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64, buf
 
         call get_identifier_name(arena, value_index, src_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -681,22 +682,53 @@
         if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
                 error_msg)) return
 
-        ! The destination borrows the source's storage, so it takes storage
-        ! class stack: it must never free what the source still owns. Its own
-        ! former heap block is released before the rebind.
+        ! Copy into storage the destination owns, before releasing the block it
+        ! held: the source may be a different variable that shares that block,
+        ! and the copy has to be made while it is still valid.
+        call copy_character_bytes_to_owned(context, data_ptr, len_i64, buf, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
         call release_owned_character_storage(context, symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_store(context%session, data_ptr, &
+        if (.not. emit_ptr_store(context%session, buf, &
                 context%symbols(symbol_index)%deferred_data, error_msg)) return
         if (.not. emit_i64_store(context%session, len_i64, &
                 context%symbols(symbol_index)%deferred_length, error_msg)) return
         call set_character_storage(context, symbol_index, len_i64, &
-                                   LOWERING_CHARACTER_STORAGE_STACK, error_msg)
+                                   LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
         if (len_trim(error_msg) > 0) return
-        context%symbols(symbol_index)%value = data_ptr
+        context%symbols(symbol_index)%value = buf
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_identifier_assignment
+
+    subroutine copy_character_bytes_to_owned(context, src_data, len_i64, buf, &
+                                             error_msg)
+        ! Allocate len + 1 bytes the caller's descriptor will own, copy len
+        ! bytes of source text into them, and null-terminate so the print path
+        ! stops at the Fortran length. The copy is made before any release, so
+        ! it is safe even when the source aliases the storage being replaced.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: src_data
+        type(lr_operand_desc_t), intent(in) :: len_i64
+        type(lr_operand_desc_t), intent(out) :: buf
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: bytes, null_pos
+
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, len_i64, &
+                i64_immediate(context%session, 1_c_int64_t), bytes, &
+                error_msg)) return
+        if (.not. emit_malloc(context%session, bytes, buf, error_msg)) return
+        if (.not. emit_memcpy(context%session, buf, src_data, len_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, len_i64, &
+                null_pos, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+        call set_empty(error_msg)
+    end subroutine copy_character_bytes_to_owned
 
     recursive subroutine concat_character_literals(arena, node_index, &
                                                    accumulated, ok)
@@ -890,6 +922,22 @@
                 context%symbols(symbol_index)%deferred_storage, error_msg)) return
     end subroutine set_character_storage
 
+    pure function character_expression_storage_class(context) result(storage_class)
+        ! The character intrinsic helpers (trim, adjustl, adjustr, repeat, ...)
+        ! materialise their result on the heap inside an internal function, so
+        ! it can outlive the frame, and on the stack at program scope. The
+        ! descriptor that adopts such a buffer records the matching class.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t) :: storage_class
+
+        if (context%in_internal_function) then
+            storage_class = LOWERING_CHARACTER_STORAGE_OWNED
+        else
+            storage_class = LOWERING_CHARACTER_STORAGE_STACK
+        end if
+    end function character_expression_storage_class
+
     subroutine release_owned_character_storage(context, symbol_index, error_msg)
         ! Return the descriptor's heap block to the allocator when, and only
         ! when, this descriptor owns it (storage class
@@ -897,34 +945,17 @@
         ! freed through the descriptor. The class is reset to
         ! CHARACTER_STORAGE_NULL afterwards, so a second release, or a
         ! deallocate of an already-released variable, frees nothing.
-        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: storage_class, is_owned, data_ptr, victim
 
         call set_empty(error_msg)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%has_character_ownership) return
 
-        if (.not. emit_i32_load(context%session, &
-                context%symbols(symbol_index)%deferred_storage, storage_class, &
-                error_msg)) return
-        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, storage_class, &
-                i32_immediate(context%session, LOWERING_CHARACTER_STORAGE_OWNED), &
-                is_owned, error_msg)) return
-        if (.not. emit_ptr_load(context%session, &
-                context%symbols(symbol_index)%deferred_data, data_ptr, &
-                error_msg)) return
-        ! free(NULL) is a no-op, so a borrowed descriptor selects the null
-        ! pointer and the call has no effect.
-        call select_value(context, is_owned, data_ptr, &
-                          null_ptr_operand(context), victim, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_free(context%session, victim, error_msg)) return
-        if (.not. emit_i64_store(context%session, &
-                i64_immediate(context%session, 0_c_int64_t), &
-                context%symbols(symbol_index)%deferred_storage, error_msg)) return
+        call release_character_descriptor_storage(context, &
+            context%symbols(symbol_index)%deferred_data, &
+            context%symbols(symbol_index)%deferred_storage, error_msg)
     end subroutine release_owned_character_storage
 
     subroutine bind_character_parameter_symbol(context, symbol_index, error_msg)
@@ -1050,20 +1081,37 @@
         ! min(source length, target length) bytes into a blank-filled buffer
         ! of the target's declared width, matching gfortran's fixed-length
         ! assignment padding/truncation.
-        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: value_index
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: src_data, src_len, dest_len_i32, cmp
-        type(lr_operand_desc_t) :: copy_len, copy_len64, buf, offset, null_ptr
-        character(len=64) :: null_name
-        integer :: dest_len
+        type(lr_operand_desc_t) :: src_data, src_len
 
         call char_expr_operands(arena, value_index, context, src_data, src_len, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
+        call store_fixed_character_value(context, dest_symbol_index, src_data, &
+                                         src_len, error_msg)
+    end subroutine lower_fixed_char_expr_assignment
+
+    subroutine store_fixed_character_value(context, dest_symbol_index, src_data, &
+                                           src_len, error_msg)
+        ! Copy a character value into a fixed-length destination: blank-fill a
+        ! buffer of the declared width, copy min(source length, declared
+        ! width) bytes, and null-terminate at the fixed end. The destination
+        ! holds a copy, never an alias of the source buffer, so a source that
+        ! is a temporary can be released straight after this call.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        type(lr_operand_desc_t), intent(in) :: src_data
+        type(lr_operand_desc_t), intent(in) :: src_len
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: dest_len_i32, cmp
+        type(lr_operand_desc_t) :: copy_len, copy_len64, buf, offset, null_ptr
+        character(len=64) :: null_name
+        integer :: dest_len
 
         dest_len = context%symbols(dest_symbol_index)%character_length
         dest_len_i32 = i32_immediate(context%session, int(dest_len, c_int64_t))
@@ -1111,7 +1159,7 @@
         end if
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
-    end subroutine lower_fixed_char_expr_assignment
+    end subroutine store_fixed_character_value
 
     subroutine lower_runtime_fixed_char_assignment(arena, value_index, context, &
                                                     dest_symbol_index, error_msg)
@@ -1127,7 +1175,9 @@
         type(lr_operand_desc_t) :: source_data, source_len, target_len
         type(lr_operand_desc_t) :: target_len64, buffer_size, buffer, copy_len
         type(lr_operand_desc_t) :: copy_len64, source_fits, null_pos
+        integer(c_int64_t) :: buffer_storage_class
 
+        buffer_storage_class = LOWERING_CHARACTER_STORAGE_STACK
         call char_expr_operands(arena, value_index, context, source_data, &
                                 source_len, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1149,9 +1199,11 @@
         if (context%in_internal_function) then
             if (.not. emit_malloc(context%session, buffer_size, buffer, &
                     error_msg)) return
+            buffer_storage_class = LOWERING_CHARACTER_STORAGE_OWNED
         else
             if (.not. emit_alloca_bytes(context%session, buffer_size, buffer, &
                     error_msg)) return
+            buffer_storage_class = LOWERING_CHARACTER_STORAGE_STACK
         end if
         call fill_spaces(context, buffer, target_len, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1172,8 +1224,17 @@
                 i32_immediate(context%session, 0_c_int64_t), &
                 i32_immediate(context%session, 0_c_int64_t), error_msg)) return
 
+        ! The declared width is immutable here, so the freshly built buffer
+        ! replaces whatever the descriptor held. Release the former block when
+        ! this descriptor owned it, then record the new block's class so the
+        ! consumer of a returned result knows whether to free it.
+        call release_owned_character_storage(context, dest_symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session, buffer, &
                 context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        call set_character_storage(context, dest_symbol_index, target_len64, &
+                                   buffer_storage_class, error_msg)
+        if (len_trim(error_msg) > 0) return
         context%symbols(dest_symbol_index)%value = buffer
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
@@ -1195,9 +1256,11 @@
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
                                         error_msg)) return
-        ! char_expr_operands has already materialised the trimmed buffer, so
-        ! the former owned block can be released before the rebind. The
-        ! trimmed buffer itself is stack storage the descriptor only borrows.
+        ! char_expr_operands has already materialised the buffer, so the
+        ! former owned block can be released before the rebind. Inside an
+        ! internal function that buffer is heap storage, because it has to
+        ! outlive the frame that produced it; at program scope it is a stack
+        ! temporary the descriptor only borrows.
         call release_owned_character_storage(context, dest_symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_store(context%session, data_ptr, &
@@ -1205,7 +1268,8 @@
         if (.not. emit_i64_store(context%session, length64, &
             context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
         call set_character_storage(context, dest_symbol_index, length64, &
-                                   LOWERING_CHARACTER_STORAGE_STACK, error_msg)
+                                   character_expression_storage_class(context), &
+                                   error_msg)
         if (len_trim(error_msg) > 0) return
         context%symbols(dest_symbol_index)%value = data_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.

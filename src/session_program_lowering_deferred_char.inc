@@ -1,5 +1,6 @@
 integer function resolve_concat_operand(arena, node_index, context, &
-                                           out_name, operand_is_literal, error_msg) &
+                                           out_name, operand_is_literal, error_msg, &
+                                           operand_is_call) &
       result(symbol_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -7,18 +8,30 @@ integer function resolve_concat_operand(arena, node_index, context, &
         character(len=:), allocatable, intent(out) :: out_name
         logical, intent(out) :: operand_is_literal
         character(len=:), allocatable, intent(out) :: error_msg
+        ! A call to a contained character-returning function is neither a
+        ! literal nor a declared symbol: the caller materialises it through
+        ! the descriptor return ABI before the concatenation reads it.
+        logical, intent(out), optional :: operand_is_call
         character(len=:), allocatable :: name
         character(len=:), allocatable :: lit_value, lit_type
         integer :: idx
 
         symbol_index = 0
         operand_is_literal = .false.
+        if (present(operand_is_call)) operand_is_call = .false.
         out_name = ''
         call set_empty(error_msg)
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'concat operand index does not reference an AST node'
             return
+        end if
+
+        if (present(operand_is_call)) then
+            if (is_contained_char_result_call(arena, node_index, context)) then
+                operand_is_call = .true.
+                return
+            end if
         end if
 
         if (is_literal(arena, node_index)) then
@@ -81,6 +94,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
         logical :: is_self_alias
         logical :: left_is_literal
         logical :: right_is_literal
+        logical :: left_is_call
+        logical :: right_is_call
+        type(lr_operand_desc_t) :: left_call_data_addr, left_call_storage_addr
+        type(lr_operand_desc_t) :: right_call_data_addr, right_call_storage_addr
+        type(lr_operand_desc_t) :: call_len_i32
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
         character(len=:), allocatable :: combined_text
@@ -95,6 +113,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         new_storage_class = LOWERING_CHARACTER_STORAGE_STACK
         left_is_literal = .false.
         right_is_literal = .false.
+        left_is_call = .false.
+        right_is_call = .false.
         is_self_alias = .false.
 
         ! A fixed-length result (character(len=N) :: s) uses the descriptor
@@ -123,12 +143,12 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         ! Resolve left operand: get symbol index or mark as literal
         left_sym_idx = resolve_concat_operand(arena, left_idx, context, &
-            left_name, left_is_literal, error_msg)
+            left_name, left_is_literal, error_msg, left_is_call)
         if (len_trim(error_msg) > 0) return
 
         ! Resolve right operand
         right_sym_idx = resolve_concat_operand(arena, right_idx, context, &
-            right_name, right_is_literal, error_msg)
+            right_name, right_is_literal, error_msg, right_is_call)
         if (len_trim(error_msg) > 0) return
 
         ! Detect self-aliasing: dest is one of the operands
@@ -149,7 +169,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Get left operand text/content
-        if (left_is_literal) then
+        if (left_is_call) then
+            call char_result_call_operands(arena, left_idx, context, left_data, &
+                                           call_len_i32, error_msg, &
+                                           left_call_data_addr, &
+                                           left_call_storage_addr)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
+                    left_len, error_msg)) return
+        else if (left_is_literal) then
             call strip_literal_quotes(left_name, left_text)
             call materialize_concat_literal(context, left_text, left_data, &
                 left_len, error_msg)
@@ -171,7 +199,15 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Get right operand text/content
-        if (right_is_literal) then
+        if (right_is_call) then
+            call char_result_call_operands(arena, right_idx, context, right_data, &
+                                           call_len_i32, error_msg, &
+                                           right_call_data_addr, &
+                                           right_call_storage_addr)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
+                    right_len, error_msg)) return
+        else if (right_is_literal) then
             call strip_literal_quotes(right_name, right_text)
             call materialize_concat_literal(context, right_text, right_data, &
                 right_len, error_msg)
@@ -296,6 +332,19 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_character_storage(context, dest_symbol_index, total_len, &
                                    new_storage_class, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! An operand that was a function result is a temporary this statement
+        ! took ownership of; its bytes are now in the concatenated buffer.
+        if (left_is_call) then
+            call release_character_descriptor_storage(context, &
+                left_call_data_addr, left_call_storage_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (right_is_call) then
+            call release_character_descriptor_storage(context, &
+                right_call_data_addr, right_call_storage_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         context%symbols(dest_symbol_index)%value = new_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.
@@ -457,23 +506,83 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
     subroutine allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                   data_addr, len_addr, &
-                                                  error_msg)
+                                                  error_msg, capacity_addr, &
+                                                  storage_addr)
+        ! Stack-allocate a canonical 32-byte character descriptor
+        ! (docs/CHARACTER_DESCRIPTOR_ABI.md) and hand back the addresses of its
+        ! fields. Every field starts at the ABI null state, so a descriptor
+        ! that is filled in by a callee, or is only ever borrowed, still has a
+        ! well-defined storage class. The {data, length} prefix is unchanged,
+        ! so an actual-argument descriptor still matches what a
+        ! character(len=*) dummy binds against.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: descriptor_ptr
         type(lr_operand_desc_t), intent(out) :: data_addr
         type(lr_operand_desc_t), intent(out) :: len_addr
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), intent(out), optional :: capacity_addr
+        type(lr_operand_desc_t), intent(out), optional :: storage_addr
+        type(lr_operand_desc_t) :: capacity_slot, storage_slot
 
         if (.not. emit_alloca_bytes(context%session, &
-            i64_immediate(context%session, 16_c_int64_t), descriptor_ptr, &
+            i64_immediate(context%session, 32_c_int64_t), descriptor_ptr, &
             error_msg)) return
         if (.not. emit_ptr_offset(context%session, descriptor_ptr, 0_c_int64_t, &
             data_addr, error_msg)) return
         if (.not. emit_ptr_offset(context%session, descriptor_ptr, 8_c_int64_t, &
             len_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 16_c_int64_t, &
+            capacity_slot, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 24_c_int64_t, &
+            storage_slot, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), data_addr, &
+            error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), len_addr, &
+            error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), capacity_slot, &
+            error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, 0_c_int64_t), storage_slot, &
+            error_msg)) return
+        if (present(capacity_addr)) capacity_addr = capacity_slot
+        if (present(storage_addr)) storage_addr = storage_slot
         call set_empty(error_msg)
     end subroutine allocate_deferred_char_descriptor
+
+    subroutine release_character_descriptor_storage(context, data_addr, &
+                                                     storage_addr, error_msg)
+        ! Release the heap block a descriptor owns, given the addresses of its
+        ! data and storage_class fields. Borrowed static and stack data is left
+        ! alone. The class is reset so a repeated release frees nothing.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_addr
+        type(lr_operand_desc_t), intent(in) :: storage_addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: storage_class, is_owned, data_ptr, victim
+
+        call set_empty(error_msg)
+        if (.not. emit_i32_load(context%session, storage_addr, storage_class, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, storage_class, &
+                i32_immediate(context%session, LOWERING_CHARACTER_STORAGE_OWNED), &
+                is_owned, error_msg)) return
+        if (.not. emit_ptr_load(context%session, data_addr, data_ptr, &
+                error_msg)) return
+        ! free(NULL) is a no-op, so a borrowed descriptor selects the null
+        ! pointer and the call has no effect.
+        call select_value(context, is_owned, data_ptr, &
+                          null_ptr_operand(context), victim, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_free(context%session, victim, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), storage_addr, &
+                error_msg)) return
+    end subroutine release_character_descriptor_storage
 
     subroutine prepare_deferred_char_actual(arena, node_index, context, arg, &
                                             error_msg)
@@ -607,6 +716,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: descriptor_ptr
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: capacity_addr
+        type(lr_operand_desc_t) :: storage_addr
         integer :: i
         character(len=:), allocatable :: func_name
 
@@ -625,20 +736,24 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         func_name = call_emit_name(arena, call_node%name, context)
 
-        ! The callee writes its result through a fresh {data, length} return
-        ! descriptor, so the destination stops using its own descriptor here.
-        ! Release whatever heap block that descriptor still owned first, then
-        ! drop the ownership slots: the return descriptor carries none, and the
-        ! result's storage stays owned by the callee's convention (#348).
+        ! The callee writes its result through a fresh return descriptor, so
+        ! the destination stops using its own. Release whatever heap block that
+        ! descriptor still owned first, then rebind the destination onto the
+        ! return descriptor: returning the descriptor transfers ownership, so
+        ! the destination keeps its ownership slots and a later assignment or
+        ! deallocate releases the adopted block.
         call release_owned_character_storage(context, dest_symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
-        context%symbols(dest_symbol_index)%has_character_ownership = .false.
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
-                                               data_addr, len_addr, error_msg)
+                                               data_addr, len_addr, error_msg, &
+                                               capacity_addr, storage_addr)
         if (len_trim(error_msg) > 0) return
         context%symbols(dest_symbol_index)%deferred_data = data_addr
         context%symbols(dest_symbol_index)%deferred_length = len_addr
+        context%symbols(dest_symbol_index)%deferred_capacity = capacity_addr
+        context%symbols(dest_symbol_index)%deferred_storage = storage_addr
+        context%symbols(dest_symbol_index)%has_character_ownership = .true.
 
         if (allocated(call_node%arg_indices)) then
             call prepare_deferred_char_call_args(arena, call_node%arg_indices, &
@@ -668,29 +783,34 @@ integer function resolve_concat_operand(arena, node_index, context, &
     end subroutine lower_deferred_char_result_call
 
     ! A fixed-length scalar destination receiving a character-returning
-    ! contained function. The callee returns its result through a {data,len}
-    ! descriptor passed as the leading sret pointer; bind the destination value
-    ! to the returned data so later reads (print) see the produced text.
+    ! contained function. The callee returns its result through the canonical
+    ! character descriptor passed as the leading sret pointer. The destination
+    ! takes a blank-padded or truncated copy at its own declared width, never
+    ! an alias of the returned buffer, so the temporary can then be released.
     subroutine lower_fixed_char_result_call(arena, node, context, &
                                             dest_symbol_index, error_msg)
-        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_ptr, length
+        type(lr_operand_desc_t) :: data_addr, storage_addr
 
         call char_result_call_operands(arena, node%value_index, context, &
-                                       data_ptr, length, error_msg)
+                                       data_ptr, length, error_msg, &
+                                       data_addr, storage_addr)
         if (len_trim(error_msg) > 0) return
-        context%symbols(dest_symbol_index)%value = data_ptr
-        context%symbols(dest_symbol_index)%has_character_value = .true.
-        call set_empty(error_msg)
+        call store_fixed_character_value(context, dest_symbol_index, data_ptr, &
+                                         length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call release_character_descriptor_storage(context, data_addr, &
+                                                  storage_addr, error_msg)
     end subroutine lower_fixed_char_result_call
 
     subroutine char_result_call_operands(arena, node_index, context, data_ptr, &
-                                         length, error_msg)
+                                         length, error_msg, out_data_addr, &
+                                         out_storage_addr)
         ! Emit a call to a character-returning contained function through the
         ! deferred-character descriptor ABI (hidden first descriptor argument),
         ! then load the returned {data, len} as a scalar character expression.
@@ -705,9 +825,12 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: user_args(:)
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t), intent(out), optional :: out_data_addr
+        type(lr_operand_desc_t), intent(out), optional :: out_storage_addr
         type(lr_operand_desc_t) :: descriptor_ptr
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: storage_addr
         integer :: i
         character(len=:), allocatable :: func_name
 
@@ -726,7 +849,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         func_name = call_emit_name(arena, call_node%name, context)
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
-                                               data_addr, len_addr, error_msg)
+                                               data_addr, len_addr, error_msg, &
+                                               storage_addr=storage_addr)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(call_node%arg_indices)) then
@@ -754,6 +878,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                 error_msg)) return
         if (.not. emit_i32_load(context%session, len_addr, length, &
                                 error_msg)) return
+        ! A consumer that copies the value out can release the temporary; one
+        ! that keeps the pointer alive simply does not ask for the addresses.
+        if (present(out_data_addr)) out_data_addr = data_addr
+        if (present(out_storage_addr)) out_storage_addr = storage_addr
         call set_empty(error_msg)
     end subroutine char_result_call_operands
 
@@ -769,6 +897,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: descriptor_ptr
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
+        type(lr_operand_desc_t) :: storage_addr
         type(lr_operand_desc_t) :: data_value
         integer :: i
         character(len=:), allocatable :: func_name
@@ -778,7 +907,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         func_name = call_emit_name(arena, node%name, context)
 
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
-                                               data_addr, len_addr, error_msg)
+                                               data_addr, len_addr, error_msg, &
+                                               storage_addr=storage_addr)
         if (len_trim(error_msg) > 0) return
 
         if (allocated(node%arg_indices)) then
@@ -807,6 +937,12 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! The list-directed leading blank is emitted by the print loop.
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_value, error_msg)) return
+        ! The result has been consumed by the transfer statement, so the
+        ! caller releases the temporary it took ownership of. A borrowed
+        ! result (a static literal) is left alone.
+        call release_character_descriptor_storage(context, data_addr, &
+                                                  storage_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_print_deferred_char_call
 
