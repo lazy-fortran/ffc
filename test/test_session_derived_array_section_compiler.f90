@@ -1,5 +1,5 @@
 program test_session_derived_array_section_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_error_contains, expect_output
     implicit none
 
     logical :: all_passed
@@ -13,6 +13,7 @@ program test_session_derived_array_section_compiler
     if (.not. test_whole_derived_array_actual()) all_passed = .false.
     if (.not. test_rank1_derived_section_actual()) all_passed = .false.
     if (.not. test_rank2_derived_section_actual()) all_passed = .false.
+    if (.not. test_genuine_duplicate_rejected()) all_passed = .false.
 
     if (all_passed) then
         write(*,'(A)') ' PASS: rank-2 derived arrays and section actuals lower'
@@ -144,5 +145,23 @@ contains
             source, '         113         223           0'//new_line('a'), &
             '/tmp/ffc_session_derived_rank2_section_test')
     end function test_rank2_derived_section_actual
+
+    logical function test_genuine_duplicate_rejected()
+        ! Two genuine declarations of the same name in one scope are still two
+        ! declarations, so the duplicate stays rejected.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: a'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: g(2)'//new_line('a')// &
+            '  type(t) :: g(3)'//new_line('a')// &
+            '  g(1)%a = 1'//new_line('a')// &
+            '  print *, g(1)%a'//new_line('a')// &
+            'end program main'
+
+        test_genuine_duplicate_rejected = expect_error_contains( &
+            source, 'g', '/tmp/ffc_session_derived_dup_decl_test')
+    end function test_genuine_duplicate_rejected
 
 end program test_session_derived_array_section_compiler
