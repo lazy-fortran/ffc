@@ -750,7 +750,6 @@ f_c_string2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarati
 fgetc_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 fgetc_2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 filename_null.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-filepos1.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 finalize_13.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
 finalize_14.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 finalize_15.f90 # owner=lazy-fortran/ffc#403; reason=invoke scalar final procedures once
@@ -2107,7 +2106,6 @@ automatic_char_len_1.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime
 bind_c_usage_32.f90 # owner=lazy-fortran/ffc#384; reason=reject invalid interoperable character result length
 bound_simplification_1.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 dec_exp_3.f90 # owner=lazy-fortran/ffc#451; reason=lower scalar formatted input
-dec_io_3.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 dec_static_3.f90 # scope=vendor; reason=DEC AUTOMATIC and STATIC extensions
 erfc_scaled_1.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 fmt_error_6.f90 # owner=lazy-fortran/ffc#391; reason=reject malformed FORMAT descriptors
