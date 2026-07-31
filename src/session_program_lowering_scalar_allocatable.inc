@@ -208,6 +208,10 @@
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then
+            ! Deallocation ends the value's lifetime: finalize before the
+            ! storage is released (#403).
+            call emit_scalar_finalizer_call(context, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_free(context%session, &
                     context%symbols(symbol_index)%element_address, error_msg)) return
             context%symbols(symbol_index)%has_address = .false.

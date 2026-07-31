@@ -233,8 +233,12 @@ nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a
 constructor (`type(t), parameter :: p = t(2, 3)`) is supported at program and
-module scope. A type carrying a `final` binding is usable (finalisation is not
-modelled, so the finaliser never runs). A `select type` on a monomorphic
+module scope. A type carrying a single scalar `final` binding runs that
+finaliser exactly once when an owned scalar value of the type dies: when the
+procedure owning a local derived variable ends execution, and when an owned
+allocatable scalar is deallocated. Dummy arguments borrow their storage and are
+never finalised; array finalisation, inheritance override dispatch, and several
+`final` bindings on one type stay rejected. A `select type` on a monomorphic
 declared-type selector - a `class(t)` scalar dummy or local whose dynamic type
 is only ever its declared type `t` - resolves statically: the `type is (t)` or
 `class is (t)` arm naming the declared type (else `class default`) is chosen at
