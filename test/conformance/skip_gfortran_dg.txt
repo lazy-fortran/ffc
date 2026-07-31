@@ -1139,6 +1139,7 @@ intrinsic_actual_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortra
 intrinsic_optional_char_arg_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 intrinsic_pack_2.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 intrinsic_pack_3.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+intrinsic_param_1.f90 # scope=compiler-flags; reason=dg-additional-options requests -std=f95, under which a transformational intrinsic is not a constant expression
 intrinsic_shadow_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 intrinsic_size_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 intrinsic_spread_2.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
