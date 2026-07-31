@@ -260,7 +260,6 @@ present_1.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure po
 print_2.f90 # owner=lazy-fortran/ffc#385; reason=enforce I/O control-list constraints
 print_fmt_2.f90 # owner=lazy-fortran/fortfront#2897; reason=reject unclassifiable execution expressions
 private_type_6.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
-proc_decl_5.f90 # owner=lazy-fortran/ffc#364; reason=register PROCEDURE declarations in generics
 proc_decl_7.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 proc_ptr_38.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts
 proc_ptr_44.f90 # owner=lazy-fortran/ffc#381; reason=enforce data and procedure pointer target contracts

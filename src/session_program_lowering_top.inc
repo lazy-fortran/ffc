@@ -695,6 +695,8 @@
             if (node_type == 'declaration') then
                 if (module_declaration_is_parameter(arena, &
                                                     declaration_indices(i))) cycle
+                if (module_declaration_is_procedure(arena, &
+                                                    declaration_indices(i))) cycle
                 call module_variable_kind(arena, declaration_indices(i), &
                                           value_kind, status, context, error_msg)
                 if (status /= MODVAR_OK) return
@@ -714,6 +716,23 @@
             module_declaration_is_parameter = decl%is_parameter
         end select
     end function module_declaration_is_parameter
+
+    logical function module_declaration_is_procedure(arena, node_index)
+        ! A module-level PROCEDURE declaration statement (procedure(iface) :: p)
+        ! names an external procedure with an explicit interface. It has no
+        ! module-variable storage, so the module walk must not diagnose it as an
+        ! unsupported variable (#364).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        module_declaration_is_procedure = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (decl => arena%entries(node_index)%node)
+        type is (declaration_node)
+            if (decl%is_pointer) return
+            module_declaration_is_procedure = declaration_names_procedure(decl)
+        end select
+    end function module_declaration_is_procedure
     include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)

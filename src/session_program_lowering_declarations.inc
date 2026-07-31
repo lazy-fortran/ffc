@@ -60,6 +60,9 @@
         ! contributes a procedure name. Neither introduces scalar/array storage.
         if (declaration_is_bare_dimension(node)) return
         if (node%is_external) return
+        ! A PROCEDURE declaration (procedure(iface) :: p) names a procedure with
+        ! an explicit interface; it introduces no scalar/array storage (#364).
+        if (declaration_names_procedure(node) .and. .not. node%is_pointer) return
         ! Derived-type components are layout metadata, not procedure-local
         ! entities. Their parent is not a lexical scope for name resolution.
         parent_index = arena%entries(node_index)%parent_index

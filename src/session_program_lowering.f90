@@ -503,12 +503,16 @@ contains
         end if
         ! Procedure pointer: procedure(iface), pointer :: fp (#245 B3d).
         ! Detected by type_name starting with "procedure" and is_pointer.
-        if (node%is_pointer .and. allocated(node%type_name)) then
-            if (lowercase_text(trim(adjustl(node%type_name(1:min(9, &
-                len_trim(node%type_name)))))) == 'procedure') then
-                call lower_proc_pointer_declaration(node, context, error_msg)
-                return
-            end if
+        if (node%is_pointer .and. declaration_names_procedure(node_in)) then
+            call lower_proc_pointer_declaration(node, context, error_msg)
+            return
+        end if
+        ! A PROCEDURE declaration statement (procedure(iface) :: p) names an
+        ! external procedure with an explicit interface, not storage. Calls
+        ! resolve through the procedure table, so it defines no operand (#364).
+        if (declaration_names_procedure(node_in)) then
+            call set_empty(error_msg)
+            return
         end if
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
             call declaration_value_kind(node, value_kind, error_msg, context, &
@@ -744,6 +748,21 @@ contains
         is_bare = .false.
         is_bare = node%is_external
     end function declaration_is_bare_external
+
+    logical function declaration_names_procedure(node) result(is_procedure)
+        ! True for a PROCEDURE declaration statement, whose type-spec is the
+        ! referenced interface name (procedure(iface) :: p) rather than an
+        ! intrinsic or derived type.
+        type(declaration_node), intent(in) :: node
+        integer :: span
+
+        is_procedure = .false.
+        if (.not. allocated(node%type_name)) return
+        span = min(9, len_trim(node%type_name))
+        if (span < 9) return
+        is_procedure = lowercase_text(trim(adjustl(node%type_name(1:span)))) == &
+                       'procedure'
+    end function declaration_names_procedure
 
     subroutine apply_pending_dimension(context, node)
         ! Give a typed scalar declaration the array shape declared for the same
