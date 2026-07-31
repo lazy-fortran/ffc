@@ -10,6 +10,9 @@ program test_session_reshape_compiler
     if (.not. test_identifier_source_rank2()) all_passed = .false.
     if (.not. test_literal_source_rank2()) all_passed = .false.
     if (.not. test_real_literal_source_rank2()) all_passed = .false.
+    if (.not. test_zero_sized_expression_source()) all_passed = .false.
+    if (.not. test_zero_sized_assignment()) all_passed = .false.
+    if (.not. test_pad_from_zero_sized_source()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: reshape lowers through direct LIRIC session'
@@ -75,5 +78,55 @@ contains
             '   4.50000000    '//new_line('a'), &
             '/tmp/ffc_session_reshape_real_test')
     end function test_real_literal_source_rank2
+
+    ! reshape of a zero-sized array expression (shape(1) has zero elements)
+    ! into a zero-sized target: no source element is read and the result is
+    ! the standard zero-sized array.
+    logical function test_zero_sized_expression_source()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, parameter :: empty(0, 0) = reshape(shape(1), [0, 0])'// &
+            new_line('a')// &
+            '  print *, size(empty)'//new_line('a')// &
+            'end program main'
+        test_zero_sized_expression_source = expect_output( &
+            source, '           0'//new_line('a'), &
+            '/tmp/ffc_session_reshape_zero_expr_test')
+    end function test_zero_sized_expression_source
+
+    ! Whole-array assignment of a zero-sized reshape result stays a no-op.
+    logical function test_zero_sized_assignment()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: src(0)'//new_line('a')// &
+            '  integer :: m(0)'//new_line('a')// &
+            '  m = reshape(src, [0])'//new_line('a')// &
+            '  print *, size(m)'//new_line('a')// &
+            'end program main'
+        test_zero_sized_assignment = expect_output( &
+            source, '           0'//new_line('a'), &
+            '/tmp/ffc_session_reshape_zero_assign_test')
+    end function test_zero_sized_assignment
+
+
+    ! A zero-sized source with pad: every result element comes from pad,
+    ! cycling in column-major order.
+    logical function test_pad_from_zero_sized_source()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: m(2, 2)'//new_line('a')// &
+            '  m = reshape(shape(1), [2, 2], pad=[7, 8])'//new_line('a')// &
+            '  print *, m(1, 1)'//new_line('a')// &
+            '  print *, m(2, 1)'//new_line('a')// &
+            '  print *, m(1, 2)'//new_line('a')// &
+            '  print *, m(2, 2)'//new_line('a')// &
+            'end program main'
+        test_pad_from_zero_sized_source = expect_output( &
+            source, '           7'//new_line('a')// &
+            '           8'//new_line('a')// &
+            '           7'//new_line('a')// &
+            '           8'//new_line('a'), &
+            '/tmp/ffc_session_reshape_pad_test')
+    end function test_pad_from_zero_sized_source
 
 end program test_session_reshape_compiler
