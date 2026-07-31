@@ -14,7 +14,7 @@ program test_session_derived_constructor_compiler
     if (.not. test_omitted_default_component()) all_passed = .false.
     if (.not. test_whole_derived_copy()) all_passed = .false.
     if (.not. test_inherited_component_constructor()) all_passed = .false.
-    if (.not. test_nested_constructor_unsupported()) all_passed = .false.
+    if (.not. test_nested_constructor()) all_passed = .false.
     if (.not. test_interface_constructor_unsupported()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -142,9 +142,9 @@ contains
             source, 4, '/tmp/ffc_session_ctor_inherited')
     end function test_inherited_component_constructor
 
-    logical function test_nested_constructor_unsupported()
-        ! A nested derived argument is not part of the scalar constructor path;
-        ! it must report the unsupported diagnostic, never a wrong value.
+    logical function test_nested_constructor()
+        ! A nested plain derived argument is lowered through its inline slot
+        ! layout, not rejected as an unsupported constructor.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: inner'//new_line('a')// &
@@ -159,10 +159,9 @@ contains
             '  stop o%b'//new_line('a')// &
             'end program main'
 
-        test_nested_constructor_unsupported = expect_error_contains( &
-            source, 'unsupported derived type constructor', &
-            '/tmp/ffc_session_ctor_nested')
-    end function test_nested_constructor_unsupported
+        test_nested_constructor = expect_exit_status( &
+            source, 2, '/tmp/ffc_session_ctor_nested')
+    end function test_nested_constructor
 
     logical function test_interface_constructor_unsupported()
         ! When a generic interface overloads the type name, t(...) must not be
