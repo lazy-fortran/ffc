@@ -48,6 +48,27 @@
         call set_empty(error_msg)
     end subroutine emit_blank_pad_string
 
+    logical function is_compound_only_descriptor(format_body)
+        ! True when the format's single descriptor is one only the compound
+        ! walker implements (E editing, X positioning).
+        character(len=*), intent(in) :: format_body
+        integer :: pos
+        character :: kind_char
+
+        is_compound_only_descriptor = .false.
+        pos = 1
+        do while (pos <= len_trim(format_body))
+            if (format_body(pos:pos) < '0') exit
+            if (format_body(pos:pos) > '9') exit
+            pos = pos + 1
+        end do
+        if (pos > len_trim(format_body)) return
+        kind_char = format_body(pos:pos)
+        if (kind_char >= 'a' .and. kind_char <= 'z') &
+            kind_char = char(ichar(kind_char) - 32)
+        is_compound_only_descriptor = kind_char == 'E' .or. kind_char == 'X'
+    end function is_compound_only_descriptor
+
     subroutine lower_internal_write(arena, node, context, error_msg)
         ! write (buf, fmt) value: format value through a single edit descriptor
         ! into the fixed-length character variable buf, blank-padded to its
@@ -74,7 +95,10 @@
             return
         end if
         call normalize_format_body(node%format_spec, format_body)
-        if (index(format_body, ',') > 0) then
+        ! The compound walker owns every descriptor kind beyond the I/A pair the
+        ! single-descriptor path handles, so a lone E or X goes there too.
+        if (index(format_body, ',') > 0 .or. &
+            is_compound_only_descriptor(format_body)) then
             call lower_compound_internal_write(arena, node, context, &
                                                format_body, error_msg)
             return
