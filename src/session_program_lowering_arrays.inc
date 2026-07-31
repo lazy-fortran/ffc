@@ -3980,10 +3980,189 @@
         end select
     end subroutine lower_transpose_assignment
 
-    ! cshift(a, s) / eoshift(a, s) for a rank-1 array. circular selects the
-    ! circular variant (cshift); otherwise eoshift fills shifted-out positions
-    ! with the type zero. The shift count s must be a compile-time integer; only
-    ! default eoshift boundary (zero / .false.) is supported.
+    ! Split a cshift/eoshift argument list into its array, shift, boundary, and
+    ! dim actual node indices. Positional order is (array, shift, dim) for
+    ! cshift and (array, shift, boundary, dim) for eoshift; keyword actuals are
+    ! accepted in any order. Absent arguments come back as zero.
+    subroutine collect_shift_arguments(arena, rhs, circular, intrinsic_name, &
+                                       array_arg, shift_arg, boundary_arg, &
+                                       dim_arg, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        logical, intent(in) :: circular
+        character(len=*), intent(in) :: intrinsic_name
+        integer, intent(out) :: array_arg, shift_arg, boundary_arg, dim_arg
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: kw_name
+        integer :: i, kw_value, positional, max_args
+
+        array_arg = 0
+        shift_arg = 0
+        boundary_arg = 0
+        dim_arg = 0
+        if (circular) then
+            max_args = 3
+        else
+            max_args = 4
+        end if
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 2) then
+            error_msg = trim(intrinsic_name)//' requires an array and a shift'
+            return
+        end if
+        if (size(rhs%arg_indices) > max_args) then
+            error_msg = trim(intrinsic_name)//' takes an array, a shift, '// &
+                        'and optional boundary/dim arguments only'
+            return
+        end if
+        positional = 0
+        do i = 1, size(rhs%arg_indices)
+            call reshape_keyword_arg(arena, rhs%arg_indices(i), kw_name, kw_value)
+            if (len_trim(kw_name) == 0) then
+                positional = positional + 1
+                select case (positional)
+                case (1)
+                    array_arg = kw_value
+                case (2)
+                    shift_arg = kw_value
+                case (3)
+                    if (circular) then
+                        dim_arg = kw_value
+                    else
+                        boundary_arg = kw_value
+                    end if
+                case default
+                    dim_arg = kw_value
+                end select
+                cycle
+            end if
+            select case (kw_name)
+            case ('array')
+                array_arg = kw_value
+            case ('shift')
+                shift_arg = kw_value
+            case ('boundary')
+                if (circular) then
+                    error_msg = 'cshift has no boundary argument'
+                    return
+                end if
+                boundary_arg = kw_value
+            case ('dim')
+                dim_arg = kw_value
+            case default
+                error_msg = trim(intrinsic_name)// &
+                            ' does not accept the keyword argument '//kw_name
+                return
+            end select
+        end do
+        if (array_arg == 0 .or. shift_arg == 0) then
+            error_msg = trim(intrinsic_name)//' requires an array and a shift'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine collect_shift_arguments
+
+    ! Compile-time shift values, one per rank-reduced slice. A scalar shift
+    ! broadcasts; an array-constructor shift must conform to the slice count.
+    subroutine resolve_shift_values(arena, shift_arg, context, intrinsic_name, &
+                                    slice_count, shifts, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shift_arg
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: intrinsic_name
+        integer, intent(in) :: slice_count
+        integer(c_int64_t), allocatable, intent(out) :: shifts(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: scalar_shift
+        integer :: i
+
+        allocate (shifts(slice_count))
+        if (node_exists(arena, shift_arg)) then
+            select type (shift_node => arena%entries(shift_arg)%node)
+            type is (array_literal_node)
+                if (.not. allocated(shift_node%element_indices)) then
+                    error_msg = trim(intrinsic_name)//' shift constructor is empty'
+                    return
+                end if
+                if (size(shift_node%element_indices) /= slice_count) then
+                    error_msg = trim(intrinsic_name)//' shift is not conformable '// &
+                                'with the rank-reduced result shape'
+                    return
+                end if
+                do i = 1, slice_count
+                    call eval_i32_constant(arena, shift_node%element_indices(i), &
+                                           context, shifts(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                call set_empty(error_msg)
+                return
+            end select
+        end if
+        call eval_i32_constant(arena, shift_arg, context, scalar_shift, error_msg)
+        if (len_trim(error_msg) > 0) return
+        shifts = scalar_shift
+        call set_empty(error_msg)
+    end subroutine resolve_shift_values
+
+    ! The scalar fill value for eoshift. An absent boundary is the type zero;
+    ! an array boundary is rejected because only a scalar boundary conforms
+    ! with the shapes this lowering supports.
+    subroutine resolve_shift_boundary(arena, boundary_arg, symbol_index, &
+                                      context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: boundary_arg
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, id_err
+        integer :: sym
+
+        call set_empty(error_msg)
+        if (boundary_arg == 0) then
+            call zero_operand(context, context%symbols(symbol_index)%value_kind, &
+                              value)
+            return
+        end if
+        if (node_exists(arena, boundary_arg)) then
+            select type (bnd => arena%entries(boundary_arg)%node)
+            type is (array_literal_node)
+                error_msg = 'eoshift boundary must be a scalar conformable '// &
+                            'with the result'
+                return
+            end select
+        end if
+        if (is_identifier(arena, boundary_arg)) then
+            call get_identifier_name(arena, boundary_arg, name, id_err)
+            if (len_trim(id_err) == 0) then
+                sym = find_symbol_compat(context, name)
+                if (sym > 0) then
+                    if (context%symbols(sym)%is_array) then
+                        error_msg = 'eoshift boundary must be a scalar '// &
+                                    'conformable with the result'
+                        return
+                    end if
+                end if
+            end if
+        end if
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, boundary_arg, context, value, &
+                                      error_msg)
+        case (VALUE_F64)
+            call lower_f64_expression(arena, boundary_arg, context, value, &
+                                      error_msg)
+        case default
+            call lower_i32_expression(arena, boundary_arg, context, value, &
+                                      error_msg)
+        end select
+    end subroutine resolve_shift_boundary
+
+    ! cshift(array, shift [, dim]) / eoshift(array, shift [, boundary] [, dim])
+    ! for rank-1 and rank-2 arrays. circular selects the circular variant
+    ! (cshift), which normalizes the shift modulo the extent along dim;
+    ! eoshift instead fills the vacated positions from boundary (type zero when
+    ! boundary is absent). shift must be a compile-time integer scalar or, for
+    ! a rank-2 array, a conformable rank-1 constructor.
     subroutine lower_shift_assignment(arena, node, symbol_index, context, &
                                       circular, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -3992,11 +4171,12 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(in) :: circular
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: value
-        integer :: source_index
-        integer :: i, n
-        integer(c_int64_t) :: shift
-        integer(c_int64_t) :: src
+        type(lr_operand_desc_t) :: value, boundary_value
+        integer(c_int64_t), allocatable :: shifts(:)
+        integer :: source_index, rank, slice_count, extent
+        integer :: array_arg, shift_arg, boundary_arg, dim_arg
+        integer :: i, j, rows
+        integer(c_int64_t) :: dim_val, stride_along, stride_slice, src
         character(len=:), allocatable :: intrinsic_name
 
         if (circular) then
@@ -4006,56 +4186,74 @@
         end if
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
-            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 2) then
-                error_msg = trim(intrinsic_name)//' requires an array and a shift'
-                return
-            end if
-            if (size(rhs%arg_indices) > 2) then
-                error_msg = trim(intrinsic_name)// &
-                            ' supports only positional array and shift arguments'
-                return
-            end if
-            call resolve_i32_array_argument(arena, rhs, 1, context, &
-                                            intrinsic_name, 'source array', &
-                                            source_index, error_msg)
+            call collect_shift_arguments(arena, rhs, circular, intrinsic_name, &
+                                         array_arg, shift_arg, boundary_arg, &
+                                         dim_arg, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (context%symbols(source_index)%array_rank /= 1) then
-                error_msg = trim(intrinsic_name)//' supports only rank-1 arrays'
-                return
-            end if
-            if (context%symbols(symbol_index)%array_rank /= 1) then
-                error_msg = trim(intrinsic_name)// &
-                            ' result must be assigned to a rank-1 array'
-                return
-            end if
-            n = context%symbols(source_index)%array_size
-            if (context%symbols(symbol_index)%array_size /= n) then
-                error_msg = trim(intrinsic_name)// &
-                            ' result shape does not match the target array'
-                return
-            end if
-            call eval_i32_constant(arena, rhs%arg_indices(2), context, shift, &
-                                   error_msg)
+            call resolve_shift_source(arena, array_arg, context, intrinsic_name, &
+                                      source_index, error_msg)
             if (len_trim(error_msg) > 0) return
-            do i = 0, n - 1
-                src = int(i, c_int64_t) + shift
-                if (circular) then
-                    src = modulo(src, int(n, c_int64_t))
-                    call load_array_linear_element(context, source_index, src, &
-                                                   value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                else if (src >= 0_c_int64_t .and. src < int(n, c_int64_t)) then
-                    call load_array_linear_element(context, source_index, src, &
-                                                   value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                else
-                    call zero_operand(context, &
-                                      context%symbols(symbol_index)%value_kind, &
-                                      value)
-                end if
-                call store_array_linear_element(context, symbol_index, &
-                                                int(i, c_int64_t), value, error_msg)
+            call check_shift_shapes(context, source_index, symbol_index, &
+                                    intrinsic_name, rank, error_msg)
+            if (len_trim(error_msg) > 0) return
+            dim_val = 1_c_int64_t
+            if (dim_arg /= 0) then
+                call eval_i32_constant(arena, dim_arg, context, dim_val, error_msg)
                 if (len_trim(error_msg) > 0) return
+            end if
+            if (dim_val < 1_c_int64_t .or. dim_val > int(rank, c_int64_t)) then
+                error_msg = trim(intrinsic_name)// &
+                            ' dim must lie between 1 and the rank of the array'
+                return
+            end if
+            if (rank == 1) then
+                extent = context%symbols(source_index)%array_size
+                slice_count = 1
+                stride_along = 1_c_int64_t
+                stride_slice = 0_c_int64_t
+            else
+                rows = context%symbols(source_index)%array_dim_sizes(1)
+                if (dim_val == 1_c_int64_t) then
+                    extent = rows
+                    slice_count = context%symbols(source_index)%array_dim_sizes(2)
+                    stride_along = 1_c_int64_t
+                    stride_slice = int(rows, c_int64_t)
+                else
+                    extent = context%symbols(source_index)%array_dim_sizes(2)
+                    slice_count = rows
+                    stride_along = int(rows, c_int64_t)
+                    stride_slice = 1_c_int64_t
+                end if
+            end if
+            if (extent <= 0 .or. slice_count <= 0) then
+                error_msg = trim(intrinsic_name)//' requires a non-empty array'
+                return
+            end if
+            call resolve_shift_values(arena, shift_arg, context, intrinsic_name, &
+                                      slice_count, shifts, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call resolve_shift_boundary(arena, boundary_arg, symbol_index, &
+                                        context, boundary_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            do j = 0, slice_count - 1
+                do i = 0, extent - 1
+                    src = int(i, c_int64_t) + shifts(j + 1)
+                    if (circular) then
+                        src = modulo(src, int(extent, c_int64_t))
+                    end if
+                    if (src >= 0_c_int64_t .and. src < int(extent, c_int64_t)) then
+                        call load_array_linear_element(context, source_index, &
+                            src*stride_along + int(j, c_int64_t)*stride_slice, &
+                            value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    else
+                        value = boundary_value
+                    end if
+                    call store_array_linear_element(context, symbol_index, &
+                        int(i, c_int64_t)*stride_along + &
+                        int(j, c_int64_t)*stride_slice, value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
             end do
             call set_empty(error_msg)
         class default
@@ -4063,6 +4261,84 @@
             return
         end select
     end subroutine lower_shift_assignment
+
+    ! Resolve the shift source array actual (given by node index) to its symbol.
+    subroutine resolve_shift_source(arena, array_arg, context, intrinsic_name, &
+                                    source_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: array_arg
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: intrinsic_name
+        integer, intent(out) :: source_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name
+
+        source_index = 0
+        if (.not. is_identifier(arena, array_arg)) then
+            error_msg = trim(intrinsic_name)//' requires an identifier source array'
+            return
+        end if
+        call get_identifier_name(arena, array_arg, arg_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol_compat(context, arg_name)
+        if (source_index <= 0) then
+            error_msg = trim(intrinsic_name)//' source array was not declared: '// &
+                        trim(arg_name)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            error_msg = trim(intrinsic_name)//' requires an array source: '// &
+                        trim(arg_name)
+            return
+        end if
+        select case (context%symbols(source_index)%value_kind)
+        case (VALUE_I32, VALUE_F32, VALUE_F64)
+            call set_empty(error_msg)
+        case default
+            error_msg = trim(intrinsic_name)// &
+                        ' only supports integer and real arrays'
+        end select
+    end subroutine resolve_shift_source
+
+    ! Source and target must share rank (1 or 2) and every extent.
+    subroutine check_shift_shapes(context, source_index, symbol_index, &
+                                  intrinsic_name, rank, error_msg)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: source_index, symbol_index
+        character(len=*), intent(in) :: intrinsic_name
+        integer, intent(out) :: rank
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: d
+
+        rank = context%symbols(source_index)%array_rank
+        if (rank /= 1 .and. rank /= 2) then
+            error_msg = trim(intrinsic_name)// &
+                        ' supports only rank-1 and rank-2 arrays'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_rank /= rank) then
+            error_msg = trim(intrinsic_name)// &
+                        ' result rank does not match the target array'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_size /= &
+            context%symbols(source_index)%array_size) then
+            error_msg = trim(intrinsic_name)// &
+                        ' result shape does not match the target array'
+            return
+        end if
+        if (rank == 2) then
+            do d = 1, 2
+                if (context%symbols(symbol_index)%array_dim_sizes(d) /= &
+                    context%symbols(source_index)%array_dim_sizes(d)) then
+                    error_msg = trim(intrinsic_name)// &
+                                ' result shape does not match the target array'
+                    return
+                end if
+            end do
+        end if
+        call set_empty(error_msg)
+    end subroutine check_shift_shapes
 
     ! merge(tsource, fsource, mask) for rank-1 arrays: per element pick from
     ! tsource where mask is .true., else from fsource. All three arrays must
