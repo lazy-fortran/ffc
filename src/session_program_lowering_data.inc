@@ -127,6 +127,13 @@
             error_msg = 'data statement target was not declared: '//trim(name)
             return
         end if
+        if (context%symbols(sym)%is_static_data_initialized) then
+            ! The values already live in the saved local's static bytes; consume
+            ! them so later objects keep their place in the value list (#466).
+            call skip_static_data_values(arena, node, cursor, sym, context, &
+                                         error_msg)
+            return
+        end if
         if (context%symbols(sym)%is_array) then
             asz = context%symbols(sym)%array_size
             do k = 0, asz - 1
@@ -140,6 +147,27 @@
                                                   context, error_msg)
         end if
     end subroutine lower_data_object
+
+    subroutine skip_static_data_values(arena, node, cursor, sym, context, &
+                                       error_msg)
+        !! Advance the value cursor past the values belonging to a saved local
+        !! whose DATA initializer was folded into its static global.
+        type(ast_arena_t), intent(in) :: arena
+        type(data_statement_node), intent(in) :: node
+        type(data_value_cursor_t), intent(inout) :: cursor
+        integer, intent(in) :: sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k, count, vidx
+
+        call set_empty(error_msg)
+        count = 1
+        if (context%symbols(sym)%is_array) count = context%symbols(sym)%array_size
+        do k = 1, count
+            call next_data_value(arena, node, cursor, context, vidx, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine skip_static_data_values
 
     subroutine store_next_data_value_to_scalar(arena, node, cursor, sym, name, &
                                                context, error_msg)

@@ -539,13 +539,11 @@ contains
             return
         end if
         if (node%is_array) then
-            ! Saved arrays need per-element static storage the array path does
-            ! not provide; keep them xfail with a clean diagnostic (#1541).
-            if (node%is_save) then
-                call unsupported_feature_error('saved array declaration', &
-                    node%line, node%column, &
-                    'direct LIRIC session supports the save attribute on '// &
-                    'scalar integer, real, and logical locals only', error_msg)
+            ! A saved array lives in one static global emitted by the pre-pass,
+            ! so bind it there instead of allocating call-local storage (#466).
+            if (node%is_save .and. .not. node%is_allocatable) then
+                call lower_saved_array_declaration(context%arena, node, &
+                                                   node_index, context, error_msg)
                 return
             end if
             call declaration_value_kind(node, value_kind, error_msg, context, &
