@@ -47,7 +47,8 @@ module session_program_lowering
         declaration_binding_t, resolve_name_at_node, &
         resolve_identifier_binding, BINDING_DECLARATION, &
         BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
-        BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST
+        BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
+        BINDING_ASSOCIATE_NAME
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
@@ -391,9 +392,10 @@ contains
         integer, intent(in) :: node_index
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: resolve_error
-        integer :: symbol_index
+        integer :: symbol_index, binding_index
 
         if (len_trim(name) == 0) return
+        if (context%storage_scope_depth <= 0) return
         ! The declaration has just run, so the newest same-named slot is the
         ! one it produced. This is the last place text is used as a key.
         symbol_index = find_symbol(context, name)
@@ -404,8 +406,22 @@ contains
         if (.not. binding%found) return
         if (binding%declaration_node_index /= node_index) return
         if (binding%scope_node_index <= 0) return
-        symbol_index = find_symbol_for_binding(context, binding)
-        if (symbol_index <= 0) return
+        binding_index = find_symbol_for_binding(context, binding)
+        if (binding_index > 0) then
+            symbol_index = binding_index
+        else if (context%symbols(symbol_index)%has_binding) then
+            return
+        end if
+        call attach_symbol_binding(context, symbol_index, binding)
+    end subroutine register_declaration_binding
+
+    subroutine attach_symbol_binding(context, symbol_index, binding)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(declaration_binding_t), intent(in) :: binding
+
+        if (symbol_index <= 0 .or. symbol_index > context%symbol_count) return
+        if (.not. binding%found) return
         context%symbols(symbol_index)%has_binding = .true.
         context%symbols(symbol_index)%binding_declaration_index = &
             binding%declaration_node_index
@@ -416,7 +432,29 @@ contains
         call context%binding_table%insert_binding( &
             binding%declaration_node_index, binding%declaration_entity_index, &
             binding%scope_node_index, symbol_index)
-    end subroutine register_declaration_binding
+    end subroutine attach_symbol_binding
+
+    subroutine push_storage_scope(context, saved_symbol_count, saved_floor)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: saved_symbol_count
+        integer, intent(out) :: saved_floor
+
+        saved_symbol_count = context%symbol_count
+        saved_floor = context%block_scope_floor
+        context%block_scope_floor = saved_symbol_count
+        context%storage_scope_depth = context%storage_scope_depth + 1
+    end subroutine push_storage_scope
+
+    subroutine pop_storage_scope(context, saved_symbol_count, saved_floor)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: saved_symbol_count
+        integer, intent(in) :: saved_floor
+
+        call context%binding_table%drop_bindings_from(saved_symbol_count + 1)
+        context%symbol_count = saved_symbol_count
+        context%block_scope_floor = saved_floor
+        context%storage_scope_depth = max(0, context%storage_scope_depth - 1)
+    end subroutine pop_storage_scope
 
     subroutine lower_declaration_entities(node_in, node_index, context, error_msg)
         type(declaration_node), intent(in) :: node_in

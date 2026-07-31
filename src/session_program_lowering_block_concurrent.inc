@@ -12,8 +12,8 @@
         integer :: saved_floor
 
         call set_empty(error_msg)
-        saved_symbol_count = context%symbol_count
-        saved_floor = context%block_scope_floor
+        terminated = .false.
+        call push_storage_scope(context, saved_symbol_count, saved_floor)
         ! Everything declared so far is an enclosing scope for this block. A
         ! BLOCK-local declaration that reuses an outer name then lands in a fresh
         ! slot above the floor, so its writes never touch the outer storage,
@@ -22,13 +22,12 @@
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (terminated) context%current_block_terminated = terminated
         end if
-        ! Discard BLOCK-local symbols so they are not visible outside; a shadowed
-        ! outer name reverts to its (untouched) outer slot automatically.
-        context%symbol_count = saved_symbol_count
-        context%block_scope_floor = saved_floor
+        ! Discard BLOCK-local symbols and their binding identities so neither a
+        ! shadowed name nor a later declaration can reuse stale construct state.
+        call pop_storage_scope(context, saved_symbol_count, saved_floor)
+        if (len_trim(error_msg) > 0) return
+        if (terminated) context%current_block_terminated = terminated
     end subroutine lower_block_construct
 
     subroutine lower_do_concurrent(arena, node, context, value, error_msg)

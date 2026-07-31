@@ -900,7 +900,7 @@
         type is (select_rank_node)
             call lower_select_rank(arena, node, context, error_msg)
         type is (associate_node)
-            call lower_associate(arena, node, context, error_msg)
+            call lower_associate(arena, node, node_index, context, error_msg)
         type is (block_construct_node)
             call lower_block_construct(arena, node, context, error_msg)
         type is (where_node)

@@ -457,6 +457,10 @@ module session_program_lowering_types
         ! declaration inside a BLOCK whose name matches such a symbol creates a
         ! fresh shadowing slot instead of reusing the outer storage (#280).
         integer :: block_scope_floor = 0
+        ! Number of explicit BLOCK/ASSOCIATE storage scopes currently active.
+        ! Ordinary declaration registration stays out of this issue's scope;
+        ! construct-local declarations are the identities that must be popped.
+        integer :: storage_scope_depth = 0
         ! Arena index of the declaration whose specification expressions
         ! are being lowered (#329), or 0 outside a declaration. A
         ! specification expression - an array bound, a character length,

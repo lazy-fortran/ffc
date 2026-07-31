@@ -1,48 +1,64 @@
-    subroutine lower_associate(arena, node, context, error_msg)
+    subroutine lower_associate(arena, node, node_index, context, error_msg)
         ! Lower an ASSOCIATE construct over scalar selectors. Each associate
         ! name is bound, for the construct scope only, to the value of its
         ! selector expression. The body is then lowered, and the associate-name
         ! bindings are removed at the end of the construct.
         type(ast_arena_t), intent(in) :: arena
         type(associate_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, saved_symbol_count
+        integer :: i, saved_symbol_count, saved_floor
         logical :: terminated
         type(lr_operand_desc_t) :: value
 
         call set_empty(error_msg)
+        terminated = .false.
         if (.not. allocated(node%associations)) then
             call set_empty(error_msg)
             return
         end if
-        saved_symbol_count = context%symbol_count
+        call push_storage_scope(context, saved_symbol_count, saved_floor)
         do i = 1, size(node%associations)
-            call bind_associate_name(arena, node%associations(i), context, &
-                                     error_msg)
-            if (len_trim(error_msg) > 0) return
+            call bind_associate_name(arena, node%associations(i), i, node_index, &
+                                     context, error_msg)
+            if (len_trim(error_msg) > 0) exit
         end do
-        if (allocated(node%body_indices)) then
+        if (len_trim(error_msg) == 0 .and. allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
         end if
-        ! Associate names are scoped to the construct: drop their bindings.
-        context%symbol_count = saved_symbol_count
+        ! Associate names are scoped to the construct: drop their storage and
+        ! binding identities even when body lowering reports an error.
+        call pop_storage_scope(context, saved_symbol_count, saved_floor)
+        if (len_trim(error_msg) > 0) return
+        if (terminated) context%current_block_terminated = terminated
     end subroutine lower_associate
 
-    subroutine bind_associate_name(arena, assoc, context, error_msg)
+    subroutine bind_associate_name(arena, assoc, association_index, scope_index, &
+                                   context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(association_t), intent(in) :: assoc
+        integer, intent(in) :: association_index
+        integer, intent(in) :: scope_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: value_kind, idx, src_idx
         character(len=:), allocatable :: sel_name, name_err
         type(lr_operand_desc_t) :: value
+        type(declaration_binding_t) :: binding
 
         call set_empty(error_msg)
         if (.not. allocated(assoc%name)) then
             error_msg = 'associate name is missing'
+            return
+        end if
+        call resolve_name_at_node(arena, scope_index, assoc%name, binding, name_err)
+        if (len_trim(name_err) > 0 .or. .not. binding%found .or. &
+            binding%binding_kind /= BINDING_ASSOCIATE_NAME .or. &
+            binding%declaration_node_index /= scope_index .or. &
+            binding%declaration_entity_index /= association_index) then
+            error_msg = 'associate name has no FortFront binding: '//trim(assoc%name)
             return
         end if
         if (.not. node_exists(arena, assoc%expr_index)) then
@@ -56,11 +72,12 @@
         ! through reads under the associate name (Fortran 2018 11.1.3.3).
         if (is_identifier(arena, assoc%expr_index)) then
             call get_identifier_name(arena, assoc%expr_index, sel_name, name_err)
-            src_idx = find_symbol(context, sel_name)
+            src_idx = resolve_symbol_at_node(context, assoc%expr_index, sel_name)
             if (src_idx > 0) then
-                idx = associate_symbol_slot(context, assoc%name)
+                idx = associate_symbol_slot(context, binding)
                 context%symbols(idx) = context%symbols(src_idx)
                 context%symbols(idx)%name = trim(assoc%name)
+                call attach_symbol_binding(context, idx, binding)
                 return
             end if
         end if
@@ -71,15 +88,15 @@
         if (node_exists(arena, assoc%expr_index)) then
             select type (sel => arena%entries(assoc%expr_index)%node)
             type is (array_slice_node)
-                call bind_associate_array_section(arena, sel, assoc%name, &
+                call bind_associate_array_section(arena, sel, assoc%name, binding, &
                                                   context, error_msg)
                 return
             type is (component_access_node)
                 ! A derived-type component selector (associate(s => a%comp))
                 ! aliases the component's storage address, so reads and writes
                 ! through the associate name flow to the component.
-                call bind_associate_component(arena, sel, assoc%name, context, &
-                                              error_msg)
+                call bind_associate_component(arena, sel, assoc%name, binding, &
+                                              context, error_msg)
                 return
             end select
         end if
@@ -112,7 +129,7 @@
         end select
         if (len_trim(error_msg) > 0) return
 
-        idx = associate_symbol_slot(context, assoc%name)
+        idx = associate_symbol_slot(context, binding)
         context%symbols(idx)%name = trim(assoc%name)
         context%symbols(idx)%value_kind = value_kind
         context%symbols(idx)%value = value
@@ -123,6 +140,7 @@
         context%symbols(idx)%is_deferred_character = .false.
         context%symbols(idx)%is_array = .false.
         context%symbols(idx)%is_allocatable = .false.
+        call attach_symbol_binding(context, idx, binding)
     end subroutine bind_associate_name
 
     recursive logical function associate_selector_is_array(arena, node_index, &
@@ -150,18 +168,19 @@
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            sym = find_symbol(context, id_name)
+            sym = resolve_symbol_at_node(context, node_index, id_name)
             if (sym > 0) is_arr = context%symbols(sym)%is_array
         end if
     end function associate_selector_is_array
 
-    integer function associate_symbol_slot(context, name) result(idx)
-        ! Find an existing symbol slot for an associate name, or append a fresh
-        ! one. Reuse keeps a same-named outer symbol shadowed for the construct.
+    integer function associate_symbol_slot(context, binding) result(idx)
+        ! Find an existing symbol slot for an associate binding, or append a
+        ! fresh one. The binding identity is what permits a same-named outer
+        ! symbol to remain untouched.
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: name
+        type(declaration_binding_t), intent(in) :: binding
 
-        idx = find_symbol(context, name)
+        idx = find_symbol_for_binding(context, binding)
         if (idx <= 0) then
             call grow_symbols(context)
             idx = context%symbol_count + 1
@@ -170,7 +189,7 @@
     end function associate_symbol_slot
 
     subroutine bind_associate_array_section(arena, slice_node, assoc_name, &
-                                            context, error_msg)
+                                            binding, context, error_msg)
         ! associate(x => a(lo:hi)): bind x to a rank-1, unit-stride view onto
         ! a(lo:hi)'s own storage (the associate name always starts at lower
         ! bound 1, Fortran 2018 11.1.3.3). Element access through x GEPs the
@@ -179,6 +198,7 @@
         type(ast_arena_t), intent(in) :: arena
         type(array_slice_node), intent(in) :: slice_node
         character(len=*), intent(in) :: assoc_name
+        type(declaration_binding_t), intent(in) :: binding
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(array_section_info_t) :: info
@@ -231,7 +251,7 @@
         if (.not. ok) return
 
         extent = array_section_total_elements(info)
-        idx = associate_symbol_slot(context, assoc_name)
+        idx = associate_symbol_slot(context, binding)
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%value_kind = value_kind
         context%symbols(idx)%is_array = .true.
@@ -247,16 +267,18 @@
         context%symbols(idx)%is_parameter = .false.
         context%symbols(idx)%is_derived = .false.
         context%symbols(idx)%is_allocatable = .false.
+        call attach_symbol_binding(context, idx, binding)
         call set_empty(error_msg)
     end subroutine bind_associate_array_section
 
-    subroutine bind_associate_component(arena, comp_node, assoc_name, context, &
-                                        error_msg)
+    subroutine bind_associate_component(arena, comp_node, assoc_name, binding, &
+                                        context, error_msg)
         ! associate(s => a%comp): bind s to the component's own storage
         ! address, so reads and writes through s flow to a%comp.
         type(ast_arena_t), intent(in) :: arena
         type(component_access_node), intent(in) :: comp_node
         character(len=*), intent(in) :: assoc_name
+        type(declaration_binding_t), intent(in) :: binding
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
@@ -274,7 +296,7 @@
             component_address, error_msg, 'associate component selector')
         if (len_trim(error_msg) > 0) return
 
-        idx = associate_symbol_slot(context, assoc_name)
+        idx = associate_symbol_slot(context, binding)
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%value_kind = comp_kind
         context%symbols(idx)%address = component_address
@@ -286,5 +308,6 @@
         context%symbols(idx)%is_deferred_character = .false.
         context%symbols(idx)%is_array = .false.
         context%symbols(idx)%is_allocatable = .false.
+        call attach_symbol_binding(context, idx, binding)
         call set_empty(error_msg)
     end subroutine bind_associate_component
