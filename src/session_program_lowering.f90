@@ -197,6 +197,8 @@ module session_program_lowering
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
     use ast_arena_source_text, only: get_source_text
+    use fortfront_compiler, only: query_io_statement, io_statement_query_t, &
+        IO_STATEMENT_FORMAT, IO_STATEMENT_WRITE, IO_STATEMENT_READ
     use ast_base, only: LITERAL_STRING
     use ffc_fortfront_queries, only: node_exists, get_node_type_at, &
         get_type_for_node, mono_type_t, &
