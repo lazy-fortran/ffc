@@ -1123,6 +1123,38 @@ contains
             context%symbols(index)%value = i8_immediate(context%session, 0_c_int64_t)
         else if (value_kind == VALUE_C_PTR) then
             context%symbols(index)%value = null_ptr_operand(context)
+        else if (value_kind == VALUE_C4) then
+            if (.not. context%symbols(index)%has_address) then
+                if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, 8_c_int64_t), &
+                    context%symbols(index)%address, error_msg)) return
+                if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 4_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) return
+                context%symbols(index)%has_address = .true.
+            else if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 4_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) then
+                return
+            end if
+            context%symbols(index)%value = &
+                liric_f32_immediate(context%session, 0.0_c_float)
+        else if (value_kind == VALUE_C8) then
+            if (.not. context%symbols(index)%has_address) then
+                if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, 16_c_int64_t), &
+                    context%symbols(index)%address, error_msg)) return
+                if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 8_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) return
+                context%symbols(index)%has_address = .true.
+            else if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(index)%address, 8_c_int64_t, &
+                    context%symbols(index)%element_address, error_msg)) then
+                return
+            end if
+            context%symbols(index)%value = &
+                liric_f64_immediate(context%session, 0.0_c_double)
         else
             error_msg = 'unsupported parameter declaration value kind'
             return
@@ -1253,12 +1285,12 @@ contains
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_C4
         ! Alloca re and im slots; re in address, im in element_address.
-        if (.not. emit_liric_f32_alloca(context%session, &
-            context%symbols(index)%address, &
-            error_msg)) return
-        if (.not. emit_liric_f32_alloca(context%session, &
-            context%symbols(index)%element_address, &
-            error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, 8_c_int64_t), &
+            context%symbols(index)%address, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 4_c_int64_t, &
+            context%symbols(index)%element_address, error_msg)) return
         context%symbols(index)%has_address = .true.
         context%symbols(index)%value = liric_f32_immediate(context%session, 0.0_c_float)
         context%symbol_count = index
@@ -1278,12 +1310,12 @@ contains
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_C8
-        if (.not. emit_liric_f64_alloca(context%session, &
-            context%symbols(index)%address, &
-            error_msg)) return
-        if (.not. emit_liric_f64_alloca(context%session, &
-            context%symbols(index)%element_address, &
-            error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+            i64_immediate(context%session, 16_c_int64_t), &
+            context%symbols(index)%address, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+            context%symbols(index)%address, 8_c_int64_t, &
+            context%symbols(index)%element_address, error_msg)) return
         context%symbols(index)%has_address = .true.
         context%symbols(index)%value = liric_f64_immediate(context%session, 0.0_c_double)
         context%symbol_count = index

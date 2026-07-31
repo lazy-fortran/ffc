@@ -78,6 +78,7 @@ issue_2591_unsigned_mixing_error.f90 # scope=vendor; reason=nonstandard UNSIGNED
 issue_2592_interface_block_explicit_interface_ok.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
 issue_2592_missing_explicit_interface_function.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_2592_missing_explicit_interface_subroutine.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
+issue_2593_call_argument_type_mismatch.f90 # owner=lazy-fortran/ffc#448; reason=reject incompatible scalar dummy kinds
 issue_2639_intrinsic_subroutine_calls_ok.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 issue_2644_strict_arg_checker_scope_lookup.f90 # owner=lazy-fortran/ffc#327; reason=key lowering symbols by FortFront binding identity
 issue_2737_lfortran_template_instantiate.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
