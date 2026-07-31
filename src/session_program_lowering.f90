@@ -517,11 +517,13 @@ contains
                 node_index)
             if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-                value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
+                value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
+                value_kind /= VALUE_CHARACTER) then
                 call unsupported_feature_error('pointer/target declaration', &
                     node%line, node%column, &
-                    'direct LIRIC session supports scalar integer, real, and '// &
-                    'logical pointer/target only (#245 slice B3a)', error_msg)
+                    'direct LIRIC session supports scalar integer, real, logical, '// &
+                    'and fixed-length character pointer/target only (#452)', &
+                    error_msg)
                 return
             end if
             call lower_scalar_pointer_target(node, context, value_kind, error_msg)
@@ -834,6 +836,7 @@ contains
         character(len=64) :: string_name
         logical :: fold_ok
         integer :: symbol_index
+        type(lr_operand_desc_t) :: value
 
         call set_empty(error_msg)
         symbol_index = find_symbol_compat(context, name)
@@ -858,9 +861,22 @@ contains
             context, 'char.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
             literal_text, &
-            context%symbols(symbol_index)%value, &
+            value, &
             error_msg)
         if (len_trim(error_msg) > 0) return
+        if ((context%symbols(symbol_index)%is_target .or. &
+            context%symbols(symbol_index)%is_pointer) .and. &
+            context%symbols(symbol_index)%has_address) then
+            if (.not. emit_memcpy(context%session, &
+                context%symbols(symbol_index)%address, value, &
+                i64_immediate(context%session, int( &
+                context%symbols(symbol_index)%character_length + 1, &
+                c_int64_t)), error_msg)) return
+            context%symbols(symbol_index)%value = &
+                context%symbols(symbol_index)%address
+        else
+            context%symbols(symbol_index)%value = value
+        end if
         context%symbols(symbol_index)%has_character_value = .true.
     end subroutine lower_character_initializer
 

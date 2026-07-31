@@ -385,6 +385,7 @@
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
         character(len=:), allocatable :: lit_value, lit_type
+        type(lr_operand_desc_t) :: literal_ptr
 
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character assignment value does not reference an AST node'
@@ -526,9 +527,26 @@
             context, 'char.', context%string_literal_count)
         call materialize_liric_string(context%session, trim(string_name), &
                                       literal_text, &
-                                      context%symbols(symbol_index)%value, &
+                                      literal_ptr, &
                                       error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! A scalar character target/pointer owns a stable mutable buffer. Keep
+        ! the symbol's data pointer bound to that buffer instead of rebinding it
+        ! to an immutable literal/global on every assignment.
+        if ((context%symbols(symbol_index)%is_target .or. &
+             context%symbols(symbol_index)%is_pointer) .and. &
+            context%symbols(symbol_index)%has_address) then
+            if (.not. emit_memcpy(context%session, &
+                context%symbols(symbol_index)%address, literal_ptr, &
+                i64_immediate(context%session, int( &
+                    context%symbols(symbol_index)%character_length + 1, &
+                    c_int64_t)), error_msg)) return
+            context%symbols(symbol_index)%value = &
+                context%symbols(symbol_index)%address
+        else
+            context%symbols(symbol_index)%value = literal_ptr
+        end if
 
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
@@ -896,7 +914,18 @@
         if (.not. emit_memcpy(context%session, offset, null_ptr, &
             i64_immediate(context%session, 1_c_int64_t), error_msg)) return
 
-        context%symbols(dest_symbol_index)%value = buf
+        if ((context%symbols(dest_symbol_index)%is_target .or. &
+             context%symbols(dest_symbol_index)%is_pointer) .and. &
+            context%symbols(dest_symbol_index)%has_address) then
+            if (.not. emit_memcpy(context%session, &
+                context%symbols(dest_symbol_index)%address, buf, &
+                i64_immediate(context%session, int(dest_len + 1, c_int64_t)), &
+                error_msg)) return
+            context%symbols(dest_symbol_index)%value = &
+                context%symbols(dest_symbol_index)%address
+        else
+            context%symbols(dest_symbol_index)%value = buf
+        end if
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_fixed_char_expr_assignment
