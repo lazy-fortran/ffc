@@ -6,17 +6,34 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, character_length
+
+        character_length = 0
+        if (value_kind == VALUE_CHARACTER) then
+            if (.not. allocated(node%type_name)) then
+                error_msg = 'character pointer/target declaration has no type'
+                return
+            end if
+            call parse_character_length(node%type_name, character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (character_length <= 0) then
+                call unsupported_feature_error('character pointer/target declaration', &
+                    node%line, node%column, &
+                    'direct LIRIC session supports fixed-length character '// &
+                    'pointer/target declarations only (#452)', error_msg)
+                return
+            end if
+        end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call define_scalar_pointer_target_symbol(context, node, &
-                                              node%var_names(i), value_kind, error_msg)
+                    node%var_names(i), value_kind, character_length, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
             call define_scalar_pointer_target_symbol(context, node, node%var_name, &
-                                                     value_kind, error_msg)
+                value_kind, character_length, error_msg)
         else
             error_msg = 'pointer/target declaration did not expose a variable name'
         end if
@@ -183,11 +200,12 @@
     end subroutine define_pointer_array_stub
 
     subroutine define_scalar_pointer_target_symbol(context, node, name, value_kind, &
-                                                   error_msg)
+                                                   character_length, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
+        integer, intent(in) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
 
@@ -204,7 +222,11 @@
             call set_empty(error_msg)
             return
         end if
-        call define_symbol(context, name, value_kind, error_msg)
+        if (value_kind == VALUE_CHARACTER) then
+            call define_character_symbol(context, name, character_length, error_msg)
+        else
+            call define_symbol(context, name, value_kind, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         symbol_index = find_symbol_compat(context, name)
         if (symbol_index <= 0) then
@@ -219,8 +241,13 @@
             context%symbols(symbol_index)%has_address = .true.
             context%symbols(symbol_index)%is_reference = .true.
             if (node%has_initializer .and. node%initializer_index > 0) then
-                call lower_scalar_initializer(context, name, value_kind, &
-                                              node%initializer_index, error_msg)
+                if (value_kind == VALUE_CHARACTER) then
+                    call lower_character_initializer(context, name, &
+                        node%initializer_index, error_msg)
+                else
+                    call lower_scalar_initializer(context, name, value_kind, &
+                        node%initializer_index, error_msg)
+                end if
                 if (len_trim(error_msg) > 0) return
             end if
         else
@@ -261,6 +288,29 @@
             if (.not. emit_liric_f64_store(context%session, &
                 context%symbols(symbol_index)%value, &
                 context%symbols(symbol_index)%address, error_msg)) return
+        case (VALUE_CHARACTER)
+            if (context%symbols(symbol_index)%character_length <= 0) then
+                error_msg = 'character target has no fixed storage length'
+                return
+            end if
+            if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int( &
+                    context%symbols(symbol_index)%character_length + 1, &
+                    c_int64_t)), context%symbols(symbol_index)%address, &
+                error_msg)) return
+            call fill_spaces(context, context%symbols(symbol_index)%address, &
+                i32_immediate(context%session, int( &
+                    context%symbols(symbol_index)%character_length, c_int64_t)), &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_store_char_byte(context%session, &
+                context%symbols(symbol_index)%address, &
+                i32_immediate(context%session, int( &
+                    context%symbols(symbol_index)%character_length, c_int64_t)), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+            context%symbols(symbol_index)%value = &
+                context%symbols(symbol_index)%address
+            context%symbols(symbol_index)%has_character_value = .true.
         case default
             error_msg = 'unsupported target scalar kind for direct LIRIC session'
             return
@@ -337,7 +387,38 @@
             call alias_pointer_array(context, ptr_index, target_index, error_msg)
             return
         end if
+        if (context%symbols(ptr_index)%value_kind /= &
+            context%symbols(target_index)%value_kind) then
+            error_msg = 'pointer and target scalar kinds do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .neqv. &
+            context%symbols(target_index)%is_derived) then
+            error_msg = 'pointer and target scalar kinds do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .and. &
+            context%symbols(ptr_index)%derived_type_index /= &
+            context%symbols(target_index)%derived_type_index) then
+            error_msg = 'pointer and target derived types do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%value_kind == VALUE_CHARACTER .and. &
+            context%symbols(ptr_index)%character_length /= &
+            context%symbols(target_index)%character_length) then
+            error_msg = 'pointer and target character lengths do not match'
+            return
+        end if
         context%symbols(ptr_index)%address = context%symbols(target_index)%address
+        if (context%symbols(ptr_index)%is_derived) then
+            context%symbols(ptr_index)%element_address = &
+                context%symbols(target_index)%element_address
+            context%symbols(ptr_index)%array_size = &
+                context%symbols(target_index)%array_size
+        else if (context%symbols(ptr_index)%value_kind == VALUE_CHARACTER) then
+            context%symbols(ptr_index)%value = &
+                context%symbols(target_index)%value
+        end if
         context%symbols(ptr_index)%has_address = .true.
         context%symbols(ptr_index)%is_reference = .true.
         context%symbols(ptr_index)%is_associated = .true.

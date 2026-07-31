@@ -278,6 +278,35 @@
                 return
             end if
         end if
+        if (node%is_pointer .or. node%is_target) then
+            if (node%is_array) then
+                call unsupported_feature_error( &
+                    'derived pointer/target array declaration', node%line, &
+                    node%column, 'direct LIRIC session supports scalar plain '// &
+                    'derived pointer/target declarations only (#452)', error_msg)
+                return
+            end if
+            if (node%is_allocatable) then
+                call unsupported_feature_error( &
+                    'allocatable derived pointer/target declaration', node%line, &
+                    node%column, 'direct LIRIC session does not combine '// &
+                    'ALLOCATABLE with scalar derived pointer/target lowering', &
+                    error_msg)
+                return
+            end if
+            if (.not. allocated(node%var_name)) then
+                error_msg = 'derived pointer/target declaration did not expose a name'
+                return
+            end if
+            call define_derived_symbol(context, node, node%var_name, &
+                                       derived_type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (node%is_target .and. node%has_initializer) then
+                call lower_derived_scalar_initializer(node, context, &
+                    derived_type_index, error_msg)
+            end if
+            return
+        end if
         if (node%has_initializer .and. node%is_array) then
             call unsupported_feature_error('derived type array initializer', &
                                            node%line, node%column, &
@@ -495,6 +524,11 @@
             ! caller-supplied hidden argument.
             if (context%symbols(index)%is_derived .and. &
                 context%symbols(index)%derived_type_index == derived_type_index) then
+                if (node%is_target) context%symbols(index)%is_target = .true.
+                if (node%is_pointer) then
+                    context%symbols(index)%is_pointer = .true.
+                    context%symbols(index)%is_associated = .false.
+                end if
                 call set_empty(error_msg)
                 return
             end if
@@ -525,11 +559,32 @@
         context%symbols(index)%derived_type_index = derived_type_index
         context%symbols(index)%array_size = slot_count
 
+        if (node%is_pointer) then
+            context%symbols(index)%is_pointer = .true.
+            context%symbols(index)%is_associated = .false.
+        end if
+        if (node%is_target) context%symbols(index)%is_target = .true.
+
+        ! A plain scalar derived pointer has no instance storage until `p => t`.
+        ! Keep the type/layout metadata so component references can use the
+        ! target's adopted element-address array after association.
+        if (node%is_pointer .and. .not. node%is_target) then
+            context%symbol_count = index
+            call set_empty(error_msg)
+            return
+        end if
+
         if (.not. emit_i32_array_alloca(context%session,  &
             slot_count, context%symbols(index)%element_address, &
             error_msg)) then
             error_msg = 'derived_alloca['//trim(name)//']: '//error_msg
             return
+        end if
+
+        if (node%is_target) then
+            context%symbols(index)%address = context%symbols(index)%element_address
+            context%symbols(index)%has_address = .true.
+            context%symbols(index)%is_reference = .true.
         end if
 
         call init_derived_component_defaults(context, index, derived_type_index, &
