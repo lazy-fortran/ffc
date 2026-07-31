@@ -148,7 +148,8 @@ contains
 
         line = '{"suite":"gfortran-dg","file":"noref.f90",'// &
             '"status":"PASS","ffc_exit":0,"ref_exit":1,'// &
-            '"note":"gfortran rejects; ffc runs (NO-REF)","noref":true}'
+            '"note":"gfortran rejects; ffc runs (NO-REF)",'// &
+            '"noref":true,"noref_reason":"reference-rejected"}'
     end function noref_record
 
     function summary_record(suite, pass_count, xfail_count, xpass_count, &

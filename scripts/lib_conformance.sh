@@ -51,7 +51,7 @@ parity_manifest_sha256() {
         find . -maxdepth 1 -type f \( \
             -name 'xfail_*.txt' -o -name 'skip_*.txt' -o \
             -name 'fail_owners_*.txt' -o -name 'scopes_*.txt' -o \
-            -name 'undefined_output_*.txt' -o \
+            -name 'noref_*.txt' -o \
             -name 'owner_subsystems.txt' \) -print | LC_ALL=C sort | \
             while IFS= read -r path; do
                 printf '%s\0' "$path"

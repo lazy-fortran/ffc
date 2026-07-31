@@ -187,7 +187,7 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 |---|---:|
 | `test/conformance/xfail_fortfront_f90.txt` | 100 |
 | `test/conformance/xfail_fortfront_lf.txt` | 59 |
-| `test/conformance/undefined_output_fortfront_f90.txt` | 3 |
+| `test/conformance/noref_fortfront_f90.txt` | 5 |
 | `test/conformance/xfail_lfortran.txt` | 3419 |
 | `test/conformance/xfail_gfortran_dg.txt` | 2132 |
 | `test/conformance/skip_lfortran.txt` | 1 |
@@ -222,7 +222,8 @@ Fields:
 | `ref_exit` | int | gfortran exit code (0 = built and ran) |
 | `note` | string | Human-readable explanation |
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
-| `noref` | boolean | `true` when no gfortran reference was available; omitted otherwise |
+| `noref` | boolean | `true` when the case has no behavioral oracle; omitted otherwise |
+| `noref_reason` | string | Required with `noref`: an approved manifest category or `reference-rejected` |
 
 A final SUMMARY record closes the file:
 
@@ -255,10 +256,12 @@ digest, or a different selected compiler binary.
 The runner exits nonzero if any `FAIL` record exists. `XFAIL` and
 `XPASS` never cause a nonzero exit.
 
-The `noref` summary count is the number of standard Fortran files where
+The `noref` summary count is the number of files with no behavioral oracle:
+files classified in `test/conformance/noref_<suite>.txt`, plus files where
 `gfortran -w` rejected the source after ffc compiled and ran it. These
 records are `PASS` unless the file is still listed in the xfail manifest,
-in which case they are `XPASS`.
+in which case they are `XPASS`. See "NOREF manifests" below for the
+approved categories.
 
 The `skip` summary count is the number of files listed in
 `test/conformance/skip_<suite>.txt`. They are explicit entries, not silent
@@ -283,11 +286,37 @@ Current xfail manifests:
 - `test/conformance/xfail_fortfront_f90.txt`
 - `test/conformance/xfail_fortfront_lf.txt`
 
-`test/conformance/undefined_output_fortfront_f90.txt` lists programs whose
-printed values depend on uninitialized data. Both ffc and gfortran must build
-and terminate with exit zero. The runner ignores stdout only for those named
-files; compilation, control flow, and termination remain enforced.
-Undefined-output entries must not also appear in an xfail or skip manifest.
+### NOREF manifests
+
+`test/conformance/noref_<suite>.txt` classifies the cases that cannot have a
+behavioral oracle. Each entry states an approved category and a free-text
+reason:
+
+```
+undefined_var_segfault.f90 # noref=undefined-runtime-value; reason=reads an undefined variable
+```
+
+The runner rejects a manifest entry with a missing delimiter, a missing or
+empty reason, a duplicate path, or a category outside this list:
+
+| Category | Meaning | What the runner still enforces |
+|---|---|---|
+| `undefined-runtime-value` | printed values depend on undefined data | both compilers build and exit zero; stdout is ignored |
+| `missing-external-definition` | a referenced definition lives outside this suite invocation | the reference must fail to build a complete executable |
+| `compile-only` | the source is not a runnable program unit | `ffc -c` must succeed and the reference must not link |
+
+For the two non-runnable categories the runner first tries to build the file
+with `gfortran -w`. If that produces a runnable executable, the case is a
+stable valid executable, the category does not apply, and the record is a
+`FAIL` — a valid program can never be hidden behind NOREF. NOREF entries must
+not also appear in an xfail or skip manifest.
+
+Every NOREF result record carries `"noref":true` and a `"noref_reason"` field
+holding either an approved manifest category or `reference-rejected` for files
+that ffc compiled and ran while `gfortran -w` rejected the source. The report
+validator rejects any other reason, and any `noref_reason` without `noref`.
+NOREF cases stay visible in the suite totals and in the `noref` summary count;
+they never mask a compiler crash or deterministic wrong output.
 
 ## gfortran.dg testsuite
 

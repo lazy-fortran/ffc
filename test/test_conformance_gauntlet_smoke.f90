@@ -36,6 +36,10 @@ program test_conformance_gauntlet_smoke
         '/tmp/ffc_gauntlet_undefined_fortfront'
     character(len=*), parameter :: UNDEFINED_MANIFEST = &
         '/tmp/ffc_gauntlet_undefined_manifest.txt'
+    character(len=*), parameter :: UNLINKED_REPORT = &
+        '/tmp/ffc_gauntlet_unlinked.jsonl'
+    character(len=*), parameter :: NOREF_NEGATIVE_REPORT = &
+        '/tmp/ffc_gauntlet_noref_negative.jsonl'
 
     logical :: all_passed
 
@@ -103,7 +107,7 @@ program test_conformance_gauntlet_smoke
         'unknown selected file')) all_passed = .false.
 
     call run_dg_directive_smoke(all_passed)
-    call run_undefined_output_smoke(all_passed)
+    call run_noref_smoke(all_passed)
 
     if (.not. all_passed) stop 1
     print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
@@ -386,7 +390,15 @@ contains
         close(unit)
     end subroutine write_options_fixture
 
-    subroutine run_undefined_output_smoke(passed)
+    subroutine run_noref_smoke(passed)
+        logical, intent(inout) :: passed
+
+        call run_undefined_runtime_value_smoke(passed)
+        call run_unlinked_reference_smoke(passed)
+        call run_noref_manifest_rejection_smoke(passed)
+    end subroutine run_noref_smoke
+
+    subroutine run_undefined_runtime_value_smoke(passed)
         logical, intent(inout) :: passed
 
         if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
@@ -396,33 +408,95 @@ contains
             ' --file issue_2349_data_implied_do.f90'// &
             ' --report '//UNDEFINED_REPORT, UNDEFINED_REPORT, 3)) &
             passed = .false.
-        if (count_lines_with(UNDEFINED_REPORT, &
-            '"status":"PASS"', 'undefined reference output') /= 3) &
+        if (count_lines_with(UNDEFINED_REPORT, '"status":"PASS"', &
+            '"noref":true,"noref_reason":"undefined-runtime-value"') /= 3) &
+            passed = .false.
+        if (.not. file_contains(UNDEFINED_REPORT, '"noref":3,')) &
             passed = .false.
 
-        call write_undefined_output_fixture()
+        call write_noref_fixture_tree()
+        call write_noref_manifest('undefined_nonzero.f90 # '// &
+            'noref=undefined-runtime-value; reason=synthetic abort')
         if (.not. run_failure('FFC_FORTFRONT_DIR='//UNDEFINED_FIXTURE_ROOT// &
-            ' FFC_UNDEFINED_OUTPUT_MANIFEST='//UNDEFINED_MANIFEST// &
+            ' FFC_NOREF_MANIFEST='//UNDEFINED_MANIFEST// &
             ' bash '//SCRIPT//' --suite fortfront-f90'// &
             ' --file undefined_nonzero.f90 --report '// &
             UNDEFINED_NEGATIVE_REPORT, &
-            'undefined-output execution failed')) passed = .false.
+            'undefined-runtime-value execution failed')) passed = .false.
         if (.not. file_contains(UNDEFINED_NEGATIVE_REPORT, &
             '"file":"undefined_nonzero.f90","status":"FAIL",'// &
             '"ffc_exit":1,"ref_exit":1')) &
             passed = .false.
+    end subroutine run_undefined_runtime_value_smoke
 
-        call write_undefined_manifest('ast_coverage_control_flow.f90')
-        if (.not. run_failure('FFC_UNDEFINED_OUTPUT_MANIFEST='// &
+    subroutine run_unlinked_reference_smoke(passed)
+        logical, intent(inout) :: passed
+
+        if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+            ' --suite fortfront-f90'// &
+            ' --file external_tool_example.f90'// &
+            ' --file library_usage_ast_node_position.f90'// &
+            ' --report '//UNLINKED_REPORT, UNLINKED_REPORT, 2)) &
+            passed = .false.
+        if (count_lines_with(UNLINKED_REPORT, '"status":"PASS"', &
+            '"noref":true,"noref_reason":"missing-external-definition"') &
+            /= 2) passed = .false.
+
+        call write_noref_fixture_tree()
+        call write_noref_manifest('module_only.f90 # '// &
+            'noref=compile-only; reason=module without a program unit')
+        if (.not. run_smoke('FFC_FORTFRONT_DIR='//UNDEFINED_FIXTURE_ROOT// &
+            ' FFC_NOREF_MANIFEST='//UNDEFINED_MANIFEST// &
+            ' timeout 120 bash '//SCRIPT//' --suite fortfront-f90'// &
+            ' --file module_only.f90 --report '//NOREF_NEGATIVE_REPORT, &
+            NOREF_NEGATIVE_REPORT, 1)) passed = .false.
+        if (.not. file_contains(NOREF_NEGATIVE_REPORT, &
+            '"file":"module_only.f90","status":"PASS"')) passed = .false.
+        if (.not. file_contains(NOREF_NEGATIVE_REPORT, &
+            '"noref":true,"noref_reason":"compile-only"')) passed = .false.
+
+        call write_noref_manifest('stable_valid.f90 # '// &
+            'noref=missing-external-definition; reason=bogus claim')
+        if (.not. run_failure('FFC_FORTFRONT_DIR='//UNDEFINED_FIXTURE_ROOT// &
+            ' FFC_NOREF_MANIFEST='//UNDEFINED_MANIFEST// &
+            ' bash '//SCRIPT//' --suite fortfront-f90'// &
+            ' --file stable_valid.f90 --report '//NOREF_NEGATIVE_REPORT, &
+            'noref category not applicable')) passed = .false.
+        if (.not. file_contains(NOREF_NEGATIVE_REPORT, &
+            '"file":"stable_valid.f90","status":"FAIL"')) passed = .false.
+    end subroutine run_unlinked_reference_smoke
+
+    subroutine run_noref_manifest_rejection_smoke(passed)
+        logical, intent(inout) :: passed
+
+        call write_noref_manifest('ast_coverage_control_flow.f90 # '// &
+            'noref=undefined-runtime-value; reason=overlap probe')
+        if (.not. run_failure('FFC_NOREF_MANIFEST='// &
             UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
-            'both xfail and undefined-output')) passed = .false.
-        call write_undefined_manifest('20231103-1.f90')
-        if (.not. run_failure('FFC_UNDEFINED_OUTPUT_MANIFEST='// &
+            'both xfail and noref')) passed = .false.
+        call write_noref_manifest('20231103-1.f90 # '// &
+            'noref=undefined-runtime-value; reason=overlap probe')
+        if (.not. run_failure('FFC_NOREF_MANIFEST='// &
             UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite gfortran-dg', &
-            'both skip and undefined-output')) passed = .false.
-    end subroutine run_undefined_output_smoke
+            'both skip and noref')) passed = .false.
 
-    subroutine write_undefined_output_fixture()
+        call write_noref_manifest('undefined_var_segfault.f90 # '// &
+            'noref=looks-flaky; reason=not an approved category')
+        if (.not. run_failure('FFC_NOREF_MANIFEST='// &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
+            'unapproved noref category')) passed = .false.
+        call write_noref_manifest('undefined_var_segfault.f90')
+        if (.not. run_failure('FFC_NOREF_MANIFEST='// &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
+            'malformed delimiter')) passed = .false.
+        call write_noref_manifest('undefined_var_segfault.f90 # '// &
+            'noref=undefined-runtime-value; reason=')
+        if (.not. run_failure('FFC_NOREF_MANIFEST='// &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
+            'reason is required')) passed = .false.
+    end subroutine run_noref_manifest_rejection_smoke
+
+    subroutine write_noref_fixture_tree()
         integer :: unit
 
         call execute_command_line('rm -rf '//UNDEFINED_FIXTURE_ROOT)
@@ -435,10 +509,26 @@ contains
         write(unit, '(A)') 'stop 1'
         write(unit, '(A)') 'end program undefined_nonzero'
         close(unit)
-        call write_undefined_manifest('undefined_nonzero.f90')
-    end subroutine write_undefined_output_fixture
 
-    subroutine write_undefined_manifest(entry)
+        open(newunit=unit, file=UNDEFINED_FIXTURE_ROOT// &
+            '/examples/f90/stable_valid.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') 'program stable_valid'
+        write(unit, '(A)') 'print *, 42'
+        write(unit, '(A)') 'end program stable_valid'
+        close(unit)
+
+        open(newunit=unit, file=UNDEFINED_FIXTURE_ROOT// &
+            '/examples/f90/module_only.f90', &
+            status='replace', action='write')
+        write(unit, '(A)') 'module module_only'
+        write(unit, '(A)') 'implicit none'
+        write(unit, '(A)') 'integer :: shared_counter = 0'
+        write(unit, '(A)') 'end module module_only'
+        close(unit)
+    end subroutine write_noref_fixture_tree
+
+    subroutine write_noref_manifest(entry)
         character(len=*), intent(in) :: entry
         integer :: unit
 
@@ -446,7 +536,7 @@ contains
             action='write')
         write(unit, '(A)') entry
         close(unit)
-    end subroutine write_undefined_manifest
+    end subroutine write_noref_manifest
 
     integer function count_lines_with(path, first, second) result(count)
         character(len=*), intent(in) :: path

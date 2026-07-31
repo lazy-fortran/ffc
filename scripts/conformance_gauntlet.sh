@@ -24,6 +24,7 @@
 #   FFC_FORTFRONT_DIR   default: ../fortfront
 #   FFC_LFORTRAN_DIR    default: ../lfortran
 #   FFC_GFORTRAN_DG_DIR default: ../gcc/gcc/testsuite/gfortran.dg
+#   FFC_NOREF_MANIFEST  default: test/conformance/noref_<suite>.txt
 #
 # No foreign source files are copied into this repository.
 
@@ -129,10 +130,19 @@ resolve_skip_manifest() {
     echo "${FFC_SKIP_MANIFEST:-$PROJECT_DIR/test/conformance/skip_${safe_suite}.txt}"
 }
 
-resolve_undefined_output_manifest() {
+resolve_noref_manifest() {
     local safe_suite
     safe_suite=${SUITE//-/_}
-    echo "${FFC_UNDEFINED_OUTPUT_MANIFEST:-$PROJECT_DIR/test/conformance/undefined_output_${safe_suite}.txt}"
+    echo "${FFC_NOREF_MANIFEST:-$PROJECT_DIR/test/conformance/noref_${safe_suite}.txt}"
+}
+
+# noref_category <suite_relative_path>
+# Print the manifest category for a NOREF-classified file; return 1 otherwise.
+noref_category() {
+    local path="$1"
+    awk -F '\t' -v target="$path" \
+        '$1 == target { print $2; found = 1; exit } END { exit !found }' \
+        "$NOREF_LOOKUP"
 }
 
 # File extension for single-extension suites.
@@ -215,15 +225,45 @@ elif [ -z "$FFC_BIN" ]; then
     FFC_BIN=$(find_ffc) || exit 1
 fi
 
-normalize_manifest() {
-    local src="$1" dst="$2"
-    if [ ! -f "$src" ]; then
-        : > "$dst"
+# classify_nonrunnable_noref <suite_relative_path> <source> <category>
+# Cases with no behavioral oracle because the program is not a self-contained
+# runnable unit. The reference must not build a complete executable: if it does,
+# the file is a stable valid executable and the category does not apply.
+classify_nonrunnable_noref() {
+    local rel="$1" source="$2" category="$3"
+    local obj="$TMPDIR_WORK/noref_${TOTAL_COUNT}.o"
+    local exe="$TMPDIR_WORK/noref_ref_${TOTAL_COUNT}"
+    local ffc_status=1 ref_status=1 record_note
+
+    if compile_with_gfortran "$source" "$exe"; then
+        record_note="reference builds a runnable executable; $category not applicable"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel" "FAIL" "$ffc_status" 0 "$record_note" ""
+        echo "  FAIL: $rel (noref category not applicable: $category)"
         return
     fi
-    sed 's/#.*$//' "$src" | \
-        sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-        awk 'NF' > "$dst"
+
+    if compile_object_with_ffc "$source" "$obj" "$FFC_BIN"; then
+        ffc_status=0
+    fi
+    if [ "$category" = "compile-only" ] && [ "$ffc_status" -ne 0 ]; then
+        record_note="compile-only noref case failed ffc -c"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel" "FAIL" "$ffc_status" "$ref_status" \
+            "$record_note" ""
+        echo "  FAIL: $rel (compile-only noref case failed ffc -c)"
+        return
+    fi
+
+    IS_NOREF_RECORD=1
+    NOREF_RECORD_REASON="$category"
+    NOREF_COUNT=$((NOREF_COUNT + 1))
+    PASS_COUNT=$((PASS_COUNT + 1))
+    record_note="no behavioral oracle ($category)"
+    write_result_record "$rel" "PASS" "$ffc_status" "$ref_status" \
+        "$record_note" ""
 }
 
 write_result_record() {
@@ -233,7 +273,8 @@ write_result_record() {
         warning_json=',"warning_expectation":"unchecked"'
     fi
     if [ "$IS_NOREF_RECORD" -eq 1 ]; then
-        noref_json=',"noref":true'
+        noref_json=$(printf ',"noref":true,"noref_reason":"%s"' \
+            "$(json_escape "$NOREF_RECORD_REASON")")
     fi
     printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s}\n' \
         "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
@@ -251,23 +292,25 @@ export FFC_COMPILE_TIMEOUT="$TIMEOUT"
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
 SKIP_MANIFEST=$(resolve_skip_manifest)
-UNDEFINED_OUTPUT_MANIFEST=$(resolve_undefined_output_manifest)
+NOREF_MANIFEST=$(resolve_noref_manifest)
 EXT=$(file_extension)
 TMPDIR_WORK=$(mktemp -d /tmp/ffc_gauntlet_XXXXXX)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
 SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"
-UNDEFINED_OUTPUT_LOOKUP="$TMPDIR_WORK/undefined_output_lookup.txt"
+NOREF_LOOKUP="$TMPDIR_WORK/noref_lookup.tsv"
+NOREF_PATHS="$TMPDIR_WORK/noref_paths.txt"
 validate_expected_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP" || exit 1
 validate_expected_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP" || exit 1
-normalize_manifest "$UNDEFINED_OUTPUT_MANIFEST" "$UNDEFINED_OUTPUT_LOOKUP"
-manifest_overlap=$(grep -Fxf "$XFAIL_LOOKUP" "$UNDEFINED_OUTPUT_LOOKUP" || true)
+validate_noref_manifest "$NOREF_MANIFEST" "$NOREF_LOOKUP" || exit 1
+cut -f 1 "$NOREF_LOOKUP" > "$NOREF_PATHS"
+manifest_overlap=$(grep -Fxf "$XFAIL_LOOKUP" "$NOREF_PATHS" || true)
 if [ -n "$manifest_overlap" ]; then
-    fail "files cannot be both xfail and undefined-output: $manifest_overlap"
+    fail "files cannot be both xfail and noref: $manifest_overlap"
 fi
-manifest_overlap=$(grep -Fxf "$SKIP_LOOKUP" "$UNDEFINED_OUTPUT_LOOKUP" || true)
+manifest_overlap=$(grep -Fxf "$SKIP_LOOKUP" "$NOREF_PATHS" || true)
 if [ -n "$manifest_overlap" ]; then
-    fail "files cannot be both skip and undefined-output: $manifest_overlap"
+    fail "files cannot be both skip and noref: $manifest_overlap"
 fi
 
 # Counters
@@ -280,6 +323,7 @@ SKIP_COUNT=0
 WARNING_UNCHECKED_COUNT=0
 TOTAL_COUNT=0
 IS_NOREF_RECORD=0
+NOREF_RECORD_REASON=""
 
 FFC_REVISION=$(git_revision "$PROJECT_DIR")
 FFC_SOURCE_SHA256=$(ffc_source_sha256 "$PROJECT_DIR")
@@ -420,6 +464,7 @@ while IFS= read -r full_path <&3; do
     [ -z "$full_path" ] && continue
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
     IS_NOREF_RECORD=0
+    NOREF_RECORD_REASON=""
 
     basename_file=$(basename "$full_path")
     # Suite-relative path is the basename for single-depth search
@@ -429,6 +474,12 @@ while IFS= read -r full_path <&3; do
         SKIP_COUNT=$((SKIP_COUNT + 1))
         printf '{"suite":"%s","file":"%s","status":"SKIP","note":"listed in skip manifest"}\n' \
             "$SUITE" "$(json_escape "$rel_path")" >> "$REPORT"
+        continue
+    fi
+
+    noref_kind=$(noref_category "$rel_path") || noref_kind=""
+    if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ]; then
+        classify_nonrunnable_noref "$rel_path" "$full_path" "$noref_kind"
         continue
     fi
 
@@ -682,18 +733,19 @@ while IFS= read -r full_path <&3; do
 
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
     if [ "$ref_exit" -ne 0 ]; then
-        if check_xfail "$UNDEFINED_OUTPUT_LOOKUP" "$rel_path"; then
+        if [ -n "$noref_kind" ]; then
             status="FAIL"
-            note="undefined-output reference failed to compile"
+            note="undefined-runtime-value reference failed to compile"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
             write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
                 "$note" "$warning_expectation"
-            echo "  FAIL: $rel_path (undefined-output reference failed)"
+            echo "  FAIL: $rel_path (undefined-runtime-value reference failed)"
             continue
         fi
         NOREF_COUNT=$((NOREF_COUNT + 1))
         IS_NOREF_RECORD=1
+        NOREF_RECORD_REASON="reference-rejected"
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest; gfortran rejects but ffc runs"
@@ -713,22 +765,25 @@ while IFS= read -r full_path <&3; do
     run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
     ref_exit=$?
 
-    if check_xfail "$UNDEFINED_OUTPUT_LOOKUP" "$rel_path"; then
+    if [ -n "$noref_kind" ]; then
         if [ "$ffc_exit" -eq 0 ] && [ "$ref_exit" -eq 0 ]; then
             status="PASS"
-            note="undefined reference output; both executions completed"
+            note="no behavioral oracle (undefined-runtime-value)"
             PASS_COUNT=$((PASS_COUNT + 1))
+            NOREF_COUNT=$((NOREF_COUNT + 1))
+            IS_NOREF_RECORD=1
+            NOREF_RECORD_REASON="undefined-runtime-value"
             write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
                 "$note" "$warning_expectation"
             continue
         fi
         status="FAIL"
-        note="undefined-output execution did not terminate normally"
+        note="undefined-runtime-value execution did not terminate normally"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         HAS_FAIL=1
         write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
             "$note" "$warning_expectation"
-        echo "  FAIL: $rel_path (undefined-output execution failed)"
+        echo "  FAIL: $rel_path (undefined-runtime-value execution failed)"
         continue
     fi
 

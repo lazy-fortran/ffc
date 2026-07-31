@@ -15,7 +15,6 @@ docs_unsigned_integers_out.f90 # scope=vendor; reason=nonstandard UNSIGNED exten
 dtio_interface_basic.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 dtio_interface_read_write.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 dtio_interface_unformatted.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
-external_tool_example.f90 # scope=harness; reason=requires a companion module outside this suite invocation
 f2003_abstract_interface.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 f2003_block_construct.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 f2003_type_bound_array_call.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
@@ -87,7 +86,6 @@ issue_2753_unsigned_argument_mixing_error.f90 # scope=vendor; reason=nonstandard
 issue_2753_unsigned_assignment_mixing_error.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 issue_playtest5_array_parameter_rank_lost.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 library_usage_ast_node_counter.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-library_usage_ast_node_position.f90 # scope=harness; reason=requires a companion module outside this suite invocation
 tmp_goto_ast.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 tooling_lightweight_ast.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 undefined_var_recursive_type.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
