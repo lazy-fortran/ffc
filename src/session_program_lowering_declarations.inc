@@ -799,12 +799,19 @@
                                             value_kind, error_msg, context, &
                                             reference_index)
         case ('real')
+            call check_float_kind_supported('real', kind_spec, line, column, &
+                                            error_msg, context, reference_index)
+            if (len_trim(error_msg) > 0) return
             if (real_kind_is_f64(kind_spec, context, reference_index)) then
                 value_kind = VALUE_F64
             else
                 value_kind = VALUE_F32
             end if
         case ('complex')
+            call check_float_kind_supported('complex', kind_spec, line, &
+                                            column, error_msg, context, &
+                                            reference_index)
+            if (len_trim(error_msg) > 0) return
             if (complex_kind_is_c8(kind_spec, context, reference_index)) then
                 value_kind = VALUE_C8
             else
@@ -986,6 +993,64 @@
         resolved = .true.
         value = context%symbols(symbol_index)%i32_constant
     end subroutine resolve_kind_parameter_value
+
+    ! Reject a real/complex kind selector whose value has no exact machine
+    ! representation in the direct LIRIC session (real kinds 4 and 8 only).
+    ! Silently narrowing real(16)/complex(16) to a supported width would change
+    ! the program's arithmetic, so the requested kind is reported instead.
+    ! Only kind selectors that resolve to a definite value - numeric literals
+    ! and declared integer parameters - are judged here; symbolic kind names
+    ! keep their existing classification.
+    subroutine check_float_kind_supported(base, kind_spec, line, column, &
+                                          error_msg, context, reference_index)
+        character(len=*), intent(in) :: base
+        character(len=*), intent(in) :: kind_spec
+        integer, intent(in) :: line, column
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lowering_context_t), intent(in), optional :: context
+        integer, intent(in), optional :: reference_index
+        logical :: resolved, has_value
+        integer(c_int64_t) :: kind_value
+        character(len=32) :: kind_text
+
+        call set_empty(error_msg)
+        if (len_trim(kind_spec) == 0) return
+        has_value = .false.
+        kind_value = 0_c_int64_t
+        if (is_integer_literal_text(kind_spec)) then
+            read (kind_spec, *) kind_value
+            has_value = .true.
+        else if (present(context)) then
+            call resolve_kind_parameter_value(context, kind_spec, resolved, &
+                                              kind_value, reference_index)
+            has_value = resolved
+        end if
+        if (.not. has_value) return
+        if (kind_value == 4_c_int64_t) return
+        if (kind_value == 8_c_int64_t) return
+        write (kind_text, '(I0)') kind_value
+        call unsupported_feature_error(trim(base)//' kind', line, column, &
+            'direct LIRIC session supports '//trim(base)// &
+            ' kinds 4 (single) and 8 (double); kind '// &
+            trim(adjustl(kind_text))//' is not supported', error_msg)
+    end subroutine check_float_kind_supported
+
+    ! True when text is a plain unsigned decimal integer literal.
+    logical function is_integer_literal_text(text) result(is_literal)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: trimmed
+        integer :: i
+
+        trimmed = trim(adjustl(text))
+        is_literal = len(trimmed) > 0
+        if (.not. is_literal) return
+        do i = 1, len(trimmed)
+            if (trimmed(i:i) < '0' .or. trimmed(i:i) > '9') then
+                is_literal = .false.
+                return
+            end if
+        end do
+    end function is_integer_literal_text
 
     ! Returns true when the real kind spec selects f64 (kind 8). Bare real
     ! and real(4)/c_float/real32 are f32; a declared "integer, parameter"
