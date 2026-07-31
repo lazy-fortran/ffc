@@ -747,18 +747,25 @@
 
     subroutine fold_component_default(context, init_index, value_kind, &
                                       default_value, error_msg)
-        ! Fold a scalar component's default initializer to the raw i32 bits that
-        ! occupy its slot: an integer value, a logical (0/1), or the f32 bit
-        ! pattern of a default-real literal. f64/character/other defaults stay
-        ! unsupported so the type keeps its clean xfail.
-        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float
+        ! Fold a scalar component's default initializer to the raw bits that
+        ! occupy its slots: an integer value, a logical (0/1), the f32 bit
+        ! pattern of a default-real literal, the f64 bit pattern of an
+        ! explicitly-typed real(real64) literal, or a null c_ptr. A character
+        ! default cannot be summarised in one integer, so default_value carries
+        ! the initializer's AST index instead; the text is refolded into the
+        ! component's byte slots by character_default_words().
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float, &
+                                               c_double
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: init_index
         integer, intent(in) :: value_kind
         integer(c_int64_t), intent(out) :: default_value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: lit_value, lit_type, lit_err
+        character(len=:), allocatable :: text, id_name
         real(c_float) :: rval
+        real(c_double) :: dval
+        logical :: folded
         integer :: io_stat
 
         default_value = 0_c_int64_t
@@ -796,10 +803,91 @@
                 return
             end if
             default_value = int(transfer(rval, 0_c_int32_t), c_int64_t)
+        case (VALUE_F64)
+            if (.not. is_literal(context%arena, init_index)) then
+                error_msg = 'non-literal real component default'
+                return
+            end if
+            call get_literal_info(context%arena, init_index, lit_value, &
+                                  lit_type, lit_err)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            call parse_f64_literal(lit_value, context, dval, lit_err, init_index)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            default_value = transfer(dval, 0_c_int64_t)
+        case (VALUE_C_PTR)
+            if (.not. is_identifier(context%arena, init_index)) then
+                error_msg = 'only c_null_ptr is a supported c_ptr default'
+                return
+            end if
+            call get_identifier_name(context%arena, init_index, id_name, lit_err)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            if (lowercase_text(trim(id_name)) /= 'c_null_ptr') then
+                error_msg = 'only c_null_ptr is a supported c_ptr default'
+                return
+            end if
+            default_value = 0_c_int64_t
+        case (VALUE_CHARACTER)
+            call concat_character_literals(context%arena, init_index, text, folded)
+            if (.not. folded) then
+                error_msg = 'non-literal character component default'
+                return
+            end if
+            default_value = int(init_index, c_int64_t)
         case default
             error_msg = 'unsupported component default kind'
         end select
     end subroutine fold_component_default
+
+    subroutine character_default_words(context, type_index, comp_index, words, &
+                                       error_msg)
+        ! Pack a character component's folded default into the i32 words its
+        ! inline byte storage occupies: blank-padded to the declared length,
+        ! truncated on overflow, then NUL-terminated in the reserved spare byte
+        ! so the stored text prints and concatenates like any other character.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+        integer(c_int64_t), allocatable, intent(out) :: words(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: text, padded
+        integer(c_int32_t) :: word_bits
+        character(len=4) :: chunk
+        integer :: dest_len, slot_count, init_index, k, copy_len
+        logical :: folded
+
+        call set_empty(error_msg)
+        dest_len = context%derived_types(type_index)%component_char_length(comp_index)
+        slot_count = context%derived_types(type_index)%component_array_size(comp_index)
+        init_index = int(context%derived_types(type_index)% &
+                         component_default_value(comp_index))
+        call concat_character_literals(context%arena, init_index, text, folded)
+        if (.not. folded) then
+            error_msg = 'non-literal character component default'
+            allocate (words(0))
+            return
+        end if
+        allocate (character(len=slot_count*4) :: padded)
+        padded(:) = ''
+        copy_len = min(len(text), dest_len)
+        if (copy_len > 0) padded(1:copy_len) = text(1:copy_len)
+        padded(dest_len + 1:) = char(0)
+        allocate (words(slot_count))
+        do k = 1, slot_count
+            chunk = padded(4*(k - 1) + 1:4*k)
+            word_bits = transfer(chunk, word_bits)
+            words(k) = int(word_bits, c_int64_t)
+        end do
+    end subroutine character_default_words
 
 subroutine collect_component_declaration(component_index, parent_line, &
                                               parent_column, context, &
@@ -900,13 +988,6 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 array_size = character_component_slots(char_length)
             end if
             if (component%has_initializer .and. component%initializer_index > 0) then
-                if (value_kind == VALUE_CHARACTER) then
-                    call unsupported_feature_error( &
-                        'derived type character component initializer', &
-                        component%line, component%column, 'character components '// &
-                        'cannot carry a default initialiser', error_msg)
-                    return
-                end if
                 if (component%is_array) then
                     call unsupported_feature_error( &
                         'derived type array component initializer', &
@@ -920,7 +1001,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     call unsupported_feature_error( &
                         'derived type component initializer', component%line, &
                         component%column, 'only a compile-time integer, real, '// &
-                        'or logical default is supported', error_msg)
+                        'logical, character, or c_null_ptr default is '// &
+                        'supported', error_msg)
                     return
                 end if
                 has_default = .true.
