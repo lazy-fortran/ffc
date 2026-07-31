@@ -1,10 +1,10 @@
 schema	1
 revision	ffc	ebe55b7747e68f387e893c3173c806cbc72eaead
-revision	FortFront	b22d5654e9e457fad724040a290523a5f6b47c9a
+revision	FortFront	f75de2c19858725391633372b17a50800c63f399
 revision	LIRIC	f1625993341f2f3e9188de959a5dbc0cf942a20f
 revision	LFortran	caf87b660f803148f000046392a5da803f9fc630
 revision	GCC	395e3d8131c189cd58e8c8061cdc77d1c44e3822
-tree	FortFront	18fa1a611066d0fd3e34cda870559b98cb69da73
+tree	FortFront	a07004f4ce584d762f9638e68e0e6709ef483c57
 tree	LIRIC	d1db3853e802084de4c9bfee80dc4940a744d94b
 tree	LFortran	e897890bb477aa1b7d0ef895485171ee040004ac
 tree	GCC	43ca6c437d1e7063fdb7425cc3ebc3462a0a476f
@@ -14,13 +14,13 @@ corpus-files	lfortran	3ade5f5dff08cf108011fa147ef345a7e970076f76d63dba155eb7c071
 corpus-files	gfortran-dg	92c68be4f4fedb223725a1676066bd80f78e5b3b2d6766b26ddaeb1ec7faf75d
 digest	ffc-source	6e3935954b9eb221c51bde30626561552a4b0b3247873a3a8f88a62d11fe8c30
 digest	ffc-binary	ab8e02a91a8da012a8005f2f130e3dce46edd9e033175f67f120b9656a18b61e
-digest	manifests	b1cb687a7fd795a3f891ef37929f6f965dd2bad205a3e7c77df874700bd7882f
-suite	fortfront-f90	442	342	100	0	0	95	0
+digest	manifests	23ce2953f733b10b90fc9b4ce55de1491a7ca7bb819ccbda2a82e85e7ff70d07
+suite	fortfront-f90	442	341	101	0	0	94	0
 suite	fortfront-lf	264	206	58	0	0	0	0
 suite	lfortran	4280	849	3419	0	11	145	1
 suite	gfortran-dg	5938	1178	2132	0	330	1	2298
-view	All	10924	2575	5709	0	341	241	2299
-view	Scoped	10399	2475	5493	0	340	230	2091
+view	All	10924	2574	5710	0	341	240	2299
+view	Scoped	10399	2474	5494	0	340	229	2091
 excluded	Scoped	525	100	216	0	1	11	208
 owner	fortfront-f90	XFAIL	modules-scope	owner=lazy-fortran/ffc#297	2
 owner	fortfront-f90	XFAIL	modules-scope	owner=lazy-fortran/ffc#327	1
@@ -48,7 +48,7 @@ owner	fortfront-f90	XFAIL	corpus	owner=lazy-fortran/ffc#430	4
 owner	fortfront-f90	XFAIL	io-runtime	owner=lazy-fortran/ffc#434	1
 owner	fortfront-f90	XFAIL	io-runtime	owner=lazy-fortran/ffc#436	1
 owner	fortfront-f90	XFAIL	data	owner=lazy-fortran/ffc#447	15
-owner	fortfront-f90	XFAIL	procedures	owner=lazy-fortran/ffc#448	3
+owner	fortfront-f90	XFAIL	procedures	owner=lazy-fortran/ffc#448	4
 owner	fortfront-f90	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	1
 owner	fortfront-f90	XFAIL	io-runtime	owner=lazy-fortran/ffc#451	1
 owner	fortfront-f90	XFAIL	data	owner=lazy-fortran/ffc#452	3
