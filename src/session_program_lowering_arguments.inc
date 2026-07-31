@@ -752,10 +752,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: source_index
         integer :: shape_index
+        integer :: pad_index
 
         element_count = 0_c_int64_t
         known = .false.
-        call resolve_reshape_args(arena, node, source_index, shape_index, error_msg)
+        call resolve_reshape_args(arena, node, source_index, shape_index, &
+                                  pad_index, error_msg)
         if (len_trim(error_msg) > 0) return
         call reshape_shape_element_count(arena, shape_index, context, &
                                          element_count, known, error_msg)

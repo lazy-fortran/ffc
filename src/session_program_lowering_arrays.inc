@@ -2631,6 +2631,20 @@
                        same_name(name, 'unpack')
     end function is_whole_array_intrinsic_name
 
+    ! True when the assignment's right-hand side is a reshape() call.
+    logical function assignment_rhs_is_reshape(arena, node) result(is_reshape)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+
+        is_reshape = .false.
+        if (.not. node_exists(arena, node%value_index)) return
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%name)) return
+            is_reshape = same_name(rhs%name, 'reshape')
+        end select
+    end function assignment_rhs_is_reshape
+
     subroutine lower_array_whole_assignment(arena, node, symbol_index, context, &
                                             error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -2658,6 +2672,15 @@
         end if
 
         array_size = context%symbols(symbol_index)%array_size
+        if (array_size == 0) then
+            ! A zero-sized reshape target stores no element at all. Every other
+            ! zero/unknown array size still needs its diagnostic below.
+            if (assignment_rhs_is_reshape(arena, node)) then
+                call lower_reshape_assignment(arena, node, symbol_index, &
+                                              context, error_msg)
+                return
+            end if
+        end if
         if (array_size <= 0) then
             error_msg = 'whole-array assignment requires a positive array size'
             return
@@ -4547,13 +4570,14 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
 
-        integer :: source_index, shape_index
+        integer :: source_index, shape_index, pad_index
 
         if (.not. allocated(rhs%name) .or. .not. same_name(rhs%name, 'reshape')) then
             error_msg = 'reshape requires a reshape intrinsic'
             return
         end if
-        call resolve_reshape_args(arena, rhs, source_index, shape_index, error_msg)
+        call resolve_reshape_args(arena, rhs, source_index, shape_index, &
+                                  pad_index, error_msg)
         if (len_trim(error_msg) > 0) return
         if (context%symbols(symbol_index)%array_rank < 1 .or. &
             context%symbols(symbol_index)%array_rank > 2) then
@@ -4563,25 +4587,27 @@
         call check_reshape_shape(arena, shape_index, symbol_index, &
                                  context, error_msg)
         if (len_trim(error_msg) > 0) return
-        call lower_reshape_source(arena, source_index, symbol_index, &
+        call lower_reshape_source(arena, source_index, pad_index, symbol_index, &
                                   context, error_msg)
     end subroutine lower_reshape_call
 
     ! Resolve reshape's source and shape actuals, accepting positional and
-    ! keyword (source=, shape=) forms. Any pad=/order= keyword is out of scope.
+    ! keyword (source=, shape=, pad=) forms. An order= keyword is out of scope.
     subroutine resolve_reshape_args(arena, rhs, source_index, shape_index, &
-                                    error_msg)
+                                    pad_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: rhs
         integer, intent(out) :: source_index
         integer, intent(out) :: shape_index
+        integer, intent(out) :: pad_index
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: kw_name
         integer :: i, npos, kw_value
-        integer :: pos_args(2)
+        integer :: pos_args(3)
 
         source_index = 0
         shape_index = 0
+        pad_index = 0
         npos = 0
         call set_empty(error_msg)
         if (.not. allocated(rhs%arg_indices)) then
@@ -4595,15 +4621,18 @@
                     source_index = kw_value
                 else if (kw_name == 'shape') then
                     shape_index = kw_value
+                else if (kw_name == 'pad') then
+                    pad_index = kw_value
                 else
-                    error_msg = 'reshape only supports source= and shape= '// &
-                                'keyword arguments'
+                    error_msg = 'reshape only supports source=, shape=, and '// &
+                                'pad= keyword arguments'
                     return
                 end if
             else
                 npos = npos + 1
-                if (npos > 2) then
-                    error_msg = 'reshape only supports source and shape arguments'
+                if (npos > 3) then
+                    error_msg = 'reshape only supports source, shape, and pad '// &
+                                'arguments'
                     return
                 end if
                 pos_args(npos) = rhs%arg_indices(i)
@@ -4612,8 +4641,12 @@
         if (source_index == 0 .and. npos >= 1) then
             source_index = pos_args(1)
             if (shape_index == 0 .and. npos >= 2) shape_index = pos_args(2)
+            if (pad_index == 0 .and. npos >= 3) pad_index = pos_args(3)
         else if (shape_index == 0 .and. npos >= 1) then
             shape_index = pos_args(1)
+            if (pad_index == 0 .and. npos >= 2) pad_index = pos_args(2)
+        else if (pad_index == 0 .and. npos >= 1) then
+            pad_index = pos_args(1)
         end if
         if (source_index == 0 .or. shape_index == 0) then
             error_msg = 'reshape requires a source array and a shape array'
@@ -4782,60 +4815,232 @@
         end select
     end subroutine resolve_shape_of_symbol
 
-    subroutine lower_reshape_source(arena, source_index_in, symbol_index, &
-                                    context, error_msg)
+    subroutine lower_reshape_source(arena, source_index_in, pad_index, &
+                                    symbol_index, context, error_msg)
         !! Copy the source elements into the target's linear storage. The source
-        !! is either a declared rank-1 array or an inline array literal; both are
-        !! already laid out in column-major order, so a flat copy suffices.
+        !! is a declared rank-1 array, an inline array literal, or a rank-one
+        !! array expression such as shape(x); all are already laid out in
+        !! column-major order, so a flat copy suffices. Result elements beyond
+        !! the source come from pad, cycling. A zero-sized result reads no
+        !! source element at all.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: source_index_in
+        integer, intent(in) :: pad_index
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
-        type(lr_operand_desc_t) :: converted
-        integer :: source_sym
-        integer(c_int64_t) :: target_size
-        integer(c_int64_t) :: linear_index
-        logical :: source_is_literal
+        integer :: source_form, source_sym, pad_form, pad_sym
+        integer, allocatable :: source_nodes(:), pad_nodes(:)
+        integer(c_int64_t), allocatable :: source_consts(:), pad_consts(:)
+        integer(c_int64_t) :: target_size, source_count, pad_count
+        integer(c_int64_t) :: linear_index, pad_slot
 
         target_size = int(context%symbols(symbol_index)%array_size, c_int64_t)
-
-        source_is_literal = .false.
-        if (node_exists(arena, source_index_in)) then
-            select type (s => arena%entries(source_index_in)%node)
-            type is (array_literal_node)
-                source_is_literal = .true.
-            end select
+        call analyze_reshape_operand(arena, source_index_in, context, source_form, &
+                                     source_sym, source_nodes, source_consts, &
+                                     source_count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        pad_form = 0
+        pad_sym = 0
+        pad_count = 0_c_int64_t
+        allocate (pad_nodes(0))
+        allocate (pad_consts(0))
+        if (pad_index > 0) then
+            call analyze_reshape_operand(arena, pad_index, context, pad_form, &
+                                         pad_sym, pad_nodes, pad_consts, &
+                                         pad_count, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
-        if (source_is_literal) then
-            call lower_reshape_literal_source(arena, source_index_in, &
-                                              symbol_index, context, error_msg)
+        if (source_count < target_size .and. pad_count <= 0_c_int64_t) then
+            error_msg = 'reshape requires source and target arrays of equal size'
             return
         end if
-
-        call resolve_reshape_identifier_source(arena, source_index_in, context, &
-                                               source_sym, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (int(context%symbols(source_sym)%array_size, c_int64_t) /= target_size) then
+        if (source_count > target_size) then
             error_msg = 'reshape requires source and target arrays of equal size'
             return
         end if
         do linear_index = 0_c_int64_t, target_size - 1_c_int64_t
-            call load_array_linear_element(context, source_sym, linear_index, &
-                                           value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call convert_reshape_element(context, value, &
-                                         context%symbols(source_sym)%value_kind, &
-                                         context%symbols(symbol_index)%value_kind, &
-                                         converted, error_msg)
+            if (linear_index < source_count) then
+                call load_reshape_operand_element(arena, source_form, source_sym, &
+                                                  source_nodes, source_consts, &
+                                                  linear_index, symbol_index, &
+                                                  context, value, error_msg)
+            else
+                pad_slot = mod(linear_index - source_count, pad_count)
+                call load_reshape_operand_element(arena, pad_form, pad_sym, &
+                                                  pad_nodes, pad_consts, pad_slot, &
+                                                  symbol_index, context, value, &
+                                                  error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
             call store_array_linear_element(context, symbol_index, linear_index, &
-                                            converted, error_msg)
+                                            value, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)
     end subroutine lower_reshape_source
+
+    ! Classify a reshape source or pad actual and report its element count.
+    ! form 1: inline array constructor, elements are the nodes in `nodes`.
+    ! form 2: declared array symbol `sym`, elements in its linear storage.
+    ! form 3: shape(X), elements are the compile-time extents in `consts`.
+    subroutine analyze_reshape_operand(arena, operand_index, context, form, sym, &
+                                       nodes, consts, count, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: operand_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: form
+        integer, intent(out) :: sym
+        integer, allocatable, intent(out) :: nodes(:)
+        integer(c_int64_t), allocatable, intent(out) :: consts(:)
+        integer(c_int64_t), intent(out) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        form = 0
+        sym = 0
+        count = 0_c_int64_t
+        allocate (nodes(0))
+        allocate (consts(0))
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, operand_index)) then
+            error_msg = 'reshape requires identifier or literal source array arguments'
+            return
+        end if
+        if (is_identifier(arena, operand_index)) then
+            call resolve_reshape_identifier_source(arena, operand_index, context, &
+                                                   sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+            form = 2
+            count = int(context%symbols(sym)%array_size, c_int64_t)
+            return
+        end if
+        select type (operand => arena%entries(operand_index)%node)
+        type is (array_literal_node)
+            call flatten_constructor_elements(arena, operand%element_indices, &
+                                              nodes, error_msg)
+            if (len_trim(error_msg) > 0) return
+            form = 1
+            count = int(size(nodes), c_int64_t)
+        type is (call_or_subscript_node)
+            call reshape_shape_operand_consts(arena, operand, context, consts, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            form = 3
+            count = int(size(consts), c_int64_t)
+        class default
+            error_msg = 'reshape requires identifier or literal source array arguments'
+        end select
+    end subroutine analyze_reshape_operand
+
+    ! shape(X) as a reshape actual: its values are X's compile-time extents,
+    ! so a scalar argument yields the standard zero-sized array.
+    subroutine reshape_shape_operand_consts(arena, operand, context, consts, &
+                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: operand
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), allocatable, intent(out) :: consts(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: arg_name, id_err
+        integer :: arg_sym, i
+
+        allocate (consts(0))
+        call set_empty(error_msg)
+        if (.not. allocated(operand%name)) then
+            error_msg = 'reshape requires identifier or literal source array arguments'
+            return
+        end if
+        if (operand%is_array_access .or. .not. same_name(operand%name, 'shape')) then
+            error_msg = 'reshape requires identifier or literal source array arguments'
+            return
+        end if
+        if (.not. allocated(operand%arg_indices)) then
+            error_msg = 'shape requires one argument'
+            return
+        end if
+        if (size(operand%arg_indices) /= 1) then
+            error_msg = 'shape requires one argument'
+            return
+        end if
+        arg_sym = 0
+        if (is_identifier(arena, operand%arg_indices(1))) then
+            call get_identifier_name(arena, operand%arg_indices(1), arg_name, id_err)
+            if (len_trim(id_err) > 0) then
+                error_msg = id_err
+                return
+            end if
+            arg_sym = find_symbol_compat(context, arg_name)
+        end if
+        if (arg_sym <= 0) return
+        if (.not. context%symbols(arg_sym)%is_array) return
+        deallocate (consts)
+        allocate (consts(context%symbols(arg_sym)%array_rank))
+        do i = 1, context%symbols(arg_sym)%array_rank
+            consts(i) = int(context%symbols(arg_sym)%array_dim_sizes(i), c_int64_t)
+        end do
+    end subroutine reshape_shape_operand_consts
+
+    ! Produce element `slot` (0-based) of a classified reshape operand as an
+    ! operand already converted to the target array's element kind.
+    subroutine load_reshape_operand_element(arena, form, sym, nodes, consts, slot, &
+                                            symbol_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: form
+        integer, intent(in) :: sym
+        integer, intent(in) :: nodes(:)
+        integer(c_int64_t), intent(in) :: consts(:)
+        integer(c_int64_t), intent(in) :: slot
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: raw
+        integer :: target_kind
+
+        call set_empty(error_msg)
+        target_kind = context%symbols(symbol_index)%value_kind
+        select case (form)
+        case (1)
+            call lower_reshape_element_node(arena, nodes(int(slot) + 1), &
+                                            target_kind, context, value, error_msg)
+        case (2)
+            call load_array_linear_element(context, sym, slot, raw, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call convert_reshape_element(context, raw, &
+                                         context%symbols(sym)%value_kind, &
+                                         target_kind, value, error_msg)
+        case (3)
+            raw = i32_immediate(context%session, consts(int(slot) + 1))
+            call convert_reshape_element(context, raw, VALUE_I32, target_kind, &
+                                         value, error_msg)
+        case default
+            error_msg = 'reshape requires identifier or literal source array arguments'
+        end select
+    end subroutine load_reshape_operand_element
+
+    ! Lower one constructor element in the target array's element kind.
+    subroutine lower_reshape_element_node(arena, node_index, target_kind, context, &
+                                          value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: target_kind
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (target_kind == VALUE_F32) then
+            call lower_f32_expression(arena, node_index, context, value, error_msg)
+        else if (target_kind == VALUE_F64) then
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+        else if (target_kind == VALUE_LOGICAL) then
+            call lower_logical_expression(arena, node_index, context, value, &
+                                          error_msg)
+        else
+            call lower_constructor_i32_element(arena, node_index, context, value, &
+                                               error_msg)
+        end if
+    end subroutine lower_reshape_element_node
 
     subroutine convert_reshape_element(context, value, src_kind, dst_kind, &
                                        converted, error_msg)
