@@ -28,6 +28,10 @@
                     ! Best effort: ignore errors here; body lowering reports them.
                     call lower_constant_declaration(node, context, VALUE_I32, &
                                                     decl_err)
+                    if (len_trim(decl_err) == 0) then
+                        call register_declaration_bindings(context, node, &
+                            program%body_indices(i))
+                    end if
                 end select
             end do
         end select

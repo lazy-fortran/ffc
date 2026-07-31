@@ -415,6 +415,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: lower_bound, n_elems, slots, index
+        integer :: binding_index
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: binding_error
 
         if (node%is_multi_declaration) then
             error_msg = 'multi-variable derived array declarations are not supported'
@@ -425,6 +428,25 @@
             return
         end if
         name = node%var_name
+        binding_index = 0
+        if (context%current_declaration_index > 0) then
+            call resolve_name_at_node(context%arena, &
+                context%current_declaration_index, name, binding, binding_error)
+            if (len_trim(binding_error) == 0 .and. binding%found) then
+                binding_index = find_symbol_for_binding(context, binding)
+            end if
+        end if
+        if (binding_index > 0) then
+            if (context%symbols(binding_index)%is_array .and. &
+                context%symbols(binding_index)%is_derived .and. &
+                context%symbols(binding_index)%derived_type_index == &
+                derived_type_index) then
+                call set_empty(error_msg)
+                return
+            end if
+            error_msg = 'conflicting derived array declaration: '//trim(name)
+            return
+        end if
         if (find_symbol(context, name) > 0) then
             error_msg = 'duplicate derived array declaration: '//trim(name)
             return

@@ -287,6 +287,24 @@ module session_program_lowering_types
         character(len=:), allocatable :: character_constant_text
     end type symbol_t
 
+    ! One resolved declaration record. The binding triple is the identity;
+    ! names and source spelling are metadata retained for diagnostics and
+    ! later declaration lowering. A record may exist before its procedure has
+    ! an active LIRIC function, so it deliberately carries no storage operand.
+    type, public :: declaration_record_t
+        integer :: declaration_node_index = 0
+        integer :: declaration_entity_index = 0
+        integer :: scope_node_index = 0
+        character(len=64) :: name = ''
+        character(len=64) :: type_name = ''
+        integer :: type_kind = 0
+        integer :: kind_value = 0
+        integer :: value_kind = VALUE_I32
+        integer :: rank = 0
+        logical :: is_array = .false.
+        logical :: is_parameter = .false.
+    end type declaration_record_t
+
     type, public :: array_section_info_t
         character(len=64) :: source_name = ''
         integer :: source_index = 0
@@ -450,16 +468,22 @@ module session_program_lowering_types
         type(symbol_t), allocatable :: symbols(:)
         integer :: symbol_count = 0
         ! Maps a FortFront (declaration, scope) binding identity onto a
-        ! slot in `symbols` (#327). Populated as declarations lower;
+        ! slot in `symbols` (#327). Populated as declarations materialize;
         ! consulted before any name comparison at a reference site.
         type(session_symbol_table_t) :: binding_table
+        ! Resolved declaration metadata collected before executable lowering
+        ! (#457). This registry has no LIRIC operands: those are materialized
+        ! only inside the active procedure, while every later path can still
+        ! consult one binding-keyed declaration record.
+        type(declaration_record_t), allocatable :: declaration_records(:)
+        integer :: declaration_record_count = 0
+        logical :: declaration_collection_complete = .false.
         ! Symbols at index <= block_scope_floor belong to an enclosing scope. A
         ! declaration inside a BLOCK whose name matches such a symbol creates a
         ! fresh shadowing slot instead of reusing the outer storage (#280).
         integer :: block_scope_floor = 0
         ! Number of explicit BLOCK/ASSOCIATE storage scopes currently active.
-        ! Ordinary declaration registration stays out of this issue's scope;
-        ! construct-local declarations are the identities that must be popped.
+        ! Construct-local declarations are the identities that must be popped.
         integer :: storage_scope_depth = 0
         ! Arena index of the declaration whose specification expressions
         ! are being lowered (#329), or 0 outside a declaration. A

@@ -1884,6 +1884,9 @@
         integer(c_int64_t) :: extent
         logical :: is_dummy
         logical :: is_assumed
+        integer :: binding_index
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: binding_error
         type(lr_operand_desc_t) :: param_base
 
         is_assumed = present(assumed_extents)
@@ -1891,7 +1894,19 @@
         ! An array body declaration whose name matches a dummy argument binds
         ! the explicit-shape array view onto the parameter pointer instead of
         ! allocating fresh storage; the caller passes the actual's base address.
-        index = find_symbol(context, name)
+        binding_index = 0
+        if (context%current_declaration_index > 0) then
+            call resolve_name_at_node(context%arena, &
+                context%current_declaration_index, name, binding, binding_error)
+            if (len_trim(binding_error) == 0 .and. binding%found) then
+                binding_index = find_symbol_for_binding(context, binding)
+            end if
+        end if
+        if (binding_index > 0) then
+            index = binding_index
+        else
+            index = find_symbol(context, name)
+        end if
         is_dummy = .false.
         if (index > 0) then
             if (context%symbols(index)%is_common_bound) then
@@ -1900,6 +1915,17 @@
                 ! already set shape and element_address from this same
                 ! declaration node, so this occurrence is a benign redeclare.
                 call set_empty(error_msg)
+                return
+            end if
+            if (binding_index > 0 .and. context%symbols(index)%is_array .and. &
+                .not. context%symbols(index)%is_array_result .and. &
+                .not. context%symbols(index)%is_parameter) then
+                if (context%symbols(index)%value_kind /= value_kind) then
+                    error_msg = 'conflicting array declaration metadata: '// &
+                                trim(name)
+                else
+                    call set_empty(error_msg)
+                end if
                 return
             end if
             if (context%symbols(index)%is_parameter .and. &

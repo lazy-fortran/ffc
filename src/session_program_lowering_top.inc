@@ -129,6 +129,15 @@
             call destroy(context%session)
             return
         end if
+        ! Resolve every scalar/array declaration by FortFront identity before
+        ! any procedure or main body emits executable code (#457). Storage is
+        ! still materialized in the active procedure; this pass only records
+        ! declaration metadata and rejects identity conflicts.
+        call collect_resolved_declarations(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         ! Internal procedures are emitted before the main body, so ordinary
         ! local declarations have not populated the parent symbol table yet.
         ! Materialise storage for any declaration whose FortFront binding is

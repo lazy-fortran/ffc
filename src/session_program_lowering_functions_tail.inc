@@ -36,6 +36,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_declaration_registry(parent_context, context)
         if (present(procedure_node_index)) then
             context%current_proc_node_index = procedure_node_index
         else

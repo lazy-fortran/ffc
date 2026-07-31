@@ -1,3 +1,502 @@
+    subroutine collect_resolved_declarations(arena, root_index, context, &
+                                             error_msg)
+        ! Build the declaration registry before any executable body is emitted.
+        ! FortFront owns the name-to-entity decision; this pass records the
+        ! binding returned at each declaration site, including a body
+        ! redeclaration that FortFront maps to a dummy or result identity. The
+        ! registry is metadata-only because storage operands can be created only
+        ! after a procedure's LIRIC function is active (#457).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        context%declaration_record_count = 0
+        context%declaration_collection_complete = .false.
+        if (.not. allocated(context%declaration_records)) then
+            allocate(context%declaration_records(64))
+        end if
+        if (.not. node_exists(arena, root_index)) then
+            error_msg = 'declaration collection root is not an AST node'
+            return
+        end if
+
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            select type (node => arena%entries(i)%node)
+            type is (declaration_node)
+                if (.not. declaration_is_collectable(arena, i, node)) cycle
+                call collect_declaration_node(arena, i, node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            type is (parameter_declaration_node)
+                call collect_parameter_declaration_node(arena, i, node, context, &
+                                                        error_msg)
+                if (len_trim(error_msg) > 0) return
+            type is (function_def_node)
+                call collect_function_result_declaration(arena, i, node, &
+                                                         context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+        context%declaration_collection_complete = .true.
+    end subroutine collect_resolved_declarations
+
+    logical function declaration_is_collectable(arena, node_index, node) &
+        result(is_collectable)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(declaration_node), intent(in) :: node
+        integer :: parent_index
+
+        is_collectable = .false.
+        if (node_index <= 0) return
+        ! DIMENSION contributes shape to a later typed declaration, and EXTERNAL
+        ! contributes a procedure name. Neither introduces scalar/array storage.
+        if (declaration_is_bare_dimension(node)) return
+        if (node%is_external) return
+        ! Derived-type components are layout metadata, not procedure-local
+        ! entities. Their parent is not a lexical scope for name resolution.
+        parent_index = arena%entries(node_index)%parent_index
+        if (parent_index > 0 .and. node_exists(arena, parent_index)) then
+            select type (parent => arena%entries(parent_index)%node)
+            type is (derived_type_node)
+                return
+            end select
+        end if
+        if (node%is_multi_declaration) then
+            is_collectable = allocated(node%var_names) .and. &
+                             size(node%var_names) > 0
+        else
+            is_collectable = allocated(node%var_name) .and. &
+                             len_trim(node%var_name) > 0
+        end if
+    end function declaration_is_collectable
+
+    subroutine collect_declaration_node(arena, node_index, node, context, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call collect_one_declaration_entity(arena, node_index, node, &
+                    trim(node%var_names(i)), context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call collect_one_declaration_entity(arena, node_index, node, &
+                trim(node%var_name), context, error_msg)
+        end if
+    end subroutine collect_declaration_node
+
+    subroutine collect_one_declaration_entity(arena, node_index, node, name, &
+                                               context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_binding_t) :: binding
+        type(declaration_record_t) :: record
+        character(len=:), allocatable :: resolve_error
+
+        call set_empty(error_msg)
+        if (len_trim(name) == 0) return
+        call resolve_name_at_node(arena, node_index, name, binding, resolve_error)
+        if (len_trim(resolve_error) > 0) return
+        if (.not. binding%found) return
+        if (binding%scope_node_index <= 0 .or. &
+            (binding%binding_kind /= BINDING_DECLARATION .and. &
+             binding%binding_kind /= BINDING_NAMED_CONSTANT .and. &
+             binding%binding_kind /= BINDING_DUMMY_ARGUMENT .and. &
+             binding%binding_kind /= BINDING_FUNCTION_RESULT)) then
+            return
+        end if
+        call make_declaration_record(node, name, binding, context, record)
+        call store_declaration_record(context, record, error_msg)
+    end subroutine collect_one_declaration_entity
+
+    subroutine collect_parameter_declaration_node(arena, node_index, node, &
+                                                  context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(parameter_declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_binding_t) :: binding
+        type(declaration_record_t) :: record
+        character(len=:), allocatable :: resolve_error
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%name)) return
+        if (len_trim(node%name) == 0) return
+        call resolve_name_at_node(arena, node_index, trim(node%name), binding, &
+                                  resolve_error)
+        if (len_trim(resolve_error) > 0) return
+        if (.not. binding%found) return
+        if (binding%scope_node_index <= 0 .or. &
+            (binding%binding_kind /= BINDING_DUMMY_ARGUMENT .and. &
+             binding%binding_kind /= BINDING_DECLARATION)) then
+            return
+        end if
+        call make_parameter_record(node, trim(node%name), binding, record)
+        call store_declaration_record(context, record, error_msg)
+    end subroutine collect_parameter_declaration_node
+
+    subroutine collect_function_result_declaration(arena, node_index, node, &
+                                                   context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_binding_t), allocatable :: bindings(:)
+        type(declaration_binding_t) :: result_binding
+        type(declaration_record_t) :: record
+        character(len=:), allocatable :: resolve_error
+        integer :: i
+
+        call set_empty(error_msg)
+        call get_scope_bindings(arena, node_index, bindings, resolve_error)
+        if (len_trim(resolve_error) > 0) then
+            error_msg = resolve_error
+            return
+        end if
+        do i = 1, size(bindings)
+            if (bindings(i)%binding_kind /= BINDING_FUNCTION_RESULT) cycle
+            result_binding = bindings(i)
+            call make_function_result_record(arena, node, result_binding, &
+                                              context, record)
+            call store_declaration_record(context, record, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine collect_function_result_declaration
+
+    subroutine make_declaration_record(node, name, binding, context, record)
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        type(declaration_binding_t), intent(in) :: binding
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_record_t), intent(out) :: record
+
+        record = declaration_record_t()
+        record%declaration_node_index = binding%declaration_node_index
+        record%declaration_entity_index = binding%declaration_entity_index
+        record%scope_node_index = binding%scope_node_index
+        record%name = trim(name)
+        if (allocated(node%type_name)) record%type_name = trim(node%type_name)
+        record%type_kind = node%resolved_type_kind
+        record%kind_value = node%resolved_kind_value
+        record%rank = node%resolved_rank
+        if (record%rank < 0 .and. allocated(node%dimension_indices)) then
+            record%rank = size(node%dimension_indices)
+        end if
+        record%is_array = node%is_array .or. record%rank > 0
+        record%is_parameter = node%is_parameter .and. &
+            binding%binding_kind == BINDING_NAMED_CONSTANT
+        record%value_kind = declaration_metadata_value_kind( &
+            record%type_kind, record%kind_value, record%type_name, context, &
+            node%line, node%column, node%resolved_derived_type_name)
+    end subroutine make_declaration_record
+
+    subroutine make_parameter_record(node, name, binding, record)
+        type(parameter_declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        type(declaration_binding_t), intent(in) :: binding
+        type(declaration_record_t), intent(out) :: record
+
+        record = declaration_record_t()
+        record%declaration_node_index = binding%declaration_node_index
+        record%declaration_entity_index = binding%declaration_entity_index
+        record%scope_node_index = binding%scope_node_index
+        record%name = trim(name)
+        if (allocated(node%type_name)) record%type_name = trim(node%type_name)
+        record%type_kind = node%resolved_type_kind
+        record%kind_value = node%resolved_kind_value
+        record%rank = node%resolved_rank
+        if (record%rank < 0 .and. allocated(node%dimension_indices)) then
+            record%rank = size(node%dimension_indices)
+        end if
+        ! A parameter-list entry has no shape until its specification-part
+        ! declaration is visited; rank zero here means "unknown", not scalar.
+        if (.not. node%is_array .and. record%rank == 0) record%rank = -1
+        record%is_array = node%is_array .or. record%rank > 0
+        record%value_kind = declaration_metadata_value_kind( &
+            record%type_kind, record%kind_value, record%type_name)
+    end subroutine make_parameter_record
+
+    subroutine make_function_result_record(arena, node, binding, context, record)
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: node
+        type(declaration_binding_t), intent(in) :: binding
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_record_t), intent(out) :: record
+        integer :: value_kind, derived_index
+        integer :: i, j
+        character(len=:), allocatable :: kind_error
+        logical :: found
+
+        record = declaration_record_t()
+        record%declaration_node_index = binding%declaration_node_index
+        record%declaration_entity_index = binding%declaration_entity_index
+        record%scope_node_index = binding%scope_node_index
+        record%name = trim(binding%name)
+        if (allocated(node%return_type)) record%type_name = trim(node%return_type)
+        record%type_kind = node%resolved_type_kind
+        record%kind_value = node%resolved_kind_value
+        record%rank = 0
+        record%is_array = .false.
+
+        if (allocated(node%body_indices)) then
+            do i = 1, size(node%body_indices)
+                if (.not. node_exists(arena, node%body_indices(i))) cycle
+                select type (decl => arena%entries(node%body_indices(i))%node)
+                type is (declaration_node)
+                    found = .false.
+                    if (decl%is_multi_declaration .and. &
+                        allocated(decl%var_names)) then
+                        do j = 1, size(decl%var_names)
+                            if (same_name(decl%var_names(j), record%name)) then
+                                found = .true.
+                                exit
+                            end if
+                        end do
+                    else if (allocated(decl%var_name)) then
+                        found = same_name(decl%var_name, record%name)
+                    end if
+                    if (.not. found) cycle
+                    record%type_name = ''
+                    if (allocated(decl%type_name)) &
+                        record%type_name = trim(decl%type_name)
+                    record%type_kind = decl%resolved_type_kind
+                    record%kind_value = decl%resolved_kind_value
+                    record%rank = decl%resolved_rank
+                    if (record%rank < 0 .and. allocated(decl%dimension_indices)) &
+                        record%rank = size(decl%dimension_indices)
+                    record%is_array = decl%is_array .or. record%rank > 0
+                    exit
+                end select
+            end do
+        end if
+
+        value_kind = 0
+        derived_index = 0
+        call set_empty(kind_error)
+        call function_value_kind(node, context, value_kind, derived_index, &
+                                 kind_error, binding%scope_node_index)
+        if (value_kind > 0) record%value_kind = value_kind
+        if (record%type_kind == 0) then
+            record%type_kind = value_kind_type_kind(record%value_kind)
+        end if
+        if (record%value_kind == VALUE_ARRAY_RESULT .or. &
+            record%value_kind == VALUE_ALLOC_ARRAY_RESULT) record%is_array = .true.
+    end subroutine make_function_result_record
+
+    integer function declaration_metadata_value_kind(type_kind, kind_value, &
+        type_name, context, line, column, derived_name) result(value_kind)
+        integer, intent(in) :: type_kind
+        integer, intent(in) :: kind_value
+        character(len=*), intent(in) :: type_name
+        type(lowering_context_t), intent(in), optional :: context
+        integer, intent(in), optional :: line, column
+        character(len=*), intent(in), optional :: derived_name
+        character(len=:), allocatable :: kind_error
+        integer :: candidate, source_line, source_column
+
+        value_kind = 0
+        source_line = 1
+        source_column = 1
+        if (present(line)) source_line = line
+        if (present(column)) source_column = column
+        select case (type_kind)
+        case (TINT)
+            select case (kind_value)
+            case (1)
+                value_kind = VALUE_I8
+            case (2)
+                value_kind = VALUE_I16
+            case (8)
+                value_kind = VALUE_I64
+            case default
+                value_kind = VALUE_I32
+            end select
+        case (TREAL)
+            if (kind_value == 8) then
+                value_kind = VALUE_F64
+            else
+                value_kind = VALUE_F32
+            end if
+        case (TDOUBLE)
+            value_kind = VALUE_F64
+        case (TLOGICAL)
+            value_kind = VALUE_LOGICAL
+        case (TCHAR)
+            value_kind = VALUE_CHARACTER
+        case (TCOMPLEX)
+            if (kind_value == 8) then
+                value_kind = VALUE_C8
+            else
+                value_kind = VALUE_C4
+            end if
+        case (TDERIVED)
+            value_kind = VALUE_DERIVED
+        case default
+            if (present(derived_name)) then
+                if (len_trim(derived_name) > 0) then
+                    value_kind = VALUE_DERIVED
+                    return
+                end if
+            end if
+            if (len_trim(type_name) > 0) then
+                candidate = VALUE_I32
+                call set_empty(kind_error)
+                if (present(context)) then
+                    call type_name_value_kind(type_name, source_line, &
+                        source_column, candidate, kind_error, context)
+                else
+                    call type_name_value_kind(type_name, source_line, &
+                        source_column, candidate, kind_error)
+                end if
+                if (len_trim(kind_error) == 0) value_kind = candidate
+            end if
+        end select
+    end function declaration_metadata_value_kind
+
+    integer function value_kind_type_kind(value_kind) result(type_kind)
+        integer, intent(in) :: value_kind
+
+        select case (value_kind)
+        case (VALUE_F32, VALUE_F64)
+            type_kind = TREAL
+        case (VALUE_LOGICAL)
+            type_kind = TLOGICAL
+        case (VALUE_CHARACTER)
+            type_kind = TCHAR
+        case (VALUE_C4, VALUE_C8)
+            type_kind = TCOMPLEX
+        case (VALUE_DERIVED)
+            type_kind = TDERIVED
+        case default
+            type_kind = TINT
+        end select
+    end function value_kind_type_kind
+
+    subroutine store_declaration_record(context, record, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_record_t), intent(in) :: record
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (record%declaration_node_index <= 0 .or. &
+            record%scope_node_index <= 0) return
+        do i = 1, context%declaration_record_count
+            if (.not. same_declaration_identity( &
+                context%declaration_records(i), record)) cycle
+            if (.not. same_declaration_metadata( &
+                context%declaration_records(i), record)) then
+                error_msg = 'conflicting declaration metadata for '// &
+                            trim(record%name)
+            else
+                call merge_declaration_metadata(context%declaration_records(i), &
+                                                record)
+            end if
+            return
+        end do
+        if (context%declaration_record_count >= &
+            size(context%declaration_records)) then
+            call grow_declaration_records(context)
+        end if
+        context%declaration_record_count = context%declaration_record_count + 1
+        context%declaration_records(context%declaration_record_count) = record
+    end subroutine store_declaration_record
+
+    subroutine grow_declaration_records(context)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_record_t), allocatable :: tmp(:)
+        integer :: old_size, new_size
+
+        old_size = 0
+        if (allocated(context%declaration_records)) &
+            old_size = size(context%declaration_records)
+        new_size = max(64, 2 * old_size)
+        allocate(tmp(new_size))
+        if (context%declaration_record_count > 0) then
+            tmp(1:context%declaration_record_count) = &
+                context%declaration_records(1:context%declaration_record_count)
+        end if
+        call move_alloc(tmp, context%declaration_records)
+    end subroutine grow_declaration_records
+
+    logical function same_declaration_identity(lhs, rhs) result(same)
+        type(declaration_record_t), intent(in) :: lhs
+        type(declaration_record_t), intent(in) :: rhs
+
+        same = lhs%declaration_node_index == rhs%declaration_node_index .and. &
+               lhs%declaration_entity_index == rhs%declaration_entity_index .and. &
+               lhs%scope_node_index == rhs%scope_node_index
+    end function same_declaration_identity
+
+    logical function same_declaration_metadata(lhs, rhs) result(same)
+        type(declaration_record_t), intent(in) :: lhs
+        type(declaration_record_t), intent(in) :: rhs
+
+        same = .true.
+        if (lhs%type_kind > 0 .and. rhs%type_kind > 0) &
+            same = same .and. lhs%type_kind == rhs%type_kind
+        if (lhs%kind_value > 0 .and. rhs%kind_value > 0) &
+            same = same .and. lhs%kind_value == rhs%kind_value
+        if (lhs%value_kind > 0 .and. rhs%value_kind > 0) &
+            same = same .and. lhs%value_kind == rhs%value_kind
+        if (lhs%rank >= 0 .and. rhs%rank >= 0) then
+            same = same .and. lhs%rank == rhs%rank
+            same = same .and. (lhs%is_array .eqv. rhs%is_array)
+        end if
+        same = same .and. (lhs%is_parameter .eqv. rhs%is_parameter)
+    end function same_declaration_metadata
+
+    subroutine merge_declaration_metadata(destination, source)
+        type(declaration_record_t), intent(inout) :: destination
+        type(declaration_record_t), intent(in) :: source
+
+        if (destination%type_kind <= 0) destination%type_kind = source%type_kind
+        if (destination%kind_value <= 0) destination%kind_value = source%kind_value
+        if (destination%value_kind <= 0) destination%value_kind = source%value_kind
+        if (destination%rank < 0 .and. source%rank >= 0) then
+            destination%rank = source%rank
+            destination%is_array = source%is_array
+        end if
+        if (len_trim(destination%type_name) == 0) &
+            destination%type_name = source%type_name
+    end subroutine merge_declaration_metadata
+
+    integer function find_declaration_record(context, binding) result(index)
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        integer :: i
+
+        index = 0
+        if (.not. binding%found) return
+        do i = context%declaration_record_count, 1, -1
+            if (context%declaration_records(i)%declaration_node_index /= &
+                binding%declaration_node_index) cycle
+            if (context%declaration_records(i)%declaration_entity_index /= &
+                binding%declaration_entity_index) cycle
+            if (context%declaration_records(i)%scope_node_index /= &
+                binding%scope_node_index) cycle
+            index = i
+            return
+        end do
+    end function find_declaration_record
+
     subroutine lower_constant_declaration(node, context, value_kind, error_msg)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
