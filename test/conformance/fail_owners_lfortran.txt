@@ -8,6 +8,5 @@ implicit_interface_38b.f90 # owner=lazy-fortran/ffc#353; reason=register positio
 implicit_typing_07.f90 # owner=lazy-fortran/ffc#355; reason=collect old-style PARAMETER bindings
 include_03.f90 # owner=lazy-fortran/ffc#354; reason=expand Fortran INCLUDE lines
 interface_29.f90 # owner=lazy-fortran/ffc#357; reason=preserve bodies after interface blocks
-lapack_05.f90 # owner=lazy-fortran/ffc#356; reason=resolve leading-dimension dummies
 modules_58_module.f90 # owner=lazy-fortran/ffc#358; reason=lower multi-object ALLOCATE
 pointer_13.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
