@@ -338,6 +338,7 @@
         ! A by-value binding: the identifier resolves to the operand directly,
         ! never to storage, so reference/address paths stay disabled.
         sym%is_parameter = .true.
+        sym%is_statement_function_argument = .true.
         sym%has_address = .false.
         sym%is_reference = .false.
     end subroutine set_bound_arg_symbol

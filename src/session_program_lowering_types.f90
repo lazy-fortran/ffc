@@ -207,6 +207,10 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: value
         type(lr_operand_desc_t) :: address
         logical :: is_parameter = .false.
+        ! Temporary by-value override used while inlining a statement function;
+        ! it is resolved by its synthetic name until the body expression is
+        ! restored (#332).
+        logical :: is_statement_function_argument = .false.
         logical :: is_reference = .false.
         logical :: has_address = .false.
         ! Bound to a COMMON slot global (session_program_lowering_common.inc):

@@ -2399,7 +2399,7 @@ contains
         character(len=*), intent(in) :: name
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: resolve_error
-        integer :: bound
+        integer :: bound, compat
 
         index = 0
         if (node_index <= 0) then
@@ -2412,6 +2412,12 @@ contains
             bound = find_symbol_for_binding(context, binding)
             if (symbol_slot_holds_binding(context, bound, binding)) then
                 index = bound
+                return
+            end if
+            compat = find_symbol_compat(context, name)
+            if (compat > 0 .and. context%symbols(compat)%&
+                is_statement_function_argument) then
+                index = compat
                 return
             end if
             if (binding%association /= ASSOCIATION_HOST .and. &
