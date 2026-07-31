@@ -428,6 +428,8 @@ components = [
 - `kind` is `integer`, `real`, `logical`, `character`, or `type(<name>)`.
 - A later unit reads these tables on `use`, emits external references to module
   variables and mangled procedures, and links them against the module object.
+  `use, only:` names and rename targets are validated against the records; a
+  local rename keeps the recorded remote name for storage and linkage.
 
 ## Unsupported ABI Work
 
