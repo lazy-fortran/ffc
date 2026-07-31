@@ -617,6 +617,54 @@
         call set_empty(error_msg)
     end subroutine lower_runtime_local_whole_assignment
 
+    subroutine lower_runtime_local_constructor(arena, ctor, dst_sym, context, &
+                                               error_msg)
+        ! b = [e1, e2, ...] for a rank-1 local runtime array: lower every
+        ! element and store it at its linear slot in the dynamic storage.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: dst_sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, slot
+        integer, allocatable :: flat(:)
+        integer :: i, vk
+
+        call set_empty(error_msg)
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'array constructor has no elements'
+            return
+        end if
+        allocate (flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        vk = context%symbols(dst_sym)%value_kind
+        do i = 1, size(flat)
+            select case (vk)
+            case (VALUE_F32)
+                call lower_f32_expression(arena, flat(i), context, value, &
+                                          error_msg)
+            case (VALUE_F64)
+                call lower_f64_expression(arena, flat(i), context, value, &
+                                          error_msg)
+            case (VALUE_LOGICAL)
+                call lower_logical_expression(arena, flat(i), context, value, &
+                                              error_msg)
+            case default
+                call lower_i32_expression(arena, flat(i), context, value, &
+                                          error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+            slot = i32_immediate(context%session, int(i - 1, c_int64_t))
+            call store_array_element_at_operand(context, dst_sym, slot, value, &
+                                                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_runtime_local_constructor
+
     subroutine lower_runtime_local_array_assignment(arena, node, dst_sym, &
                                                     context, handled, error_msg)
         ! Whole-array assignment dispatch for a rank-1 local runtime array. Two
@@ -637,6 +685,22 @@
         call set_empty(error_msg)
         vk = context%symbols(dst_sym)%value_kind
         if (.not. runtime_local_array_kind_ok(vk)) return
+
+        ! b = [...] : store each constructor element into the entry-sized
+        ! storage. The extent is only known at run time, so no compile-time
+        ! element-count check applies.
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                if (.not. is_implied_do_constructor(arena, rhs)) then
+                    call lower_runtime_local_constructor(arena, rhs, dst_sym, &
+                                                         context, error_msg)
+                    handled = len_trim(error_msg) == 0
+                    return
+                end if
+            class default
+            end select
+        end if
 
         ! b = c : copy from another same-kind rank-1 array identifier.
         if (is_identifier(arena, node%value_index)) then

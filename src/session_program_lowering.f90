@@ -1481,6 +1481,14 @@ contains
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
                     type is (array_literal_node)
+                    ! A runtime-sized automatic array has no compile-time extent
+                    ! to match the constructor against; its whole-array path
+                    ! stores the elements into the entry-sized storage.
+                    if (context%symbols(symbol_index)%is_runtime_array) then
+                        call lower_array_whole_assignment(arena, node, &
+                            symbol_index, context, error_msg)
+                        return
+                    end if
                     call lower_array_constructor_assignment(arena, val, &
                         symbol_index, context, error_msg)
                     return

@@ -1,2 +1,5 @@
 # COMMON regression from issue #305
 common_39.f90
+# automatic-array entry extents from issue #359
+arrays_06_size.f90
+arrays_07_size.f90

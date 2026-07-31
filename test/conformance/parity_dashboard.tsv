@@ -14,7 +14,7 @@ corpus-files	lfortran	3ade5f5dff08cf108011fa147ef345a7e970076f76d63dba155eb7c071
 corpus-files	gfortran-dg	92c68be4f4fedb223725a1676066bd80f78e5b3b2d6766b26ddaeb1ec7faf75d
 digest	ffc-source	6e3935954b9eb221c51bde30626561552a4b0b3247873a3a8f88a62d11fe8c30
 digest	ffc-binary	ab8e02a91a8da012a8005f2f130e3dce46edd9e033175f67f120b9656a18b61e
-digest	manifests	d01ccf3a84d87fd1ae2fc9d911f1a84fed45367f0dc8dee65f1cddb66d7f8eba
+digest	manifests	e4fcdadbaf28b84beb2fcd1751c5232a0d514f5122fdbec6b0c518390e7fd961
 suite	fortfront-f90	442	341	101	0	0	94	0
 suite	fortfront-lf	264	206	58	0	0	0	0
 suite	lfortran	4280	849	3419	0	11	145	1

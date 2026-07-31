@@ -10,6 +10,7 @@ program test_session_runtime_local_array
     if (.not. test_integer_automatic_array()) all_passed = .false.
     if (.not. test_real_broadcast_and_copy()) all_passed = .false.
     if (.not. test_lower_bound_array()) all_passed = .false.
+    if (.not. test_entry_extent_survives_bound_mutation()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: runtime-sized local automatic arrays lower end to end'
@@ -102,5 +103,35 @@ contains
         test_lower_bound_array = expect_output(source, expected, &
             '/tmp/ffc_session_runtime_local_array_lb')
     end function test_lower_bound_array
+
+    logical function test_entry_extent_survives_bound_mutation()
+        ! arrays_06_size / arrays_07_size shape: integer :: keep(x) with x an
+        ! intent(inout) dummy. The extent is fixed on entry, so assigning x = 1
+        ! after the declaration must not resize keep. The array-constructor
+        ! assignment keep = [1,2] fills the runtime-sized storage.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: y = 2'//new_line('a')// &
+            'call temp(y)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'subroutine temp(x)'//new_line('a')// &
+            'integer, intent(inout) :: x'//new_line('a')// &
+            'integer :: keep(x)'//new_line('a')// &
+            'keep = [1, 2]'//new_line('a')// &
+            'x = 1'//new_line('a')// &
+            'print *, size(keep)'//new_line('a')// &
+            'print *, keep'//new_line('a')// &
+            'if (size(keep) /= 2) error stop'//new_line('a')// &
+            'if (keep(1) /= 1) error stop'//new_line('a')// &
+            'if (keep(2) /= 2) error stop'//new_line('a')// &
+            'end subroutine temp'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           2'//new_line('a')// &
+            '           1           2'//new_line('a')
+
+        test_entry_extent_survives_bound_mutation = expect_output(source, &
+            expected, '/tmp/ffc_session_runtime_local_array_entry')
+    end function test_entry_extent_survives_bound_mutation
 
 end program test_session_runtime_local_array
