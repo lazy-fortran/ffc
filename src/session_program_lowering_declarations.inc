@@ -209,6 +209,12 @@
         record%is_array = node%is_array .or. record%rank > 0
         record%is_parameter = node%is_parameter .and. &
             binding%binding_kind == BINDING_NAMED_CONSTANT
+        ! Lazy Fortran default real is 8 bytes (#438). A declaration that
+        ! spells no kind selector records kind 8 so the resolved metadata and
+        ! the materialized storage agree.
+        if (context%lazy_mode .and. record%type_kind == TREAL) then
+            if (.not. node%has_kind) record%kind_value = 8
+        end if
         record%value_kind = declaration_metadata_value_kind( &
             record%type_kind, record%kind_value, record%type_name, context, &
             node%line, node%column, node%resolved_derived_type_name)
@@ -804,6 +810,12 @@
             if (len_trim(error_msg) > 0) return
             if (real_kind_is_f64(kind_spec, context, reference_index)) then
                 value_kind = VALUE_F64
+            else if (len_trim(kind_spec) == 0 .and. &
+                     lazy_defaults_active(context)) then
+                ! Lazy Fortran default real is 8 bytes (#438), so a kind-less
+                ! `real` lowers exactly like the explicit `real(8)` a standard
+                ! source would have to spell out.
+                value_kind = VALUE_F64
             else
                 value_kind = VALUE_F32
             end if
@@ -1051,6 +1063,17 @@
             end if
         end do
     end function is_integer_literal_text
+
+    ! Lazy Fortran dialect defaults apply only when the driver compiled this
+    ! unit in lazy input mode (#438). Standard Fortran sources keep the
+    ! processor-dependent default real kind ffc has always used.
+    logical function lazy_defaults_active(context) result(active)
+        type(lowering_context_t), intent(in), optional :: context
+
+        active = .false.
+        if (.not. present(context)) return
+        active = context%lazy_mode
+    end function lazy_defaults_active
 
     ! Returns true when the real kind spec selects f64 (kind 8). Bare real
     ! and real(4)/c_float/real32 are f32; a declared "integer, parameter"

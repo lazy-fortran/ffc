@@ -121,13 +121,15 @@ contains
             call lower_program_to_liric_object(frontend_result%arena, &
                 frontend_result%root_index, &
                 trim(output_file), error_msg, &
-                search_paths, backend=opts%backend, opt_level=opts%opt_level)
+                search_paths, backend=opts%backend, opt_level=opts%opt_level, &
+                lazy_mode=input_mode == INPUT_MODE_LAZY)
         else
             call lower_program_to_liric_exe(frontend_result%arena, &
                 frontend_result%root_index, &
                 trim(output_file), error_msg, &
                 search_paths, opts%link_inputs, backend=opts%backend, &
-                opt_level=opts%opt_level)
+                opt_level=opts%opt_level, &
+                lazy_mode=input_mode == INPUT_MODE_LAZY)
         end if
         if (len_trim(error_msg) > 0) then
             diag_msg = trim(error_msg)
