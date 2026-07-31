@@ -1,55 +1,60 @@
 program test_conformance_gauntlet_smoke
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
 
     integer, parameter :: RUN_TIMEOUT_SECONDS = 120
     character(len=*), parameter :: SCRIPT = &
         'scripts/conformance_gauntlet.sh'
-    character(len=*), parameter :: ROOT_REPORT = &
-        '/tmp/ffc_gauntlet_smoke_root.jsonl'
-    character(len=*), parameter :: TMP_CWD_REPORT = &
-        '/tmp/ffc_gauntlet_smoke_tmpcwd.jsonl'
-    character(len=*), parameter :: NAMED_REPORT = &
-        '/tmp/ffc_gauntlet_smoke_named.jsonl'
-    character(len=*), parameter :: LIST_REPORT = &
-        '/tmp/ffc_gauntlet_smoke_list.jsonl'
-    character(len=*), parameter :: LIMITED_REPORT = &
-        '/tmp/ffc_gauntlet_smoke_limited.jsonl'
-    character(len=*), parameter :: FORWARDED_REPORT = &
-        '/tmp/ffc_conformance_fortfront-f90.jsonl'
-    character(len=*), parameter :: SELECTION_LIST = &
-        '/tmp/ffc_gauntlet_smoke_files.txt'
-    character(len=*), parameter :: FORWARD_SELECTION_LIST = &
-        '/tmp/ffc_gauntlet_smoke_forward_files.txt'
-    character(len=*), parameter :: FAILURE_LOG = &
-        '/tmp/ffc_gauntlet_smoke_failure.log'
-    character(len=*), parameter :: DG_FIXTURE_DIR = &
-        '/tmp/ffc_gauntlet_dg_fixtures'
-    character(len=*), parameter :: DG_REPORT = &
-        '/tmp/ffc_gauntlet_dg_warning.jsonl'
-    character(len=*), parameter :: DG_NEGATIVE_REPORT = &
-        '/tmp/ffc_gauntlet_dg_negative.jsonl'
-    character(len=*), parameter :: UNDEFINED_REPORT = &
-        '/tmp/ffc_gauntlet_undefined_output.jsonl'
-    character(len=*), parameter :: UNDEFINED_NEGATIVE_REPORT = &
-        '/tmp/ffc_gauntlet_undefined_negative.jsonl'
-    character(len=*), parameter :: UNDEFINED_FIXTURE_ROOT = &
-        '/tmp/ffc_gauntlet_undefined_fortfront'
-    character(len=*), parameter :: UNDEFINED_MANIFEST = &
-        '/tmp/ffc_gauntlet_undefined_manifest.txt'
-    character(len=*), parameter :: UNLINKED_REPORT = &
-        '/tmp/ffc_gauntlet_unlinked.jsonl'
-    character(len=*), parameter :: NOREF_NEGATIVE_REPORT = &
-        '/tmp/ffc_gauntlet_noref_negative.jsonl'
+    ! Per-run scratch directory: concurrent runs must not share fixtures.
+    character(len=:), allocatable :: ROOT
+    character(len=:), allocatable :: ROOT_REPORT
+    character(len=:), allocatable :: TMP_CWD_REPORT
+    character(len=:), allocatable :: NAMED_REPORT
+    character(len=:), allocatable :: LIST_REPORT
+    character(len=:), allocatable :: LIMITED_REPORT
+    character(len=:), allocatable :: FORWARDED_REPORT
+    character(len=:), allocatable :: SELECTION_LIST
+    character(len=:), allocatable :: FORWARD_SELECTION_LIST
+    character(len=:), allocatable :: FAILURE_LOG
+    character(len=:), allocatable :: DG_FIXTURE_DIR
+    character(len=:), allocatable :: DG_REPORT
+    character(len=:), allocatable :: DG_NEGATIVE_REPORT
+    character(len=:), allocatable :: UNDEFINED_REPORT
+    character(len=:), allocatable :: UNDEFINED_NEGATIVE_REPORT
+    character(len=:), allocatable :: UNDEFINED_FIXTURE_ROOT
+    character(len=:), allocatable :: UNDEFINED_MANIFEST
+    character(len=:), allocatable :: UNLINKED_REPORT
+    character(len=:), allocatable :: NOREF_NEGATIVE_REPORT
 
     logical :: all_passed
 
     print *, '=== conformance gauntlet smoke test ==='
 
+    ROOT = make_temp_root('gauntlet_smoke')
+    ROOT_REPORT = ROOT//'/ffc_gauntlet_smoke_root.jsonl'
+    TMP_CWD_REPORT = ROOT//'/ffc_gauntlet_smoke_tmpcwd.jsonl'
+    NAMED_REPORT = ROOT//'/ffc_gauntlet_smoke_named.jsonl'
+    LIST_REPORT = ROOT//'/ffc_gauntlet_smoke_list.jsonl'
+    LIMITED_REPORT = ROOT//'/ffc_gauntlet_smoke_limited.jsonl'
+    FORWARDED_REPORT = ROOT//'/ffc_conformance_fortfront-f90.jsonl'
+    SELECTION_LIST = ROOT//'/ffc_gauntlet_smoke_files.txt'
+    FORWARD_SELECTION_LIST = ROOT//'/ffc_gauntlet_smoke_forward_files.txt'
+    FAILURE_LOG = ROOT//'/ffc_gauntlet_smoke_failure.log'
+    DG_FIXTURE_DIR = ROOT//'/ffc_gauntlet_dg_fixtures'
+    DG_REPORT = ROOT//'/ffc_gauntlet_dg_warning.jsonl'
+    DG_NEGATIVE_REPORT = ROOT//'/ffc_gauntlet_dg_negative.jsonl'
+    UNDEFINED_REPORT = ROOT//'/ffc_gauntlet_undefined_output.jsonl'
+    UNDEFINED_NEGATIVE_REPORT = ROOT//'/ffc_gauntlet_undefined_negative.jsonl'
+    UNDEFINED_FIXTURE_ROOT = ROOT//'/ffc_gauntlet_undefined_fortfront'
+    UNDEFINED_MANIFEST = ROOT//'/ffc_gauntlet_undefined_manifest.txt'
+    UNLINKED_REPORT = ROOT//'/ffc_gauntlet_unlinked.jsonl'
+    NOREF_NEGATIVE_REPORT = ROOT//'/ffc_gauntlet_noref_negative.jsonl'
+
     all_passed = .true.
     if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
         ' --suite fortfront-f90 --max-files 20 --report '// &
         ROOT_REPORT, ROOT_REPORT, 20)) all_passed = .false.
-    if (.not. run_smoke('repo="$PWD"; cd /tmp && timeout 120 bash '// &
+    if (.not. run_smoke('repo="$PWD"; cd '//ROOT//' && timeout 120 bash '// &
         '"$repo/'//SCRIPT//'" --suite fortfront-f90 --max-files 20 '// &
         '--report '//TMP_CWD_REPORT, &
         TMP_CWD_REPORT, 20)) all_passed = .false.
@@ -75,7 +80,10 @@ program test_conformance_gauntlet_smoke
     if (.not. file_contains(LIMITED_REPORT, &
         '"file":"ast_coverage_control_flow.f90"')) all_passed = .false.
 
-    if (.not. run_smoke('repo="$PWD"; cd /tmp && timeout 120 bash'// &
+    ! conformance_check.sh writes its default report under TMPDIR, so the
+    ! forwarded run stays inside this run's scratch directory.
+    if (.not. run_smoke('repo="$PWD"; cd '//ROOT//' && TMPDIR='//ROOT// &
+        ' timeout 120 bash'// &
         ' "$repo/scripts/conformance_check.sh"'// &
         ' --no-build --suite fortfront-f90'// &
         ' --file ast_coverage_control_flow.f90'// &
@@ -109,7 +117,9 @@ program test_conformance_gauntlet_smoke
     call run_dg_directive_smoke(all_passed)
     call run_noref_smoke(all_passed)
 
+    ! Keep the scratch directory when something failed: it holds the logs.
     if (.not. all_passed) stop 1
+    call remove_temp_root(ROOT)
     print *, 'PASS: gauntlet smoke test completed with zero FAIL records'
 
 contains

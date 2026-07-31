@@ -130,31 +130,51 @@ resolve_primary_checkout_root() {
     fi
 }
 
-# Resolve the ffc binary. Priority: --ffc arg > FFC_BIN env > build/ tree > PATH.
+# Resolve the ffc binary. Priority: --ffc arg > FFC_BIN env > own build/ tree.
+#
+# The binary must come from the checkout that owns this script. Resolving it by
+# a relative path, or from PATH, lets a concurrently building sibling worktree
+# supply the compiler: the suite then silently measures someone else's code and
+# reports the result as this checkout's. Any candidate outside PROJECT_DIR/build
+# is therefore rejected rather than used, and the emitted path is absolute.
 find_ffc() {
+    local project_dir build_dir candidate resolved
     if [ -n "${FFC_BIN:-}" ]; then
-        echo "$FFC_BIN"
+        resolved=$(readlink -f "$FFC_BIN" 2>/dev/null) || resolved=""
+        if [ -z "$resolved" ] || [ ! -x "$resolved" ]; then
+            echo "ERROR: FFC_BIN is not an executable file: $FFC_BIN" >&2
+            return 1
+        fi
+        echo "$resolved"
         return 0
     fi
-    local candidate
-    local build_dir
-    build_dir="${PROJECT_DIR:-.}/build"
+    if [ -z "${PROJECT_DIR:-}" ]; then
+        echo "ERROR: PROJECT_DIR is unset; cannot resolve ffc from own build tree." >&2
+        return 1
+    fi
+    project_dir=$(readlink -f "$PROJECT_DIR" 2>/dev/null) || project_dir=""
+    if [ -z "$project_dir" ]; then
+        echo "ERROR: PROJECT_DIR does not exist: $PROJECT_DIR" >&2
+        return 1
+    fi
+    build_dir="$project_dir/build"
     # Pick the most recently built ffc. Several may coexist (build/fo/bin/ffc
     # from the fo backend, build/gfortran_*/app/ffc from fpm); an arbitrary
     # head -1 can return a stale one whose lowering predates recent fixes.
     candidate=$(find "$build_dir" -name ffc -type f -executable -printf '%T@ %p\n' \
         2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
     if [ -n "$candidate" ]; then
-        echo "$candidate"
-        return 0
+        resolved=$(readlink -f "$candidate" 2>/dev/null) || resolved=""
+        case "$resolved" in
+            "$build_dir"/*)
+                echo "$resolved"
+                return 0 ;;
+            *)
+                echo "ERROR: ffc candidate escapes own build tree: $candidate" >&2
+                return 1 ;;
+        esac
     fi
-    local in_path
-    in_path=$(command -v ffc 2>/dev/null) || true
-    if [ -n "$in_path" ]; then
-        echo "$in_path"
-        return 0
-    fi
-    echo "ERROR: ffc binary not found. Set FFC_BIN or run 'fpm build' first." >&2
+    echo "ERROR: no ffc binary in $build_dir. Run 'fo build' first." >&2
     return 1
 }
 

@@ -89,7 +89,11 @@ done
 [ -d "$MANIFEST_DIR" ] || fail "manifest directory not found: $MANIFEST_DIR"
 
 
-CORPUS_PARENT=$(dirname "$PROJECT_DIR")
+# Sibling corpora live next to the primary checkout, not next to a worktree
+# under .wt/. Resolve them from the repository's common root so a worktree
+# behaves exactly like the primary checkout.
+PRIMARY_REPO_ROOT="$(resolve_primary_checkout_root "$PROJECT_DIR")"
+CORPUS_PARENT=$(dirname "$PRIMARY_REPO_ROOT")
 FORTFRONT_DIR=${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}
 LIRIC_DIR=${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}
 pin_values=$("$SCRIPT_DIR/fetch_corpora.sh" --print-pins)
