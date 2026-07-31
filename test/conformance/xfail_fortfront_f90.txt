@@ -10,7 +10,6 @@ call_graph_internal_procedures.f90 # owner=lazy-fortran/ffc#376; reason=select a
 compiler_resolved_expression_kinds.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 control_flow_associate_construct.f90 # owner=lazy-fortran/ffc#331; reason=bind BLOCK and ASSOCIATE storage scopes
 data_statement_scalar_upgrade.f90 # scope=harness; reason=FortFront semantic rejection fixture
-docs_character_arrays_out.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 docs_unsigned_integers_out.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 dtio_interface_basic.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 dtio_interface_read_write.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
