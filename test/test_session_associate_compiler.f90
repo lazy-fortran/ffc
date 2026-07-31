@@ -13,6 +13,8 @@ program test_session_associate
     if (.not. test_associate_scope_drops_binding()) all_passed = .false.
     if (.not. test_associate_print_value()) all_passed = .false.
     if (.not. test_associate_real_expr_alias()) all_passed = .false.
+    if (.not. test_associate_kind_constant_selector()) all_passed = .false.
+    if (.not. test_associate_kind_constant_expression()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate constructs lower through direct LIRIC'
@@ -121,5 +123,42 @@ contains
             source, '   7.00000000    '//new_line('a'), &
             '/tmp/ffc_session_associate_real_expr')
     end function test_associate_real_expr_alias
+
+    logical function test_associate_kind_constant_selector()
+        ! An ISO_FORTRAN_ENV kind constant is a named integer constant: the
+        ! associate name must carry its value (4 for int32), not the default
+        ! zero of an unresolved identifier. Matches gfortran.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'use, intrinsic :: iso_fortran_env, only: int32'// &
+            new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'associate (k => int32)'//new_line('a')// &
+            '    print *, k'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'end program main'
+
+        test_associate_kind_constant_selector = expect_output( &
+            source, '           4'//new_line('a'), &
+            '/tmp/ffc_session_associate_kind_const')
+    end function test_associate_kind_constant_selector
+
+    logical function test_associate_kind_constant_expression()
+        ! The bound constant stays usable in further integer expressions and
+        ! keeps its own kind number (int64 is 8).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'use, intrinsic :: iso_fortran_env, only: int8, int64'// &
+            new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'associate (k => int64, m => int8)'//new_line('a')// &
+            '    stop k + m'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'end program main'
+
+        test_associate_kind_constant_expression = expect_exit_status( &
+            source, 9, &
+            '/tmp/ffc_session_associate_kind_expr')
+    end function test_associate_kind_constant_expression
 
 end program test_session_associate

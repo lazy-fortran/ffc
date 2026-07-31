@@ -24,6 +24,35 @@
         end select
     end function iso_c_binding_kind_value
 
+    ! ISO_FORTRAN_ENV integer-kind named constants used as compile-time integer
+    ! values (e.g. "associate (k => int32)" or "integer, parameter :: ik =
+    ! int64"), matching the kind numbers gfortran reports at runtime. Only the
+    ! kind-parameter constants are folded here; the storage-size and unit
+    ! constants keep their own lowering paths.
+    logical function iso_fortran_env_kind_value(name, value) result(found)
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(out) :: value
+        character(len=:), allocatable :: lo
+
+        lo = lowercase_text(trim(name))
+        found = .true.
+        select case (lo)
+        case ('int8')
+            value = 1_c_int64_t
+        case ('int16')
+            value = 2_c_int64_t
+        case ('int32', 'real32')
+            value = 4_c_int64_t
+        case ('int64', 'real64')
+            value = 8_c_int64_t
+        case ('real128')
+            value = 16_c_int64_t
+        case default
+            found = .false.
+            value = 0_c_int64_t
+        end select
+    end function iso_fortran_env_kind_value
+
     ! Determine the kind number of an integer literal's optional kind suffix
     ! (12_8, 12_int64, 12_c_long); a bare literal is default kind 4.
     subroutine integer_literal_kind_number(text, k, error_msg)

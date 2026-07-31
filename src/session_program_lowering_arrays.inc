@@ -122,6 +122,7 @@
             return
         end if
         if (iso_c_binding_kind_value(id_name, kind_value)) has_var = .false.
+        if (iso_fortran_env_kind_value(id_name, kind_value)) has_var = .false.
     end function bound_identifier_references_variable
 
     logical function declaration_bound_is_variable_driven(node, context) &
@@ -1302,6 +1303,10 @@
                     end if
                 end if
                 if (iso_c_binding_kind_value(id_name, constant_value)) then
+                    call set_empty(error_msg)
+                    return
+                end if
+                if (iso_fortran_env_kind_value(id_name, constant_value)) then
                     call set_empty(error_msg)
                     return
                 end if
