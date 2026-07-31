@@ -1,14 +1,16 @@
     subroutine lower_void_subroutine(arena, node, parent_context, error_msg, &
-                                      emit_name_override)
+                                      emit_name_override, procedure_node_index)
         type(ast_arena_t), intent(in) :: arena
         type(subroutine_def_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: parent_context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in), optional :: emit_name_override
+        integer, intent(in), optional :: procedure_node_index
         type(lowering_context_t) :: context
         type(lr_operand_desc_t) :: value
         integer :: param_count
         integer :: hidden_extent_count
+        integer :: table_function_index
         logical :: terminated
         character(len=:), allocatable :: emit_name
 
@@ -34,7 +36,17 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        if (present(procedure_node_index)) then
+            context%current_proc_node_index = procedure_node_index
+        else
+            table_function_index = find_function_index(parent_context, node%name)
+            if (table_function_index > 0) then
+                context%current_proc_node_index = &
+                    parent_context%function_node_indices(table_function_index)
+            end if
+        end if
         call copy_host_global_symbols(parent_context, context)
+        context%block_scope_floor = context%symbol_count
         context%in_internal_function = .true.
         context%in_internal_subroutine = .true.
         context%current_proc_name = trim(node%name)
@@ -48,10 +60,14 @@
         if (present(emit_name_override)) then
             emit_name = trim(emit_name_override)
         else
-            emit_name = procedure_emit_name(node%name, node%bind_c_clause)
+            emit_name = nested_procedure_emit_name(arena, &
+                context%current_proc_node_index, node%name, node%bind_c_clause)
         end if
         if (.not. begin_void_subroutine(context%session, emit_name, &
                 param_count + hidden_extent_count, error_msg)) return
+
+        call materialize_host_character_globals(context, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
                                          error_msg, node%body_indices)
@@ -741,9 +757,35 @@
         if (has_bind_c(bind_c_clause)) then
             call bind_c_name(bind_c_clause, fortran_name, emit_name)
         else
-            emit_name = trim(fortran_name)
+            emit_name = lowercase_text(trim(fortran_name))
         end if
     end function procedure_emit_name
+
+    function nested_procedure_emit_name(arena, procedure_node_index, &
+                                        fortran_name, bind_c_clause) result(emit_name)
+        ! LIRIC procedures share one flat namespace. Give a contained
+        ! procedure an owner-qualified name so same-named procedures in sibling
+        ! hosts remain distinct (#330).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable, intent(in) :: bind_c_clause
+        character(len=:), allocatable :: emit_name, base_name
+        character(len=32) :: host_text, procedure_text
+        integer :: host_node_index
+
+        host_node_index = enclosing_procedure_node(arena, procedure_node_index)
+        if (host_node_index <= 0) then
+            emit_name = procedure_emit_name(fortran_name, bind_c_clause)
+            return
+        end if
+
+        write (host_text, '(I0)') host_node_index
+        write (procedure_text, '(I0)') procedure_node_index
+        base_name = procedure_emit_name(fortran_name, bind_c_clause)
+        emit_name = '.ffc.nested.'//trim(host_text)//'.'//trim(procedure_text)// &
+                    '.'//trim(base_name)
+    end function nested_procedure_emit_name
 
     function procedure_module(arena, fortran_name) result(module_name)
         ! The module a procedure belongs to for mangling, or empty if not
@@ -823,18 +865,44 @@
                   trim(lowercase_text(proc_name))
     end function module_procedure_mangled
 
-    function call_emit_name(arena, fortran_name) result(emit_name)
+    function call_emit_name(arena, fortran_name, current_context) result(emit_name)
         ! Resolve the LIRIC symbol to call: a module-defined procedure mangles
         ! to __<module>_MOD_<name>; a bind(c) procedure uses its C name; else
         ! the Fortran name.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
+        type(lowering_context_t), intent(in), optional :: current_context
         character(len=:), allocatable :: emit_name, module_name
         character(len=:), allocatable :: node_type
+        integer :: nested_node_index
         integer :: n
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
+        if (present(current_context)) then
+            nested_node_index = visible_nested_procedure_node(current_context, &
+                                                               fortran_name)
+            if (nested_node_index > 0) then
+                emit_name = trim(fortran_name)
+                if (node_exists(arena, nested_node_index)) then
+                    node_type = get_node_type_at(arena, nested_node_index)
+                    if (node_type == 'subroutine_def_node' .or. &
+                        node_type == 'subroutine_def') then
+                        sb_node => get_node_as_subroutine_def(arena, nested_node_index)
+                        if (associated(sb_node)) emit_name = &
+                            nested_procedure_emit_name(arena, nested_node_index, &
+                                fortran_name, sb_node%bind_c_clause)
+                    else if (node_type == 'function_def_node' .or. &
+                             node_type == 'function_def') then
+                        fn_node => get_node_as_function_def(arena, nested_node_index)
+                        if (associated(fn_node)) emit_name = &
+                            nested_procedure_emit_name(arena, nested_node_index, &
+                                fortran_name, fn_node%bind_c_clause)
+                    end if
+                end if
+                return
+            end if
+        end if
         module_name = procedure_module(arena, fortran_name)
         if (len_trim(module_name) > 0) then
             emit_name = module_procedure_mangled(module_name, fortran_name)
@@ -867,6 +935,179 @@
             end if
         end do
     end function call_emit_name
+
+    integer function visible_nested_procedure_node(context, name) result(index)
+        ! Return the procedure declared directly in the current procedure's
+        ! scope. The AST binding, rather than a global text-name table, decides
+        ! whether it shadows a USE-associated procedure (#330).
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: candidate_name
+        integer :: i
+
+        index = 0
+        if (context%current_proc_node_index <= 0) return
+        do i = 1, context%arena%size
+            if (.not. procedure_unit_name(context%arena, i, candidate_name)) cycle
+            if (.not. same_name(candidate_name, name)) cycle
+            if (.not. procedure_scope_is(context%arena, i, &
+                                         context%current_proc_node_index)) cycle
+            index = i
+            return
+        end do
+    end function visible_nested_procedure_node
+
+    logical function procedure_scope_is(arena, procedure_node_index, scope_index) &
+            result(is_nested)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        integer, intent(in) :: scope_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        is_nested = .false.
+        if (.not. node_exists(arena, procedure_node_index)) return
+        parent = arena%entries(procedure_node_index)%parent_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'function_def_node' .or. node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def' .or. node_type == 'program_node' .or. &
+                node_type == 'program' .or. node_type == 'module_node' .or. &
+                node_type == 'module') then
+                is_nested = parent == scope_index
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function procedure_scope_is
+
+    integer function enclosing_procedure_node(arena, procedure_node_index) &
+            result(scope_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        scope_index = 0
+        if (.not. node_exists(arena, procedure_node_index)) return
+        parent = arena%entries(procedure_node_index)%parent_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'function_def_node' .or. node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                scope_index = parent
+                return
+            else if (node_type == 'program_node' .or. node_type == 'program' .or. &
+                     node_type == 'module_node' .or. node_type == 'module') then
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function enclosing_procedure_node
+
+    integer function containing_procedure_node(arena, node_index) result(scope_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        scope_index = 0
+        if (.not. node_exists(arena, node_index)) return
+        parent = node_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'function_def_node' .or. node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                scope_index = parent
+                return
+            else if (node_type == 'program_node' .or. node_type == 'program' .or. &
+                     node_type == 'module_node' .or. node_type == 'module') then
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function containing_procedure_node
+
+    logical function procedure_is_internal(arena, procedure_node_index) result(is_internal)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        is_internal = .false.
+        if (.not. node_exists(arena, procedure_node_index)) return
+        parent = arena%entries(procedure_node_index)%parent_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'function_def_node' .or. node_type == 'function_def' .or. &
+                node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def' .or. node_type == 'program_node' .or. &
+                node_type == 'program') then
+                is_internal = .true.
+                return
+            else if (node_type == 'module_node' .or. node_type == 'module') then
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function procedure_is_internal
+
+    logical function binding_scope_is_module(arena, scope_index) result(is_module)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: scope_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        is_module = .false.
+        if (.not. node_exists(arena, scope_index)) return
+        parent = scope_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'module_node' .or. node_type == 'module') then
+                is_module = .true.
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def' .or. &
+                     node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def' .or. node_type == 'program_node' .or. &
+                     node_type == 'program') then
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function binding_scope_is_module
+
+    integer function procedure_value_kind(context, node_index) result(value_kind)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: node_type, error_msg
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer :: derived_type_index
+
+        value_kind = 0
+        if (.not. node_exists(context%arena, node_index)) return
+        node_type = get_node_type_at(context%arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(context%arena, node_index)
+            if (.not. associated(fn_node)) return
+            call function_value_kind(fn_node, context, value_kind, &
+                                     derived_type_index, error_msg, node_index)
+            if (len_trim(error_msg) > 0) value_kind = 0
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(context%arena, node_index)
+            if (associated(sb_node)) value_kind = VALUE_SUBROUTINE
+        end if
+    end function procedure_value_kind
 
     subroutine define_reference_parameters(arena, param_indices, context, &
                                             error_msg, body_indices, &
@@ -908,7 +1149,8 @@
                 end if
             end if
             call define_parameter_symbol(context, name, i - 1 + offset, &
-                                         value_kind, error_msg)
+                                         value_kind, error_msg, &
+                                         parameter_node_index=param_indices(i))
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters
@@ -941,21 +1183,39 @@
     end subroutine parameter_name
 
     subroutine define_parameter_symbol(context, name, param_index, value_kind, &
-                                      error_msg)
+                                      error_msg, parameter_node_index)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: param_index
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: parameter_node_index
         integer :: index
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: binding_error
+        logical :: has_binding
 
-        if (find_symbol(context, name) > 0) then
+        has_binding = .false.
+        if (present(parameter_node_index)) then
+            call resolve_name_at_node(context%arena, parameter_node_index, name, &
+                                      binding, binding_error)
+            if (len_trim(binding_error) == 0 .and. binding%found) &
+                has_binding = .true.
+        end if
+        if (has_binding) then
+            index = find_symbol_for_binding(context, binding)
+        else
+            index = find_symbol(context, name)
+        end if
+        if (index > 0 .and. .not. has_binding) then
             error_msg = 'duplicate function parameter: '//trim(name)
             return
         end if
-       call grow_symbols(context)
-
-        index = context%symbol_count + 1
+        if (index <= 0) then
+            call grow_symbols(context)
+            index = context%symbol_count + 1
+            context%symbol_count = index
+        end if
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = value_kind
         context%symbols(index)%address = ptr_param(context%session, param_index)
@@ -963,7 +1223,17 @@
         context%symbols(index)%is_reference = .true.
         context%symbols(index)%value = i32_immediate(context%session, 0_c_int64_t)
         context%symbols(index)%is_parameter = .true.
-        context%symbol_count = index
+        if (has_binding) then
+            context%symbols(index)%has_binding = .true.
+            context%symbols(index)%binding_declaration_index = &
+                binding%declaration_node_index
+            context%symbols(index)%binding_entity_index = &
+                binding%declaration_entity_index
+            context%symbols(index)%binding_scope_index = binding%scope_node_index
+            call context%binding_table%insert_binding( &
+                binding%declaration_node_index, binding%declaration_entity_index, &
+                binding%scope_node_index, index)
+        end if
         call set_empty(error_msg)
     end subroutine define_parameter_symbol
 

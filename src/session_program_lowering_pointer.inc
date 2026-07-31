@@ -599,7 +599,7 @@
             return
         end if
         ! Target is a named procedure: intern its symbol and store as ptr.
-        call to_c_chars(trim(call_emit_name(context%arena, target_name)), c_name)
+        call to_c_chars(trim(call_emit_name(context%arena, target_name, context)), c_name)
         symbol_id = lr_session_intern(context%session%handle, c_name)
         if (symbol_id < 0_c_int32_t) then
             error_msg = 'could not intern procedure symbol: '//trim(target_name)

@@ -129,6 +129,15 @@
             call destroy(context%session)
             return
         end if
+        ! Internal procedures are emitted before the main body, so ordinary
+        ! local declarations have not populated the parent symbol table yet.
+        ! Materialise storage for any declaration whose FortFront binding is
+        ! referenced from a host scope before lowering those procedures (#330).
+        call collect_host_associated_symbols(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call collect_statement_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -204,6 +213,11 @@
             context%argc_value = i32_vreg(context%session, argc_vreg)
             context%argv_value = ptr_vreg(context%session, argv_vreg)
             context%has_command_args = .true.
+            call materialize_host_character_globals(context, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call destroy(context%session)
+                return
+            end if
         end if
         call lower_program_return(arena, root_index, context, return_value, &
                                   error_msg)

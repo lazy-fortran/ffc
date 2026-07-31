@@ -514,6 +514,10 @@ module session_program_lowering_types
         ! Name of the contained procedure currently being lowered. Lets an
         ! assumed-shape dummy a(:) recover its extent from the caller's actual.
         character(len=:), allocatable :: current_proc_name
+        ! AST node for the procedure currently being lowered. Unlike the text
+        ! name, this remains unambiguous when a contained procedure shadows a
+        ! USE-associated procedure with the same spelling (#330).
+        integer :: current_proc_node_index = 0
         integer :: current_function_result_index = 0
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t

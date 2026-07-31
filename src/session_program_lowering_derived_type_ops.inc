@@ -1029,7 +1029,7 @@
             all_args(i) = method_args(k)
         end do
         if (.not. emit_void_call(context%session, &
-                call_emit_name(arena, impl_name), all_args, error_msg)) return
+                call_emit_name(arena, impl_name, context), all_args, error_msg)) return
         call copy_back_reference_args(context, method_args, copyback_indices, &
                                       error_msg)
     end subroutine lower_method_subroutine_call
@@ -1059,7 +1059,8 @@
         call prepare_reference_args(arena, combined, context, VALUE_I32, &
                                     impl_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_call(context%session, call_emit_name(arena, impl_name), &
+        if (.not. emit_i32_call(context%session, call_emit_name(arena, impl_name, &
+                                                               context), &
                                 args, value, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_method_call_i32
@@ -1880,7 +1881,7 @@
         end do
 
         if (.not. emit_void_call(context%session, &
-                                 call_emit_name(arena, trim(func_name)), &
+                                 call_emit_name(arena, trim(func_name), context), &
                                  all_args, error_msg)) return
         call copy_back_reference_args(context, user_args, copyback_indices, &
                                       error_msg)
@@ -1927,7 +1928,7 @@
         end do
 
         if (.not. emit_void_call(context%session, &
-                                 call_emit_name(arena, trim(func_name)), &
+                                 call_emit_name(arena, trim(func_name), context), &
                                  all_args, error_msg)) return
         call copy_back_reference_args(context, user_args, copyback_indices, &
                                       error_msg)

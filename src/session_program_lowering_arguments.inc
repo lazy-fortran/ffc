@@ -396,7 +396,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) return
             if (.not. context%symbols(symbol_index)%is_array) return
             element_count = int(context%symbols(symbol_index)%array_size, &
@@ -410,7 +410,7 @@
             call section_available_element_count(arena, node, context, &
                                                  element_count, known, error_msg)
         type is (call_or_subscript_node)
-            call call_actual_available_element_count(arena, node, context, &
+            call call_actual_available_element_count(arena, node, node_index, context, &
                                                      element_count, known, &
                                                      error_msg)
         type is (array_literal_node)
@@ -451,10 +451,11 @@
         call set_empty(error_msg)
     end subroutine section_available_element_count
 
-    subroutine call_actual_available_element_count(arena, node, context, &
+    subroutine call_actual_available_element_count(arena, node, node_index, context, &
                                                    element_count, known, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer(c_int64_t), intent(out) :: element_count
         logical, intent(out) :: known
@@ -474,7 +475,7 @@
         if (.not. is_element_ref) is_element_ref = &
             is_declared_array_element_ref(node, context)
         if (.not. is_element_ref) return
-        call array_element_available_count(arena, node, context, element_count, &
+        call array_element_available_count(arena, node, node_index, context, element_count, &
                                            known, error_msg)
     end subroutine call_actual_available_element_count
 
@@ -552,10 +553,11 @@
         end select
     end subroutine reshape_shape_element_count
 
-    subroutine array_element_available_count(arena, node, context, element_count, &
+    subroutine array_element_available_count(arena, node, node_index, context, element_count, &
                                              known, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer(c_int64_t), intent(out) :: element_count
         logical, intent(out) :: known
@@ -575,7 +577,7 @@
         call set_empty(error_msg)
         if (.not. allocated(node%name)) return
         if (.not. allocated(node%arg_indices)) return
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = resolve_symbol_at_node(context, node_index, node%name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_array) return
         rank = context%symbols(symbol_index)%array_rank
@@ -633,7 +635,7 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index > 0) actual_is_character = &
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
@@ -696,7 +698,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, id_name, id_err)
         if (len_trim(id_err) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index > 0) actual_is_derived = &
             context%symbols(symbol_index)%is_derived
     end function actual_is_derived
@@ -714,7 +716,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, id_name, id_err)
         if (len_trim(id_err) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) return
         actual_is_whole_array = context%symbols(symbol_index)%is_array .and. &
                                 .not. context%symbols(symbol_index)%is_allocatable
@@ -740,7 +742,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, id_name, id_err)
         if (len_trim(id_err) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) return
         if (context%symbols(symbol_index)%is_array) return
         if (context%symbols(symbol_index)%array_rank > 0) return
@@ -761,7 +763,7 @@
 
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) then
             error_msg = 'array argument was not declared: '//trim(id_name)
             return
@@ -858,7 +860,7 @@
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, id_name, id_err)
         if (len_trim(id_err) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) return
         actual_is_allocatable_array = &
             context%symbols(symbol_index)%is_allocatable .and. &
@@ -882,7 +884,7 @@
 
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) then
             error_msg = 'allocatable array argument was not declared: '// &
                         trim(id_name)
@@ -906,7 +908,7 @@
 
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) then
             error_msg = 'derived argument was not declared: '//trim(id_name)
             return
@@ -935,7 +937,7 @@
         end if
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) then
             error_msg = 'character argument was not declared: '//trim(id_name)
             return
@@ -1087,7 +1089,7 @@
         handled = .false.
         call get_identifier_name(arena, node_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol(context, id_name)
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
         if (symbol_index <= 0) then
             call set_empty(error_msg)
             return
@@ -1171,7 +1173,7 @@ integer function expression_value_kind(arena, node_index, context, &
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index > 0) value_kind = context%symbols(symbol_index)%value_kind
             return
         end if
@@ -1274,7 +1276,7 @@ integer function expression_value_kind(arena, node_index, context, &
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol(context, id_name)
+            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_array) then
                     rank = context%symbols(symbol_index)%array_rank
@@ -1288,7 +1290,7 @@ integer function expression_value_kind(arena, node_index, context, &
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             if (node%is_array_access) then
-                rank = expression_array_access_rank(arena, node, context)
+                rank = expression_array_access_rank(arena, node, node_index, context)
                 return
             end if
         end select
@@ -1403,19 +1405,20 @@ integer function expression_value_kind(arena, node_index, context, &
         call set_empty(error_msg)
     end subroutine copy_back_reference_args
 
-    integer function expression_array_access_rank(arena, node, context) result(rank)
+    integer function expression_array_access_rank(arena, node, node_index, context) result(rank)
         ! Rank of an array access expression: 0 for element access (all indices
         ! are scalar), or the remaining rank for a section (e.g. a(:) keeps rank
         ! 1 of a rank-1 array).
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index, base_rank
 
         rank = 0
         if (.not. allocated(node%name)) return
         if (len_trim(node%name) == 0) return
-        symbol_index = find_symbol(context, node%name)
+        symbol_index = resolve_symbol_at_node(context, node_index, node%name)
         if (symbol_index <= 0) return
         base_rank = 0
         if (context%symbols(symbol_index)%is_array) then

@@ -48,7 +48,6 @@ issue_2691_implied_do_static_size_unknown.lf # owner=lazy-fortran/ffc#447; reaso
 issue_2694_strict_zero_iter_implied_do.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_2694_strict_zero_sized_array_constructor.lf # owner=lazy-fortran/ffc#459; reason=lower typed array constructors
 issue_652_multi_var_allocatable.lf # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
-issue_nested_internal_procedures.lf # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 issue_playtest5_function_no_return_type.lf # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_playtest5_nested_function_chaos.lf # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_playtest5_reshape_allocatable_never_allocated.lf # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
