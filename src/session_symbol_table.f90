@@ -44,10 +44,7 @@ module session_symbol_table
     contains
         procedure :: find_binding => table_find_binding
         procedure :: insert_binding => table_insert_binding
-        ! drop_from_symbol is deliberately not exposed. It is reachable only
-        ! from insert_binding, which is the sole point where a symbol slot can
-        ! be reused; see the note there.
-        procedure, private :: drop_from_symbol => table_drop_from_symbol
+        procedure :: drop_bindings_from => table_drop_from_symbol
     end type session_symbol_table_t
 
 contains
@@ -97,7 +94,7 @@ contains
         if (declaration_node_index <= 0) return
         if (scope_node_index <= 0) return
         if (symbol_index <= 0) return
-        call self%drop_from_symbol(symbol_index)
+        call self%drop_bindings_from(symbol_index)
         call grow_bindings(self)
         self%binding_count = self%binding_count + 1
         self%bindings(self%binding_count)%declaration_node_index = &
@@ -112,14 +109,8 @@ contains
         !! Forget every association whose symbol slot is `first_symbol_index`
         !! or above.
         !!
-        !! This does NOT track the lowering context truncating its symbol array
-        !! back to an enclosing scope. Roughly 40 sites assign
-        !! context%symbol_count downward and none of them notify this table, so
-        !! do not rely on it as a scope-exit hook. It exists solely so that
-        !! insert_binding cannot leave a stale identity attached to a slot it is
-        !! about to reuse.
-        !! or later. Called when the lowering context truncates its symbol
-        !! array back to an enclosing scope.
+        !! Called when the lowering context truncates its symbol array back to
+        !! an enclosing scope, and by insert_binding before a slot is reused.
         class(session_symbol_table_t), intent(inout) :: self
         integer, intent(in) :: first_symbol_index
         integer :: i

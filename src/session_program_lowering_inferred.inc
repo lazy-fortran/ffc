@@ -209,6 +209,28 @@
                         context)
                 end do
             end if
+        type is (block_construct_node)
+            if (allocated(node%body_indices)) then
+                do i = 1, size(node%body_indices)
+                    call mark_explicit_declarations(arena, node%body_indices(i), &
+                        context)
+                end do
+            end if
+        type is (associate_node)
+            if (allocated(node%associations)) then
+                do i = 1, size(node%associations)
+                    if (allocated(node%associations(i)%name)) then
+                        call add_explicit_decl_name(context, &
+                            node%associations(i)%name)
+                    end if
+                end do
+            end if
+            if (allocated(node%body_indices)) then
+                do i = 1, size(node%body_indices)
+                    call mark_explicit_declarations(arena, node%body_indices(i), &
+                        context)
+                end do
+            end if
         end select
     end subroutine mark_explicit_declarations
 
