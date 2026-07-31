@@ -290,8 +290,15 @@
             return
         end if
         if (.not. context%symbols(ptr_index)%is_pointer) then
-            error_msg = 'left of => is not a pointer: '//trim(ptr_name)
-            return
+            if (promote_inferred_data_pointer(context, ptr_index)) then
+                ! FortFront currently keeps a bare POINTER statement out of the
+                ! public AST. Its inferred symbol is binding-less and has no
+                ! storage; promote that compatibility symbol at its first =>
+                ! association instead of treating it as an ordinary scalar.
+            else
+                error_msg = 'left of => is not a pointer: '//trim(ptr_name)
+                return
+            end if
         end if
         if (.not. is_identifier(arena, node%target_index)) then
             error_msg = 'direct LIRIC session pointer assignment requires a '// &
@@ -336,6 +343,29 @@
         context%symbols(ptr_index)%is_associated = .true.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    logical function promote_inferred_data_pointer(context, symbol_index)
+        ! Recognize a data pointer declared only by a bare POINTER statement
+        ! that the current FortFront AST does not retain. Explicit declarations
+        ! already carry a binding or the POINTER flag and never use this path.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer :: value_kind
+
+        promote_inferred_data_pointer = .false.
+        if (symbol_index <= 0 .or. symbol_index > context%symbol_count) return
+        if (context%symbols(symbol_index)%has_binding) return
+        if (context%symbols(symbol_index)%is_target .or. &
+            context%symbols(symbol_index)%is_proc_pointer) return
+        if (context%symbols(symbol_index)%has_address) return
+        value_kind = context%symbols(symbol_index)%value_kind
+        if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+            value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) return
+        context%symbols(symbol_index)%is_pointer = .true.
+        context%symbols(symbol_index)%is_associated = .false.
+        context%symbols(symbol_index)%is_reference = .false.
+        promote_inferred_data_pointer = .true.
+    end function promote_inferred_data_pointer
 
     subroutine alias_pointer_array(context, ptr_index, target_index, error_msg)
         ! Whole-array p => t: the pointer array adopts the target array's base,
