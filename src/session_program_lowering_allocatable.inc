@@ -1108,6 +1108,7 @@
         type(lr_operand_desc_t) :: value
         integer :: i
         integer :: array_size
+        integer :: rhs_extent
 
         if (context%symbols(symbol_index)%array_rank /= 1) then
             error_msg = 'allocatable whole-array assignment from an expression '// &
@@ -1120,6 +1121,15 @@
             return
         end if
         array_size = context%symbols(symbol_index)%allocatable_static_size
+        rhs_extent = elementwise_expression_extent(arena, node%value_index, context)
+        if (rhs_extent > 0 .and. rhs_extent /= array_size) then
+            ! F2018 10.2.1.3: an unallocated or nonconforming allocatable
+            ! destination is (re)allocated to the shape of the right-hand side.
+            call reallocate_allocatable_extent(symbol_index, rhs_extent, context, &
+                                               error_msg)
+            if (len_trim(error_msg) > 0) return
+            array_size = rhs_extent
+        end if
         if (array_size <= 0) then
             error_msg = 'allocatable whole-array assignment from an expression '// &
                         'requires a previously allocated constant extent'
@@ -1136,6 +1146,58 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_elementwise_assignment
+
+    subroutine reallocate_allocatable_extent(symbol_index, n, context, error_msg)
+        ! Free the current allocation (a null data pointer marks the array
+        ! unallocated, so freeing is unconditional) and allocate n elements.
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: n
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, n_i32
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+        n_i32 = i32_immediate(context%session, int(n, c_int64_t))
+        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%allocatable_static_size = n
+        call set_empty(error_msg)
+    end subroutine reallocate_allocatable_extent
+
+    recursive integer function elementwise_expression_extent(arena, node_index, &
+                                                             context) result(n)
+        ! Compile-time element count of a rank-1 elementwise right-hand side:
+        ! the extent of its first array operand. Zero when no operand carries a
+        ! known extent, which leaves the destination's current extent in force.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, err, bin_op
+        integer :: sym, bin_left, bin_right, bin_line, bin_col
+
+        n = 0
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol_compat(context, id_name)
+            if (sym <= 0) return
+            if (.not. is_elementwise_array_operand(context, sym)) return
+            if (context%symbols(sym)%array_rank > 1) return
+            n = effective_array_extent(context, sym)
+            return
+        end if
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, err)
+        if (len_trim(err) > 0) return
+        n = elementwise_expression_extent(arena, bin_left, context)
+        if (n > 0) return
+        n = elementwise_expression_extent(arena, bin_right, context)
+    end function elementwise_expression_extent
 
     logical function is_scalar_broadcast_to_allocatable(arena, node_index, &
                                                         context) result(scalar)
