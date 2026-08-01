@@ -14,6 +14,14 @@
 #   --files-from PATH  forward a named-file list (repeatable)
 #   --repeat N   run each suite N times and fail on any case whose status is
 #                not identical in every attempt (recorded FLAKY)
+#   --sample N   measure a stratified random sample of about N files instead of
+#                the whole corpus: each suite draws in proportion to its size,
+#                so every suite keeps its own margin. Sampled runs report an
+#                estimate with a confidence margin and are never dashboard
+#                inputs.
+#   --seed S     seed for --sample (default: 0)
+#   --print-sample-plan  print the per-suite allocation for --sample and exit
+#   --ref-cache DIR  cache gfortran reference outputs under DIR and reuse them
 #
 # This script is the documented routine contributors run before pushing
 # and after dependency (fortfront, liric) updates.
@@ -33,6 +41,10 @@ NO_BUILD=0
 SINGLE_SUITE=""
 TIMEOUT=5
 REPEAT=1
+SAMPLE_TOTAL=""
+SAMPLE_SEED=0
+PRINT_SAMPLE_PLAN=0
+REF_CACHE_DIR=""
 NAMED_ARGS=()
 
 # Argument parsing
@@ -61,6 +73,23 @@ while [ $# -gt 0 ]; do
                 echo "ERROR: --repeat requires a count" >&2; exit 1
             fi
             REPEAT="$2"; shift 2 ;;
+        --sample)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --sample requires a count" >&2; exit 1
+            fi
+            SAMPLE_TOTAL="$2"; shift 2 ;;
+        --seed)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --seed requires an integer" >&2; exit 1
+            fi
+            SAMPLE_SEED="$2"; shift 2 ;;
+        --print-sample-plan)
+            PRINT_SAMPLE_PLAN=1; shift ;;
+        --ref-cache)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --ref-cache requires a directory" >&2; exit 1
+            fi
+            REF_CACHE_DIR="$2"; shift 2 ;;
         *)
             echo "ERROR: unknown option $1" >&2; exit 1 ;;
     esac
@@ -101,6 +130,103 @@ if [ -z "$SUITES" ]; then
     exit 1
 fi
 
+# Stratified sample allocation. A single global sample drawn without regard to
+# suite would let the largest suite swamp the others and leave the small ones
+# with no usable margin, so the requested total is split in proportion to each
+# suite's population (largest remainder, at least one file per suite).
+suite_root_for() {
+    case "$1" in
+        fortfront-f90) echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/f90" ;;
+        fortfront-lf)  echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/lf" ;;
+        lfortran)      echo "${FFC_LFORTRAN_DIR:-$CORPUS_PARENT/lfortran}/integration_tests" ;;
+        gfortran-dg)   echo "${FFC_GFORTRAN_DG_DIR:-$CORPUS_PARENT/gcc/gcc/testsuite/gfortran.dg}" ;;
+    esac
+}
+
+suite_population() {
+    local suite="$1" root
+    root=$(suite_root_for "$suite")
+    [ -d "$root" ] || { echo 0; return 0; }
+    if [ "$suite" = "fortfront-lf" ]; then
+        find "$root" -maxdepth 1 \( -name '*.lf' -o -name '*.f90' \) -type f | \
+            wc -l
+    else
+        find "$root" -maxdepth 1 -name '*.f90' -type f | wc -l
+    fi
+}
+
+declare -A SAMPLE_FOR=()
+
+plan_sample() {
+    local suite population total=0 populations="" plan
+    for suite in $SUITES; do
+        population=$(suite_population "$suite")
+        populations="$populations$suite $population"$'\n'
+        total=$((total + population))
+    done
+    plan=$(printf '%s' "$populations" | awk -v want="$SAMPLE_TOTAL" \
+        -v total="$total" '
+        { suite[NR] = $1; population[NR] = $2; count = NR }
+        END {
+            if (total <= 0) exit 0
+            if (want > total) want = total
+            assigned = 0
+            for (i = 1; i <= count; i++) {
+                exact = want * population[i] / total
+                alloc[i] = int(exact)
+                if (alloc[i] < 1 && population[i] > 0) alloc[i] = 1
+                remainder[i] = exact - int(exact)
+                assigned += alloc[i]
+            }
+            while (assigned < want) {
+                best = 0
+                for (i = 1; i <= count; i++) {
+                    if (alloc[i] < population[i] &&
+                        (best == 0 || remainder[i] > remainder[best])) best = i
+                }
+                if (best == 0) break
+                alloc[best]++
+                remainder[best] = -1
+                assigned++
+            }
+            for (i = 1; i <= count; i++) {
+                printf "%s\t%d\t%d\n", suite[i], alloc[i], population[i]
+            }
+        }')
+    printf '%s\n' "$plan"
+}
+
+if [ -n "$SAMPLE_TOTAL" ]; then
+    case "$SAMPLE_TOTAL" in
+        ''|*[!0-9]*) echo "ERROR: --sample requires a positive integer" >&2
+            exit 1 ;;
+    esac
+    if [ "$SAMPLE_TOTAL" -lt 1 ]; then
+        echo "ERROR: --sample requires a positive integer" >&2
+        exit 1
+    fi
+    if [ "${#NAMED_ARGS[@]}" -gt 0 ]; then
+        echo "ERROR: --sample cannot be combined with --file or --files-from" >&2
+        exit 1
+    fi
+    SAMPLE_PLAN=$(plan_sample)
+    echo "=== Stratified sample plan (seed $SAMPLE_SEED) ==="
+    while IFS=$'\t' read -r plan_suite plan_alloc plan_population; do
+        [ -z "${plan_suite:-}" ] && continue
+        SAMPLE_FOR["$plan_suite"]="$plan_alloc"
+        printf '  %-14s %s of %s files\n' "$plan_suite" "$plan_alloc" \
+            "$plan_population"
+    done <<< "$SAMPLE_PLAN"
+    echo ""
+elif [ "$PRINT_SAMPLE_PLAN" -eq 1 ]; then
+    echo "ERROR: --print-sample-plan requires --sample" >&2
+    exit 1
+fi
+
+if [ "$PRINT_SAMPLE_PLAN" -eq 1 ]; then
+    exit 0
+fi
+
 # Build step
 if [ "$NO_BUILD" -eq 0 ]; then
     echo "=== Building ffc ==="
@@ -137,6 +263,13 @@ for SUITE in $SUITES; do
     gauntlet_args=(--suite "$SUITE" --ffc "$FFC_BIN" \
         --report "$REPORT" --timeout "$TIMEOUT")
     gauntlet_args+=(--repeat "$REPEAT")
+    if [ -n "$REF_CACHE_DIR" ]; then
+        gauntlet_args+=(--ref-cache "$REF_CACHE_DIR")
+    fi
+    if [[ -v "SAMPLE_FOR[$SUITE]" ]] && [ "${SAMPLE_FOR[$SUITE]}" -gt 0 ]; then
+        gauntlet_args+=(--sample "${SAMPLE_FOR[$SUITE]}" \
+            --seed "$SAMPLE_SEED")
+    fi
     gauntlet_args+=("${NAMED_ARGS[@]}")
     if bash "$GAUNTLET" "${gauntlet_args[@]}" > "$LOG" 2>&1; then
         suite_exit=0
@@ -145,7 +278,8 @@ for SUITE in $SUITES; do
     fi
 
     # Print the log (summary line and any FAIL/XPASS)
-    grep -E '(===|PASS=|FAIL:|XPASS:|ERROR:)' "$LOG" || true
+    grep -E '(===|PASS=|FAIL:|XPASS:|ERROR:|SAMPLED:|Reference cache:)' \
+        "$LOG" || true
     echo ""
 
     # Parse summary

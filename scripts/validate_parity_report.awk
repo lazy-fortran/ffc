@@ -165,6 +165,9 @@ function summary_field_allowed(key) {
         key == "noref" || key == "skip" || key == "warning_unchecked" ||
         key == "total" || key == "flaky" ||
         key == "schema_version" || key == "full_run" ||
+        key == "sampled" || key == "sample_size" ||
+        key == "sample_population" || key == "sample_seed" ||
+        key == "sample_margin_pct" ||
         key == "provenance_verified" ||
         key == "ffc_revision" || key == "ffc_source_sha256" ||
         key == "ffc_binary_sha256" || key == "fortfront_revision" ||
@@ -198,6 +201,9 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
     if (counts["FLAKY"] != flaky_count) report_error("SUMMARY flaky mismatch")
     if (require_integer("schema_version", 1) != 1) {
         report_error("unknown report schema version")
+    }
+    if ("sampled" in field_value && require_boolean("sampled")) {
+        report_error("sampled report is an estimate, not a dashboard input")
     }
     if (!require_boolean("full_run")) report_error("report is not a full run")
     if (!require_boolean("provenance_verified")) {
