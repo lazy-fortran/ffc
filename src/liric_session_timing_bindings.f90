@@ -16,7 +16,7 @@ module liric_session_timing_bindings
         LR_OP_FMUL, LR_OP_KIND_VREG, &
         LR_OP_KIND_GLOBAL, LR_OP_KIND_IMM_I64, &
         lr_type_i32_s, lr_type_f32_s, &
-        lr_type_i64_s, lr_type_ptr_s, &
+        lr_type_i64_s, lr_type_ptr_s, lr_type_void_s, &
         lr_session_emit, lr_session_intern, &
         status_ok, clear_liric_error, set_empty, &
         require_open_session, to_c_chars
@@ -30,6 +30,10 @@ module liric_session_timing_bindings
     public :: emit_cpu_time_value
     public :: emit_system_clock_value
     public :: emit_random_number_value
+    public :: emit_random_seed_size
+    public :: emit_random_seed_put
+    public :: emit_random_seed_get
+    public :: emit_random_seed_default
 
     ! Scale from random()'s [0, 2^31-1] range into [0,1). 2**(-31) itself would
     ! round 2^31-1 up to exactly 1.0 in f32; the next representable value below
@@ -122,6 +126,86 @@ contains
         call set_empty(error_msg)
         emit_random_number_value = .true.
     end function emit_random_number_value
+
+    logical function emit_random_seed_size(session, result, error_msg)
+        ! result (i32) = _ffc_random_seed_size(), the seed array size the
+        ! runtime works with. It is a runtime call rather than a compiled-in
+        ! constant so the compiler and its runtime can never disagree on it.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(0)
+
+        emit_random_seed_size = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (.not. declare_extern(session, '_ffc_random_seed_size', &
+            lr_type_i32_s(session%handle), error_msg)) return
+        if (.not. call_extern(session, '_ffc_random_seed_size', args, &
+            lr_type_i32_s(session%handle), 0_c_int32_t, result, &
+            error_msg)) return
+        call set_empty(error_msg)
+        emit_random_seed_size = .true.
+    end function emit_random_seed_size
+
+    logical function emit_random_seed_put(session, address, error_msg)
+        ! _ffc_random_seed_put(address): restart the generator from the seed
+        ! array whose first element `address` points at.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_random_seed_put = emit_random_seed_call(session, &
+            '_ffc_random_seed_put', address, error_msg)
+    end function emit_random_seed_put
+
+    logical function emit_random_seed_get(session, address, error_msg)
+        ! _ffc_random_seed_get(address): write the current seed into the seed
+        ! array whose first element `address` points at.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_random_seed_get = emit_random_seed_call(session, &
+            '_ffc_random_seed_get', address, error_msg)
+    end function emit_random_seed_get
+
+    logical function emit_random_seed_call(session, name, address, error_msg)
+        ! Shared shape of the PUT and GET runtime calls: void f(int *).
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(1), ignored
+
+        emit_random_seed_call = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (.not. declare_extern_ptr_arg(session, name, &
+            lr_type_void_s(session%handle), error_msg)) return
+        args(1) = address
+        if (.not. call_extern(session, name, args, &
+            lr_type_void_s(session%handle), 1_c_int32_t, ignored, &
+            error_msg)) return
+        call set_empty(error_msg)
+        emit_random_seed_call = .true.
+    end function emit_random_seed_call
+
+    logical function emit_random_seed_default(session, error_msg)
+        ! _ffc_random_seed_default(): argument-less RANDOM_SEED, which resets
+        ! the generator to the processor's default seed.
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(0), ignored
+
+        emit_random_seed_default = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (.not. declare_extern(session, '_ffc_random_seed_default', &
+            lr_type_void_s(session%handle), error_msg)) return
+        if (.not. call_extern(session, '_ffc_random_seed_default', args, &
+            lr_type_void_s(session%handle), 0_c_int32_t, ignored, &
+            error_msg)) return
+        call set_empty(error_msg)
+        emit_random_seed_default = .true.
+    end function emit_random_seed_default
 
     function i64_null_ptr(session) result(operand)
         ! A null pointer immediate for the time(NULL) argument.
