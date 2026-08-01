@@ -1,6 +1,6 @@
     ! Array-constructor compatibility (F2018 7.8, 10.2.1.2, R769).
     !
-    ! Three rules live here:
+    ! Four rules live here:
     !   1. An array constructor opened with (/ closes with /), and one opened
     !      with [ closes with ]. Mixing the delimiters is not an array
     !      constructor at all.
@@ -10,10 +10,19 @@
     !   3. The values of an array constructor must be assignment-compatible
     !      with the variable they are assigned to; LOGICAL values never
     !      convert to a numeric or character variable.
+    !   4. Without a type-spec, every ac-value of an array constructor has the
+    !      same intrinsic type: there is no single element type to lower
+    !      otherwise. [1, 2.5] is not an integer constructor with a truncated
+    !      element, it is invalid.
 
-    subroutine check_array_constructor_compatibility(arena, error_msg)
+    subroutine check_array_constructor_compatibility(arena, error_msg, lazy_mode)
         type(ast_arena_t), intent(in) :: arena
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: lazy_mode
+        logical :: is_lazy
+
+        is_lazy = .false.
+        if (present(lazy_mode)) is_lazy = lazy_mode
 
         call set_empty(error_msg)
         call check_array_ctor_delimiters(arena, error_msg)
@@ -23,7 +32,135 @@
         call check_array_ctor_init_source(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_array_ctor_assignments(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call check_array_ctor_element_agreement(arena, is_lazy, error_msg)
     end subroutine check_array_constructor_compatibility
+
+    ! Rule 4: an array constructor written without a type-spec takes its
+    ! element type from its values, so literal values of differing intrinsic
+    ! type leave the element type undetermined. Only literals are classified;
+    ! anything the driver cannot type statically is left alone.
+    subroutine check_array_ctor_element_agreement(arena, is_lazy, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        logical, intent(in) :: is_lazy
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (nd => arena%entries(n)%node)
+            type is (array_literal_node)
+                if (allocated(nd%type_spec)) then
+                    if (len_trim(nd%type_spec) > 0) cycle
+                end if
+                if (.not. allocated(nd%element_indices)) cycle
+                call check_ctor_elements_agree(arena, nd%element_indices, &
+                                               is_lazy, nd%line, nd%column, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine check_array_ctor_element_agreement
+
+    subroutine check_ctor_elements_agree(arena, elems, is_lazy, line, col, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elems(:)
+        logical, intent(in) :: is_lazy
+        integer, intent(in) :: line, col
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+        integer :: i, elem_class, first_class, first_pos
+
+        call set_empty(error_msg)
+        first_class = CTOR_TYPE_UNKNOWN
+        first_pos = 0
+        do i = 1, size(elems)
+            elem_class = ctor_literal_intrinsic_type(arena, elems(i))
+            if (elem_class == CTOR_TYPE_UNKNOWN) cycle
+            if (first_class == CTOR_TYPE_UNKNOWN) then
+                first_class = elem_class
+                first_pos = i
+                cycle
+            end if
+            if (elem_class == first_class) cycle
+            ! Lazy Fortran promotes a mixed integer/real constructor to real
+            ! instead of rejecting it; only standard Fortran demands one type.
+            if (is_lazy .and. ctor_types_are_numeric(first_class, elem_class)) &
+                cycle
+            if (line > 0 .and. col > 0) then
+                write (location, '(" at line ",I0,", column ",I0)') line, col
+            else
+                location = ''
+            end if
+            error_msg = 'array constructor'//trim(location)// &
+                ' mixes '//ctor_type_name(first_class)//' element '// &
+                int_to_text(first_pos)//' with '//ctor_type_name(elem_class)// &
+                ' element '//int_to_text(i)// &
+                ': a constructor without a type-spec has one element type'
+            return
+        end do
+    end subroutine check_ctor_elements_agree
+
+    ! The intrinsic type of a literal ac-value, distinguishing integer from
+    ! real (cmp_class_name lumps both into "numeric", which is too coarse to
+    ! decide a constructor's element type).
+    integer function ctor_literal_intrinsic_type(arena, idx) result(cls)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable :: value, literal_type, err
+
+        cls = CTOR_TYPE_UNKNOWN
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        call get_literal_info(arena, idx, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        if (is_character_literal(arena, idx)) then
+            cls = CTOR_TYPE_CHAR
+        else if (is_logical_literal(arena, idx)) then
+            cls = CTOR_TYPE_LOGICAL
+        else if (is_real_literal(arena, idx)) then
+            cls = CTOR_TYPE_REAL
+        else
+            cls = CTOR_TYPE_INTEGER
+        end if
+    end function ctor_literal_intrinsic_type
+
+    logical function ctor_types_are_numeric(a, b) result(numeric)
+        integer, intent(in) :: a, b
+
+        numeric = ctor_type_is_numeric(a)
+        if (numeric) numeric = ctor_type_is_numeric(b)
+    end function ctor_types_are_numeric
+
+    logical function ctor_type_is_numeric(cls) result(numeric)
+        integer, intent(in) :: cls
+
+        numeric = cls == CTOR_TYPE_INTEGER .or. cls == CTOR_TYPE_REAL
+    end function ctor_type_is_numeric
+
+    function ctor_type_name(cls) result(name)
+        integer, intent(in) :: cls
+        character(len=:), allocatable :: name
+
+        select case (cls)
+        case (CTOR_TYPE_INTEGER); name = 'INTEGER'
+        case (CTOR_TYPE_REAL); name = 'REAL'
+        case (CTOR_TYPE_LOGICAL); name = 'LOGICAL'
+        case (CTOR_TYPE_CHAR); name = 'CHARACTER'
+        case default; name = 'UNKNOWN'
+        end select
+    end function ctor_type_name
+
+    function int_to_text(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=16) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function int_to_text
 
     ! Rule 1: scan the source once, tracking the open bracket delimiters and
     ! rejecting a close that does not match the delimiter it terminates.

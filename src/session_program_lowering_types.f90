@@ -68,6 +68,13 @@ module session_program_lowering_types
     integer, parameter, public :: CMP_CLASS_NUMERIC = 1
     integer, parameter, public :: CMP_CLASS_CHAR = 2
     integer, parameter, public :: CMP_CLASS_LOGICAL = 3
+    ! Exact intrinsic type of an array-constructor value. Unlike CMP_CLASS_*,
+    ! integer and real are distinct: they pick different element types.
+    integer, parameter, public :: CTOR_TYPE_UNKNOWN = 0
+    integer, parameter, public :: CTOR_TYPE_INTEGER = 1
+    integer, parameter, public :: CTOR_TYPE_REAL = 2
+    integer, parameter, public :: CTOR_TYPE_LOGICAL = 3
+    integer, parameter, public :: CTOR_TYPE_CHAR = 4
     integer, parameter, public :: I32_INTRINSIC_NONE = 0
     integer, parameter, public :: I32_INTRINSIC_ABS = 1
     integer, parameter, public :: I32_INTRINSIC_MIN = 2

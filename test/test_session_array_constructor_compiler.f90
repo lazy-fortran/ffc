@@ -70,10 +70,131 @@ program test_session_array_constructor_compiler
         '  print *, a'//new_line('a')// &
         'end program main', 'ctor_param_star_real')) all_passed = .false.
 
+    ! Empty typed constructor: zero elements, zero extent.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer :: a(0)'//new_line('a')// &
+        '  a = [ integer :: ]'//new_line('a')// &
+        '  print *, size(a)'//new_line('a')// &
+        'end program main', 'ctor_empty')) all_passed = .false.
+
+    ! Nested constructors flatten in array element order.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer :: a(4)'//new_line('a')// &
+        '  a = [ 1, [2, [3, 4]] ]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_nested')) all_passed = .false.
+
+    ! Complex constructor keeps each element's real and imaginary parts.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  complex :: a(3)'//new_line('a')// &
+        '  a = (/ complex :: (1.0,2.0), (3.0,4.0), (5.0,6.0) /)'//new_line('a')// &
+        '  print *, a(1)'//new_line('a')// &
+        '  print *, a(3)'//new_line('a')// &
+        'end program main', 'ctor_complex')) all_passed = .false.
+
+    ! Nondefault integer kind keeps the declared element kind.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer(8) :: a(3)'//new_line('a')// &
+        '  a = (/ integer(8) :: 1, 2, 3 /)'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_int8')) all_passed = .false.
+
+    ! Nondefault real kind promotes integer elements to real(8).
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  real(8) :: a(3)'//new_line('a')// &
+        '  a = [ real(8) :: 1, 2.5, 3 ]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_real8')) all_passed = .false.
+
+    ! Nested implied-DO evaluates the inner control fastest.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  integer :: i, j'//new_line('a')// &
+        '  integer :: a(6)'//new_line('a')// &
+        '  a = [ ((i*10+j, j=1,3), i=1,2) ]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_nested_implied')) all_passed = .false.
+
+    ! Negative control: an untyped constructor mixing integer and real
+    ! elements has no single element type, so it must be diagnosed rather
+    ! than silently truncated.
+    if (.not. rejects( &
+        'program main'//new_line('a')// &
+        '  integer :: a(3)'//new_line('a')// &
+        '  a = [1, 2.5, 3]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_mixed_int_real')) all_passed = .false.
+
+    ! Negative control: real constructor with an integer element.
+    if (.not. rejects( &
+        'program main'//new_line('a')// &
+        '  real :: a(3)'//new_line('a')// &
+        '  a = [1.5, 2, 3.5]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_mixed_real_int')) all_passed = .false.
+
+    ! Negative control: logical element among numeric elements.
+    if (.not. rejects( &
+        'program main'//new_line('a')// &
+        '  integer :: a(3)'//new_line('a')// &
+        '  a = [1, 2, .true.]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_mixed_logical')) all_passed = .false.
+
+    ! Negative control: element count differs from the declared extent.
+    if (.not. rejects( &
+        'program main'//new_line('a')// &
+        '  integer :: a(3)'//new_line('a')// &
+        '  a = [1, 2, 3, 4]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_count_mismatch')) all_passed = .false.
+
+    ! Negative control: an implied-DO with a zero step has no element count.
+    if (.not. rejects( &
+        'program main'//new_line('a')// &
+        '  integer :: i, a(3)'//new_line('a')// &
+        '  a = [(i, i=1,3,0)]'//new_line('a')// &
+        '  print *, a'//new_line('a')// &
+        'end program main', 'ctor_zero_step')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: array constructors lower through direct LIRIC session'
 
 contains
+
+    ! An invalid array constructor must be reported by the frontend or by
+    ! ffc lowering; producing an executable at all is the failure.
+    logical function rejects(source, stem)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: stem
+        type(compiler_frontend_options_t) :: options
+        type(compiler_frontend_result_t) :: frontend_result
+        character(len=:), allocatable :: error_msg, exe
+
+        rejects = .false.
+        exe = '/tmp/ffc_ctor_'//stem//'.ffc'
+        options = compiler_frontend_options_t()
+        options%run_semantics = .true.
+        options%input_mode = INPUT_MODE_STANDARD
+        call compile_frontend_from_string(source, frontend_result, options)
+        if (.not. frontend_result%success()) then
+            rejects = .true.
+            return
+        end if
+        call lower_program_to_liric_exe(frontend_result%arena, &
+            frontend_result%root_index, exe, error_msg)
+        if (len_trim(error_msg) > 0) then
+            rejects = .true.
+        else
+            print *, 'FAIL[', stem, ']: invalid array constructor accepted'
+        end if
+        call execute_command_line('rm -f '//exe)
+    end function rejects
 
     logical function matches_gfortran(source, stem)
         character(len=*), intent(in) :: source
