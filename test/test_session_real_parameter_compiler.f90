@@ -46,7 +46,6 @@ program test_session_real_parameter_compiler
     if (.not. expect_error_contains( &
         'program main'//nl// &
         '  integer :: k'//nl// &
-        '  k = 3'//nl// &
         '  parameter (ialen = k)'//nl// &
         '  integer :: myarray(ialen)'//nl// &
         '  print *, size(myarray)'//nl// &

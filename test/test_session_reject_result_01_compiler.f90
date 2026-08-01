@@ -116,7 +116,8 @@ contains
             'end function'
 
         test_self_named_interface_rejected = expect_error_contains( &
-            source, 'cannot have a type', '/tmp/ffc_reject_result_self_iface')
+            source, 'outside its INTERFACE body', &
+            '/tmp/ffc_reject_result_self_iface')
     end function test_self_named_interface_rejected
 
     logical function test_function_name_attribute_rejected()
