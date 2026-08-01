@@ -154,7 +154,7 @@
              binding%binding_kind /= BINDING_DECLARATION)) then
             return
         end if
-        call make_parameter_record(node, trim(node%name), binding, record)
+        call make_parameter_record(node, trim(node%name), binding, context, record)
         call store_declaration_record(context, record, error_msg)
     end subroutine collect_parameter_declaration_node
 
@@ -209,21 +209,18 @@
         record%is_array = node%is_array .or. record%rank > 0
         record%is_parameter = node%is_parameter .and. &
             binding%binding_kind == BINDING_NAMED_CONSTANT
-        ! Lazy Fortran default real is 8 bytes (#438). A declaration that
-        ! spells no kind selector records kind 8 so the resolved metadata and
-        ! the materialized storage agree.
-        if (context%lazy_mode .and. record%type_kind == TREAL) then
-            if (.not. node%has_kind) record%kind_value = 8
-        end if
+        call apply_lazy_real_kind(context, record%type_kind, node%has_kind, &
+                                  record%kind_value)
         record%value_kind = declaration_metadata_value_kind( &
             record%type_kind, record%kind_value, record%type_name, context, &
             node%line, node%column, node%resolved_derived_type_name)
     end subroutine make_declaration_record
 
-    subroutine make_parameter_record(node, name, binding, record)
+    subroutine make_parameter_record(node, name, binding, context, record)
         type(parameter_declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
         type(declaration_binding_t), intent(in) :: binding
+        type(lowering_context_t), intent(in) :: context
         type(declaration_record_t), intent(out) :: record
 
         record = declaration_record_t()
@@ -242,6 +239,8 @@
         ! declaration is visited; rank zero here means "unknown", not scalar.
         if (.not. node%is_array .and. record%rank == 0) record%rank = -1
         record%is_array = node%is_array .or. record%rank > 0
+        call apply_lazy_real_kind(context, record%type_kind, node%has_kind, &
+                                  record%kind_value)
         record%value_kind = declaration_metadata_value_kind( &
             record%type_kind, record%kind_value, record%type_name)
     end subroutine make_parameter_record
@@ -295,6 +294,8 @@
                     if (record%rank < 0 .and. allocated(decl%dimension_indices)) &
                         record%rank = size(decl%dimension_indices)
                     record%is_array = decl%is_array .or. record%rank > 0
+                    call apply_lazy_real_kind(context, record%type_kind, &
+                                              decl%has_kind, record%kind_value)
                     exit
                 end select
             end do
@@ -1067,6 +1068,22 @@
     ! Lazy Fortran dialect defaults apply only when the driver compiled this
     ! unit in lazy input mode (#438). Standard Fortran sources keep the
     ! processor-dependent default real kind ffc has always used.
+    ! Lazy Fortran default real is 8 bytes (#438). Every metadata source for
+    ! one symbol - specification declaration, dummy-argument entry, function
+    ! result - must record that same kind, otherwise the records collide as
+    ! conflicting declaration metadata (#571).
+    subroutine apply_lazy_real_kind(context, type_kind, has_kind, kind_value)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_kind
+        logical, intent(in) :: has_kind
+        integer, intent(inout) :: kind_value
+
+        if (.not. context%lazy_mode) return
+        if (type_kind /= TREAL) return
+        if (has_kind) return
+        kind_value = 8
+    end subroutine apply_lazy_real_kind
+
     logical function lazy_defaults_active(context) result(active)
         type(lowering_context_t), intent(in), optional :: context
 

@@ -307,6 +307,10 @@
             vk = VALUE_I32
         case (TREAL)
             vk = VALUE_F32
+            ! Lazy Fortran default real is 8 bytes (#438). An inferred real
+            ! must seed the same storage the explicit kind-less declaration
+            ! records, otherwise the two collide when both are seen (#571).
+            if (lazy_defaults_active(context)) vk = VALUE_F64
         case (TDOUBLE)
             vk = VALUE_F64
         case (TLOGICAL)
@@ -326,6 +330,7 @@
                     vk = VALUE_I32
                 case (TREAL)
                     vk = VALUE_F32
+                    if (lazy_defaults_active(context)) vk = VALUE_F64
                 case (TDOUBLE)
                     vk = VALUE_F64
                 case (TLOGICAL)

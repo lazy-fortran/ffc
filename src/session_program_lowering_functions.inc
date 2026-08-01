@@ -822,6 +822,12 @@
                 ! explicit real(8)/real(real64)/double precision body declaration,
                 ! trust that over the kindless statement type.
                 value_kind = VALUE_F64
+            else if (len_trim(kind_spec) == 0 .and. &
+                     lazy_defaults_active(context)) then
+                ! Lazy Fortran default real is 8 bytes (#438): a kind-less
+                ! `real` result matches its kind-less body declaration, which
+                ! records kind 8 too (#571).
+                value_kind = VALUE_F64
             else
                 value_kind = VALUE_F32
             end if
@@ -2633,6 +2639,10 @@
             context%unit_symbol_prefix = parent_context%unit_symbol_prefix
         context%arena = arena
         context%root_index = parent_context%root_index
+        ! The dialect is a property of the translation unit, not of one
+        ! procedure: a contained procedure lowers under the same Lazy
+        ! Fortran defaults as its host (#571).
+        context%lazy_mode = parent_context%lazy_mode
         allocate(context%symbols(16))
         allocate(context%derived_types(8))
         allocate(context%module_exports(4))

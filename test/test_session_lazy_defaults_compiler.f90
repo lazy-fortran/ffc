@@ -98,6 +98,39 @@ program test_session_lazy_defaults_compiler
         'call bump(k)'//new_line('a'), 'lf', &
         '          42', 'ffc_lf_explicit_inout')) ok = .false.
 
+    ! A kind-less `real` dummy and a kind-less `real` result must record the
+    ! same lazy default kind as the declaration itself, otherwise the two
+    ! metadata sources for the same symbol conflict (#571).
+    if (.not. runs( &
+        'program p'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    real :: s'//new_line('a')// &
+        '    s = add(1.0d0/3.0d0, 0.0d0)'//new_line('a')// &
+        '    print *, s'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '    function add(a, b) result(c)'//new_line('a')// &
+        '        real, intent(in) :: a, b'//new_line('a')// &
+        '        real :: c'//new_line('a')// &
+        '        c = a + b'//new_line('a')// &
+        '    end function add'//new_line('a')// &
+        'end program p'//new_line('a'), 'lf', &
+        '  0.33333333333333331', 'ffc_lf_dummy_real_kind')) ok = .false.
+
+    ! Same invariant for a kind-less `real` dummy of a contained subroutine.
+    if (.not. runs( &
+        'program p'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    real :: v'//new_line('a')// &
+        '    v = 1.0d0/3.0d0'//new_line('a')// &
+        '    call show(v)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '    subroutine show(x)'//new_line('a')// &
+        '        real, intent(in) :: x'//new_line('a')// &
+        '        print *, x'//new_line('a')// &
+        '    end subroutine show'//new_line('a')// &
+        'end program p'//new_line('a'), 'lf', &
+        '  0.33333333333333331', 'ffc_lf_dummy_real_kind_sub')) ok = .false.
+
     if (.not. ok) stop 1
     print *, 'PASS: lazy default real kind and default dummy intent apply'
 
