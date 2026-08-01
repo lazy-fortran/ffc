@@ -1194,6 +1194,9 @@
         call class_dummy_declared_type_index(context, arena, callee_name, &
                                              param_pos, declared_index)
         if (declared_index <= 0) then
+            call check_derived_actual_type(arena, node_index, context, &
+                                           callee_name, param_pos, error_msg)
+            if (len_trim(error_msg) > 0) return
             call derived_actual_address(arena, node_index, context, address, &
                                         error_msg)
             return
@@ -1227,6 +1230,65 @@
         call build_class_scalar_descriptor(context, symbol_index, &
                                            declared_index, address, error_msg)
     end subroutine class_or_derived_actual
+
+    logical function name_is_generic_specific(context, name) result(is_specific)
+        ! True when name is listed as a specific procedure of some registered
+        ! generic interface.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: g, s
+
+        is_specific = .false.
+        do g = 1, context%generic_count
+            do s = 1, context%generics(g)%specific_count
+                if (same_name(context%generics(g)%specific_names(s), name)) then
+                    is_specific = .true.
+                    return
+                end if
+            end do
+        end do
+    end function name_is_generic_specific
+
+    subroutine check_derived_actual_type(arena, node_index, context, &
+                                         callee_name, param_pos, error_msg)
+        ! Fortran 2018 15.5.2.4: an actual associated with a type(t) dummy must
+        ! have declared type t. The dummy borrows the actual's storage layout
+        ! (including any element component descriptors), so a mismatched type
+        ! would silently reinterpret those slots.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name, dummy_type_name, name_err
+        integer :: symbol_index, actual_index
+
+        call set_empty(error_msg)
+        ! Generic resolution currently discriminates on argument kind and rank
+        ! only, so a call to a generic whose specifics differ only in their
+        ! derived type can reach this point already bound to a sibling
+        ! specific. Leave those calls to the generic path rather than
+        ! reporting a mismatch the source does not contain.
+        if (name_is_generic_specific(context, callee_name)) return
+        call callee_dummy_declared_derived_type(arena, callee_name, param_pos, &
+                                                .false., dummy_type_name)
+        if (len_trim(dummy_type_name) == 0) return
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, name_err)
+        if (len_trim(name_err) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0) return
+        actual_index = context%symbols(symbol_index)%derived_type_index
+        if (actual_index <= 0) return
+        if (same_name(context%derived_types(actual_index)%name, &
+                      dummy_type_name)) return
+        error_msg = 'Type mismatch in argument to '//trim(callee_name)// &
+            ': actual of type '// &
+            trim(context%derived_types(actual_index)%name)// &
+            ' cannot be associated with type('//trim(dummy_type_name)// &
+            ') dummy'
+    end subroutine check_derived_actual_type
 
     subroutine derived_actual_address(arena, node_index, context, address, &
                                       error_msg)

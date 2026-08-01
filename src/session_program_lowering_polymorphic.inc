@@ -53,8 +53,8 @@
         character(len=:), allocatable :: type_name
 
         type_index = 0
-        call callee_dummy_class_declared_type(arena, callee_name, param_pos, &
-                                              type_name)
+        call callee_dummy_declared_derived_type(arena, callee_name, param_pos, &
+                                                .true., type_name)
         if (len_trim(type_name) == 0) return
         type_index = find_derived_type(context, type_name)
     end subroutine class_dummy_declared_type_index
