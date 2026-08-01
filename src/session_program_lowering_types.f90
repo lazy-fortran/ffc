@@ -279,6 +279,12 @@ module session_program_lowering_types
         ! the 0 sentinel. Whole-array print/assign and size()/sum() walk a
         ! genuine LIRIC loop over runtime_dim_size(1) instead of unrolling.
         logical :: is_runtime_array = .false.
+        ! Canonical array descriptor backing a runtime-sized automatic array
+        ! (#335). It is the stored shape of record: base address, element size
+        ! and type, rank, flags, and per-dimension lower bound, extent, and byte
+        ! stride, laid out by docs/ARRAY_DESCRIPTOR_ABI.md.
+        logical :: has_runtime_descriptor = .false.
+        type(lr_operand_desc_t) :: runtime_descriptor_address
         logical :: is_derived = .false.
         integer :: derived_type_index = 0
         ! Polymorphism (#417). is_polymorphic marks an entity declared class(t):

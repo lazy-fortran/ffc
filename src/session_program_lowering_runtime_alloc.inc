@@ -387,65 +387,98 @@
              value_kind == VALUE_F64 .or. value_kind == VALUE_LOGICAL
     end function runtime_local_array_kind_ok
 
-    subroutine runtime_array_bounds(context, node, lower_bound, count_i32, &
-                                    error_msg)
-        ! Compile-time lower bound (default 1, or a constant a(L:...)) and the
-        ! runtime i32 element count of a rank-1 declaration whose upper bound is
-        ! a runtime expression. count = upper - lower + 1.
+    subroutine runtime_array_shape(context, node, rank, lowers, extents_i32, &
+                                   error_msg)
+        ! Per-dimension shape of a rank-1 or rank-2 automatic array. Each lower
+        ! bound must fold at compile time; each upper bound is evaluated once,
+        ! here, so the extent is fixed on entry to the scope (F2018 8.5.8.2) and
+        ! never re-read if the bound expression's variables change later.
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
-        integer, intent(out) :: lower_bound
-        type(lr_operand_desc_t), intent(out) :: count_i32
+        integer, intent(out) :: rank
+        integer, intent(out) :: lowers(:)
+        type(lr_operand_desc_t), intent(out) :: extents_i32(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: dim_index
+        integer :: dim_index, d
         integer(c_int64_t) :: lower_value
         type(lr_operand_desc_t) :: upper_op
 
-        lower_bound = 1
-        dim_index = node%dimension_indices(1)
-        select type (dim_node => context%arena%entries(dim_index)%node)
-        type is (range_expression_node)
-            call eval_i32_constant(context%arena, dim_node%start_index, context, &
-                                   lower_value, error_msg)
-            if (len_trim(error_msg) > 0) then
-                error_msg = 'runtime-sized array requires a compile-time '// &
-                            'lower bound'
-                return
-            end if
-            lower_bound = int(lower_value)
-            call lower_i32_expression(context%arena, dim_node%end_index, context, &
-                                      upper_op, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (lower_bound == 1) then
-                count_i32 = upper_op
-            else
-                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_op, &
-                        i32_immediate(context%session, &
-                        int(lower_bound - 1, c_int64_t)), count_i32, error_msg)) &
+        lowers = 1
+        rank = 0
+        if (.not. allocated(node%dimension_indices)) then
+            error_msg = 'runtime-sized array requires explicit dimensions'
+            return
+        end if
+        rank = size(node%dimension_indices)
+        if (rank < 1 .or. rank > 2) then
+            error_msg = 'runtime-sized array supports rank 1 and rank 2 only'
+            return
+        end if
+
+        do d = 1, rank
+            dim_index = node%dimension_indices(d)
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                call eval_i32_constant(context%arena, dim_node%start_index, &
+                                       context, lower_value, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    error_msg = 'runtime-sized array requires a compile-time '// &
+                                'lower bound'
                     return
-            end if
-        class default
-            call lower_i32_expression(context%arena, dim_index, context, &
-                                      count_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end select
+                end if
+                lowers(d) = int(lower_value)
+                call lower_i32_expression(context%arena, dim_node%end_index, &
+                                          context, upper_op, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (lowers(d) == 1) then
+                    extents_i32(d) = upper_op
+                else
+                    ! extent = upper - lower + 1
+                    if (.not. emit_i32_binary(context%session, LR_OP_SUB, &
+                            upper_op, i32_immediate(context%session, &
+                            int(lowers(d) - 1, c_int64_t)), extents_i32(d), &
+                            error_msg)) return
+                end if
+            class default
+                call lower_i32_expression(context%arena, dim_index, context, &
+                                          extents_i32(d), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
         call set_empty(error_msg)
-    end subroutine runtime_array_bounds
+    end subroutine runtime_array_shape
 
     subroutine define_runtime_array_symbol(context, node, name, value_kind, &
                                            error_msg)
-        ! Allocate dynamic storage for a rank-1 local automatic array and record
-        ! its runtime element count on a fresh symbol.
+        ! Allocate dynamic storage for a rank-1 or rank-2 local automatic array
+        ! and describe it with one canonical array descriptor (#335). The
+        ! descriptor is the stored shape of record: lower bound, extent, and
+        ! contiguous column-major byte stride per dimension. The symbol's cached
+        ! per-dimension extents are loaded back out of that descriptor, so no
+        ! second shape representation exists.
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: index, lower_bound
+        integer :: index, rank, d
+        integer :: lowers(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: extents_i32(2)
         type(lr_operand_desc_t) :: count_i32, count_i64, bytes, storage
+        type(lr_operand_desc_t) :: product_i32
+        type(lr_operand_desc_t) :: descriptor, extent_i64, extent_i32
 
-        call runtime_array_bounds(context, node, lower_bound, count_i32, error_msg)
+        call runtime_array_shape(context, node, rank, lowers, extents_i32, &
+                                 error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! Total element count is the product of the per-dimension extents.
+        count_i32 = extents_i32(1)
+        do d = 2, rank
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, count_i32, &
+                    extents_i32(d), product_i32, error_msg)) return
+            count_i32 = product_i32
+        end do
 
         if (.not. emit_liric_i32_to_i64(context%session, count_i32, count_i64, &
                 error_msg)) return
@@ -457,23 +490,124 @@
             return
         end if
 
+        call emit_runtime_array_descriptor(context, storage, rank, lowers, &
+                                           extents_i32, value_kind, descriptor, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
+
         call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = value_kind
         context%symbols(index)%is_array = .true.
         context%symbols(index)%is_runtime_array = .true.
-        context%symbols(index)%array_rank = 1
+        context%symbols(index)%has_runtime_descriptor = .true.
+        context%symbols(index)%runtime_descriptor_address = descriptor
+        context%symbols(index)%array_rank = rank
         context%symbols(index)%array_size = 0
-        context%symbols(index)%array_lower_bound = lower_bound
-        context%symbols(index)%array_dim_lowers(1) = lower_bound
-        context%symbols(index)%array_dim_sizes(1) = 0
-        context%symbols(index)%has_runtime_dim_size(1) = .true.
-        context%symbols(index)%runtime_dim_size(1) = count_i32
+        context%symbols(index)%array_lower_bound = lowers(1)
         context%symbols(index)%element_address = storage
+        do d = 1, rank
+            context%symbols(index)%array_dim_lowers(d) = lowers(d)
+            context%symbols(index)%array_dim_sizes(d) = 0
+            ! Read the extent back out of the descriptor so the descriptor, not
+            ! the bound expression, is what every later shape query observes.
+            if (.not. emit_i64_load_at(context%session, descriptor, &
+                    runtime_descriptor_dim_offset(d, &
+                        int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), &
+                    extent_i64, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent_i64, &
+                    extent_i32, error_msg)) return
+            context%symbols(index)%has_runtime_dim_size(d) = .true.
+            context%symbols(index)%runtime_dim_size(d) = extent_i32
+        end do
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_runtime_array_symbol
+
+    integer(c_int64_t) function runtime_descriptor_dim_offset(dim, field) &
+            result(offset)
+        integer, intent(in) :: dim
+        integer(c_int64_t), intent(in) :: field
+
+        offset = int(ARRAY_DESCRIPTOR_DIM_OFFSET, c_int64_t) &
+                 + int(ARRAY_DIMENSION_BYTES, c_int64_t)*int(dim - 1, c_int64_t) &
+                 + field
+    end function runtime_descriptor_dim_offset
+
+    subroutine emit_runtime_array_descriptor(context, base, rank, lowers, &
+                                             extents_i32, value_kind, &
+                                             descriptor, error_msg)
+        ! Fill one canonical array descriptor for a runtime automatic array.
+        ! The array owns its storage for the lifetime of its scope, so the
+        ! descriptor is contiguous and allocated but never carries the ownership
+        ! bit: the storage is a stack allocation reclaimed with the frame, not a
+        ! heap block any deallocator may free.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base
+        integer, intent(in) :: rank
+        integer, intent(in) :: lowers(:)
+        type(lr_operand_desc_t), intent(in) :: extents_i32(:)
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: extent_i64, running, next_running, stride
+        integer(c_int64_t) :: element_bytes
+        integer(c_int32_t) :: flags
+        integer :: d
+
+        element_bytes = allocatable_elem_size(value_kind)
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                    int(ARRAY_DESCRIPTOR_BYTES, c_int64_t)), descriptor, &
+                error_msg)) return
+        if (.not. emit_ptr_store(context%session, base, descriptor, error_msg)) &
+            return
+        if (.not. emit_i64_store_at(context%session, &
+                i64_immediate(context%session, element_bytes), descriptor, &
+                int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), &
+                error_msg)) return
+        call store_descriptor_i32(context, assumed_shape_element_type(value_kind), &
+            descriptor, int(ARRAY_DESCRIPTOR_ELEMENT_TYPE_OFFSET, c_int64_t), &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        call store_descriptor_i32(context, int(rank, c_int32_t), descriptor, &
+            int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+        flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED + ARRAY_FLAG_CONTIGUOUS
+        call store_descriptor_i32(context, flags, descriptor, &
+            int(ARRAY_DESCRIPTOR_FLAGS_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call store_descriptor_i32(context, 0_c_int32_t, descriptor, &
+            int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        running = i64_immediate(context%session, element_bytes)
+        do d = 1, rank
+            if (.not. emit_liric_i32_to_i64(context%session, extents_i32(d), &
+                    extent_i64, error_msg)) return
+            if (.not. emit_i64_store_at(context%session, &
+                    i64_immediate(context%session, int(lowers(d), c_int64_t)), &
+                    descriptor, runtime_descriptor_dim_offset(d, &
+                        int(ARRAY_DIMENSION_LOWER_OFFSET, c_int64_t)), &
+                    error_msg)) return
+            if (.not. emit_i64_store_at(context%session, extent_i64, descriptor, &
+                    runtime_descriptor_dim_offset(d, &
+                        int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), &
+                    error_msg)) return
+            stride = running
+            if (.not. emit_i64_store_at(context%session, stride, descriptor, &
+                    runtime_descriptor_dim_offset(d, &
+                        int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), &
+                    error_msg)) return
+            if (d < rank) then
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, running, &
+                        extent_i64, next_running, error_msg)) return
+                running = next_running
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_runtime_array_descriptor
 
     logical function symbol_is_runtime_local_array(context, sym) result(is_rt)
         type(lowering_context_t), intent(in) :: context
