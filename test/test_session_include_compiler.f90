@@ -20,6 +20,8 @@ program test_session_include_compiler
     if (.not. check_bom_in_both_files()) ok = .false.
     if (.not. check_interior_bom_still_rejected()) ok = .false.
     if (.not. check_utf16le_included_file()) ok = .false.
+    if (.not. check_utf16le_source_file()) ok = .false.
+    if (.not. check_utf32le_source_file()) ok = .false.
     if (.not. ok) stop 1
 
     print *, 'PASS: include lines expand and report missing files and cycles'
@@ -312,6 +314,72 @@ contains
         end if
         ok = .true.
     end function check_utf16le_included_file
+
+    logical function check_utf16le_source_file() result(ok)
+        ! The compiled file itself may carry a UTF-16LE BOM
+        ! (gfortran.dg/bom_UTF16-LE.f90). Its wide line terminator leaves a
+        ! trailing zero byte after the final newline, so expansion must hand
+        ! the frontend the file's bytes unchanged rather than terminating that
+        ! remainder with a newline of its own.
+        character(len=:), allocatable :: output
+
+        ok = .false.
+        call reset_work()
+        call write_bytes(WORK//'/main.f90', &
+                         achar(255)//achar(254)//widen(plain_source(), 2))
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: UTF-16LE source output was ', first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_utf16le_source_file
+
+    logical function check_utf32le_source_file() result(ok)
+        ! Same for a UTF-32LE BOM (gfortran.dg/bom_UTF-32.f90), where three
+        ! zero bytes trail the final newline.
+        character(len=:), allocatable :: output
+
+        ok = .false.
+        call reset_work()
+        call write_bytes(WORK//'/main.f90', &
+                         achar(255)//achar(254)//achar(0)//achar(0)// &
+                         widen(plain_source(), 4))
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: UTF-32LE source output was ', first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_utf32le_source_file
+
+    function plain_source() result(text)
+        character(len=:), allocatable :: text
+
+        text = 'program main'//new_line('a')// &
+               'implicit none'//new_line('a')// &
+               "print '(I0)', 42"//new_line('a')// &
+               'end program main'//new_line('a')
+    end function plain_source
+
+    ! Little-endian wide encoding of ASCII text: each character followed by
+    ! width-1 zero bytes.
+    function widen(text, width) result(wide)
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: width
+        character(len=:), allocatable :: wide
+        integer :: i, j
+
+        allocate (character(len=len(text)*width) :: wide)
+        do i = 1, len(text)
+            wide((i - 1)*width + 1:(i - 1)*width + 1) = text(i:i)
+            do j = 2, width
+                wide((i - 1)*width + j:(i - 1)*width + j) = achar(0)
+            end do
+        end do
+    end function widen
 
     subroutine write_bytes(path, contents)
         ! Writes exactly the given bytes, with no record terminator, so a
