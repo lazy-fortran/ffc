@@ -11,6 +11,10 @@ module session_program_lowering_types
     ! unit xfail with a clean diagnostic.
     integer, parameter, public :: MODVAR_OK = 0
     integer, parameter, public :: MODVAR_UNSUPPORTED = 1
+    ! SCALAR_REAL_NONE is the scalar-kind engine's "not a real scalar" answer
+    ! (#447). It is deliberately not a VALUE_* code: the engine never guesses a
+    ! width when a symbol or construct does not resolve.
+    integer, parameter, public :: SCALAR_REAL_NONE = 0
     integer, parameter, public :: VALUE_I32 = 1
     integer, parameter, public :: VALUE_F64 = 2
     integer, parameter, public :: VALUE_LOGICAL = 3
