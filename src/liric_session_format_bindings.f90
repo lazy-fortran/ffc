@@ -185,19 +185,24 @@ contains
         type(liric_session_t), intent(inout) :: session
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
-        type(c_ptr), target :: params(1)
+        type(c_ptr), target :: params(3)
         type(lr_error_t) :: error
         integer(c_int) :: status
 
         declare_printf_i32 = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        params(1) = lr_type_ptr_s(session%handle)
+        ! The scalar output entry point, declared once per session. It
+        ! replaced the variadic printf this used to declare (#423): a
+        ! fixed-arity signature is the same on every target.
+        params(1) = lr_type_i32_s(session%handle)
+        params(2) = lr_type_ptr_s(session%handle)
+        params(3) = lr_type_i32_s(session%handle)
         call clear_liric_error(error)
-        call to_c_chars('printf', c_name)
+        call to_c_chars('_ffc_write_i32', c_name)
         status = lr_session_declare(session%handle, c_name, &
             lr_type_i32_s(session%handle), &
-            c_loc(params), 1_c_int32_t, c_true, &
+            c_loc(params), 3_c_int32_t, c_false, &
             error)
         if (.not. status_ok(status, error, error_msg)) return
 

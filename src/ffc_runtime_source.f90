@@ -184,6 +184,17 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
+            '/* Units the process starts with: 5 is standard input, 6 standard'//NL
+        text = text// &
+            ' * output, and 0 standard error. */'//NL
+        text = text// &
+            'static int ffc_unit_standard(int unit) {'//NL
+        text = text// &
+            '    return unit == 0 || unit == 5 || unit == 6;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
             'static int ffc_unit_fail(int status) {'//NL
         text = text// &
             '    ffc_unit_last_status = status;'//NL
@@ -310,6 +321,22 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
+            '    /* OPEN on a preconnected unit without FILE= reconfigures'//NL
+        text = text// &
+            '     * that connection rather than replacing it, so unit 6 keeps'//NL
+        text = text// &
+            '     * writing to standard output. */'//NL
+        text = text// &
+            '    if ((path == NULL || path[0] == ''\0'') &&'//NL
+        text = text// &
+            '        ffc_unit_standard(unit)) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '        return 0;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
             '    if (path == NULL || path[0] == ''\0'' ||'//NL
         text = text// &
             '        ffc_streq(status, "scratch")) {'//NL
@@ -379,6 +406,38 @@ contains
             '        ffc_unit_last_status = 0;'//NL
         text = text// &
             '        return ffc_units[unit].fp;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    /* Preconnected units. Fortran connects 5 to standard input'//NL
+        text = text// &
+            '     * and 6 to standard output; gfortran also connects 0 to'//NL
+        text = text// &
+            '     * standard error. They are never opened as fort.<N>, and'//NL
+        text = text// &
+            '     * never closed. */'//NL
+        text = text// &
+            '    if (unit == 5) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '        return stdin;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (unit == 6) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '        return stdout;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (unit == 0) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '        return stderr;'//NL
         text = text// &
             '    }'//NL
         text = text// &
@@ -530,6 +589,131 @@ contains
             '    ffc_random_seed_state = 1;'//NL
         text = text// &
             '    srandom(1u);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* ---- Scalar formatted output (issue #423) ----------------- */'//NL
+        text = text//NL
+        text = text// &
+            '/* One entry point per scalar type, so the type tag is resolved at'//NL
+        text = text// &
+            ' * compile time and the call is not variadic: a non-variadic ABI'//NL
+        text = text// &
+            ' * is the same on every target, while a variadic one is not.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * The compiler supplies the unit, the C conversion descriptor it'//NL
+        text = text// &
+            ' * derived from the Fortran edit descriptor, and the value. The'//NL
+        text = text// &
+            ' * runtime owns the stream lookup, the conversion, and the status.'//NL
+        text = text// &
+            ' * Output bytes are unchanged from the printf calls these replace.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Each returns 0 on success, or the unit status when the unit is'//NL
+        text = text// &
+            ' * unusable, or FFC_IOSTAT_WRITE when the conversion fails. */'//NL
+        text = text//NL
+        text = text// &
+            '#define FFC_IOSTAT_WRITE 5006'//NL
+        text = text//NL
+        text = text// &
+            'static int ffc_write_failed(int written) {'//NL
+        text = text// &
+            '    if (written < 0) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = FFC_IOSTAT_WRITE;'//NL
+        text = text// &
+            '        return FFC_IOSTAT_WRITE;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_i32(int unit, const char *fmt, int value) {'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(fprintf(fp, fmt, value));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_i64(int unit, const char *fmt, long long value) {'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(fprintf(fp, fmt, value));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_f64(int unit, const char *fmt, double value) {'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(fprintf(fp, fmt, value));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_str(int unit, const char *fmt, const char *value) {'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(fprintf(fp, fmt, value));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Literal record text: the separating blank and the record'//NL
+        text = text// &
+            ' * terminator carry no value to convert. */'//NL
+        text = text// &
+            'int _ffc_write_text(int unit, const char *text) {'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(fputs(text, fp));'//NL
         text = text// &
             '}'//NL
     end subroutine ffc_runtime_source_text

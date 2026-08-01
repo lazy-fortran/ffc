@@ -43,6 +43,7 @@ program test_runtime_link_compiler
     print *, '=== runtime link tests (#565) ==='
 
     call check_embedded_source_matches_file(failures)
+    call check_runtime_c_is_out_of_the_fpm_tree(failures)
     call check_declared_symbols_are_defined(failures)
     call check_probe_runs_with_runtime(failures)
     call check_probe_fails_without_runtime(failures)
@@ -129,6 +130,25 @@ contains
             nfail = nfail + 1
         end if
     end subroutine check_embedded_source_matches_file
+
+    ! The runtime C file must stay out of src/. fpm compiles everything it
+    ! finds there with the Fortran flag set, which would hand a C file -J,
+    ! -ffree-form and -fimplicit-none: it either fails outright or builds by
+    ! the luck of a lenient driver. The runtime is compiled by the system C
+    ! compiler at link time and by clang in runtime/CMakeLists.txt, both with
+    ! C flags, and it belongs only in runtime/.
+    subroutine check_runtime_c_is_out_of_the_fpm_tree(nfail)
+        integer, intent(inout) :: nfail
+        integer :: status
+
+        status = status_of('ls src/*.c src/*.cpp src/*.h 2>/dev/null | '// &
+                           'grep -q .')
+        if (status == 0) then
+            print *, 'FAIL: a C source under src/ would be compiled with ', &
+                'Fortran flags; keep runtime sources in runtime/'
+            nfail = nfail + 1
+        end if
+    end subroutine check_runtime_c_is_out_of_the_fpm_tree
 
     ! Guards the lowerer: a symbol it is allowed to call must exist.
     subroutine check_declared_symbols_are_defined(nfail)
