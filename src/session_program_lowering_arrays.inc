@@ -2855,6 +2855,20 @@
             return
         end if
 
+        ! Two fixed character arrays of the same shape and element length are
+        ! two contiguous blocks of identical size, so the assignment is one
+        ! block copy rather than a walk that would have to know an element
+        ! kind's scalar width.
+        if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            block
+                logical :: char_handled
+                call lower_character_array_whole_assignment(arena, node, &
+                    symbol_index, context, char_handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (char_handled) return
+            end block
+        end if
+
         if (node_exists(arena, node%value_index)) then
             select type (rhs => arena%entries(node%value_index)%node)
             type is (array_literal_node)

@@ -11,11 +11,57 @@ program test_session_char_array_compiler
     if (.not. test_rank1_loop_whole_array_print()) all_passed = .false.
     if (.not. test_rank2_multi_item_print()) all_passed = .false.
     if (.not. test_whole_array_after_literal()) all_passed = .false.
+    if (.not. test_elements_are_contiguous_at_declared_stride()) &
+        all_passed = .false.
+    if (.not. test_element_lengths_are_the_declared_length()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: character arrays lower through direct LIRIC session'
 
 contains
+
+    logical function test_elements_are_contiguous_at_declared_stride()
+        ! Printing every element of a rank-1 character array back to back shows
+        ! the storage as one run of characters. With a contiguous layout the
+        ! elements sit at a stride of the declared length, so the concatenated
+        ! output has no gaps and no repetition.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=3) :: c(4)'//new_line('a')// &
+            '  c(1) = "aaa"'//new_line('a')// &
+            '  c(2) = "bbb"'//new_line('a')// &
+            '  c(3) = "ccc"'//new_line('a')// &
+            '  c(4) = "ddd"'//new_line('a')// &
+            '  print *, "[", c(1), c(2), c(3), c(4), "]"'//new_line('a')// &
+            'end program main'
+
+        test_elements_are_contiguous_at_declared_stride = expect_output( &
+            source, ' [aaabbbcccddd]'//new_line('a'), &
+            '/tmp/ffc_session_char_array_stride_test')
+    end function test_elements_are_contiguous_at_declared_stride
+
+    logical function test_element_lengths_are_the_declared_length()
+        ! Each element carries the array's declared element length, including
+        ! the blank padding of a shorter assigned value.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=5) :: c(3)'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  c(1) = "apple"'//new_line('a')// &
+            '  c(2) = "fig"'//new_line('a')// &
+            '  c(3) = "peach"'//new_line('a')// &
+            '  do i = 1, 3'//new_line('a')// &
+            '    print *, i, len(c(i)), "[", c(i), "]"'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+
+        test_element_lengths_are_the_declared_length = expect_output( &
+            source, &
+            '           1           5 [apple]'//new_line('a')// &
+            '           2           5 [fig  ]'//new_line('a')// &
+            '           3           5 [peach]'//new_line('a'), &
+            '/tmp/ffc_session_char_array_len_test')
+    end function test_element_lengths_are_the_declared_length
 
     logical function test_rank1_element_assign_print()
         character(len=*), parameter :: source = &
