@@ -16,6 +16,7 @@ program test_session_io_implied_do_print_compiler
     if (.not. test_integer_elements_still_print_as_integers()) all_passed = .false.
     if (.not. test_implied_do_among_other_items()) all_passed = .false.
     if (.not. test_implied_do_with_step()) all_passed = .false.
+    if (.not. test_array_constructor_implied_do()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: I/O implied-do print lowers through one dispatch path'
@@ -94,5 +95,19 @@ contains
             '         100         300         500'//new_line('a'), &
             '/tmp/ffc_session_implied_do_step_test')
     end function test_implied_do_with_step
+
+    logical function test_array_constructor_implied_do()
+        ! Legacy (/ ... /) constructors wrap an implied-do in an array literal,
+        ! rather than using the I/O implied-do node used by print *, ( ... ).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  print *, (/(i, i=1,4)/)'//new_line('a')// &
+            'end program main'
+
+        test_array_constructor_implied_do = expect_output( &
+            source, '           1           2           3           4'// &
+            new_line('a'), '/tmp/ffc_session_array_ctor_implied_do')
+    end function test_array_constructor_implied_do
 
 end program test_session_io_implied_do_print_compiler

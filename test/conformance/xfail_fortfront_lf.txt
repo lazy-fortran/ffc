@@ -3,6 +3,7 @@
 # Lines starting with '#' and blank lines are ignored.
 #
 # Promote entries by removing them from this file when ffc starts passing.
+function_inference_reordered.lf # owner=lazy-fortran/ffc#448; reason=resolve lazy forward function definitions before top-level executable statements
 array_index_brackets_multi.lf # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 array_index_brackets_simple.lf # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 array_slice_basic.lf # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views

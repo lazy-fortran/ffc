@@ -617,7 +617,8 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sym, vk
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
+                                    backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
@@ -675,21 +676,35 @@
 
     subroutine lower_runtime_local_whole_assignment(context, dst_sym, src_op, &
                                                     src_sym, error_msg)
-        ! Whole-array assignment into a rank-1 local runtime array. When src_sym
-        ! is 0 the loop broadcasts the already-lowered scalar src_op into every
+        ! Whole-array assignment into a runtime-shaped array. When src_sym is 0
+        ! the loop broadcasts the already-lowered scalar src_op into every
         ! element; otherwise it copies element-for-element from another rank-1
-        ! array src_sym (fixed or runtime) of the same value kind.
+        ! or rank-2 array src_sym of the same value kind.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dst_sym
         type(lr_operand_desc_t), intent(in) :: src_op
         integer, intent(in) :: src_sym
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
+                                    backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
 
         extent = context%symbols(dst_sym)%runtime_dim_size(1)
+        if (context%symbols(dst_sym)%array_rank == 2) then
+            if (.not. context%symbols(dst_sym)%has_runtime_dim_size(2)) then
+                error_msg = 'runtime rank-2 array has no second extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                    context%symbols(dst_sym)%runtime_dim_size(2), total_extent, &
+                    error_msg)) return
+            extent = total_extent
+        else if (context%symbols(dst_sym)%array_rank /= 1) then
+            error_msg = 'runtime array assignment supports rank 1 and rank 2 only'
+            return
+        end if
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
         header_block = create_liric_block(context%session)
@@ -794,9 +809,9 @@
 
     subroutine lower_runtime_local_array_assignment(arena, node, dst_sym, &
                                                     context, handled, error_msg)
-        ! Whole-array assignment dispatch for a rank-1 local runtime array. Two
-        ! forms are handled at run time: a scalar broadcast (b = expr) and a copy
-        ! from another rank-1 array of the same value kind (b = c). Anything else
+        ! Whole-array assignment dispatch for a runtime-shaped array. Two forms
+        ! are handled at run time: a scalar broadcast (b = expr) and a copy
+        ! from another rank-1 or rank-2 array of the same value kind. Anything else
         ! leaves handled false so the caller reports the existing diagnostic.
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
@@ -829,15 +844,16 @@
             end select
         end if
 
-        ! b = c : copy from another same-kind rank-1 array identifier.
+        ! b = c : copy from another same-kind array identifier.
         if (is_identifier(arena, node%value_index)) then
             call get_identifier_name(arena, node%value_index, src_name, id_err)
             if (len_trim(id_err) == 0) then
                 src_sym = find_symbol_compat(context, src_name)
                 if (src_sym > 0) then
-                    if (context%symbols(src_sym)%is_array .and. &
-                        .not. context%symbols(src_sym)%is_allocatable .and. &
-                        context%symbols(src_sym)%array_rank == 1 .and. &
+                    if ((context%symbols(src_sym)%is_array .or. &
+                        context%symbols(src_sym)%is_allocatable) .and. &
+                        context%symbols(src_sym)%array_rank == &
+                            context%symbols(dst_sym)%array_rank .and. &
                         context%symbols(src_sym)%value_kind == vk) then
                         value = i32_immediate(context%session, 0_c_int64_t)
                         call lower_runtime_local_whole_assignment(context, dst_sym, &

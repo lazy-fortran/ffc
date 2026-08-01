@@ -638,7 +638,10 @@
             accumulate = 'any'
         end if
         call try_alloc_component_constructor_mask_reduction(arena, node, context, is_all, &
-                                                handled, value, error_msg)
+                                                  handled, value, error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
+        call try_derived_array_component_mask_reduction(arena, node, context, is_all, &
+                                                        handled, value, error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
         call try_general_mask_reduction(arena, node, context, accumulate, &
                                         handled, value, error_msg)
@@ -719,6 +722,179 @@
         handled = .true.
         call set_empty(error_msg)
     end subroutine try_array_mask_reduction
+
+    subroutine try_derived_array_component_mask_reduction(arena, node, context, &
+            is_all, handled, value, error_msg)
+        ! Handle any()/all() of a relational comparison involving a scalar
+        ! component projected across a fixed-size derived array, for example
+        ! any(items%i /= [1, 2, 3]) or any(items%x /= source).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_all
+        logical, intent(out) :: handled
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op, resolve_error, name
+        integer :: arg_index, left_index, right_index, line, column
+        integer :: component_index, component_type, component_symbol
+        integer :: other_index, other_symbol, other_kind
+        integer :: component_kind_value, extent, i
+        integer, allocatable :: flat(:)
+        logical :: component_on_left
+        type(lr_operand_desc_t) :: component_value, other_value, condition
+        type(lr_operand_desc_t) :: accumulator, next_acc
+        integer(c_int) :: predicate
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) /= 1) return
+        arg_index = node%arg_indices(1)
+        if (.not. is_binary_op(arena, arg_index)) return
+        call get_binary_op_info(arena, arg_index, op, left_index, right_index, &
+                                line, column, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        if (.not. is_relational_operator(op)) return
+
+        component_index = 0
+        component_type = 0
+        component_symbol = 0
+        component_on_left = .false.
+        if (node_exists(arena, left_index)) then
+            select type (left => arena%entries(left_index)%node)
+            type is (component_access_node)
+                call resolve_derived_array_component(arena, left_index, context, &
+                    component_symbol, component_type, component_index, &
+                    resolve_error)
+                if (len_trim(resolve_error) == 0) component_on_left = .true.
+            class default
+            end select
+        end if
+        if (component_index == 0 .and. node_exists(arena, right_index)) then
+            select type (right => arena%entries(right_index)%node)
+            type is (component_access_node)
+                call resolve_derived_array_component(arena, right_index, context, &
+                    component_symbol, component_type, component_index, &
+                    resolve_error)
+                if (len_trim(resolve_error) == 0) component_on_left = .false.
+            class default
+            end select
+        end if
+        if (component_index == 0) return
+
+        component_kind_value = component_kind(context, component_type, &
+                                               component_index)
+        if (component_kind_value /= VALUE_I32 .and. &
+            component_kind_value /= VALUE_F32 .and. &
+            component_kind_value /= VALUE_F64) return
+        if (component_on_left) then
+            other_index = right_index
+        else
+            other_index = left_index
+        end if
+
+        other_symbol = 0
+        other_kind = component_kind_value
+        if (node_exists(arena, other_index)) then
+            select type (other => arena%entries(other_index)%node)
+            type is (array_literal_node)
+                if (is_implied_do_constructor(arena, other) .or. &
+                    .not. allocated(other%element_indices)) return
+                allocate (flat(0))
+                call flatten_constructor_elements(arena, other%element_indices, flat, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = size(flat)
+            class default
+                if (.not. is_identifier(arena, other_index)) return
+                call get_identifier_name(arena, other_index, name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                other_symbol = find_symbol_compat(context, name)
+                if (other_symbol <= 0) return
+                if (.not. is_elementwise_array_operand(context, other_symbol)) return
+                if (context%symbols(other_symbol)%value_kind /= &
+                    component_kind_value) return
+                extent = array_symbol_extent(context, other_symbol)
+            end select
+        else
+            return
+        end if
+        if (extent /= derived_array_component_extent(context, component_symbol)) return
+
+        if (component_kind_value == VALUE_F32 .or. &
+            component_kind_value == VALUE_F64) then
+            call real_compare_predicate(op, predicate, error_msg)
+        else
+            call integer_compare_predicate(op, predicate, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+
+        if (is_all) then
+            accumulator = i32_immediate(context%session, 1_c_int64_t)
+        else
+            accumulator = i32_immediate(context%session, 0_c_int64_t)
+        end if
+        do i = 0, extent - 1
+            call load_derived_array_component_linear(context, component_symbol, &
+                component_type, component_index, i, component_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (allocated(flat)) then
+                call lower_component_rhs_value(arena, flat(i + 1), &
+                    component_kind_value, context, other_value, error_msg)
+            else
+                call load_array_linear_element(context, other_symbol, &
+                    int(i, c_int64_t), other_value, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (component_on_left) then
+                call emit_reduction_comparison(context, component_kind_value, &
+                    predicate, component_value, other_value, condition, error_msg)
+            else
+                call emit_reduction_comparison(context, component_kind_value, &
+                    predicate, other_value, component_value, condition, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (is_all) then
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, accumulator, &
+                        condition, next_acc, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, accumulator, &
+                        condition, next_acc, error_msg)) return
+            end if
+            accumulator = next_acc
+        end do
+        value = accumulator
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine try_derived_array_component_mask_reduction
+
+    subroutine emit_reduction_comparison(context, value_kind, predicate, lhs, rhs, &
+                                         result, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        integer(c_int), intent(in) :: predicate
+        type(lr_operand_desc_t), intent(in) :: lhs, rhs
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        select case (value_kind)
+        case (VALUE_F32)
+            ok = emit_liric_f32_fcmp(context%session, predicate, lhs, rhs, result, &
+                                     error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_fcmp(context%session, predicate, lhs, rhs, result, &
+                                     error_msg)
+        case default
+            ok = emit_liric_i32_icmp(context%session, predicate, lhs, rhs, result, &
+                                     error_msg)
+        end select
+        if (ok) call set_empty(error_msg)
+    end subroutine emit_reduction_comparison
 
     ! Classify one comparison operand: sym>0 for a whole declared/allocatable
     ! array, flat allocated for an array constructor of scalars, scalar_idx>0

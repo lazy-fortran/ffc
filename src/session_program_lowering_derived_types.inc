@@ -715,12 +715,16 @@
             select type (binding => &
                 context%arena%entries(node%binding_indices(i))%node)
             type is (type_binding_node)
-                if (binding%is_generic .or. binding%is_deferred) then
+                ! A deferred binding on an abstract type has no implementation
+                ! to emit, but its name still occupies an inherited vtable
+                ! slot.  Keep that slot so an extending type can override it;
+                ! the vtable emitter already leaves an unresolved target null.
+                if (binding%is_generic) then
                     call unsupported_feature_error('type-bound procedure', &
                         node%line, node%column, &
                         'direct LIRIC session only supports plain '// &
-                        '(procedure :: m => fn) bindings, not generic, '// &
-                        'final, or deferred', error_msg)
+                        '(procedure :: m => fn) bindings, not generic or '// &
+                        'final', error_msg)
                     return
                 end if
                 ! FINAL names a destructor, not a callable method: record it

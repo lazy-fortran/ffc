@@ -11,6 +11,7 @@ program test_session_associate_selectors
     if (.not. test_associate_array_section_write()) all_passed = .false.
     if (.not. test_associate_component_read()) all_passed = .false.
     if (.not. test_associate_component_write()) all_passed = .false.
+    if (.not. test_associate_allocatable_array_component()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate array-section and component selectors lower ' // &
@@ -91,5 +92,42 @@ contains
             source, 42, &
             '/tmp/ffc_session_associate_component_write')
     end function test_associate_component_write
+
+    logical function test_associate_allocatable_array_component()
+        ! ASSOCIATE names may alias an allocatable array component and then be
+        ! used as the base of another derived-component selector.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'type :: level1_t'//new_line('a')// &
+            '    integer :: n'//new_line('a')// &
+            '    integer, allocatable :: values(:)'//new_line('a')// &
+            'end type level1_t'//new_line('a')// &
+            'type :: outer_t'//new_line('a')// &
+            '    integer :: n'//new_line('a')// &
+            '    type(level1_t), allocatable :: levels(:)'//new_line('a')// &
+            'end type outer_t'//new_line('a')// &
+            'type(outer_t) :: outer'//new_line('a')// &
+            'integer :: f'//new_line('a')// &
+            'allocate(outer%levels(2))'//new_line('a')// &
+            'outer%n = 2'//new_line('a')// &
+            'do f = 1, 2'//new_line('a')// &
+            '    outer%levels(f)%n = f'//new_line('a')// &
+            '    allocate(outer%levels(f)%values(1))'//new_line('a')// &
+            '    outer%levels(f)%values(1) = f'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'associate (l1 => outer%levels)'//new_line('a')// &
+            '    do f = 1, outer%n'//new_line('a')// &
+            '        associate (l2 => l1(f)%values)'//new_line('a')// &
+            '            l2(1) = l2(1) + f'//new_line('a')// &
+            '        end associate'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'stop outer%levels(1)%values(1) + outer%levels(2)%values(1)'// &
+            new_line('a')// &
+            'end program main'
+
+        test_associate_allocatable_array_component = expect_exit_status( &
+            source, 6, '/tmp/ffc_session_associate_allocatable_array')
+    end function test_associate_allocatable_array_component
 
 end program test_session_associate_selectors

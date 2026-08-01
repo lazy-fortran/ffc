@@ -776,6 +776,16 @@
             end if
         end if
         if (.not. is_identifier(arena, source_expr)) then
+            if (target_sym <= 0 .or. .not. context%symbols(target_sym)%is_allocatable) &
+                    then
+                error_msg = 'mold/source allocate references an undeclared variable'
+                return
+            end if
+            call lower_allocate_array_expression_source(arena, source_expr, &
+                target_sym, context, copy_values, error_msg)
+            return
+        end if
+        if (.not. is_identifier(arena, source_expr)) then
             error_msg = 'mold/source must name an allocatable array'
             return
         end if
@@ -825,6 +835,120 @@
                 error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocate_mold_source
+
+    subroutine lower_allocate_array_expression_source(arena, source_expr, &
+                                                       target_sym, context, &
+                                                       copy_values, error_msg)
+        !! SOURCE= may be an array-valued expression, not only an allocatable
+        !! array name.  Infer its fixed extent, allocate the target, and reuse
+        !! the ordinary whole-array evaluator to materialise the values.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_expr, target_sym
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: copy_values
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: extent
+        logical :: known
+        type(array_expr_plan_t) :: plan
+        type(lr_operand_desc_t) :: n_i32
+
+        call set_empty(error_msg)
+        if (context%symbols(target_sym)%array_rank == 2) then
+            error_msg = 'mold/source allocate supports only rank-1 arrays'
+            return
+        end if
+        call array_expression_static_extent(arena, source_expr, context, extent, &
+                                            known)
+        if (.not. known .or. extent <= 0) then
+            error_msg = 'mold/source allocate requires a constant source extent'
+            return
+        end if
+        n_i32 = i32_immediate(context%session, int(extent, c_int64_t))
+        call lower_allocate_i32_1d_operand(n_i32, target_sym, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(target_sym)%allocatable_static_size = extent
+        if (.not. copy_values) return
+
+        call build_array_expression(context, target_sym, source_expr, plan, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_array_expression_assignment(arena, plan, context, error_msg)
+    end subroutine lower_allocate_array_expression_source
+
+    recursive subroutine array_expression_static_extent(arena, expr_index, &
+                                                         context, extent, known)
+        !! Recover the element count of the small fixed-shape expressions that
+        !! SOURCE= can evaluate here: constructors, identifiers, elemental
+        !! calls, and conforming binary expressions.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: extent
+        logical, intent(out) :: known
+        integer :: i, left_index, right_index, line, column, sym
+        integer :: left_extent, right_extent
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: op, name, err
+
+        extent = 0
+        known = .false.
+        if (.not. node_exists(arena, expr_index)) return
+
+        select type (node => arena%entries(expr_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, err)
+            if (len_trim(err) > 0) return
+            extent = size(flat)
+            known = .true.
+            return
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) return
+            do i = 1, size(node%arg_indices)
+                call array_expression_static_extent(arena, node%arg_indices(i), &
+                    context, extent, known)
+                if (known) return
+            end do
+            return
+        end select
+
+        if (is_identifier(arena, expr_index)) then
+            call get_identifier_name(arena, expr_index, name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym <= 0) return
+            if (context%symbols(sym)%is_allocatable) then
+                extent = context%symbols(sym)%allocatable_static_size
+            else if (context%symbols(sym)%array_rank == 1) then
+                extent = context%symbols(sym)%array_dim_sizes(1)
+                if (extent <= 0) extent = context%symbols(sym)%array_size
+            end if
+            known = extent > 0
+            return
+        end if
+
+        if (.not. is_binary_op(arena, expr_index)) return
+        call get_binary_op_info(arena, expr_index, op, left_index, right_index, &
+                                line, column, err)
+        if (len_trim(err) > 0) return
+        call array_expression_static_extent(arena, left_index, context, &
+                                            left_extent, known)
+        if (.not. known) then
+            call array_expression_static_extent(arena, right_index, context, &
+                                                right_extent, known)
+            if (known) extent = right_extent
+            return
+        end if
+        call array_expression_static_extent(arena, right_index, context, &
+                                            right_extent, known)
+        if (known .and. left_extent /= right_extent) then
+            extent = 0
+            known = .false.
+            return
+        end if
+        extent = left_extent
+    end subroutine array_expression_static_extent
 
     subroutine record_allocatable_static_size(arena, size_index, symbol_index, &
                                               context)
@@ -1551,11 +1675,17 @@
         is_ref = .false.
         if (.not. allocated(node%name)) return
         if (.not. allocated(node%arg_indices)) return
-        if (is_contained_function_reference(node, context)) return
         nargs = size(node%arg_indices)
         if (nargs < 1 .or. nargs > 2) return
         symbol_index = find_symbol_compat(context, node%name)
         if (symbol_index <= 0) return
+        if (is_contained_function_reference(node, context)) then
+            ! An ASSOCIATE name can be represented by the same call-shaped AST
+            ! node as a contained function reference. A declared array symbol
+            ! still wins: Fortran cannot declare a function and an array with
+            ! the same local name.
+            if (.not. context%symbols(symbol_index)%is_array) return
+        end if
         if (.not. context%symbols(symbol_index)%is_array) return
         if (context%symbols(symbol_index)%is_allocatable) return
         do i = 1, nargs

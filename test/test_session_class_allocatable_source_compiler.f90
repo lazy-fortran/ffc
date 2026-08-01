@@ -1,5 +1,6 @@
 program test_session_class_allocatable_source_compiler
-    use ffc_test_support, only: expect_output, expect_error_contains
+    use ffc_test_support, only: expect_output, expect_error_contains, &
+        expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -8,6 +9,7 @@ program test_session_class_allocatable_source_compiler
 
     all_passed = .true.
     if (.not. test_allocate_from_base_source()) all_passed = .false.
+    if (.not. test_allocate_from_mold()) all_passed = .false.
     if (.not. test_allocate_from_extension_source()) all_passed = .false.
     if (.not. test_extension_storage_is_exact()) all_passed = .false.
     if (.not. test_dynamic_source_propagates_identity()) all_passed = .false.
@@ -21,6 +23,28 @@ program test_session_class_allocatable_source_compiler
     print *, 'PASS: class(t) allocatable SOURCE='
 
 contains
+
+    logical function test_allocate_from_mold()
+        ! MOLD copies the concrete dynamic type and layout, but not the source
+        ! value. The destination must still be writable as an independent value.
+        character(len=:), allocatable :: source
+
+        source = 'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    integer :: x'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  class(t), allocatable :: original, obj'//new_line('a')// &
+            '  allocate(t :: original)'//new_line('a')// &
+            '  original%x = 123'//new_line('a')// &
+            '  allocate(obj, mold=original)'//new_line('a')// &
+            '  obj%x = 456'//new_line('a')// &
+            '  if (obj%x /= 456) error stop'//new_line('a')// &
+            '  if (original%x /= 123) error stop'//new_line('a')// &
+            'end program main'
+
+        test_allocate_from_mold = expect_exit_status(source, 0, &
+            '/tmp/ffc_class_alloc_mold')
+    end function test_allocate_from_mold
 
     character(len=:) function hierarchy() result(text)
         allocatable :: text

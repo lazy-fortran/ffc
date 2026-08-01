@@ -56,5 +56,31 @@ program test_session_pointer_array
         '           4           5           6'//new_line('a'), &
         '/tmp/ffc_session_pointer_array_print')) stop 4
 
+    ! A pointer may designate a scalar component projected across a derived
+    ! array. Its descriptor must retain the complete-instance byte stride, and
+    ! a pointer dummy must preserve that stride through a non-unit section.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'type t'//new_line('a')// &
+        'integer :: i'//new_line('a')// &
+        'real :: x'//new_line('a')// &
+        'end type t'//new_line('a')// &
+        'type(t), target :: t1(0:3)'//new_line('a')// &
+        'integer, pointer :: p(:)'//new_line('a')// &
+        'real :: source(4) = [10., 20., 30., 40.]'//new_line('a')// &
+        't1%i = [1, 2, 3, 4]'//new_line('a')// &
+        't1%x = source'//new_line('a')// &
+        'p => t1%i'//new_line('a')// &
+        'call z(p)'//new_line('a')// &
+        'if (any(t1%i /= [999, 2, 999, 4])) stop 1'//new_line('a')// &
+        'if (any(t1%x /= source)) stop 2'//new_line('a')// &
+        'contains'//new_line('a')// &
+        'subroutine z(q)'//new_line('a')// &
+        'integer, pointer :: q(:)'//new_line('a')// &
+        'q(1:3:2) = 999'//new_line('a')// &
+        'end subroutine z'//new_line('a')// &
+        'end program main', 0, &
+        '/tmp/ffc_session_pointer_array_derived_component')) stop 5
+
     print *, 'PASS: rank-1 integer/real pointer/target array, => , element access'
 end program test_session_pointer_array

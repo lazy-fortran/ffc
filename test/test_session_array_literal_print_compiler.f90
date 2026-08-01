@@ -63,6 +63,7 @@ program test_session_array_literal_print_compiler
         'end program main', &
         'mixed_items')) all_passed = .false.
 
+
     if (.not. all_passed) stop 1
     print *, 'PASS: inline array-constructor print lowers through '// &
         'direct LIRIC session'

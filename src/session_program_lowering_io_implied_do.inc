@@ -98,6 +98,149 @@
         end select
     end subroutine emit_io_implied_do_print_items
 
+    recursive subroutine emit_array_constructor_implied_do_print_items(arena, &
+                                                                       ctor, &
+                                                                       context, &
+                                                                       handled, &
+                                                                       error_msg)
+        !! List-directed print of an array-constructor implied-do,
+        !! print *, (/(obj, ..., i = lo, hi)/).  The constructor node wraps a
+        !! do_loop_node, so bind its index exactly as the I/O implied-do path
+        !! does and lower each body expression as an ordinary scalar item.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: prev_is_char
+
+        handled = .false.
+        call set_empty(error_msg)
+        prev_is_char = .false.
+        if (.not. allocated(ctor%element_indices)) return
+        if (size(ctor%element_indices) /= 1) return
+        if (.not. node_exists(arena, ctor%element_indices(1))) return
+        select type (loop => arena%entries(ctor%element_indices(1))%node)
+        type is (do_loop_node)
+            call emit_array_constructor_implied_do_loop(arena, loop, context, &
+                prev_is_char, handled, error_msg)
+        class default
+        end select
+    end subroutine emit_array_constructor_implied_do_print_items
+
+    recursive subroutine emit_array_constructor_implied_do_loop(arena, loop, &
+                                                                context, &
+                                                                prev_is_char, &
+                                                                handled, &
+                                                                error_msg)
+        !! Expand one array-constructor implied-DO loop for list-directed output.
+        type(ast_arena_t), intent(in) :: arena
+        type(do_loop_node), intent(in) :: loop
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(inout) :: prev_is_char
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, step, ival
+        integer :: vsym, b
+        logical :: created_temp
+        type(symbol_t) :: saved_sym
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(loop%var_name)) return
+        if (.not. allocated(loop%body_indices)) return
+        if (size(loop%body_indices) == 0) return
+        call eval_i32_constant(arena, loop%start_expr_index, context, lo, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call eval_i32_constant(arena, loop%end_expr_index, context, hi, error_msg)
+        if (len_trim(error_msg) > 0) return
+        step = 1_c_int64_t
+        if (loop%step_expr_index > 0) then
+            call eval_i32_constant(arena, loop%step_expr_index, context, step, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (step == 0_c_int64_t) then
+            error_msg = 'array-constructor implied-do step is zero'
+            return
+        end if
+
+        call bind_io_implied_do_var(context, loop%var_name, vsym, created_temp, &
+                                    saved_sym)
+        ival = lo
+        do while ((step > 0_c_int64_t .and. ival <= hi) .or. &
+                  (step < 0_c_int64_t .and. ival >= hi))
+            context%symbols(vsym)%i32_constant = ival
+            context%symbols(vsym)%value = i32_immediate(context%session, ival)
+            context%symbols(vsym)%has_address = .false.
+            context%symbols(vsym)%is_reference = .false.
+            do b = 1, size(loop%body_indices)
+                call emit_array_constructor_implied_do_object(arena, &
+                    loop%body_indices(b), context, prev_is_char, handled, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call release_io_implied_do_var(context, vsym, created_temp, &
+                                                   saved_sym)
+                    return
+                end if
+                if (.not. handled) then
+                    call release_io_implied_do_var(context, vsym, created_temp, &
+                                                   saved_sym)
+                    return
+                end if
+            end do
+            ival = ival + step
+        end do
+        call release_io_implied_do_var(context, vsym, created_temp, saved_sym)
+        handled = .true.
+    end subroutine emit_array_constructor_implied_do_loop
+
+    recursive subroutine emit_array_constructor_implied_do_object(arena, &
+                                                                  object_index, &
+                                                                  context, &
+                                                                  prev_is_char, &
+                                                                  handled, &
+                                                                  error_msg)
+        !! Emit one body object, recursing for a nested implied-DO loop.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: object_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(inout) :: prev_is_char
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: this_is_char
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, object_index)) return
+        select type (object => arena%entries(object_index)%node)
+        type is (array_literal_node)
+            if (is_implied_do_constructor(arena, object)) then
+                call emit_array_constructor_implied_do_print_items(arena, object, &
+                    context, handled, error_msg)
+                return
+            end if
+        type is (do_loop_node)
+            call emit_array_constructor_implied_do_loop(arena, object, context, &
+                prev_is_char, handled, error_msg)
+            return
+        end select
+
+        this_is_char = char_print_item(arena, object_index, context)
+        if (.not. (this_is_char .and. prev_is_char)) then
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+        end if
+        if (this_is_char) then
+            call lower_print_char_expr(arena, object_index, context, error_msg)
+        else
+            call lower_print_expression_value(arena, object_index, context, &
+                                              error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        prev_is_char = this_is_char
+        handled = .true.
+    end subroutine emit_array_constructor_implied_do_object
+
     recursive subroutine emit_io_implied_do_object(arena, object_index, context, &
                                                    prev_is_char, error_msg)
         !! One object of an unrolled I/O implied-do: a nested implied-do

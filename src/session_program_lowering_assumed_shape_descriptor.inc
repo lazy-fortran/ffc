@@ -54,6 +54,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable :: id_name, err
         type(array_section_info_t) :: info
+        integer :: type_index, component_index
 
         symbol_index = 0
         if (.not. node_exists(arena, node_index)) return
@@ -69,6 +70,10 @@
                                         allow_derived=.true.)
             if (len_trim(err) > 0) return
             symbol_index = info%source_index
+        type is (component_access_node)
+            call resolve_derived_array_component(arena, node_index, context, &
+                                                 symbol_index, type_index, &
+                                                 component_index, err)
         end select
     end function assumed_shape_actual_symbol
 
@@ -79,7 +84,7 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
-        integer :: symbol_index
+        integer :: symbol_index, type_index, component_index
         character(len=:), allocatable :: id_name, err
 
         rank = 0
@@ -87,6 +92,19 @@
             rank = 1
             return
         end if
+        select type (component => arena%entries(node_index)%node)
+        type is (component_access_node)
+            call resolve_derived_array_component(arena, node_index, context, &
+                                                 symbol_index, type_index, &
+                                                 component_index, err)
+            if (len_trim(err) == 0) then
+                rank = context%symbols(symbol_index)%array_rank
+            else
+                rank = 0
+            end if
+            return
+        class default
+        end select
         if (.not. is_identifier(arena, node_index)) return
         symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
         if (symbol_index <= 0) return
@@ -131,8 +149,17 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: base
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index, type_index, component_index
 
-        if (actual_is_allocatable_array(arena, node_index, context)) then
+        if (component_access_is_derived_array(arena, node_index, context)) then
+            call resolve_derived_array_component(arena, node_index, context, &
+                                                 symbol_index, type_index, &
+                                                 component_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call derived_array_component_address_at(context, symbol_index, &
+                type_index, component_index, &
+                i32_immediate(context%session, 0_c_int64_t), base, error_msg)
+        else if (actual_is_allocatable_array(arena, node_index, context)) then
             call allocatable_array_actual_data_address(arena, node_index, &
                                                        context, base, error_msg)
         else if (actual_is_contiguous_section(arena, node_index, context)) then
@@ -162,8 +189,23 @@
         integer :: extents(ARRAY_MAX_RANK)
         character(len=:), allocatable :: id_name
         logical :: ok
+        integer :: symbol_index, type_index, component_index
 
         call set_empty(error_msg)
+        if (component_access_is_derived_array(arena, node_index, context)) then
+            call resolve_derived_array_component(arena, node_index, context, &
+                                                 symbol_index, type_index, &
+                                                 component_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (dim /= 1) then
+                error_msg = 'derived array component assumed-shape actual supports '// &
+                            'rank 1 only'
+                return
+            end if
+            extent = i64_immediate(context%session, int( &
+                derived_array_component_extent(context, symbol_index), c_int64_t))
+            return
+        end if
         if (actual_is_allocatable_array(arena, node_index, context)) then
             call actual_extent_i64(arena, node_index, context, dim, extent, &
                                    error_msg)
@@ -175,6 +217,23 @@
         if (actual_is_contiguous_section(arena, node_index, context)) then
             call section_actual_decl_extents(context, node_index, 1, extents, ok)
         else if (is_identifier(arena, node_index)) then
+            symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%array_rank >= dim) then
+                    if (context%symbols(symbol_index)%has_runtime_dim_size(dim)) then
+                        if (.not. emit_liric_i32_to_i64(context%session, &
+                                context%symbols(symbol_index)%runtime_dim_size(dim), &
+                                extent, error_msg)) return
+                        return
+                    end if
+                    if (context%symbols(symbol_index)%array_dim_sizes(dim) > 0) then
+                        extent = i64_immediate(context%session, int( &
+                            context%symbols(symbol_index)%array_dim_sizes(dim), &
+                            c_int64_t))
+                        return
+                    end if
+                end if
+            end if
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
             call array_decl_extents(context, id_name, rank, extents, ok)
@@ -221,8 +280,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: base, extent, stride, running
         integer :: symbol_index, value_kind, actual_rank, dim
+        integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
         integer(c_int32_t) :: flags
+        logical :: is_component_projection
         character(len=32) :: rank_text, actual_rank_text
 
         actual_rank = assumed_shape_actual_rank(arena, node_index, context)
@@ -240,8 +301,21 @@
             error_msg = 'assumed-shape actual was not declared'
             return
         end if
+        is_component_projection = .false.
+        select type (actual => arena%entries(node_index)%node)
+        type is (component_access_node)
+            call resolve_derived_array_component(arena, node_index, context, &
+                                                 symbol_index, component_type, &
+                                                 component_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            is_component_projection = .true.
+        class default
+        end select
         value_kind = context%symbols(symbol_index)%value_kind
-        if (value_kind == VALUE_DERIVED) then
+        if (is_component_projection) then
+            value_kind = component_kind(context, component_type, component_index)
+            element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
+        else if (value_kind == VALUE_DERIVED) then
             ! A derived element spans its type's whole flat slot block, not one
             ! intrinsic slot, so the descriptor's element size and strides step
             ! by whole instances (#406).
@@ -274,7 +348,13 @@
         if (len_trim(error_msg) > 0) return
         ! The dummy borrows the actual's storage: allocated and associated, and
         ! contiguous for every actual form this ABI accepts, but never owning.
-        flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED + ARRAY_FLAG_CONTIGUOUS
+        flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED
+        if (.not. is_component_projection) then
+            if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
+                context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
+                flags = flags + ARRAY_FLAG_CONTIGUOUS
+            end if
+        end if
         call store_descriptor_i32(context, flags, descriptor, &
             int(ARRAY_DESCRIPTOR_FLAGS_OFFSET, c_int64_t), error_msg)
         if (len_trim(error_msg) > 0) return
@@ -284,7 +364,15 @@
 
         ! Column-major strides: dimension 1 steps one element, dimension d steps
         ! the product of every lower dimension's extent.
-        running = i64_immediate(context%session, element_bytes)
+        if (is_component_projection) then
+            running = i64_immediate(context%session, int( &
+                total_component_slots(context, component_type) * 4, c_int64_t))
+        else if (context%symbols(symbol_index)%array_stride_bytes > 0) then
+            running = i64_immediate(context%session, int( &
+                context%symbols(symbol_index)%array_stride_bytes, c_int64_t))
+        else
+            running = i64_immediate(context%session, element_bytes)
+        end if
         do dim = 1, rank
             call assumed_shape_actual_extent(arena, node_index, context, rank, &
                                              dim, extent, error_msg)
@@ -331,6 +419,7 @@
         integer :: i, sym_index, rank, dim
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: descriptor, base, extent_i64, extent_i32
+        type(lr_operand_desc_t) :: stride_i64
 
         call set_empty(error_msg)
         if (.not. allocated(param_indices)) return
@@ -359,6 +448,17 @@
             if (.not. emit_ptr_load(context%session, descriptor, base, &
                                     error_msg)) return
             context%symbols(sym_index)%address = base
+            context%symbols(sym_index)%element_address = base
+            context%symbols(sym_index)%has_address = .true.
+            context%symbols(sym_index)%is_reference = .true.
+            if (rank == 1) then
+                if (.not. emit_i64_load_at(context%session, descriptor, &
+                        assumed_shape_dim_field_offset(1, &
+                            int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), &
+                        stride_i64, error_msg)) return
+                context%symbols(sym_index)%has_runtime_array_stride = .true.
+                context%symbols(sym_index)%runtime_array_stride_bytes = stride_i64
+            end if
             call bind_polymorphic_array_element_stride(arena, context, &
                 callee_name, i, sym_index, descriptor, error_msg)
             if (len_trim(error_msg) > 0) return

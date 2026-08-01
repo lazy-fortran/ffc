@@ -272,6 +272,12 @@ module session_program_lowering_types
         integer :: array_lower_bound = 1
         integer, dimension(ARRAY_MAX_RANK) :: array_dim_sizes = 0
         integer, dimension(ARRAY_MAX_RANK) :: array_dim_lowers = 0
+        ! Non-contiguous rank-1 pointer/view stride in bytes. A zero value
+        ! means ordinary contiguous element addressing; pointer descriptors
+        ! replace it with a runtime stride at dummy entry.
+        integer :: array_stride_bytes = 0
+        logical :: has_runtime_array_stride = .false.
+        type(lr_operand_desc_t) :: runtime_array_stride_bytes
         ! Runtime extent of a rank-1 assumed-shape dummy whose actual has no
         ! compile-time-foldable shape (an allocatable actual): the hidden i64
         ! extent argument ABI. array_dim_sizes(1) stays the 0 sentinel; the
@@ -414,6 +420,7 @@ module session_program_lowering_types
         integer(c_int64_t) :: section_strides(2) = 1_c_int64_t
         integer(c_int64_t) :: section_extents(2) = 0_c_int64_t
         integer(c_int64_t) :: scalar_indices(2) = 0_c_int64_t
+        logical :: has_runtime_bounds = .false.
     end type array_section_info_t
 
     ! One operand of an all/any/count comparison mask (or a bare mask), used

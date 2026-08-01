@@ -1009,8 +1009,11 @@
         type is (identifier_node)
             name = trim(obj%name)
         type is (call_or_subscript_node)
-            if (obj%is_array_access .and. allocated(obj%name) .and. &
-                allocated(obj%arg_indices)) then
+            ! FortFront may not mark a BLOCK DATA designator as an array
+            ! access because the block-data unit has no executable symbol
+            ! table.  In a DATA object list, a named one-argument call node is
+            ! the array-element spelling we need regardless of that flag.
+            if (allocated(obj%name) .and. allocated(obj%arg_indices)) then
                 if (size(obj%arg_indices) == 1) then
                     call extract_array_element_name(arena, obj, name, error_msg)
                 else

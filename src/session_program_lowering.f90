@@ -577,6 +577,30 @@ contains
             return
         end if
         if ((node%is_pointer .or. node%is_target) .and. node%is_array) then
+            ! TARGET is permitted on an assumed-shape dummy. It uses the same
+            ! caller-supplied descriptor as an ordinary assumed-shape dummy;
+            ! only the target property is retained for pointer association.
+            if (node%is_target .and. declaration_is_assumed_shape(node, context)) then
+                call declaration_value_kind(node, value_kind, error_msg, context, &
+                    node_index)
+                if (len_trim(error_msg) > 0) return
+                call lower_assumed_shape_declaration(node, context, value_kind, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                    do i = 1, size(node%var_names)
+                        derived_type_index = find_symbol_compat(context, &
+                            node%var_names(i))
+                        if (derived_type_index > 0) &
+                            context%symbols(derived_type_index)%is_target = .true.
+                    end do
+                else if (allocated(node%var_name)) then
+                    derived_type_index = find_symbol_compat(context, node%var_name)
+                    if (derived_type_index > 0) &
+                        context%symbols(derived_type_index)%is_target = .true.
+                end if
+                return
+            end if
             call declaration_value_kind(node, value_kind, error_msg, context, &
                 node_index)
             if (len_trim(error_msg) > 0) return

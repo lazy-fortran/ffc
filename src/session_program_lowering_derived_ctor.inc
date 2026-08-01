@@ -467,7 +467,24 @@
         handled = .false.
         call set_empty(error_msg)
         n_comp = context%derived_types(type_index)%component_count
-        if (n_comp <= 0) return
+        if (n_comp == 1 .and. allocated(context%derived_types(type_index)% &
+                component_names)) then
+            if (same_name(context%derived_types(type_index)%component_names(1), &
+                          '__ffc_placeholder')) then
+                ! Empty derived types use one hidden storage slot so their
+                ! objects still have an address.  The slot is not a Fortran
+                ! component and must not participate in constructor mapping.
+                handled = .true.
+                return
+            end if
+        end if
+        if (n_comp <= 0) then
+            ! An empty structure constructor is the only value that can
+            ! initialise an empty derived object.  There are no component
+            ! stores to emit, but the DATA value was handled successfully.
+            handled = .true.
+            return
+        end if
         do c = 1, n_comp
             if (.not. constructor_component_storeable(context, type_index, c)) return
         end do

@@ -395,6 +395,25 @@
                 return
             end if
         end if
+        ! An ordinary derived TARGET array uses the same flat instance layout
+        ! as a non-target derived array; TARGET only makes its storage eligible
+        ! for pointer association. Keep the array lowering path so component
+        ! projections can borrow its base address.
+        if (node%is_target .and. node%is_array .and. .not. node%is_pointer) then
+            call lower_derived_array_declaration(node, context, &
+                                                 derived_type_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (allocated(node%var_name)) then
+                i = find_symbol_compat(context, node%var_name)
+                if (i > 0) then
+                    context%symbols(i)%is_target = .true.
+                    context%symbols(i)%has_address = .true.
+                    context%symbols(i)%address = &
+                        context%symbols(i)%element_address
+                end if
+            end if
+            return
+        end if
         if (node%is_pointer .or. node%is_target) then
             if (node%is_array) then
                 call unsupported_feature_error( &
@@ -1226,6 +1245,11 @@
         type(lr_operand_desc_t) :: slot64, byte_offset
 
         if (present(comp_kind)) comp_kind = VALUE_I32
+        if (component_access_is_derived_array(arena, access_index, context)) then
+            call derived_array_component_element_address(arena, access_index, &
+                sub_index, context, addr, error_msg, comp_kind)
+            return
+        end if
         call resolve_component_ref(arena, access_index, context, symbol_index, &
                                    type_index, component_index, comp_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1451,6 +1475,160 @@
         end if
         call set_empty(error_msg)
     end subroutine resolve_array_component
+
+    subroutine resolve_derived_array_component(arena, access_index, context, &
+                                                symbol_index, type_index, &
+                                                component_index, error_msg)
+        ! Resolve a scalar component projected across a fixed-size derived array,
+        ! such as arr%i. The projection is an array view whose element stride is
+        ! the complete derived instance size, not the scalar component width.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index, type_index, component_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: component_name
+
+        call resolve_component_ref(arena, access_index, context, symbol_index, &
+                                   type_index, component_index, component_name, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (symbol_index <= 0) then
+            error_msg = 'derived array component requires a plain array base'
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = 'derived array component base is not an array'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_rank < 1) then
+            error_msg = 'derived array component base has no array rank'
+            return
+        end if
+        if (component_is_alloc_array(context, type_index, component_index)) then
+            error_msg = 'derived array component projection does not support '// &
+                        'allocatable components'
+            return
+        end if
+        if (context%derived_types(type_index)%component_type_index(component_index) &
+            > 0) then
+            error_msg = 'derived array component projection requires a scalar '// &
+                        'intrinsic component'
+            return
+        end if
+        if (context%derived_types(type_index)%component_array_size(component_index) &
+            /= 1) then
+            error_msg = 'derived array component projection requires a scalar '// &
+                        'component'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine resolve_derived_array_component
+
+    logical function component_access_is_derived_array(arena, access_index, &
+                                                       context) result(is_projection)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index, type_index, component_index
+        character(len=:), allocatable :: err
+
+        is_projection = .false.
+        call resolve_derived_array_component(arena, access_index, context, &
+                                             symbol_index, type_index, &
+                                             component_index, err)
+        if (len_trim(err) == 0) is_projection = .true.
+    end function component_access_is_derived_array
+
+    integer function derived_array_component_extent(context, symbol_index) &
+            result(extent)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+        integer :: dim
+
+        extent = 1
+        do dim = 1, context%symbols(symbol_index)%array_rank
+            extent = extent * context%symbols(symbol_index)%array_dim_sizes(dim)
+        end do
+    end function derived_array_component_extent
+
+    subroutine derived_array_component_address_at(context, symbol_index, &
+            type_index, component_index, linear_index, addr, error_msg)
+        ! Address one element of arr%component, where linear_index is already a
+        ! zero-based column-major element index of the derived array.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index, component_index
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: scaled, slot
+        integer :: slots, start_slot
+
+        slots = total_component_slots(context, type_index)
+        start_slot = component_start_slot(context, type_index, component_index)
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, linear_index, &
+                i32_immediate(context%session, int(slots, c_int64_t)), scaled, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, scaled, &
+                i32_immediate(context%session, int(start_slot, c_int64_t)), slot, &
+                error_msg)) return
+        if (.not. emit_i32_array_element_addr(context%session, &
+                context%symbols(symbol_index)%array_size, &
+                context%symbols(symbol_index)%element_address, slot, addr, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine derived_array_component_address_at
+
+    subroutine derived_array_component_element_address(arena, access_index, &
+            sub_index, context, addr, error_msg, comp_kind)
+        ! Address arr%component(i) for a rank-1 derived-array projection.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index, sub_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(out), optional :: comp_kind
+        integer :: symbol_index, type_index, component_index, lower
+        type(lr_operand_desc_t) :: sub_value, zero_based
+
+        if (present(comp_kind)) comp_kind = VALUE_I32
+        call resolve_derived_array_component(arena, access_index, context, &
+                                             symbol_index, type_index, &
+                                             component_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%array_rank /= 1) then
+            error_msg = 'derived array component element access supports rank 1 only'
+            return
+        end if
+        if (present(comp_kind)) comp_kind = component_kind(context, type_index, &
+                                                            component_index)
+        call lower_i32_expression(arena, sub_index, context, sub_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        lower = context%symbols(symbol_index)%array_dim_lowers(1)
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_value, &
+                i32_immediate(context%session, int(lower, c_int64_t)), zero_based, &
+                error_msg)) return
+        call derived_array_component_address_at(context, symbol_index, type_index, &
+            component_index, zero_based, addr, error_msg)
+    end subroutine derived_array_component_element_address
+
+    subroutine load_derived_array_component_linear(context, symbol_index, &
+            type_index, component_index, linear_index, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, type_index, component_index
+        integer, intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: addr, linear
+        integer :: comp_kind
+
+        comp_kind = component_kind(context, type_index, component_index)
+        linear = i32_immediate(context%session, int(linear_index, c_int64_t))
+        call derived_array_component_address_at(context, symbol_index, type_index, &
+            component_index, linear, addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_typed_component_load(context, comp_kind, addr, value, error_msg)
+    end subroutine load_derived_array_component_linear
 
     subroutine component_slot_address(context, symbol_index, type_index, &
                                       component_index, element_offset, addr, &
@@ -1842,7 +2020,7 @@
         type(lr_operand_desc_t) :: component_address
         integer :: comp_kind
         integer :: type_index, comp_index, dest_len
-        logical :: is_array_component
+        logical :: is_array_component, is_array_projection
 
         if (component_access_is_alloc_array(arena, target, context)) then
             value = i32_immediate(context%session, 0_c_int64_t)
@@ -1863,6 +2041,15 @@
             end if
             call lower_alloc_array_component_assignment(arena, node, target, &
                                                         context, error_msg)
+            return
+        end if
+
+        is_array_projection = component_access_is_derived_array(arena, &
+            node%target_index, context)
+        if (is_array_projection) then
+            value = i32_immediate(context%session, 0_c_int64_t)
+            call lower_derived_array_component_assignment(arena, node, context, &
+                                                          error_msg)
             return
         end if
 
@@ -1927,6 +2114,151 @@
         call emit_typed_component_store(context, comp_kind, value, &
                                         component_address, error_msg)
     end subroutine lower_derived_component_assignment
+
+    subroutine lower_derived_array_component_assignment(arena, node, context, &
+                                                        error_msg)
+        ! arr%component = rhs for a scalar intrinsic component projected across
+        ! a fixed-size derived array. The projection is strided by one complete
+        ! derived instance, so it cannot use the ordinary flat array path.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, addr
+        integer, allocatable :: flat(:)
+        integer :: symbol_index, type_index, component_index, comp_kind
+        integer :: extent, i
+        logical :: broadcast
+
+        call resolve_derived_array_component(arena, node%target_index, context, &
+                                             symbol_index, type_index, &
+                                             component_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        comp_kind = component_kind(context, type_index, component_index)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('derived array component assignment', &
+                node%line, node%column, 'character component projections are not '// &
+                'supported', error_msg)
+            return
+        end if
+        extent = derived_array_component_extent(context, symbol_index)
+        if (extent <= 0) then
+            error_msg = 'derived array component assignment requires a positive '// &
+                        'extent'
+            return
+        end if
+
+        broadcast = is_scalar_broadcast_rhs(arena, node%value_index, context)
+        if (broadcast) then
+            call lower_component_rhs_value(arena, node%value_index, comp_kind, &
+                                           context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                if (is_implied_do_constructor(arena, rhs) .or. &
+                    .not. allocated(rhs%element_indices)) then
+                    error_msg = 'derived array component assignment requires an '// &
+                                'explicit array constructor'
+                    return
+                end if
+                allocate (flat(0))
+                call flatten_constructor_elements(arena, rhs%element_indices, flat, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (size(flat) /= extent) then
+                    error_msg = 'derived array component constructor size does not '// &
+                                'match the target extent'
+                    return
+                end if
+            class default
+                ! A whole-array identifier or component source is loaded below.
+            end select
+        end if
+
+        do i = 0, extent - 1
+            if (.not. broadcast) then
+                if (allocated(flat)) then
+                    call lower_component_rhs_value(arena, flat(i + 1), comp_kind, &
+                                                   context, value, error_msg)
+                else
+                    call load_derived_array_component_source(arena, node%value_index, &
+                        comp_kind, extent, i, context, value, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+            end if
+            call derived_array_component_address_at(context, symbol_index, &
+                type_index, component_index, &
+                i32_immediate(context%session, int(i, c_int64_t)), addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_typed_component_store(context, comp_kind, value, addr, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_derived_array_component_assignment
+
+    subroutine load_derived_array_component_source(arena, value_index, comp_kind, &
+            extent, zero_based, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index, comp_kind, extent, zero_based
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: source_symbol, source_type, source_component
+        type(lr_operand_desc_t) :: addr
+
+        if (.not. node_exists(arena, value_index)) then
+            error_msg = 'derived array component rhs is not an AST node'
+            return
+        end if
+        if (is_identifier(arena, value_index)) then
+            call get_identifier_name(arena, value_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_symbol = find_symbol_compat(context, name)
+            if (source_symbol <= 0) then
+                error_msg = 'derived array component rhs was not declared: '// &
+                            trim(name)
+                return
+            end if
+            if (.not. is_elementwise_array_operand(context, source_symbol)) then
+                error_msg = 'derived array component assignment requires an array rhs'
+                return
+            end if
+            if (.not. context%symbols(source_symbol)%is_allocatable) then
+                if (context%symbols(source_symbol)%array_size /= extent) then
+                    error_msg = 'derived array component rhs size does not match'
+                    return
+                end if
+            end if
+            call load_array_linear_element(context, source_symbol, &
+                int(zero_based, c_int64_t), value, error_msg)
+            return
+        end if
+        select type (rhs => arena%entries(value_index)%node)
+        type is (component_access_node)
+            call resolve_derived_array_component(arena, value_index, context, &
+                                                 source_symbol, source_type, &
+                                                 source_component, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (derived_array_component_extent(context, source_symbol) /= extent) then
+                error_msg = 'derived array component rhs size does not match'
+                return
+            end if
+            if (component_kind(context, source_type, source_component) /= comp_kind) then
+                error_msg = 'derived array component rhs kind does not match'
+                return
+            end if
+            call load_derived_array_component_linear(context, source_symbol, &
+                source_type, source_component, zero_based, value, error_msg)
+            return
+        class default
+        end select
+        call unsupported_feature_error('derived array component assignment', &
+            get_node_line(arena, value_index), get_node_column(arena, value_index), &
+            'rhs must be a conforming array or explicit constructor', error_msg)
+    end subroutine load_derived_array_component_source
 
     subroutine component_target_is_array(arena, target_index, context, is_array)
         ! True when obj%comp names a fixed-size array component of a plain
@@ -2135,6 +2467,19 @@
 
         handled = .false.
         call set_empty(error_msg)
+        if (component_access_is_derived_array(arena, access_index, context)) then
+            call resolve_derived_array_component(arena, access_index, context, sym, &
+                                                 type_index, comp_index, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                return
+            end if
+            call load_derived_array_component_linear(context, sym, type_index, &
+                comp_index, zero_based, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            handled = .true.
+            return
+        end if
         call resolve_array_component(arena, access_index, context, sym, type_index, &
                                      comp_index, error_msg)
         if (len_trim(error_msg) > 0) then

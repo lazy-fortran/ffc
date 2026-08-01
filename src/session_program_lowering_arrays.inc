@@ -620,7 +620,7 @@
                 ! An OPTIONAL dummy keeps its parameter pointer as its address
                 ! so PRESENT can test it against null; the runtime-array
                 ! machinery would rebind that address to element storage.
-                if (dim_count == 1 .and. .not. node%is_optional) then
+                if (.not. node%is_optional) then
                     index = find_symbol_compat(context, name)
                     if (index > 0) context%symbols(index)%is_runtime_array = .true.
                 end if

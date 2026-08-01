@@ -21,6 +21,7 @@ program test_session_data_statement
     if (.not. test_rank_two_section_and_repeat()) all_passed = .false.
     if (.not. test_repeated_value_init()) all_passed = .false.
     if (.not. test_nested_derived_constructor()) all_passed = .false.
+    if (.not. test_empty_derived_constructor_data()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: DATA statements lower through direct LIRIC session'
@@ -178,5 +179,24 @@ contains
             source, '           3           4'//new_line('a'), &
             '/tmp/ffc_data_derived_ctor')
     end function test_nested_derived_constructor
+
+    logical function test_empty_derived_constructor_data()
+        ! An empty structure constructor is a valid DATA value and leaves the
+        ! zero-component object well-defined without emitting a scalar store.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  type(t) :: y'//new_line('a')// &
+            '  integer :: marker'//new_line('a')// &
+            '  data y /t()/'//new_line('a')// &
+            '  marker = 17'//new_line('a')// &
+            '  print *, marker'//new_line('a')// &
+            'end program main'
+
+        test_empty_derived_constructor_data = expect_output( &
+            source, '          17'//new_line('a'), &
+            '/tmp/ffc_data_empty_derived')
+    end function test_empty_derived_constructor_data
 
 end program test_session_data_statement

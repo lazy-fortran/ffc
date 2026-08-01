@@ -979,40 +979,85 @@
     subroutine check_intrinsic_external_conflict(arena, error_msg)
         type(ast_arena_t), intent(in) :: arena
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: n, i
-        character(len=:), allocatable :: intr_name, ext_name
+        integer :: n
 
         call set_empty(error_msg)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             select type (nd => arena%entries(n)%node)
-            type is (intrinsic_statement_node)
-                if (.not. allocated(nd%procedure_names)) cycle
-                do i = 1, size(nd%procedure_names)
-                    if (.not. allocated(nd%procedure_names(i)%s)) cycle
-                    intr_name = trim(nd%procedure_names(i)%s)
-                    if (len_trim(intr_name) == 0) cycle
-                    call find_bare_external_name(arena, intr_name, ext_name)
-                    if (len_trim(ext_name) > 0) then
-                        error_msg = 'EXTERNAL attribute conflicts with '// &
-                            'INTRINSIC attribute for '''//intr_name//''''
-                        return
-                    end if
-                end do
+            type is (program_node)
+                if (allocated(nd%body_indices)) &
+                    call check_intrinsic_external_scope(arena, nd%body_indices, &
+                                                        error_msg)
+            type is (module_node)
+                if (allocated(nd%declaration_indices)) &
+                    call check_intrinsic_external_scope(arena, &
+                        nd%declaration_indices, error_msg)
+            type is (function_def_node)
+                if (allocated(nd%body_indices)) &
+                    call check_intrinsic_external_scope(arena, nd%body_indices, &
+                                                        error_msg)
+            type is (subroutine_def_node)
+                if (allocated(nd%body_indices)) &
+                    call check_intrinsic_external_scope(arena, nd%body_indices, &
+                                                        error_msg)
+            type is (multi_unit_container_node)
+                if (allocated(nd%body_indices)) &
+                    call check_intrinsic_external_scope(arena, nd%body_indices, &
+                                                        error_msg)
+            type is (mixed_construct_container_node)
+                if (allocated(nd%implicit_declaration_indices)) &
+                    call check_intrinsic_external_scope(arena, &
+                        nd%implicit_declaration_indices, error_msg)
             end select
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine check_intrinsic_external_conflict
 
-    subroutine find_bare_external_name(arena, target_name, found_name)
+    subroutine check_intrinsic_external_scope(arena, scope_indices, error_msg)
         type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: scope_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+        character(len=:), allocatable :: intr_name, ext_name
+
+        call set_empty(error_msg)
+        do i = 1, size(scope_indices)
+            if (.not. node_exists(arena, scope_indices(i))) cycle
+            select type (nd => arena%entries(scope_indices(i))%node)
+            type is (intrinsic_statement_node)
+                if (.not. allocated(nd%procedure_names)) cycle
+                block
+                    integer :: k
+                    do k = 1, size(nd%procedure_names)
+                        if (.not. allocated(nd%procedure_names(k)%s)) cycle
+                        intr_name = trim(nd%procedure_names(k)%s)
+                        if (len_trim(intr_name) == 0) cycle
+                        call find_bare_external_name(arena, scope_indices, &
+                                                     intr_name, ext_name)
+                        if (len_trim(ext_name) > 0) then
+                            error_msg = 'EXTERNAL attribute conflicts with '// &
+                                'INTRINSIC attribute for '''//intr_name//''''
+                            return
+                        end if
+                    end do
+                end block
+            end select
+        end do
+    end subroutine check_intrinsic_external_scope
+
+    subroutine find_bare_external_name(arena, scope_indices, target_name, &
+                                       found_name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: scope_indices(:)
         character(len=*), intent(in) :: target_name
         character(len=:), allocatable, intent(out) :: found_name
         integer :: n, i
 
         call set_empty(found_name)
-        do n = 1, arena%size
-            if (.not. node_exists(arena, n)) cycle
-            select type (nd => arena%entries(n)%node)
+        do n = 1, size(scope_indices)
+            if (.not. node_exists(arena, scope_indices(n))) cycle
+            select type (nd => arena%entries(scope_indices(n))%node)
             type is (declaration_node)
                 if (.not. nd%is_external) cycle
                 if (allocated(nd%var_name)) then
@@ -2820,4 +2865,3 @@
                 'statement'//trim(location)
         end select
     end subroutine check_data_object_components
-

@@ -57,6 +57,22 @@ program test_session_elemental_class_compiler
         'end program main', &
         'declared')) all_passed = .false.
 
+    ! A NOPASS elemental binding selected through a CLASS allocatable still
+    ! dispatches through the concrete vtable when its array result is used as
+    ! an ALLOCATE(SOURCE=...) expression.
+    if (.not. matches_gfortran( &
+        type_bound_elemental_source()// &
+        'program main'//new_line('a')// &
+        '  use a'//new_line('a')// &
+        '  implicit none'//new_line('a')// &
+        '  integer, allocatable :: vec(:)'//new_line('a')// &
+        '  class(base), allocatable :: instance'//new_line('a')// &
+        '  allocate(derived :: instance)'//new_line('a')// &
+        '  allocate(vec, source=instance%add([1, 2], [1, 2]))'//new_line('a')// &
+        '  print *, vec'//new_line('a')// &
+        'end program main', &
+        'type_bound_source')) all_passed = .false.
+
     ! Negative: an actual of an unrelated declared type must be diagnosed.
     if (.not. rejects( &
         polymorphic_module()// &
@@ -99,6 +115,33 @@ contains
                '  end function twice'//new_line('a')// &
                'end module m'//new_line('a')
     end function polymorphic_module
+
+    function type_bound_elemental_source() result(text)
+        character(len=:), allocatable :: text
+
+        text = 'module a'//new_line('a')// &
+               '  type, abstract :: base'//new_line('a')// &
+               '  contains'//new_line('a')// &
+               '    procedure(elem_func), deferred, nopass :: add'//new_line('a')// &
+               '  end type base'//new_line('a')// &
+               '  type, extends(base) :: derived'//new_line('a')// &
+               '  contains'//new_line('a')// &
+               '    procedure, nopass :: add => add_derived'//new_line('a')// &
+               '  end type derived'//new_line('a')// &
+               '  abstract interface'//new_line('a')// &
+               '    elemental function elem_func(x, y) result(out)'//new_line('a')// &
+               '      integer, intent(in) :: x, y'//new_line('a')// &
+               '      integer :: out'//new_line('a')// &
+               '    end function elem_func'//new_line('a')// &
+               '  end interface'//new_line('a')// &
+               'contains'//new_line('a')// &
+               '  elemental function add_derived(x, y) result(out)'//new_line('a')// &
+               '    integer, intent(in) :: x, y'//new_line('a')// &
+               '    integer :: out'//new_line('a')// &
+               '    out = x + y'//new_line('a')// &
+               '  end function add_derived'//new_line('a')// &
+               'end module a'//new_line('a')
+    end function type_bound_elemental_source
 
     logical function rejects(source, stem)
         character(len=*), intent(in) :: source

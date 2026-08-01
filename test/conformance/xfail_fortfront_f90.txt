@@ -46,7 +46,6 @@ issue_2248_read_keyword.f90 # owner=lazy-fortran/ffc#451; reason=lower scalar fo
 issue_2250_pure_interface.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
-issue_2416_io_namelist_read.f90 # owner=lazy-fortran/ffc#436; reason=read scalar NAMELIST groups
 issue_2417_minloc_with_mask.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 issue_2418_intrinsic_keywords_declared.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 issue_2419_data_variable_in_allocate.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
@@ -56,7 +55,6 @@ issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrat
 issue_2455_nested_array_constructor.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 issue_2455_nested_function_args.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-issue_2486_class_type_multidecl.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 issue_2487_parameter_statement.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
 issue_2490_hollerith_format.f90 # scope=legacy; reason=deleted Hollerith FORMAT descriptor
@@ -99,6 +97,7 @@ issue_2837_interface_type_return.f90 # owner=lazy-fortran/ffc#447; reason=centra
 # Unary user-defined operator: FortFront emits a dangling operand index
 # ("argument index does not reference an AST node"). Blocked on FortFront.
 issue_2838_unary_defined_operator.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
+impure_assignment_2_valid.f90 # owner=lazy-fortran/ffc#449; reason=lower scalar derived pointer components
 # VALUE attribute on dummy args mis-declared as a symbol named "value".
 # New corpus examples added by the fortfront update for features ffc does not
 # yet lower (expression/keyword I/O formats, PURE-with-print body checks,
@@ -111,3 +110,4 @@ issue_2848_dimension_statement.f90 # owner=lazy-fortran/ffc#457; reason=register
 issue_2850_bare_function_interface.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 issue_2850_bare_subroutine_interface.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
 issue_2855_external_intrinsic_conflict.f90 # scope=harness; reason=FortFront semantic rejection fixture
+issue_1324_if_inside_do_loop.f90 # scope=harness; reason=independent RANDOM_NUMBER streams choose different output branches

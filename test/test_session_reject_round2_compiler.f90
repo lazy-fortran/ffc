@@ -1,5 +1,6 @@
 program test_session_reject_round2_compiler
-    use ffc_test_support, only: expect_error_contains, expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status, &
+        expect_no_error
     implicit none
 
     logical :: all_passed
@@ -11,6 +12,7 @@ program test_session_reject_round2_compiler
     if (.not. test_function_result_save_rejected()) all_passed = .false.
     if (.not. test_duplicate_contained_procedure_rejected()) all_passed = .false.
     if (.not. test_bare_external_still_accepted()) all_passed = .false.
+    if (.not. test_cross_scope_intrinsic_external_accepted()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: round-2 negative-accept checks reject the invalid forms '// &
@@ -90,5 +92,35 @@ contains
         test_bare_external_still_accepted = expect_exit_status( &
             source, 0, '/tmp/ffc_session_bare_external_accept')
     end function test_bare_external_still_accepted
+
+    logical function test_cross_scope_intrinsic_external_accepted()
+        ! EXTERNAL and INTRINSIC declarations may reuse a name in different
+        ! scoping units. This is the valid neighbour of overload_2.f90: the
+        ! local external procedure named LEN must not conflict with the
+        ! intrinsic LEN in the main program.
+        character(len=*), parameter :: source = &
+            'subroutine len(c)'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  character :: c'//new_line('a')// &
+            '  c = "X"'//new_line('a')// &
+            'end subroutine len'//new_line('a')// &
+            'subroutine test()'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  character :: str'//new_line('a')// &
+            '  external len'//new_line('a')// &
+            '  call len(str)'//new_line('a')// &
+            '  if (str /= "X") stop 1'//new_line('a')// &
+            'end subroutine test'//new_line('a')// &
+            'program val'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  external test'//new_line('a')// &
+            '  intrinsic len'//new_line('a')// &
+            '  call test()'//new_line('a')// &
+            '  if (len(" ") /= 1) stop 2'//new_line('a')// &
+            'end program val'
+
+        test_cross_scope_intrinsic_external_accepted = expect_no_error( &
+            source, '/tmp/ffc_session_intrinsic_external_scope_accept')
+    end function test_cross_scope_intrinsic_external_accepted
 
 end program test_session_reject_round2_compiler

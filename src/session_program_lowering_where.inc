@@ -580,10 +580,19 @@
         if (.not. node_exists(arena, node_index)) return
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (n%base_expr_index > 0 .and. &
+                is_type_bound_method_call(arena, n, context)) then
+                is_call = is_elemental_type_bound_call(arena, node_index, context)
+                return
+            end if
             if (n%is_array_access) return
             if (.not. allocated(n%name)) return
             if (.not. allocated(n%arg_indices)) return
             if (size(n%arg_indices) < 1) return
+            if (index(n%name, '%') > 0) then
+                is_call = is_elemental_type_bound_call(arena, node_index, context)
+                return
+            end if
             is_call = is_contained_f32_function(context, n%name) .or. &
                       is_contained_f64_function(context, n%name) .or. &
                       is_contained_i32_function(context, n%name)
@@ -596,6 +605,106 @@
                                                      size(n%arg_indices))
         end select
     end function is_elemental_user_call
+
+    logical function is_elemental_type_bound_call(arena, node_index, context) &
+        result(is_call)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: impl_name, signature_name
+        integer :: receiver_symbol, binding_slot
+        logical :: has_receiver
+
+        call type_bound_elemental_info(arena, node_index, context, is_call, &
+            impl_name, signature_name, receiver_symbol, binding_slot, &
+            has_receiver)
+    end function is_elemental_type_bound_call
+
+    subroutine type_bound_elemental_info(arena, node_index, context, valid, &
+                                         impl_name, signature_name, &
+                                         receiver_symbol, binding_slot, &
+                                         has_receiver)
+        !! Return the concrete/interface signature and dispatch metadata for a
+        !! type-bound elemental function.  The AST keeps an abstract binding's
+        !! interface name separate from its eventual child override, so use the
+        !! interface for the elemental contract while retaining the binding slot
+        !! for dynamic dispatch.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        logical, intent(out) :: valid
+        character(len=:), allocatable, intent(out) :: impl_name, signature_name
+        integer, intent(out) :: receiver_symbol, binding_slot
+        logical, intent(out) :: has_receiver
+        character(len=:), allocatable :: pass_name, method_name, var_name, err
+        logical :: found, found_signature, is_elemental, all_intent_in
+        character(len=:), allocatable :: bad_dummy
+        integer :: base_var_index, type_index, symbol_index, expected_args
+        integer :: i, j
+
+        valid = .false.
+        receiver_symbol = 0
+        binding_slot = 0
+        has_receiver = .true.
+        call set_empty(impl_name)
+        call set_empty(signature_name)
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) return
+            call method_call_info(arena, node, context, base_var_index, &
+                impl_name, pass_name, found, err, receiver_symbol, binding_slot)
+            if (len_trim(err) > 0 .or. .not. found) return
+            select type (base => arena%entries(node%base_expr_index)%node)
+            type is (component_access_node)
+                if (.not. allocated(base%component_name)) return
+                method_name = trim(base%component_name)
+            class default
+                return
+            end select
+            if (.not. is_identifier(arena, base_var_index)) return
+            call get_identifier_name(arena, base_var_index, var_name, err)
+            if (len_trim(err) > 0) return
+            symbol_index = find_symbol_compat(context, var_name)
+            if (symbol_index <= 0) return
+            type_index = context%symbols(symbol_index)%derived_type_index
+            if (type_index <= 0) return
+            has_receiver = .true.
+            do i = 1, arena%size
+                if (.not. node_exists(arena, i)) cycle
+                select type (derived => arena%entries(i)%node)
+                type is (derived_type_node)
+                    if (.not. allocated(derived%name)) cycle
+                    if (.not. same_name(derived%name, &
+                            context%derived_types(type_index)%name)) cycle
+                    if (.not. allocated(derived%binding_indices)) cycle
+                    do j = 1, size(derived%binding_indices)
+                        if (.not. node_exists(arena, derived%binding_indices(j))) cycle
+                        select type (binding => &
+                            arena%entries(derived%binding_indices(j))%node)
+                        type is (type_binding_node)
+                            if (.not. allocated(binding%binding_name)) cycle
+                            if (.not. same_name(binding%binding_name, method_name)) cycle
+                            has_receiver = binding%pass_arg
+                            if (allocated(binding%interface_name)) then
+                                if (len_trim(binding%interface_name) > 0) &
+                                    signature_name = trim(binding%interface_name)
+                            end if
+                            exit
+                        end select
+                    end do
+                    exit
+                end select
+            end do
+            if (len_trim(signature_name) == 0) signature_name = trim(impl_name)
+            call contained_elemental_signature(arena, signature_name, &
+                found_signature, expected_args, is_elemental, all_intent_in, &
+                bad_dummy)
+            if (.not. found_signature .or. .not. is_elemental) return
+            if (has_receiver) expected_args = expected_args - 1
+            valid = expected_args == size(node%arg_indices)
+        end select
+    end subroutine type_bound_elemental_info
 
     ! True when callee_name is a contained ELEMENTAL function taking exactly
     ! nargs dummies. Arity mismatches decline so the ordinary call path (and
@@ -662,6 +771,12 @@
         call set_empty(error_msg)
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (n%base_expr_index > 0 .and. &
+                is_type_bound_method_call(arena, n, context)) then
+                call lower_elementwise_type_bound_user_call(arena, node_index, &
+                    target_symbol_index, linear_index, context, value, error_msg)
+                return
+            end if
             vk = context%symbols(target_symbol_index)%value_kind
             call check_elemental_dummy_attributes(arena, n%name, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -700,6 +815,84 @@
             error_msg = 'elemental user call node lost its type'
         end select
     end subroutine lower_elementwise_user_call
+
+    subroutine lower_elementwise_type_bound_user_call(arena, node_index, &
+                                                      target_symbol_index, &
+                                                      linear_index, context, value, &
+                                                      error_msg)
+        !! Lower a NOPASS type-bound elemental call over one array element. The
+        !! receiver still selects the dynamic vtable entry even though it is not
+        !! passed to the implementation.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, target_symbol_index, linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        type(lr_operand_desc_t) :: elem, callee_ptr
+        character(len=:), allocatable :: impl_name, signature_name
+        integer :: receiver_symbol, binding_slot, vk, i
+        logical :: valid, has_receiver
+
+        call set_empty(error_msg)
+        call type_bound_elemental_info(arena, node_index, context, valid, &
+            impl_name, signature_name, receiver_symbol, binding_slot, has_receiver)
+        if (.not. valid) then
+            error_msg = 'type-bound array expression is not an elemental function'
+            return
+        end if
+        if (has_receiver) then
+            error_msg = 'elemental type-bound calls with a passed object are not '// &
+                        'supported in array SOURCE expressions'
+            return
+        end if
+        vk = context%symbols(target_symbol_index)%value_kind
+        call check_elemental_dummy_attributes(arena, signature_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select type (n => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            allocate (args(size(n%arg_indices)))
+            do i = 1, size(n%arg_indices)
+                call lower_array_elementwise_value(arena, n%arg_indices(i), &
+                    target_symbol_index, linear_index, context, elem, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call make_reference_argument(context, vk, elem, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        class default
+            error_msg = 'type-bound elemental call node lost its type'
+            return
+        end select
+
+        if (receiver_symbol > 0 .and. binding_slot > 0 .and. &
+            class_receiver_dispatches_dynamically(context, receiver_symbol)) then
+            call class_dispatch_callee(context, receiver_symbol, binding_slot, &
+                                       callee_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk /= VALUE_I32) then
+                error_msg = 'dynamic type-bound elemental calls currently require '// &
+                            'an INTEGER result'
+                return
+            end if
+            if (.not. emit_i32_indirect_call(context%session, callee_ptr, args, &
+                                            value, error_msg)) return
+        else
+            select case (vk)
+            case (VALUE_I32)
+                if (.not. emit_i32_call(context%session, &
+                        call_emit_name(arena, impl_name, context), args, value, &
+                        error_msg)) return
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_call(context%session, &
+                        call_emit_name(arena, impl_name, context), args, value, &
+                        error_msg)) return
+            case default
+                if (.not. emit_liric_f64_call(context%session, &
+                        call_emit_name(arena, impl_name, context), args, value, &
+                        error_msg)) return
+            end select
+        end if
+    end subroutine lower_elementwise_type_bound_user_call
 
     ! Address of element linear_index of a derived-type array actual, for an
     ! elemental call whose dummy is a scalar type(...) or class(...) argument

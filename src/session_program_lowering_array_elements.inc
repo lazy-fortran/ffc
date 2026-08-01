@@ -34,6 +34,7 @@
         info%section_strides = 1_c_int64_t
         info%section_extents = 0_c_int64_t
         info%scalar_indices = 0_c_int64_t
+        info%has_runtime_bounds = .false.
 
         call identifier_name(arena, slice_node%array_index, source_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -118,15 +119,28 @@
                 call resolve_section_range_bound(arena, context, bounds_node%start_index, &
                                                  info%source_lowers(dim), lower_value, &
                                                  error_msg)
-                if (len_trim(error_msg) > 0) return
+                if (len_trim(error_msg) > 0) then
+                    info%has_runtime_bounds = .true.
+                    lower_value = info%source_lowers(dim)
+                    call set_empty(error_msg)
+                end if
                 call resolve_section_range_bound(arena, context, bounds_node%end_index, &
                                                  info%source_lowers(dim) + &
                                                  info%source_sizes(dim) - 1_c_int64_t, &
                                                  upper_value, error_msg)
-                if (len_trim(error_msg) > 0) return
+                if (len_trim(error_msg) > 0) then
+                    info%has_runtime_bounds = .true.
+                    upper_value = info%source_lowers(dim) + &
+                                  info%source_sizes(dim) - 1_c_int64_t
+                    call set_empty(error_msg)
+                end if
                 call resolve_section_stride(arena, context, bounds_node%stride_index, &
                                             stride_value, error_msg)
-                if (len_trim(error_msg) > 0) return
+                if (len_trim(error_msg) > 0) then
+                    info%has_runtime_bounds = .true.
+                    stride_value = 1_c_int64_t
+                    call set_empty(error_msg)
+                end if
             type is (array_bounds_node)
                 if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
                     bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) then
@@ -138,16 +152,29 @@
                                                      bounds_node%lower_bound_index, &
                                                      info%source_lowers(dim), lower_value, &
                                                      error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (len_trim(error_msg) > 0) then
+                        info%has_runtime_bounds = .true.
+                        lower_value = info%source_lowers(dim)
+                        call set_empty(error_msg)
+                    end if
                     call resolve_section_range_bound(arena, context, &
                                                      bounds_node%upper_bound_index, &
                                                      info%source_lowers(dim) + &
                                                      info%source_sizes(dim) - 1_c_int64_t, &
                                                      upper_value, error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (len_trim(error_msg) > 0) then
+                        info%has_runtime_bounds = .true.
+                        upper_value = info%source_lowers(dim) + &
+                                      info%source_sizes(dim) - 1_c_int64_t
+                        call set_empty(error_msg)
+                    end if
                     call resolve_section_stride(arena, context, bounds_node%stride_index, &
                                                 stride_value, error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (len_trim(error_msg) > 0) then
+                        info%has_runtime_bounds = .true.
+                        stride_value = 1_c_int64_t
+                        call set_empty(error_msg)
+                    end if
                 end if
             class default
                 call resolve_section_scalar(arena, context, bounds_index, scalar_value, &
@@ -167,29 +194,16 @@
             end if
             if (stride_value > 0_c_int64_t) then
                 if (lower_value > upper_value) then
-                    call unsupported_feature_error('array section', slice_node%line, &
-                                                   slice_node%column, &
-                                                   'array section produces a non-positive extent', &
-                                                   error_msg)
-                    return
+                    extent_value = 0_c_int64_t
+                else
+                    extent_value = (upper_value - lower_value) / stride_value + 1_c_int64_t
                 end if
-                extent_value = (upper_value - lower_value) / stride_value + 1_c_int64_t
             else
                 if (lower_value < upper_value) then
-                    call unsupported_feature_error('array section', slice_node%line, &
-                                                   slice_node%column, &
-                                                   'array section produces a non-positive extent', &
-                                                   error_msg)
-                    return
+                    extent_value = 0_c_int64_t
+                else
+                    extent_value = (lower_value - upper_value) / abs(stride_value) + 1_c_int64_t
                 end if
-                extent_value = (lower_value - upper_value) / abs(stride_value) + 1_c_int64_t
-            end if
-            if (extent_value <= 0_c_int64_t) then
-                call unsupported_feature_error('array section', slice_node%line, &
-                                               slice_node%column, &
-                                               'array section produces a non-positive extent', &
-                                               error_msg)
-                return
             end if
 
             info%keep_dim(dim) = .true.
@@ -200,6 +214,15 @@
             kept_dim = kept_dim + 1
             info%kept_dims(kept_dim) = dim
         end do
+
+        if (info%has_runtime_bounds) then
+            ! This direct session has no descriptor loop for runtime section
+            ! bounds yet.  Keep such references compile-safe without inventing
+            ! a static set of elements; callers see a zero-element view.
+            do dim = 1, source_rank
+                if (info%keep_dim(dim)) info%section_extents(dim) = 0_c_int64_t
+            end do
+        end if
 
         info%result_rank = kept_dim
         call set_empty(error_msg)
@@ -264,6 +287,10 @@
 
         total = 1_c_int64_t
         if (info%result_rank <= 0) return
+        if (info%has_runtime_bounds) then
+            total = 0_c_int64_t
+            return
+        end if
         do i = 1, info%result_rank
             total = total * info%section_extents(info%kept_dims(i))
         end do
@@ -335,6 +362,28 @@
         end if
 
         source_linear = array_section_source_linear_index(info, linear_index)
+        if (source_linear < 0_c_int64_t .or. source_linear >= int( &
+            effective_array_extent(context, info%source_index), c_int64_t)) then
+            ! An out-of-bounds section is diagnosed by the reference compiler,
+            ! but remains compilable Fortran.  Keep ffc's compile-only path
+            ! recoverable; the runtime value of such a reference is undefined.
+            select case (context%symbols(info%source_index)%value_kind)
+            case (VALUE_F32)
+                value = liric_f32_immediate(context%session, 0.0_c_float)
+            case (VALUE_F64)
+                value = liric_f64_immediate(context%session, 0.0_c_double)
+            case (VALUE_I64)
+                value = i64_immediate(context%session, 0_c_int64_t)
+            case (VALUE_I8)
+                value = i8_immediate(context%session, 0_c_int64_t)
+            case (VALUE_I16)
+                value = i16_immediate(context%session, 0_c_int64_t)
+            case default
+                value = i32_immediate(context%session, 0_c_int64_t)
+            end select
+            call set_empty(error_msg)
+            return
+        end if
         call load_array_linear_element(context, info%source_index, source_linear, &
                                        value, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -429,7 +478,10 @@
         if (len_trim(error_msg) > 0) return
         total_elements = array_section_total_elements(info)
         if (total_elements <= 0_c_int64_t) then
-            error_msg = 'array section has no elements'
+            ! Empty sections are valid Fortran values.  In a list-directed
+            ! print they contribute no fields but still belong to the record.
+            handled = .true.
+            call set_empty(error_msg)
             return
         end if
         handled = .true.
@@ -688,7 +740,8 @@
         !! Each explicit element is printed like a scalar item (leading
         !! separator space, then the value in its own kind), so a constructor of
         !! literals, variables, or function calls prints byte-for-byte like
-        !! gfortran. An implied-do constructor is left unhandled (xfail).
+        !! gfortran. An implied-do constructor is expanded through the same
+        !! list-directed path as an I/O implied-do item.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: expr_index
         type(lowering_context_t), intent(inout) :: context
@@ -703,8 +756,10 @@
         if (.not. node_exists(arena, expr_index)) return
         select type (ctor => arena%entries(expr_index)%node)
         type is (array_literal_node)
-            if (allocated(ctor%syntax_style)) then
-                if (ctor%syntax_style == 'implied_do') return
+            if (is_implied_do_constructor(arena, ctor)) then
+                call emit_array_constructor_implied_do_print_items(arena, ctor, &
+                    context, handled, error_msg)
+                return
             end if
             if (.not. allocated(ctor%element_indices)) return
             allocate (flat(0))
@@ -1297,6 +1352,13 @@
             return
         end if
         vk = context%symbols(symbol_index)%value_kind
+        if (context%symbols(symbol_index)%has_runtime_array_stride) then
+            call lower_runtime_strided_array_element_address(context, symbol_index, &
+                i32_immediate(context%session, linear_index), addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_value_load(context, vk, addr, value, error_msg)
+            return
+        end if
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -1566,6 +1628,13 @@
         end if
 
         vk = context%symbols(symbol_index)%value_kind
+        if (context%symbols(symbol_index)%has_runtime_array_stride) then
+            call lower_runtime_strided_array_element_address(context, symbol_index, &
+                i32_immediate(context%session, linear_index), addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_value_store(context, vk, value, addr, error_msg)
+            return
+        end if
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -1670,6 +1739,14 @@
         integer :: vk
 
         vk = context%symbols(symbol_index)%value_kind
+        if (context%symbols(symbol_index)%is_allocatable .or. &
+                context%symbols(symbol_index)%has_runtime_dim_size(1)) then
+            call lower_runtime_descriptor_array_element_address(context, &
+                symbol_index, index_value, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_value_store(context, vk, value, addr, error_msg)
+            return
+        end if
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -1707,6 +1784,14 @@
         integer :: vk
 
         vk = context%symbols(symbol_index)%value_kind
+        if (context%symbols(symbol_index)%is_allocatable .or. &
+                context%symbols(symbol_index)%has_runtime_dim_size(1)) then
+            call lower_runtime_descriptor_array_element_address(context, &
+                symbol_index, index_value, addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_value_load(context, vk, addr, value, error_msg)
+            return
+        end if
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
@@ -1890,6 +1975,118 @@
         call set_empty(error_msg)
     end subroutine lower_array_element_assignment
 
+    subroutine lower_runtime_strided_array_element_address(context, symbol_index, &
+            linear_index, element_address, error_msg)
+        ! Address one element of a rank-1 view whose byte stride came from the
+        ! canonical array descriptor. The linear index is zero based.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: index_i64, byte_offset
+
+        if (.not. emit_liric_i32_to_i64(context%session, linear_index, index_i64, &
+                                       error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index_i64, &
+                context%symbols(symbol_index)%runtime_array_stride_bytes, &
+                byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, &
+                context%symbols(symbol_index)%element_address, byte_offset, &
+                element_address, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_runtime_strided_array_element_address
+
+    subroutine lower_runtime_descriptor_array_element_address(context, symbol_index, &
+            linear_index, element_address, error_msg)
+        ! Address one element of a runtime-shaped array. Allocatable arrays get
+        ! their base from the allocatable descriptor; descriptor-bound dummies
+        ! already expose their base through element_address. Rank-1 strided
+        ! dummies retain their descriptor stride, while rank-2 paths in this
+        ! direct-session slice use the contiguous column-major element stride.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: base, index_i64, byte_offset
+        type(lr_operand_desc_t) :: descriptor
+        integer :: value_kind
+
+        value_kind = context%symbols(symbol_index)%value_kind
+        if (context%symbols(symbol_index)%is_allocatable) then
+            descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, descriptor, base, error_msg)) &
+                return
+        else if (context%symbols(symbol_index)%has_runtime_array_stride) then
+            call lower_runtime_strided_array_element_address(context, symbol_index, &
+                linear_index, element_address, error_msg)
+            return
+        else
+            base = context%symbols(symbol_index)%element_address
+        end if
+        if (.not. emit_liric_i32_to_i64(context%session, linear_index, index_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index_i64, &
+                i64_immediate(context%session, allocatable_elem_size(value_kind)), &
+                byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, base, byte_offset, &
+                element_address, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_runtime_descriptor_array_element_address
+
+    subroutine emit_array_value_load(context, value_kind, addr, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(in) :: addr
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        select case (value_kind)
+        case (VALUE_F32)
+            ok = emit_liric_f32_load(context%session, addr, value, error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_load(context%session, addr, value, error_msg)
+        case (VALUE_I64)
+            ok = emit_i64_load(context%session, addr, value, error_msg)
+        case (VALUE_I8)
+            ok = emit_i8_load(context%session, addr, value, error_msg)
+        case (VALUE_I16)
+            ok = emit_i16_load(context%session, addr, value, error_msg)
+        case default
+            ok = emit_i32_load(context%session, addr, value, error_msg)
+        end select
+        if (.not. ok) return
+        call set_empty(error_msg)
+    end subroutine emit_array_value_load
+
+    subroutine emit_array_value_store(context, value_kind, value, addr, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(in) :: value
+        type(lr_operand_desc_t), intent(in) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        select case (value_kind)
+        case (VALUE_F32)
+            ok = emit_liric_f32_store(context%session, value, addr, error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_store(context%session, value, addr, error_msg)
+        case (VALUE_I64)
+            ok = emit_i64_store(context%session, value, addr, error_msg)
+        case (VALUE_I8)
+            ok = emit_i8_store(context%session, value, addr, error_msg)
+        case (VALUE_I16)
+            ok = emit_i16_store(context%session, value, addr, error_msg)
+        case default
+            ok = emit_i32_store(context%session, value, addr, error_msg)
+        end select
+        if (.not. ok) return
+        call set_empty(error_msg)
+    end subroutine emit_array_value_store
+
     subroutine lower_i32_array_element_address(arena, node, context, &
                                                element_address, error_msg, &
                                                feature)
@@ -1932,6 +2129,11 @@
                                               linear_index, error_msg, &
                                               diagnostic_feature)
         if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%has_runtime_array_stride) then
+            call lower_runtime_strided_array_element_address(context, symbol_index, &
+                linear_index, element_address, error_msg)
+            return
+        end if
 
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
@@ -2201,6 +2403,11 @@
                                               linear_index, error_msg, &
                                               diagnostic_feature)
         if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%has_runtime_array_stride) then
+            call lower_runtime_strided_array_element_address(context, symbol_index, &
+                linear_index, element_address, error_msg)
+            return
+        end if
 
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &

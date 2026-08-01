@@ -13,6 +13,7 @@ program test_session_array_section_compiler
     if (.not. test_elementwise_sections()) all_passed = .false.
     if (.not. test_sum_section()) all_passed = .false.
     if (.not. test_section_after_string()) all_passed = .false.
+    if (.not. test_empty_section()) all_passed = .false.
 
     if (.not. all_passed) stop 1
 
@@ -116,4 +117,18 @@ contains
             source, ' vals:           2           3           4'//new_line('a'), &
             '/tmp/ffc_session_array_section_after_string_test')
     end function test_section_after_string
+
+    logical function test_empty_section()
+        ! A positive-stride section with an upper bound below its lower bound
+        ! has zero elements and is valid; it must still compile and print only
+        ! the record terminator.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(10)'//new_line('a')// &
+            '  print *, a(15:14)'//new_line('a')// &
+            'end program main'
+
+        test_empty_section = expect_output( &
+            source, new_line('a'), '/tmp/ffc_session_empty_array_section_test')
+    end function test_empty_section
 end program test_session_array_section_compiler

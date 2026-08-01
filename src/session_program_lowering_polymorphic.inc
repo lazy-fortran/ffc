@@ -448,12 +448,11 @@
 
     subroutine lower_derived_allocate_source(arena, node, target_sym, context, &
                                              error_msg)
-        ! allocate(x, source=y) where x is a scalar allocatable of derived or
-        ! class type. The dynamic type is y's: for a monomorphic y it is y's
-        ! declared type, for a polymorphic y it is the identity y carries. The
-        ! allocation is that type's exact layout and the value is copied whole,
-        ! so an extension source keeps the components the declared type does
-        ! not name.
+        ! allocate(x, source=y) / allocate(x, mold=y) where x is a scalar
+        ! allocatable of derived or class type. The dynamic type is y's: for a
+        ! monomorphic y it is y's declared type, for a polymorphic y it is the
+        ! identity y carries. The allocation is that type's exact layout and
+        ! SOURCE copies the value whole; MOLD leaves the new value undefined.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(allocate_statement_node), intent(in) :: node
@@ -462,22 +461,35 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: source_name
         integer :: source_sym, declared_index, source_type_index, dyn_symbol
+        integer :: source_expr
+        logical :: copy_values
         type(lr_operand_desc_t) :: dynamic_id, size_bytes, data_ptr
 
         call set_empty(error_msg)
-        if (node%source_expr_index <= 0) then
+        copy_values = node%source_expr_index > 0
+        if (copy_values) then
+            source_expr = node%source_expr_index
+        else if (node%mold_expr_index > 0) then
+            source_expr = node%mold_expr_index
+        else
             call unsupported_feature_error('allocate statement', node%line, &
-                node%column, 'direct LIRIC session supports SOURCE= but not '// &
-                'MOLD= for a scalar derived or class allocatable', error_msg)
+                node%column, 'derived or class allocatable requires SOURCE= '// &
+                'or MOLD=', error_msg)
             return
         end if
-        if (.not. is_identifier(arena, node%source_expr_index)) then
-            call unsupported_feature_error('allocate statement', node%line, &
-                node%column, 'SOURCE= for a scalar derived or class '// &
-                'allocatable must name a variable', error_msg)
+        if (.not. is_identifier(arena, source_expr)) then
+            if (copy_values) then
+                call unsupported_feature_error('allocate statement', node%line, &
+                    node%column, 'SOURCE= for a scalar derived or class '// &
+                    'allocatable must name a variable', error_msg)
+            else
+                call unsupported_feature_error('allocate statement', node%line, &
+                    node%column, 'MOLD= for a scalar derived or class '// &
+                    'allocatable must name a variable', error_msg)
+            end if
             return
         end if
-        call get_identifier_name(arena, node%source_expr_index, source_name, &
+        call get_identifier_name(arena, source_expr, source_name, &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
         source_sym = find_symbol_compat(context, source_name)
@@ -518,9 +530,11 @@
 
         if (.not. emit_malloc(context%session, size_bytes, data_ptr, &
                               error_msg)) return
-        if (.not. emit_memcpy(context%session, data_ptr, &
-                context%symbols(source_sym)%element_address, size_bytes, &
-                error_msg)) return
+        if (copy_values) then
+            if (.not. emit_memcpy(context%session, data_ptr, &
+                    context%symbols(source_sym)%element_address, size_bytes, &
+                    error_msg)) return
+        end if
 
         context%symbols(target_sym)%element_address = data_ptr
         context%symbols(target_sym)%array_size = &

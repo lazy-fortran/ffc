@@ -266,9 +266,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
 
-        ! A derived or class allocatable takes the whole-value SOURCE= path:
-        ! its dynamic type, its exact storage size, and the copy all come from
-        ! the source value rather than from the target's element kind (#421).
+        ! A derived or class allocatable takes the whole-value SOURCE=/MOLD=
+        ! path: its dynamic type and exact storage size come from the source
+        ! value rather than from the target's element kind (#421).
         if (context%symbols(target_sym)%is_derived) then
             call lower_derived_allocate_source(arena, node, target_sym, context, &
                                                error_msg)

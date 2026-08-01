@@ -318,9 +318,24 @@
         index = find_symbol_compat(context, name)
         if (index > 0) then
             ! Re-declaration (e.g. dummy refresh): just record the attributes.
+            context%symbols(index)%value_kind = value_kind
             context%symbols(index)%is_pointer = .true.
             context%symbols(index)%is_array = .true.
+            context%symbols(index)%array_rank = array_rank
+            context%symbols(index)%array_size = 0
             context%symbols(index)%is_associated = .false.
+            context%symbols(index)%array_lower_bound = 1
+            context%symbols(index)%array_dim_lowers = 1
+            ! A pointer dummy is passed as the associated target's base address
+            ! through the canonical descriptor ABI. Preserve the bound base and
+            ! descriptor-derived stride instead of leaving element_address unset.
+            if (context%symbols(index)%is_parameter) then
+                context%symbols(index)%element_address = &
+                    context%symbols(index)%address
+                context%symbols(index)%has_address = .true.
+                context%symbols(index)%is_reference = .true.
+                context%symbols(index)%is_associated = .true.
+            end if
             call set_empty(error_msg)
             return
         end if
@@ -335,6 +350,8 @@
         context%symbols(index)%is_associated = .false.
         context%symbols(index)%has_address = .false.
         context%symbols(index)%is_reference = .false.
+        context%symbols(index)%array_lower_bound = 1
+        context%symbols(index)%array_dim_lowers = 1
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_pointer_array_stub
@@ -524,6 +541,11 @@
                                           ptr_index, error_msg)
             return
         end if
+        if (component_access_is_derived_array(arena, node%target_index, context)) then
+            call alias_pointer_to_derived_array_component(arena, node%target_index, &
+                context, ptr_index, error_msg)
+            return
+        end if
         if (.not. is_identifier(arena, node%target_index)) then
             error_msg = 'direct LIRIC session pointer assignment requires a '// &
                         'scalar or whole-array target variable'
@@ -610,6 +632,84 @@
         context%symbols(ptr_index)%has_runtime_association = .false.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    subroutine alias_pointer_to_derived_array_component(arena, target_index, &
+                                                        context, ptr_index, &
+                                                        error_msg)
+        ! Bind p => arr%component. The pointer is a rank-1 view whose base is
+        ! the first component slot and whose stride is one complete arr element.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index, ptr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: target_symbol, type_index, component_index, extent, rank, i
+        integer :: value_kind
+        type(lr_operand_desc_t) :: first_address
+
+        call resolve_derived_array_component(arena, target_index, context, &
+                                             target_symbol, type_index, &
+                                             component_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. context%symbols(target_symbol)%is_target .and. &
+            .not. context%symbols(target_symbol)%is_pointer) then
+            error_msg = 'pointer assignment source is not a target or pointer'
+            return
+        end if
+        if (.not. context%symbols(target_symbol)%has_address) then
+            error_msg = 'pointer assignment source has no storage'
+            return
+        end if
+        if (.not. context%symbols(ptr_index)%is_array) then
+            error_msg = 'left of => is a scalar pointer but the target is an array'
+            return
+        end if
+        rank = context%symbols(target_symbol)%array_rank
+        if (rank /= 1) then
+            error_msg = 'derived array component pointer association supports rank 1 only'
+            return
+        end if
+        if (context%symbols(ptr_index)%array_rank /= rank) then
+            error_msg = 'pointer and target array ranks do not match'
+            return
+        end if
+        value_kind = component_kind(context, type_index, component_index)
+        if (context%symbols(ptr_index)%value_kind /= value_kind) then
+            error_msg = 'pointer and target array element kinds do not match'
+            return
+        end if
+        extent = derived_array_component_extent(context, target_symbol)
+        if (extent <= 0) then
+            error_msg = 'pointer assignment source has no positive extent'
+            return
+        end if
+        call derived_array_component_address_at(context, target_symbol, type_index, &
+            component_index, i32_immediate(context%session, 0_c_int64_t), &
+            first_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%symbols(ptr_index)%is_array = .true.
+        context%symbols(ptr_index)%array_size = extent
+        context%symbols(ptr_index)%array_lower_bound = &
+            context%symbols(target_symbol)%array_lower_bound
+        context%symbols(ptr_index)%array_dim_sizes = 0
+        context%symbols(ptr_index)%array_dim_lowers = 0
+        do i = 1, rank
+            context%symbols(ptr_index)%array_dim_sizes(i) = &
+                context%symbols(target_symbol)%array_dim_sizes(i)
+            context%symbols(ptr_index)%array_dim_lowers(i) = &
+                context%symbols(target_symbol)%array_dim_lowers(i)
+        end do
+        context%symbols(ptr_index)%element_address = first_address
+        context%symbols(ptr_index)%address = first_address
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .false.
+        context%symbols(ptr_index)%array_stride_bytes = &
+            total_component_slots(context, type_index) * 4
+        context%symbols(ptr_index)%has_runtime_array_stride = .false.
+        call set_empty(error_msg)
+    end subroutine alias_pointer_to_derived_array_component
 
     logical function target_outlives_procedure(symbol) result(outlives)
         ! A target whose storage survives the current invocation: a dummy
@@ -783,6 +883,16 @@
         context%symbols(ptr_index)%has_address = .true.
         context%symbols(ptr_index)%is_reference = .true.
         context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%array_stride_bytes = &
+            context%symbols(target_index)%array_stride_bytes
+        if (context%symbols(ptr_index)%array_stride_bytes == 0) then
+            context%symbols(ptr_index)%array_stride_bytes = &
+                equivalence_kind_size(context%symbols(ptr_index)%value_kind)
+        end if
+        context%symbols(ptr_index)%has_runtime_array_stride = &
+            context%symbols(target_index)%has_runtime_array_stride
+        context%symbols(ptr_index)%runtime_array_stride_bytes = &
+            context%symbols(target_index)%runtime_array_stride_bytes
         call set_empty(error_msg)
     end subroutine alias_pointer_array
 

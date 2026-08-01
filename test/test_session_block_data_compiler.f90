@@ -16,6 +16,7 @@ program test_session_block_data_compiler
     if (.not. test_do_loop_over_common_variable()) all_passed = .false.
     if (.not. test_whole_array_data_statement()) all_passed = .false.
     if (.not. test_array_section_data_statement()) all_passed = .false.
+    if (.not. test_array_element_data_statement()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: block data initializes shared common storage'
@@ -245,5 +246,34 @@ contains
         test_array_section_data_statement = expect_output( &
             source, expected, '/tmp/ffc_session_block_data_section')
     end function test_array_section_data_statement
+
+    logical function test_array_element_data_statement()
+        ! A scalar DATA designator in BLOCK DATA is represented as a call node
+        ! without an array-access semantic flag; it still initializes the
+        ! corresponding COMMON element.
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: x(4)'//new_line('a')// &
+            '  common /blk/ x'//new_line('a')// &
+            '  if (x(1) /= 0) error stop'//new_line('a')// &
+            '  if (x(2) /= 8) error stop'//new_line('a')// &
+            '  if (x(3) /= 0) error stop'//new_line('a')// &
+            '  if (x(4) /= 42) error stop'//new_line('a')// &
+            '  print *, x(1), x(2), x(3), x(4)'//new_line('a')// &
+            'end program p'//new_line('a')// &
+            'block data bd'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: x(4)'//new_line('a')// &
+            '  common /blk/ x'//new_line('a')// &
+            '  data x(2) /8/'//new_line('a')// &
+            '  data x(4) /42/'//new_line('a')// &
+            'end block data bd'
+        character(len=*), parameter :: expected = &
+            '           0           8           0          42'//new_line('a')
+
+        test_array_element_data_statement = expect_output( &
+            source, expected, '/tmp/ffc_session_block_data_element')
+    end function test_array_element_data_statement
 
 end program test_session_block_data_compiler

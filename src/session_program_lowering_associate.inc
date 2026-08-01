@@ -333,6 +333,12 @@
         type(lr_operand_desc_t) :: component_address
         integer :: comp_kind, idx
 
+        if (component_access_is_alloc_array(arena, comp_node, context)) then
+            call bind_associate_alloc_array_component(arena, comp_node, &
+                assoc_name, binding, context, error_msg)
+            return
+        end if
+
         comp_kind = derived_component_access_kind(arena, comp_node, context)
         if (comp_kind == VALUE_CHARACTER) then
             call unsupported_feature_error('associate component selector', &
@@ -360,3 +366,75 @@
         call attach_symbol_binding(context, idx, binding)
         call set_empty(error_msg)
     end subroutine bind_associate_component
+
+    subroutine bind_associate_alloc_array_component(arena, comp_node, assoc_name, &
+                                                    binding, context, error_msg)
+        ! An allocatable array component selector aliases the component data
+        ! pointer, not the inline descriptor. Keep the descriptor only long
+        ! enough to load the data address; derived-array element addressing then
+        ! uses the same flat i32-slot layout as an ordinary array symbol.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: comp_node
+        character(len=*), intent(in) :: assoc_name
+        type(declaration_binding_t), intent(in) :: binding
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr
+        integer :: base_type, component_index, component_type
+        integer :: comp_kind, idx
+
+        call set_empty(error_msg)
+        base_type = component_base_type_index(arena, comp_node%base_expr_index, &
+                                              context)
+        if (base_type <= 0) then
+            error_msg = 'allocatable array component base is not a derived type'
+            return
+        end if
+        component_index = find_derived_component(context, base_type, &
+                                                 comp_node%component_name)
+        if (component_index <= 0) then
+            error_msg = 'allocatable array component is not declared: '// &
+                        trim(comp_node%component_name)
+            return
+        end if
+        comp_kind = component_kind(context, base_type, component_index)
+        if (comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('associate component selector', &
+                comp_node%line, comp_node%column, &
+                'ffc direct-session associate does not support a character '// &
+                'array component selector', error_msg)
+            return
+        end if
+        call lower_derived_component_address(arena, comp_node, context, &
+            descriptor, error_msg, 'associate allocatable array component')
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
+                                error_msg)) return
+
+        component_type = context%derived_types(base_type)% &
+                          component_type_index(component_index)
+        idx = associate_symbol_slot(context, binding)
+        context%symbols(idx)%name = trim(assoc_name)
+        context%symbols(idx)%value_kind = comp_kind
+        context%symbols(idx)%address = data_ptr
+        context%symbols(idx)%element_address = data_ptr
+        context%symbols(idx)%has_address = .true.
+        context%symbols(idx)%is_reference = .true.
+        context%symbols(idx)%is_pointer = .false.
+        context%symbols(idx)%is_parameter = .false.
+        context%symbols(idx)%is_derived = component_type > 0
+        context%symbols(idx)%derived_type_index = component_type
+        context%symbols(idx)%is_deferred_character = .false.
+        context%symbols(idx)%is_array = .true.
+        context%symbols(idx)%array_rank = 1
+        ! The descriptor supplies the dynamic extent. A positive nominal GEP
+        ! extent is still required by the direct LIRIC array-address helpers;
+        ! the generated index remains the actual runtime slot offset.
+        context%symbols(idx)%array_size = 1
+        context%symbols(idx)%array_lower_bound = 1
+        context%symbols(idx)%array_dim_lowers(1) = 1
+        context%symbols(idx)%array_dim_sizes(1) = 1
+        context%symbols(idx)%is_allocatable = .false.
+        call attach_symbol_binding(context, idx, binding)
+        call set_empty(error_msg)
+    end subroutine bind_associate_alloc_array_component
