@@ -582,6 +582,15 @@
             call record_pdt_template(context, trim(node%name))
             return
         end if
+        ! A type extending a PDT inherits its formals, so it has no layout of
+        ! its own either: it is a template whose instances are selected by the
+        ! inherited actuals (#621).
+        if (allocated(node%extends_parent)) then
+            if (find_pdt_template(context, trim(node%extends_parent)) > 0) then
+                call record_pdt_template(context, trim(node%name))
+                return
+            end if
+        end if
         if (allocated(node%param_indices)) then
             call unsupported_feature_error('derived type parameters', &
                                            node%line, node%column, &
@@ -594,7 +603,9 @@
                                           error_msg)
     end subroutine lower_derived_type_definition
 
-    subroutine register_derived_type_layout(node, context, layout_name, error_msg)
+    recursive subroutine register_derived_type_layout(node, context, layout_name, &
+                                                      error_msg, &
+                                                      parent_layout_name)
         ! Record the concrete component layout of a derived type definition
         ! under layout_name. For a plain type that is the type name; for a PDT
         ! instance it is the mangled name carrying the actual parameters.
@@ -602,6 +613,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: layout_name
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: parent_layout_name
+        character(len=:), allocatable :: parent_name
         integer :: type_index
 
         type_index = find_derived_type(context, layout_name)
@@ -616,8 +629,11 @@
         context%derived_types(type_index)%name = trim(layout_name)
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then
-            context%derived_types(type_index)%parent_name = trim(node%extends_parent)
-            call inherit_parent_members(node, context, type_index, error_msg)
+            parent_name = trim(node%extends_parent)
+            if (present(parent_layout_name)) parent_name = trim(parent_layout_name)
+            context%derived_types(type_index)%parent_name = parent_name
+            call inherit_parent_members(node, context, type_index, parent_name, &
+                                        error_msg)
             if (len_trim(error_msg) > 0) return
         end if
         if (allocated(node%component_indices)) then
@@ -798,23 +814,27 @@
         call set_empty(error_msg)
     end subroutine collect_derived_components
 
-    subroutine inherit_parent_members(node, context, type_index, error_msg)
+    subroutine inherit_parent_members(node, context, type_index, parent_name, &
+                                      error_msg)
         ! Copy the parent type's components (parent-first layout) and its
         ! static type-bound bindings into the extending child (#248 B6a). The
         ! parent must already be collected; types are collected in source order
         ! and Fortran requires the parent to be defined before it is extended.
+        ! parent_name is the parent's layout name: the plain type name, or the
+        ! mangled instance name when the parent is a PDT instance (#621).
         type(derived_type_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
+        character(len=*), intent(in) :: parent_name
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: parent_index, c
 
         call set_empty(error_msg)
-        parent_index = find_derived_type(context, node%extends_parent)
+        parent_index = find_derived_type(context, parent_name)
         if (parent_index <= 0) then
             call unsupported_feature_error('derived type inheritance', &
                 node%line, node%column, 'parent type "'// &
-                trim(node%extends_parent)//'" must be defined before the type '// &
+                trim(parent_name)//'" must be defined before the type '// &
                 'that extends it', error_msg)
             return
         end if

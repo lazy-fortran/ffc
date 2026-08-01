@@ -423,8 +423,11 @@
     logical function starts_with_quote(text)
         character(len=*), intent(in) :: text
 
-        starts_with_quote = len_trim(text) >= 2 .and. &
-                            (text(1:1) == '"' .or. text(1:1) == "'")
+        ! .and. does not short-circuit, so the length guard cannot protect the
+        ! substring reference in the same expression.
+        starts_with_quote = .false.
+        if (len_trim(text) < 2) return
+        starts_with_quote = text(1:1) == '"' .or. text(1:1) == "'"
     end function starts_with_quote
 
     subroutine strip_literal_quotes(text, value)
@@ -432,13 +435,15 @@
         character(len=:), allocatable, intent(out) :: value
         integer :: text_len
 
+        ! .and. does not short-circuit, so the length guard is a separate test:
+        ! an empty text would otherwise index text(1:1) out of bounds.
         text_len = len_trim(text)
-        if (text_len >= 2 .and. &
-            ((text(1:1) == '"' .and. text(text_len:text_len) == '"') .or. &
-             (text(1:1) == "'" .and. text(text_len:text_len) == "'"))) then
+        value = trim(text)
+        if (text_len < 2) return
+        if (text(1:1) == '"' .and. text(text_len:text_len) == '"') then
             value = text(2:text_len - 1)
-        else
-            value = trim(text)
+        else if (text(1:1) == "'" .and. text(text_len:text_len) == "'") then
+            value = text(2:text_len - 1)
         end if
     end subroutine strip_literal_quotes
 
