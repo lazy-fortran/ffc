@@ -359,6 +359,9 @@
             if (.not. emit_ptr_load(context%session, descriptor, base, &
                                     error_msg)) return
             context%symbols(sym_index)%address = base
+            call bind_polymorphic_array_element_stride(arena, context, &
+                callee_name, i, sym_index, descriptor, error_msg)
+            if (len_trim(error_msg) > 0) return
             do dim = 1, rank
                 if (.not. emit_i64_load_at(context%session, descriptor, &
                         assumed_shape_dim_field_offset(dim, &
@@ -371,6 +374,46 @@
             end do
         end do
     end subroutine bind_assumed_shape_descriptor_params
+
+    subroutine bind_polymorphic_array_element_stride(arena, context, callee_name, &
+                                                     param_pos, sym_index, &
+                                                     descriptor, error_msg)
+        ! A class(t) array dummy accepts actuals whose dynamic element type
+        ! extends t, and those elements are wider than t's own layout. The
+        ! concrete element size is already in the descriptor the caller built,
+        ! so read it once at entry and keep it as the element stride in i32
+        ! slots (#422). A type(t) dummy is monomorphic: its element size is its
+        ! declared type's size by definition, so it keeps the compile-time
+        ! stride and emits nothing here.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer, intent(in) :: sym_index
+        type(lr_operand_desc_t), intent(in) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: declared_type_index
+        type(lr_operand_desc_t) :: elem_bytes, elem_slots, slots_i32
+
+        call set_empty(error_msg)
+        call class_dummy_declared_type_index(context, arena, callee_name, &
+                                             param_pos, declared_type_index)
+        if (declared_type_index <= 0) return
+
+        if (.not. emit_i64_load_at(context%session, descriptor, &
+                int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), &
+                elem_bytes, error_msg)) return
+        ! Derived storage is a flat block of 4-byte i32 slots, so the stride in
+        ! slots is the element size in bytes divided by four; the size is a
+        ! positive multiple of four, so the shift and the division agree.
+        if (.not. emit_i64_binary(context%session, LR_OP_LSHR, elem_bytes, &
+                i64_immediate(context%session, 2_c_int64_t), elem_slots, &
+                error_msg)) return
+        if (.not. emit_liric_i64_to_i32(context%session, elem_slots, slots_i32, &
+                                        error_msg)) return
+        context%symbols(sym_index)%has_runtime_element_slots = .true.
+        context%symbols(sym_index)%runtime_element_slots = slots_i32
+    end subroutine bind_polymorphic_array_element_stride
 
     subroutine bind_optional_assumed_shape_descriptor(context, sym_index, rank, &
                                                        error_msg)

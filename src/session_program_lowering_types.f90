@@ -271,6 +271,15 @@ module session_program_lowering_types
         ! per-dimension count lives in this i32 operand instead.
         logical, dimension(2) :: has_runtime_dim_size = .false.
         type(lr_operand_desc_t), dimension(2) :: runtime_dim_size
+        ! Element stride, in i32 slots, of a polymorphic array dummy (#422).
+        ! A class(t) array dummy may receive an actual whose dynamic element
+        ! type is an extension of t, so its elements are wider than the
+        ! declared type's layout. The concrete element size travels in the
+        ! canonical array descriptor's element_size field and is loaded here at
+        ! procedure entry; element addressing scales by this operand instead of
+        ! the declared type's compile-time slot count.
+        logical :: has_runtime_element_slots = .false.
+        type(lr_operand_desc_t) :: runtime_element_slots
         ! A rank-1 local automatic array whose element count is only known at
         ! runtime (integer :: a(n) with n a dummy/host value). Its storage is
         ! a dynamic alloca reached through element_address; the compile-time
