@@ -227,6 +227,13 @@
             call destroy(context%session)
             return
         end if
+        ! An intrinsic passed as an actual argument needs a reference-ABI thunk,
+        ! and a thunk is a function: emit them before any procedure body (#606).
+        call emit_intrinsic_procedure_thunks(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)

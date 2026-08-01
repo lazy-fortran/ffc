@@ -913,6 +913,11 @@
                                                  .false., value, error_msg)
             return
         end if
+        ! Indirect call through a procedure dummy or procedure pointer (#467).
+        if (is_proc_pointer_call(context, node%name)) then
+            call lower_f64_proc_ptr_call(arena, node, context, value, error_msg)
+            return
+        end if
 
         ! Resolve generic -> specific (#249 B7c).
         call call_argument_kinds(arena, node, context, VALUE_F64, &

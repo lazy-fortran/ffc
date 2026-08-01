@@ -54,6 +54,7 @@
         ! to the slot their dummy name selects, and a slot no actual reaches
         ! holds 0 (an omitted optional, passed as a null reference).
         integer, allocatable :: arg_indices(:)
+        character(len=:), allocatable :: proc_actual
 
         sp = 0
         if (present(self_position)) sp = self_position
@@ -84,7 +85,10 @@
         ! Keep array-interface diagnostics (rank and storage extent) useful even
         ! when the interface has no body in this lowering unit.  Scalar calls
         ! can only be lowered when their same-unit body is available.
-        if (.not. call_has_array_dummy(arena, callee_name, arg_indices, sp)) then
+        ! A call through a procedure dummy or procedure pointer is indirect:
+        ! the callee address arrives at run time, so no body is needed here.
+        if (.not. call_has_array_dummy(arena, callee_name, arg_indices, sp) &
+            .and. .not. is_proc_pointer_call(context, callee_name)) then
             if (registered_procedure_body_missing(arena, context, callee_name)) then
                 error_msg = 'procedure body unavailable for call to '//trim(callee_name)
                 return
@@ -100,6 +104,15 @@
                 ! Keyword association skipped this dummy: it is optional and
                 ! absent, which the reference ABI encodes as a null pointer.
                 args(i) = absent_optional_operand(context)
+                cycle
+            end if
+            ! A procedure passed as an actual argument travels as its callable
+            ! address, never through data storage (#467).
+            if (procedure_actual_name(arena, arg_indices(i), context, &
+                                      proc_actual)) then
+                call procedure_actual_operand(arena, context, proc_actual, &
+                                              args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
                 cycle
             end if
             call check_scalar_actual_compatibility(arena, arg_indices(i), context, &
