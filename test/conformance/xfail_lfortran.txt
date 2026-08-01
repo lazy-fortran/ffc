@@ -1341,7 +1341,6 @@ func_parameter_type_02.f90 # owner=lazy-fortran/ffc#457; reason=register resolve
 functions_03.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 functions_06.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 functions_09.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-functions_10.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 functions_11.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 functions_12.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 functions_13.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
@@ -2516,7 +2515,6 @@ pass_array_by_data_02.f90 # owner=lazy-fortran/ffc#457; reason=register resolved
 pass_array_by_data_03.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 pass_array_by_data_05.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 pass_array_by_data_07.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
-pass_array_by_data_08.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 pass_array_by_data_09.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 pass_array_by_data_10.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 pass_array_by_data_11.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
@@ -2892,8 +2890,6 @@ select_type_49.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type ident
 select_type_50.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 select_type_51.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 select_type_52.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-separate_compilation_03a.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
-separate_compilation_03b.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 separate_compilation_03.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 separate_compilation_04a.f90 # owner=lazy-fortran/ffc#343; reason=lower reductions through descriptor iteration
 separate_compilation_04b.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
@@ -3183,7 +3179,6 @@ submodule_50c.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces
 submodule_51a.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 submodule_51b.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 submodule_53a.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
-submodule_53b.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 submodule_54.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 submodule_55.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 subroutines_03.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering

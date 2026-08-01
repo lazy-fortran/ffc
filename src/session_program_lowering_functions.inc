@@ -2859,6 +2859,12 @@
         end if
         if (len_trim(error_msg) > 0) return
 
+        ! Rebind every assumed-shape dummy from its descriptor parameter (#334).
+        call bind_assumed_shape_descriptor_params(arena, node%param_indices, &
+                                                  context, trim(node%name), &
+                                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return

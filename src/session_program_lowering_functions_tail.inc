@@ -61,10 +61,10 @@
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
-        ! A rank-1 assumed-shape dummy whose extent does not fold at compile
-        ! time (an allocatable actual) carries one hidden i64 extent argument
-        ! appended after the visible parameters (#W2 runtime-extent ABI).
-        hidden_extent_count = callee_hidden_extent_count(context, trim(node%name))
+        ! Assumed-shape dummies are passed as one descriptor pointer each in
+        ! their own visible parameter slot (#334), so no hidden extent
+        ! parameters are appended to the signature.
+        hidden_extent_count = 0
         ! Each `*` dummy is a positional alternate-return slot, not a passed
         ! argument: the slots collapse into one hidden trailing selector
         ! parameter (#353).
@@ -93,12 +93,11 @@
                                          error_msg, node%body_indices)
         if (len_trim(error_msg) > 0) return
 
-        if (hidden_extent_count > 0) then
-            call bind_hidden_extent_params(arena, node%param_indices, context, &
-                                           trim(node%name), visible_param_count, &
-                                           error_msg)
-            if (len_trim(error_msg) > 0) return
-        end if
+        ! Rebind every assumed-shape dummy from its descriptor parameter.
+        call bind_assumed_shape_descriptor_params(arena, node%param_indices, &
+                                                  context, trim(node%name), &
+                                                  error_msg)
+        if (len_trim(error_msg) > 0) return
 
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)

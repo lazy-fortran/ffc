@@ -556,45 +556,82 @@
                 'a contained procedure', error_msg)
             return
         end if
+        ! Every assumed-shape dummy is bound from the caller's descriptor
+        ! (#334): bind_assumed_shape_descriptor_params already loaded the base
+        ! address and each dimension's extent from it before this declaration
+        ! ran, so element addressing and SIZE are always descriptor-driven and
+        ! two calls passing differently sized actuals each see their own shape.
+        !
+        ! resolve_assumed_shape_extents is only a compile-time SPECIALIZATION on
+        ! top of that binding: when every call site in this unit passes the same
+        ! constant shape, recording it as array_size lets whole-array operations
+        ! unroll. It never changes how the dummy is passed or how its extents are
+        ! read at run time.
         extents = 0
         call resolve_assumed_shape_extents(context, context%current_proc_name, &
                                            name, dim_count, extents, ok)
-        if (.not. ok) then
-            ! No compile-time-foldable actual: fall back to the hidden i64
-            ! runtime extent arguments already loaded for this dummy (one per
-            ! dimension, rank-1 or rank-2) by bind_hidden_extent_params before
-            ! this declaration ran.
+        if (ok) then
+            total = 1
+            do i = 1, dim_count
+                total = total*extents(i)
+            end do
+            ! The shape is a compile-time constant, so drop the descriptor's
+            ! cached runtime extents: has_runtime_dim_size means "shape known
+            ! only at run time", and leaving it set would send every whole-array
+            ! operation down the runtime loop even though a constant element
+            ! count is available. The base address still comes from the
+            ! descriptor; only the shape is specialized.
             index = find_symbol_compat(context, name)
-            if (dim_count >= 1 .and. dim_count <= 2 .and. index > 0) then
-                if (all(context%symbols(index)%has_runtime_dim_size(1:dim_count))) &
-                        then
-                    call define_declared_array_symbol(context, node, name, 1, 0, &
-                                                       value_kind, error_msg, &
-                                                       assumed_extents=spread(0, 1, &
-                                                                             dim_count))
-                    return
-                end if
+            if (index > 0) then
+                do i = 1, dim_count
+                    context%symbols(index)%has_runtime_dim_size(i) = .false.
+                end do
             end if
-            call unsupported_feature_error('assumed-shape array', node%line, &
-                node%column, 'assumed-shape dummy extent must come from a '// &
-                'whole-array actual of compile-time size', error_msg)
+            call define_declared_array_symbol(context, node, name, 1, total, &
+                                              value_kind, error_msg, &
+                                              assumed_extents=extents(1:dim_count))
             return
         end if
-        total = 1
-        do i = 1, dim_count
-            total = total * extents(i)
-        end do
-        call define_declared_array_symbol(context, node, name, 1, total, &
-                                          value_kind, error_msg, &
-                                          assumed_extents=extents(1:dim_count))
+
+        index = find_symbol_compat(context, name)
+        if (index > 0) then
+            if (all(context%symbols(index)%has_runtime_dim_size(1:dim_count))) then
+                call define_declared_array_symbol(context, node, name, 1, 0, &
+                                                  value_kind, error_msg, &
+                                                  assumed_extents=spread(0, 1, &
+                                                                     dim_count))
+                if (len_trim(error_msg) > 0) return
+                ! A rank-1 dummy with no constant shape has no compile-time
+                ! element count, exactly like a runtime-sized local automatic
+                ! array, so whole-array assign and print reuse that runtime-loop
+                ! machinery rather than a second lowering path of their own.
+                ! An OPTIONAL dummy keeps its parameter pointer as its address
+                ! so PRESENT can test it against null; the runtime-array
+                ! machinery would rebind that address to element storage.
+                if (dim_count == 1 .and. .not. node%is_optional) then
+                    index = find_symbol_compat(context, name)
+                    if (index > 0) context%symbols(index)%is_runtime_array = .true.
+                end if
+                return
+            end if
+        end if
+        call unsupported_feature_error('assumed-shape array', node%line, &
+            node%column, 'assumed-shape dummies are supported only for a '// &
+            'dummy bound through a caller-supplied array descriptor', error_msg)
     end subroutine bind_one_assumed_shape
 
     subroutine resolve_assumed_shape_extents(context, proc_name, param_name, &
                                              dim_count, extents, ok)
-        ! Recover an assumed-shape dummy's per-dimension extents from the
-        ! caller's actual. Find a call to proc_name whose actual at the dummy's
-        ! position is a whole-array identifier, then read that array's declared
-        ! compile-time shape. ok stays false when no constant extent is found.
+        ! Compile-time shape SPECIALIZATION for an assumed-shape dummy. This is
+        ! not an argument-passing path: since #334 every assumed-shape dummy is
+        ! bound through the caller's array descriptor and reads its extents from
+        ! there. This fold only recovers a constant element count so whole-array
+        ! operations can unroll instead of walking a runtime loop.
+        !
+        ! It is therefore only sound when EVERY call to proc_name in this unit
+        ! passes an actual of the same compile-time shape. If two call sites
+        ! disagree, or any call site's actual has no foldable shape, ok stays
+        ! false and the dummy keeps its runtime descriptor extents.
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: proc_name
         character(len=*), intent(in) :: param_name
@@ -602,28 +639,59 @@
         integer, intent(out) :: extents(:)
         logical, intent(out) :: ok
         integer :: param_pos
-        integer :: actual_index
-        character(len=:), allocatable :: actual_name
+        integer :: n
+        integer :: call_count
+        integer :: site_extents(ARRAY_MAX_RANK)
+        logical :: site_ok
+        character(len=:), allocatable :: call_name, name_err, actual_name
+        integer, allocatable :: arg_indices(:)
 
         ok = .false.
         extents = 0
+        call_count = 0
         param_pos = proc_param_position(context%arena, proc_name, param_name)
         if (param_pos <= 0) return
-        call find_call_actual_identifier(context%arena, proc_name, param_pos, &
-                                         actual_name)
-        if (allocated(actual_name)) then
-            if (len_trim(actual_name) > 0) then
-                call array_decl_extents(context, actual_name, dim_count, extents, &
-                                        ok)
-                if (ok) return
+
+        do n = 1, context%arena%size
+            if (.not. node_exists(context%arena, n)) cycle
+            if (.not. call_targets_proc(context%arena, n, proc_name, call_name, &
+                                        arg_indices)) cycle
+            if (call_is_within_proc(context%arena, n, proc_name)) cycle
+            if (.not. allocated(arg_indices)) cycle
+            if (param_pos < 1 .or. param_pos > size(arg_indices)) return
+            site_extents = 0
+            site_ok = .false.
+            if (is_identifier(context%arena, arg_indices(param_pos))) then
+                call get_identifier_name(context%arena, arg_indices(param_pos), &
+                                         actual_name, name_err)
+                if (len_trim(name_err) == 0) then
+                    call array_decl_extents(context, actual_name, dim_count, &
+                                            site_extents, site_ok)
+                end if
             end if
-        end if
-        call find_call_actual_expr(context%arena, proc_name, param_pos, &
-                                   actual_index)
-        if (actual_index > 0) then
-            call section_actual_decl_extents(context, actual_index, dim_count, &
-                                             extents, ok)
-        end if
+            if (.not. site_ok) then
+                call section_actual_decl_extents(context, &
+                    arg_indices(param_pos), dim_count, site_extents, site_ok)
+            end if
+            ! One unfoldable call site makes the whole specialization unsound.
+            if (.not. site_ok) then
+                extents = 0
+                ok = .false.
+                return
+            end if
+            if (call_count == 0) then
+                extents(1:dim_count) = site_extents(1:dim_count)
+            else if (any(extents(1:dim_count) /= site_extents(1:dim_count))) then
+                ! Call sites disagree: no single constant shape exists.
+                extents = 0
+                ok = .false.
+                return
+            end if
+            call_count = call_count + 1
+        end do
+
+        ok = call_count > 0
+        if (.not. ok) extents = 0
     end subroutine resolve_assumed_shape_extents
 
     integer function proc_param_position(arena, proc_name, param_name) &
@@ -3178,7 +3246,13 @@
             return
         end if
         if (nargs == 1) then
-            if (context%symbols(source_index)%has_runtime_dim_size(1)) then
+            ! Only walk the runtime loop when no constant element count is
+            ! known. A descriptor-bound dummy always caches its dimension
+            ! extents, so a dummy that ALSO carries a compile-time array_size
+            ! (the shape specialization) must still take the unrolled path,
+            ! which is the only one that handles rank 2 and every reduction.
+            if (context%symbols(source_index)%has_runtime_dim_size(1) .and. &
+                context%symbols(source_index)%array_size <= 0) then
                 ! A runtime-extent assumed-shape dummy: total = product of the
                 ! per-dimension runtime extents (rank 1 or 2).
                 value = context%symbols(source_index)%runtime_dim_size(1)
@@ -3327,18 +3401,20 @@
                             ' requires an array argument: '//trim(array_name)
                 return
             end if
-            ! A rank-1 assumed-shape dummy with a runtime-only extent (the
-            ! hidden i64 argument ABI) has no compile-time array_size to
-            ! unroll over; walk a genuine loop instead. Integer elements only.
+            ! An assumed-shape dummy bound through the caller's array
+            ! descriptor has a runtime-only extent and no compile-time
+            ! array_size to unroll over; walk a genuine loop instead.
             if (context%symbols(source_index)%has_runtime_dim_size(1)) then
                 if (trim(reduction_name) == 'sum' .and. &
-                    context%symbols(source_index)%value_kind == VALUE_I32) then
-                    call lower_runtime_i32_sum(context, source_index, value, &
-                                               error_msg)
+                    any(context%symbols(source_index)%value_kind == &
+                        [VALUE_I32, VALUE_F32, VALUE_F64])) then
+                    call lower_runtime_sum(context, source_index, value, &
+                                           error_msg)
                     return
                 end if
                 error_msg = trim(reduction_name)//' over a runtime-extent '// &
-                            'assumed-shape dummy supports integer sum only'
+                            'assumed-shape dummy supports integer and real '// &
+                            'sum only'
                 return
             end if
             array_size = context%symbols(source_index)%array_size
