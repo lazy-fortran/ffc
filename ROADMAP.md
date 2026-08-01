@@ -27,15 +27,28 @@ explicit decision.
 
 ## Current status (2026-08-01)
 
-- Main: `77a42d9`. FortFront `bef13511`. LIRIC `5436e5c`.
+- Main: `4fd5e95` (module-artifact export visibility fixed; sampled manifest
+  dispositions through seed 1037).
+  FortFront `bef13511`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
-  unexpected `FAIL` or `XPASS` after manifest classification. The next 900-file
-  attempt, seed 1037, is not clean: `fortfront-lf` has one `FAIL`, `lfortran`
-  has two `FAIL` and two `XPASS`, and `gfortran.dg` has six `FAIL` and three
-  `XPASS`.
+  unexpected `FAIL` or `XPASS` after exact manifest classification, including
+  seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
+  passes after public-but-unsupported module procedures were preserved in
+  `.fmod` exports. The next sample increase is deliberately deferred while
+  owned XFAIL implementation work continues.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
+
+## XFAIL-zero work gate
+
+XFAIL work always comes before corpus expansion. Each work cycle selects an
+owned XFAIL tranche, fixes the implementation or its independent behavioral
+oracle, and removes the XFAIL only when the case passes. We do not move to a
+different corpus area, broaden the suite, or increase the random-sample count
+until the current in-scope XFAIL tranche is at zero. The final conformance gate
+requires zero in-scope XFAILs across every declared suite. Classification is
+not a substitute for fixing the behavior.
 
 ## Architecture-first blocker order
 
