@@ -2822,6 +2822,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, wide_value, narrow_value
+        type(array_expr_plan_t) :: plan
         integer :: i
         integer :: array_size
         logical :: reduction_handled
@@ -3033,16 +3034,10 @@
             return
         end if
 
-        do i = 1, array_size
-            call lower_array_elementwise_value(arena, node%value_index, &
-                                               symbol_index, i - 1, context, &
-                                               value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call store_array_linear_element(context, symbol_index, &
-                                            int(i - 1, c_int64_t), value, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
-        call set_empty(error_msg)
+        call build_array_expression(context, symbol_index, node%value_index, &
+                                    plan, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_array_expression_assignment(arena, plan, context, error_msg)
     end subroutine lower_array_whole_assignment
 
     recursive logical function is_scalar_broadcast_rhs(arena, node_index, &

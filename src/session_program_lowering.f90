@@ -212,6 +212,9 @@ module session_program_lowering
         emit_random_seed_default
     use session_lowering_ops, only: integer_compare_predicate, &
         integer_opcode, parse_i32_literal
+    use session_array_expr_types, only: array_expr_plan_t, &
+                                        array_expr_plans_conform, &
+                                        ARRAY_EXPR_MAX_RANK
     use ffc_strings, only: set_empty
     use ast_arena_source_text, only: get_source_text
     use fortfront_compiler, only: query_io_statement, io_statement_query_t, &

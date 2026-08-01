@@ -10,6 +10,7 @@ program test_session_array_alias_assignment_compiler
     if (.not. test_forward_overlap()) stop 1
     if (.not. test_backward_overlap()) stop 1
     if (.not. test_strided_overlap()) stop 1
+    if (.not. test_whole_array_reverse_self()) stop 1
     print *, 'PASS: overlapping array section assignment is alias-safe'
 
 contains
@@ -67,5 +68,23 @@ contains
             '           3'//new_line('a'), &
             '/tmp/ffc_session_array_alias_strided_test')
     end function test_strided_overlap
+
+    logical function test_whole_array_reverse_self()
+        !! a = a(n:1:-1): a whole-array assignment whose right-hand side is a
+        !! reversed section of the target itself. Every element value must come
+        !! from the pre-assignment array.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4)'//new_line('a')// &
+            '  a = [1, 2, 3, 4]'//new_line('a')// &
+            '  a = a(4:1:-1)'//new_line('a')// &
+            '  print *, a(1), a(2), a(3), a(4)'//new_line('a')// &
+            'end program main'
+
+        test_whole_array_reverse_self = expect_output( &
+            source, &
+            '           4           3           2           1'//new_line('a'), &
+            '/tmp/ffc_session_array_alias_whole_reverse_test')
+    end function test_whole_array_reverse_self
 
 end program test_session_array_alias_assignment_compiler
