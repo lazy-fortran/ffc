@@ -2,11 +2,46 @@ program test_session_separate_generic_compiler
     implicit none
 
     logical :: all_passed
+    ! A generic exported by a separately compiled module must resolve in the
+    ! using unit by the same rules a same-unit call uses, including the rank of
+    ! each specific's dummies. The using unit sees only the .fmod, so the ranks
+    ! have to travel in it (#415).
+    character(len=*), parameter :: rank_module_source = &
+        'module fmod415_generic'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    interface total'//new_line('a')// &
+        '        module procedure total_scalar'//new_line('a')// &
+        '        module procedure total_vec'//new_line('a')// &
+        '    end interface total'//new_line('a')// &
+        '    interface grid_total'//new_line('a')// &
+        '        module procedure grid_scalar'//new_line('a')// &
+        '        module procedure grid_mat'//new_line('a')// &
+        '    end interface grid_total'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '    integer function total_scalar(x) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: x'//new_line('a')// &
+        '        r = x'//new_line('a')// &
+        '    end function total_scalar'//new_line('a')// &
+        '    integer function total_vec(x) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: x(3)'//new_line('a')// &
+        '        r = x(1) + x(2) + x(3)'//new_line('a')// &
+        '    end function total_vec'//new_line('a')// &
+        '    integer function grid_scalar(y) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: y'//new_line('a')// &
+        '        r = 2 * y'//new_line('a')// &
+        '    end function grid_scalar'//new_line('a')// &
+        '    integer function grid_mat(y) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: y(2,2)'//new_line('a')// &
+        '        r = y(1,1) + y(2,2)'//new_line('a')// &
+        '    end function grid_mat'//new_line('a')// &
+        'end module fmod415_generic'
 
     print *, '=== separate-compilation generic interface tests ==='
 
     all_passed = .true.
     if (.not. test_use_associated_generic_resolves()) all_passed = .false.
+    if (.not. test_rank_aware_specifics_resolve()) all_passed = .false.
+    if (.not. test_no_matching_rank_is_diagnosed()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -86,6 +121,165 @@ contains
             ' /tmp/ffc_gen_mod.fmod '//main_exe//' '//out_file)
         ok = .true.
     end function test_use_associated_generic_resolves
+
+    logical function test_rank_aware_specifics_resolve() result(ok)
+        ! Scalar, rank-1, and rank-2 specifics all resolve from the artefact,
+        ! and the program's result matches same-unit compilation.
+        character(len=:), allocatable :: dir
+        integer :: separate_status, same_status
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod415_generic, only: total, grid_total'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '    integer :: m(2,2)'//new_line('a')// &
+            '    v(1) = 1'//new_line('a')// &
+            '    v(2) = 2'//new_line('a')// &
+            '    v(3) = 3'//new_line('a')// &
+            '    m(1,1) = 10'//new_line('a')// &
+            '    m(2,1) = 0'//new_line('a')// &
+            '    m(1,2) = 0'//new_line('a')// &
+            '    m(2,2) = 20'//new_line('a')// &
+            '    stop total(4) + total(v) + grid_total(1) + grid_total(m)'// &
+            new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod415_resolve', dir)
+        separate_status = run_separate_compilation(dir, rank_module_source, &
+                                                   program_source)
+        same_status = run_same_unit_compilation(dir, rank_module_source, &
+                                                program_source)
+        if (same_status /= 142) then
+            print *, 'FAIL: same-unit generic resolution status ', same_status
+            call show_log(dir)
+            return
+        end if
+        if (separate_status /= same_status) then
+            print *, 'FAIL: separate generic resolution status ', &
+                separate_status, ' differs from same-unit ', same_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_rank_aware_specifics_resolve
+
+    logical function test_no_matching_rank_is_diagnosed() result(ok)
+        ! A rank-2 actual passed to a generic whose only array specific is
+        ! rank-1 matches no specific. The imported generic refuses it the same
+        ! way the same-unit generic does, rather than silently binding the
+        ! rank-1 specific and reading past the actual.
+        character(len=:), allocatable :: dir
+        integer :: separate_status, same_status
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod415_generic, only: total'//new_line('a')// &
+            '    integer :: m(2,2)'//new_line('a')// &
+            '    m(1,1) = 1'//new_line('a')// &
+            '    m(2,1) = 1'//new_line('a')// &
+            '    m(1,2) = 1'//new_line('a')// &
+            '    m(2,2) = 1'//new_line('a')// &
+            '    stop total(m)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod415_nomatch', dir)
+        separate_status = run_separate_compilation(dir, rank_module_source, &
+                                                   program_source)
+        same_status = run_same_unit_compilation(dir, rank_module_source, &
+                                                program_source)
+        if (same_status /= 92) then
+            print *, 'FAIL: same-unit rank mismatch was accepted, status ', &
+                same_status
+            call show_log(dir)
+            return
+        end if
+        if (separate_status /= 92) then
+            print *, 'FAIL: imported rank mismatch was accepted, status ', &
+                separate_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_no_matching_rank_is_diagnosed
+
+    integer function run_separate_compilation(dir, mod_source, prog_source) &
+            result(status)
+        ! Compile the module with -c in one ffc invocation, then the program in
+        ! a second, independent invocation that can only learn the generic's
+        ! specifics from the .fmod artefact. Returns 90 when no ffc binary was
+        ! found, 91/92 when a compilation failed, and 100 + exit status when the
+        ! program ran.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: mod_source
+        character(len=*), intent(in) :: prog_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_file(dir//'/m.f90', mod_source)) return
+        if (.not. write_file(dir//'/p.f90', prog_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c m.f90 -o m.o >>log 2>&1 || exit 91; '// &
+            '"$exe" p.f90 m.o -o p >>log 2>&1 || exit 92; '// &
+            "./p; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_separate_compilation
+
+    integer function run_same_unit_compilation(dir, mod_source, prog_source) &
+            result(status)
+        ! Compile the same module and program as one unit, so the separate
+        ! result can be held against it.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: mod_source
+        character(len=*), intent(in) :: prog_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_file(dir//'/same.f90', mod_source//new_line('a')// &
+                             prog_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" same.f90 -o same >>log 2>&1 || exit 92; '// &
+            "./same; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_same_unit_compilation
+
+    subroutine make_scratch_dir(tag, dir)
+        ! A scratch directory of this run's own, so concurrent builds of other
+        ! worktrees never share it (ffc #547).
+        character(len=*), intent(in) :: tag
+        character(len=:), allocatable, intent(out) :: dir
+        character(len=32) :: stamp
+        integer :: values(8)
+
+        call date_and_time(values=values)
+        write (stamp, '(I0,A,I0)') values(6)*60000 + values(7)*1000 + &
+            values(8), '_', values(5)
+        dir = '/tmp/ffc_'//tag//'_'//trim(stamp)
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+    end subroutine make_scratch_dir
+
+    subroutine remove_scratch_dir(dir)
+        character(len=*), intent(in) :: dir
+
+        call execute_command_line('rm -rf '//dir)
+    end subroutine remove_scratch_dir
+
+    subroutine show_log(dir)
+        character(len=*), intent(in) :: dir
+
+        call execute_command_line('cat '//dir//'/log 2>/dev/null')
+    end subroutine show_log
 
     logical function file_contains(path, fragment) result(found)
         character(len=*), intent(in) :: path

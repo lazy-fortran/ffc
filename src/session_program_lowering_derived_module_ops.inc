@@ -481,7 +481,8 @@
         ! Append a specific to a generic entry, taking its signature and
         ! return kinds from an already-registered external procedure rather
         ! than from an AST node (the specific was imported from a .fmod, #284).
-        ! Ranks default to 0 (scalar) since .fmod does not yet carry rank info.
+        ! Ranks come from the artefact, so an imported generic resolves a
+        ! rank-1 or rank-2 specific exactly as a same-unit call does (#415).
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: generic_idx
         character(len=*), intent(in) :: name
@@ -505,6 +506,8 @@
             MAX_PROC_ARGS)
             context%generics(generic_idx)%specific_arg_kinds(j, sc) = &
                 context%external_procedures(ext_idx)%arg_value_kinds(j)
+            context%generics(generic_idx)%specific_arg_ranks(j, sc) = &
+                context%external_procedures(ext_idx)%arg_ranks(j)
         end do
     end subroutine add_generic_specific_from_external
 
@@ -529,7 +532,7 @@
         integer, allocatable :: arg_kinds(:)
         character(len=64), allocatable :: arg_names(:)
         logical, allocatable :: arg_optionals(:), arg_values(:)
-        integer, allocatable :: arg_intents(:)
+        integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
         logical :: forced, imported
 
@@ -561,11 +564,13 @@
         call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
         call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
         call parse_fmod_arg_intents(proc, arg_intents)
+        call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
+        call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
         mangled = module_procedure_mangled(module_name, trim(proc%name))
         call add_external_procedure(context, trim(local_name), mangled, &
                                     return_kind, proc%nargs, .true., arg_kinds, &
                                     arg_names, arg_optionals, arg_values, &
-                                    arg_intents)
+                                    arg_intents, arg_ranks, arg_extents)
     end subroutine import_fmod_procedure
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
@@ -596,6 +601,36 @@
             end if
         end do
     end subroutine parse_fmod_arg_flags
+
+    subroutine parse_fmod_arg_integers(text, nargs, values)
+        ! Split a .fmod per-dummy integer list (ranks, extents) into values. An
+        ! absent or short list leaves the remaining dummies at 0 (#415).
+        character(len=:), allocatable, intent(in) :: text
+        integer, intent(in) :: nargs
+        integer, allocatable, intent(out) :: values(:)
+        character(len=:), allocatable :: rest, token
+        integer :: n, sep, io_stat
+
+        allocate (values(max(nargs, 0)))
+        if (nargs <= 0) return
+        values = 0
+        if (.not. allocated(text)) return
+        rest = trim(adjustl(text))
+        n = 0
+        do while (len_trim(rest) > 0 .and. n < nargs)
+            sep = index(rest, ' ')
+            n = n + 1
+            if (sep == 0) then
+                token = trim(rest)
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            read (token, *, iostat=io_stat) values(n)
+            if (io_stat /= 0) values(n) = 0
+        end do
+    end subroutine parse_fmod_arg_integers
 
     subroutine parse_fmod_arg_intents(proc, intents)
         ! Split the .fmod per-dummy INTENT token list into intent codes (#397).

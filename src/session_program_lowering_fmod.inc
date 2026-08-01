@@ -68,7 +68,7 @@
         ! Public module procedures with integer-scalar signatures round-trip so
         ! a separately compiled program can call them by reference and link
         ! against the module object (#284).
-        call build_fmod_procedures(arena, trim(export%module_name), &
+        call build_fmod_procedures(arena, context, trim(export%module_name), &
                                    info%procedures, error_msg)
         if (len_trim(error_msg) > 0) return
         ! Named generic interfaces whose specifics are all exportable procedures
@@ -228,14 +228,17 @@
         call move_alloc(tmp, arr)
     end subroutine grow_fmod_generics
 
-    subroutine build_fmod_procedures(arena, module_name, procs, error_msg)
+    subroutine build_fmod_procedures(arena, context, module_name, procs, &
+                                     error_msg)
         type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: module_name
         type(fmod_procedure_t), allocatable, intent(out) :: procs(:)
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: module_index, p, count
         integer, allocatable :: declaration_indices(:), procedure_indices(:)
         character(len=:), allocatable :: mod_name, ff_error, kind_text, arg_tokens
+        character(len=:), allocatable :: rank_tokens, extent_tokens
         integer :: nargs
         type(module_node), pointer :: mod_node
 
@@ -252,8 +255,9 @@
         if (len_trim(ff_error) > 0) return
         count = 0
         do p = 1, size(procedure_indices)
-            call fmod_procedure_signature(arena, procedure_indices(p), mod_node, &
-                                          kind_text, nargs, arg_tokens)
+            call fmod_procedure_signature(arena, context, procedure_indices(p), &
+                                          mod_node, kind_text, nargs, &
+                                          arg_tokens, rank_tokens, extent_tokens)
             if (len_trim(kind_text) == 0) cycle
             count = count + 1
             call grow_fmod_procs(procs, count)
@@ -262,6 +266,8 @@
             procs(count)%kind = kind_text
             procs(count)%nargs = nargs
             procs(count)%arg_kinds = arg_tokens
+            procs(count)%arg_ranks = rank_tokens
+            procs(count)%arg_extents = extent_tokens
             procs(count)%arg_names = fmod_procedure_arg_names(arena, &
                                                      procedure_indices(p))
             call fmod_procedure_dummy_attributes(arena, procedure_indices(p), &
@@ -478,8 +484,9 @@
         end if
     end function procedure_fortran_name
 
-    subroutine fmod_procedure_signature(arena, node_index, mod_node, kind_text, &
-                                        nargs, arg_tokens)
+    subroutine fmod_procedure_signature(arena, context, node_index, mod_node, &
+                                        kind_text, nargs, arg_tokens, &
+                                        rank_tokens, extent_tokens)
         ! Classify a module procedure for .fmod export. kind_text is 'integer'
         ! for an integer function, 'subroutine' for a subroutine, and empty for
         ! anything not exportable (private, non-integer result, unsupported or
@@ -487,17 +494,22 @@
         ! argument count and arg_tokens the space-joined per-argument scalar-kind
         ! tokens for an exportable procedure (#284).
         type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: node_index
         type(module_node), intent(in) :: mod_node
         character(len=:), allocatable, intent(out) :: kind_text
         integer, intent(out) :: nargs
         character(len=:), allocatable, intent(out) :: arg_tokens
+        character(len=:), allocatable, intent(out) :: rank_tokens
+        character(len=:), allocatable, intent(out) :: extent_tokens
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
         kind_text = ''
         nargs = 0
         arg_tokens = ''
+        rank_tokens = ''
+        extent_tokens = ''
         if (.not. node_exists(arena, node_index)) return
         fn_node => get_node_as_function_def(arena, node_index)
         if (associated(fn_node)) then
@@ -505,8 +517,10 @@
             if (module_symbol_is_private(arena, mod_node, fn_node%name)) return
             if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
             if (.not. return_type_is_integer(fn_node%return_type)) return
-            if (.not. params_all_supported_scalar(arena, fn_node%param_indices, &
-                                    fn_node%body_indices, nargs, arg_tokens)) return
+            if (.not. params_all_supported(arena, context, &
+                                    fn_node%param_indices, fn_node%body_indices, &
+                                    nargs, arg_tokens, rank_tokens, &
+                                    extent_tokens)) return
             kind_text = 'integer'
             return
         end if
@@ -515,8 +529,10 @@
             if (.not. allocated(sb_node%name)) return
             if (module_symbol_is_private(arena, mod_node, sb_node%name)) return
             if (procedure_has_nested_contains(arena, sb_node%body_indices)) return
-            if (.not. params_all_supported_scalar(arena, sb_node%param_indices, &
-                                    sb_node%body_indices, nargs, arg_tokens)) return
+            if (.not. params_all_supported(arena, context, &
+                                    sb_node%param_indices, sb_node%body_indices, &
+                                    nargs, arg_tokens, rank_tokens, &
+                                    extent_tokens)) return
             kind_text = 'subroutine'
         end if
     end subroutine fmod_procedure_signature
@@ -531,43 +547,126 @@
         return_type_is_integer = lowered == 'integer'
     end function return_type_is_integer
 
-    logical function params_all_supported_scalar(arena, param_indices, &
-                                    body_indices, nargs, arg_tokens) result(ok)
-        ! Whether every dummy of a module procedure is a scalar of a kind ffc can
-        ! pass by reference across separate compilation (integer, real, logical
-        ! of the supported kinds). arg_tokens receives the space-joined per-dummy
-        ! kind tokens. Any array, character, derived, or unsupported-kind dummy
-        ! disqualifies the procedure so a using unit never miscompiles a call
-        ! (#284).
+    logical function params_all_supported(arena, context, param_indices, &
+                                          body_indices, nargs, arg_tokens, &
+                                          rank_tokens, extent_tokens) result(ok)
+        ! Whether every dummy of a module procedure is one this ffc can pass
+        ! across separate compilation: a scalar of a supported kind, or an
+        ! explicit-shape array of such a scalar, which passes as the base
+        ! address of its contiguous storage. arg_tokens receives the per-dummy
+        ! element-kind tokens, rank_tokens the per-dummy rank (0 for a scalar),
+        ! and extent_tokens an array dummy's total element count. An assumed-
+        ! shape, assumed-rank, allocatable, character, or derived dummy still
+        ! disqualifies the procedure, so a using unit never miscompiles a call
+        ! (#284, #415).
         type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
         integer, allocatable, intent(in) :: param_indices(:)
         integer, allocatable, intent(in) :: body_indices(:)
         integer, intent(out) :: nargs
         character(len=:), allocatable, intent(out) :: arg_tokens
-        integer :: i, value_kind
+        character(len=:), allocatable, intent(out) :: rank_tokens
+        character(len=:), allocatable, intent(out) :: extent_tokens
+        integer :: i, value_kind, rank, extent
         character(len=:), allocatable :: token
 
         ok = .false.
         nargs = 0
         arg_tokens = ''
+        rank_tokens = ''
+        extent_tokens = ''
         if (.not. allocated(param_indices)) then
             ok = .true.
             return
         end if
         nargs = size(param_indices)
         do i = 1, nargs
+            rank = 0
+            extent = 0
             value_kind = param_at_value_kind(arena, param_indices, &
                                              body_indices, i)
+            if (value_kind == 0) then
+                call param_at_array_shape(arena, context, param_indices, &
+                                          body_indices, i, value_kind, rank, &
+                                          extent)
+                if (rank <= 0) return
+            end if
             token = scalar_kind_token(value_kind)
             if (len_trim(token) == 0) return
-            if (i == 1) then
-                arg_tokens = token
-            else
-                arg_tokens = arg_tokens//' '//token
+            if (i > 1) then
+                arg_tokens = arg_tokens//' '
+                rank_tokens = rank_tokens//' '
+                extent_tokens = extent_tokens//' '
             end if
+            arg_tokens = arg_tokens//token
+            rank_tokens = rank_tokens//integer_token(rank)
+            extent_tokens = extent_tokens//integer_token(extent)
         end do
         ok = .true.
-    end function params_all_supported_scalar
+    end function params_all_supported
+
+    subroutine param_at_array_shape(arena, context, param_indices, &
+                                    body_indices, pos, value_kind, rank, extent)
+        ! The element kind, rank, and total element count of an explicit-shape
+        ! array dummy. rank stays 0 when the dummy is not an array this ffc can
+        ! pass by base address (assumed shape, assumed rank, assumed size, or
+        ! allocatable), which keeps such a procedure out of the artefact (#415).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: pos
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: rank
+        integer, intent(out) :: extent
+        character(len=:), allocatable :: name, name_err, kind_err
+        integer(c_int64_t) :: element_count
+        logical :: known
+        integer :: i
+
+        value_kind = 0
+        rank = 0
+        extent = 0
+        if (.not. allocated(param_indices)) return
+        if (pos < 1 .or. pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (decl%is_allocatable .or. decl%is_pointer) return
+                if (.not. declaration_declares_name(decl, &
+                    trim(lowercase_text(name)))) cycle
+                if (.not. allocated(decl%dimension_indices)) return
+                call declaration_value_kind(decl, value_kind, kind_err)
+                if (len_trim(kind_err) > 0) then
+                    value_kind = 0
+                    return
+                end if
+                call dummy_explicit_element_count(arena, context, body_indices, &
+                                                  name, element_count, known, &
+                                                  kind_err)
+                if (len_trim(kind_err) > 0) return
+                if (.not. known) return
+                if (element_count <= 0) return
+                rank = size(decl%dimension_indices)
+                extent = int(element_count)
+                return
+            end select
+        end do
+    end subroutine param_at_array_shape
+
+    function integer_token(value) result(token)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: token
+        character(len=32) :: buffer
+
+        write (buffer, '(I0)') value
+        token = trim(buffer)
+    end function integer_token
 
     function scalar_kind_token(value_kind) result(token)
         ! The .fmod token for a by-reference scalar dummy kind, or '' when the
