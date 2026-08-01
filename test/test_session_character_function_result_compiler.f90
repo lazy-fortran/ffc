@@ -9,6 +9,7 @@ program test_session_character_function_result_compiler
         compiler_frontend_result_t, &
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
+    use ffc_test_support, only: expect_no_leaks
     implicit none
 
     logical :: all_passed
@@ -83,6 +84,144 @@ program test_session_character_function_result_compiler
         '  end function greet'//new_line('a')// &
         'end program main', &
         'len_expr_of_dummy')) all_passed = .false.
+
+    ! A runtime-length result assigned to a shorter fixed-length destination
+    ! truncates to the destination's declared width, and to a longer one pads
+    ! with blanks. The result is a value, not an alias of the callee's buffer.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=5) :: short'//new_line('a')// &
+        '  character(len=14) :: wide'//new_line('a')// &
+        '  short = greet("Ada")'//new_line('a')// &
+        '  wide = greet("Ada")'//new_line('a')// &
+        '  print *, "[", short, "]"'//new_line('a')// &
+        '  print *, "[", wide, "]"'//new_line('a')// &
+        '  print *, greet("Bob")'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function greet(name) result(s)'//new_line('a')// &
+        '    character(len=*), intent(in) :: name'//new_line('a')// &
+        '    character(len=len(name)+7) :: s'//new_line('a')// &
+        '    s = "Hello, " // name'//new_line('a')// &
+        '  end function greet'//new_line('a')// &
+        'end program main', &
+        'fixed_dest_truncates')) all_passed = .false.
+
+    ! A nested concatenating result: the inner call's result feeds the outer
+    ! concatenation, so the outer result is length 5 with the exact value.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: r'//new_line('a')// &
+        '  r = outer()'//new_line('a')// &
+        '  print *, len(r), r'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function inner() result(s)'//new_line('a')// &
+        '    character(len=:), allocatable :: s'//new_line('a')// &
+        '    s = "ab"'//new_line('a')// &
+        '  end function inner'//new_line('a')// &
+        '  function outer() result(t)'//new_line('a')// &
+        '    character(len=:), allocatable :: t'//new_line('a')// &
+        '    t = inner() // "cde"'//new_line('a')// &
+        '  end function outer'//new_line('a')// &
+        'end program main', &
+        'nested_concat_result')) all_passed = .false.
+
+    ! Reassigning a deferred destination from repeated calls transfers
+    ! ownership of each result and releases the previous one.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: r'//new_line('a')// &
+        '  r = make(4)'//new_line('a')// &
+        '  print *, len(r), r'//new_line('a')// &
+        '  r = make(2)'//new_line('a')// &
+        '  print *, len(r), r'//new_line('a')// &
+        '  deallocate(r)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function make(k) result(s)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=k) :: s'//new_line('a')// &
+        '    s = repeat("Z", k)'//new_line('a')// &
+        '  end function make'//new_line('a')// &
+        'end program main', &
+        'result_reassignment')) all_passed = .false.
+
+    ! Intrinsic assignment gives the destination a value, not a view: b keeps
+    ! its own copy of a's text when a is later reassigned and its former
+    ! storage released.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: a, b'//new_line('a')// &
+        '  a = make(3)'//new_line('a')// &
+        '  b = a'//new_line('a')// &
+        '  print *, len(a), a, " ", len(b), b'//new_line('a')// &
+        '  a = make(6)'//new_line('a')// &
+        '  print *, len(a), a, " ", len(b), b'//new_line('a')// &
+        '  deallocate(a)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function make(k) result(s)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=k) :: s'//new_line('a')// &
+        '    s = repeat("Q", k)'//new_line('a')// &
+        '  end function make'//new_line('a')// &
+        'end program main', &
+        'assignment_copies_not_aliases')) all_passed = .false.
+
+    ! A result used as a concatenation operand on either side.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: t'//new_line('a')// &
+        '  t = greet("Ann") // "!"'//new_line('a')// &
+        '  print *, len(t), t'//new_line('a')// &
+        '  t = "x" // greet("Bo")'//new_line('a')// &
+        '  print *, len(t), t'//new_line('a')// &
+        '  deallocate(t)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function greet(n) result(s)'//new_line('a')// &
+        '    character(len=*), intent(in) :: n'//new_line('a')// &
+        '    character(len=len(n)+3) :: s'//new_line('a')// &
+        '    s = "Hi " // n'//new_line('a')// &
+        '  end function greet'//new_line('a')// &
+        'end program main', &
+        'result_as_concat_operand')) all_passed = .false.
+
+    ! Ownership oracle: a result consumed by a fixed-length destination or by
+    ! print is a temporary the caller must release. Nothing survives the
+    ! statement, so a clean memcheck report is the whole contract.
+    if (.not. expect_no_leaks( &
+        'program main'//new_line('a')// &
+        '  character(len=5) :: f'//new_line('a')// &
+        '  f = greet("Ada")'//new_line('a')// &
+        '  print *, "[", f, "]"'//new_line('a')// &
+        '  print *, greet("Bob")'//new_line('a')// &
+        '  stop 0'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function greet(name) result(s)'//new_line('a')// &
+        '    character(len=*), intent(in) :: name'//new_line('a')// &
+        '    character(len=len(name)+7) :: s'//new_line('a')// &
+        '    s = "Hello, " // name'//new_line('a')// &
+        '  end function greet'//new_line('a')// &
+        'end program main', &
+        '/tmp/ffc_charfn_result_temp_leak')) all_passed = .false.
+
+    ! Ownership oracle: a deferred destination assumes ownership of each
+    ! result, releases the previous one, and the explicit deallocate returns
+    ! the last one.
+    if (.not. expect_no_leaks( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: r'//new_line('a')// &
+        '  r = make(4)'//new_line('a')// &
+        '  print *, len(r), r'//new_line('a')// &
+        '  r = make(2)'//new_line('a')// &
+        '  print *, len(r), r'//new_line('a')// &
+        '  deallocate(r)'//new_line('a')// &
+        '  stop 0'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function make(k) result(s)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=k) :: s'//new_line('a')// &
+        '    s = repeat("Z", k)'//new_line('a')// &
+        '  end function make'//new_line('a')// &
+        'end program main', &
+        '/tmp/ffc_charfn_result_transfer_leak')) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: character function results lower through direct LIRIC session'
