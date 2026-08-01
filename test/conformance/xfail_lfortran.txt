@@ -795,7 +795,6 @@ data_02.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array nam
 data_03.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 data_05.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 data_06.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
-data_07.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 data_11.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 data_12.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 data_14.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
@@ -1011,7 +1010,6 @@ elemental_07.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived
 elemental_08.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 elemental_09.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 elemental_10.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-elemental_12.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 elemental_13.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 elemental_14.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 elemental_15.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
@@ -2577,7 +2575,6 @@ procedure_40.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar ex
 procedure_41.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 procedure_42.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 procedure_43.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
-procedure_43_module.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 procedure_44.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 procedure_45.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 procedure_46.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
