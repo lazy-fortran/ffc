@@ -318,6 +318,16 @@ module session_program_lowering
         fmod_component_t, fmod_derived_type_t, &
         fmod_variable_t, fmod_procedure_t, fmod_generic_t, &
         write_fmod, read_fmod
+    use ffc_array_descriptor, only: ARRAY_DESCRIPTOR_BYTES, &
+        ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, &
+        ARRAY_DESCRIPTOR_ELEMENT_TYPE_OFFSET, ARRAY_DESCRIPTOR_RANK_OFFSET, &
+        ARRAY_DESCRIPTOR_FLAGS_OFFSET, ARRAY_DESCRIPTOR_RESERVED_OFFSET, &
+        ARRAY_DESCRIPTOR_DIM_OFFSET, ARRAY_DIMENSION_BYTES, &
+        ARRAY_DIMENSION_LOWER_OFFSET, ARRAY_DIMENSION_EXTENT_OFFSET, &
+        ARRAY_DIMENSION_STRIDE_OFFSET, ARRAY_FLAG_ALLOCATED, &
+        ARRAY_FLAG_ASSOCIATED, ARRAY_FLAG_CONTIGUOUS, ARRAY_ELEMENT_INTEGER, &
+        ARRAY_ELEMENT_REAL, ARRAY_ELEMENT_LOGICAL, ARRAY_ELEMENT_COMPLEX, &
+        ARRAY_ELEMENT_CHARACTER, ARRAY_ELEMENT_DERIVED
     use ffc_character_descriptor, only: CHARACTER_STORAGE_STATIC, &
         CHARACTER_STORAGE_STACK, CHARACTER_STORAGE_OWNED
     implicit none
@@ -1689,6 +1699,7 @@ contains
     end subroutine try_lower_overloaded_assignment
     include 'session_program_lowering_arguments.inc'
     include 'session_program_lowering_assumed_shape_extent.inc'
+    include 'session_program_lowering_assumed_shape_descriptor.inc'
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'
     subroutine lower_function_return(node, context, error_msg)
@@ -2107,6 +2118,12 @@ contains
 
         ok = .false.
         pcount = proc_param_count(context, name)
+        ! A module procedure is not a nested procedure of this scope, so its
+        ! dummy count only resolves through the arena. Without it an omitted
+        ! trailing optional would be left unpadded and the callee would read an
+        ! uninitialized parameter slot instead of a null reference.
+        if (pcount < 0) pcount = arena_proc_param_count(context%arena, &
+                                                       unmangled_proc_name(name))
         if (pcount <= size(args)) then
             ok = emit_void_call(context%session, name, args, error_msg)
             return
@@ -2123,6 +2140,21 @@ contains
         end do
         ok = emit_void_call(context%session, name, padded, error_msg)
     end function emit_call_with_optional_padding
+
+    function unmangled_proc_name(name) result(source_name)
+        ! Source name behind a module procedure's emitted symbol
+        ! `__<module>_MOD_<name>`; any other name is returned unchanged.
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: source_name
+        integer :: marker
+
+        source_name = trim(name)
+        if (len(source_name) < 8) return
+        if (source_name(1:2) /= '__') return
+        marker = index(source_name, '_MOD_')
+        if (marker <= 0) return
+        source_name = source_name(marker + 5:)
+    end function unmangled_proc_name
     recursive subroutine lower_i1_condition(arena, node_index, context, &
             value, error_msg)
         type(ast_arena_t), intent(in) :: arena

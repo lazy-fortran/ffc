@@ -61,7 +61,9 @@
                                      sp, arg_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         visible_count = size(arg_indices)
-        hidden_count = callee_hidden_extent_count(context, callee_name)
+        ! Assumed-shape dummies now travel as one descriptor pointer each
+        ! (#334), so no hidden extent arguments are appended any more.
+        hidden_count = 0
 
         ! More actual arguments than the callee (defined or interfaced in this
         ! unit) declares is always invalid, whatever the argument keywords or
@@ -159,6 +161,18 @@
                 call box_class_star_actual(arena, arg_indices(i), context, &
                                            args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (callee_dummy_assumed_shape_dims(arena, callee_name, &
+                                        call_arg_param_pos(i, sp)) >= 1) then
+                ! Assumed-shape dummy: pass one canonical array descriptor
+                ! (#334, docs/ARRAY_DESCRIPTOR_ABI.md). It carries the actual's
+                ! base address, element size and type, rank, extents, and
+                ! column-major byte strides, so the callee needs no hidden
+                ! extent arguments and no compile-time knowledge of the actual.
+                call build_assumed_shape_descriptor(arena, arg_indices(i), &
+                    context, callee_dummy_assumed_shape_dims(arena, &
+                        callee_name, call_arg_param_pos(i, sp)), callee_name, &
+                    args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
                      callee_dummy_is_array_ctx(arena, context, callee_name, &
                                                i)) then
@@ -176,16 +190,6 @@
                 ! caller too, W11).
                 call allocatable_array_actual_descriptor_address(arena, &
                     arg_indices(i), context, args(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
-                     .and. callee_dummy_assumed_shape_runtime(arena, callee_name, &
-                                            call_arg_param_pos(i, sp))) then
-                ! Allocatable array actual to a rank-1/rank-2 assumed-shape dummy:
-                ! pass the descriptor's runtime data pointer (the W2 runtime-extent
-                ! ABI); its per-dimension extents travel separately as hidden i64
-                ! arguments appended below.
-                call allocatable_array_actual_data_address(arena, arg_indices(i), &
-                    context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_contiguous_section(arena, arg_indices(i), context) &
                      .and. callee_dummy_is_array_ctx(arena, context, &
@@ -206,13 +210,6 @@
                 if (len_trim(error_msg) > 0) return
             end if
         end do
-
-        if (hidden_count > 0) then
-            call append_hidden_extent_args(arena, arg_indices, context, &
-                                           callee_name, visible_count, args, &
-                                           error_msg, self_position=sp)
-            if (len_trim(error_msg) > 0) return
-        end if
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args

@@ -101,8 +101,10 @@ program test_session_pointer_proc
 
     ! #362 negative: a scalar actual passed through the pointer to an
     ! assumed-shape dummy is rejected with the same source diagnostic a direct
-    ! call to the same procedure produces (no extent-bearing whole-array
-    ! actual), instead of silently lowering a rank-mismatched call.
+    ! call to the same procedure produces, instead of silently lowering a
+    ! rank-mismatched call. Since #334 an assumed-shape dummy is bound through
+    ! a caller-built array descriptor, so the rejection names the actual rank
+    ! mismatch rather than a missing compile-time extent.
     if (.not. expect_error_contains( &
         'program main'//new_line('a')// &
         'implicit none'//new_line('a')// &
@@ -119,7 +121,7 @@ program test_session_pointer_proc
         'end do'//new_line('a')// &
         'end function total'//new_line('a')// &
         'end program main', &
-        'assumed-shape dummy extent must come from a whole-array actual', &
+        'scalar actual passed to array dummy argument', &
         '/tmp/ffc_proc_ptr_rank_mismatch_test')) stop 1
 
     print *, 'PASS: procedure pointer to function and subroutine'

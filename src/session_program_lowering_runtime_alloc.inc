@@ -52,7 +52,7 @@
     subroutine lower_runtime_alloc_i32_sum(context, sym, value, error_msg)
         ! sum(a) over a rank-1 integer allocatable whose extent is only known at
         ! runtime. Walks a counted LIRIC loop reading the descriptor extent and
-        ! each element, mirroring lower_runtime_i32_sum's backedge-PHI shape.
+        ! each element, mirroring lower_runtime_sum's backedge-PHI shape.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sym
         type(lr_operand_desc_t), intent(out) :: value

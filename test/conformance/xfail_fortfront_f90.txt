@@ -35,7 +35,6 @@ issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#297; reason=consume par
 issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 issue_1960_pointer_assignment_if.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer association
 issue_2014_elemental_function_lost.f90 # owner=lazy-fortran/ffc#405; reason=lower elemental procedures through array expressions
-issue_2017_assumed_shape_duplicate_monomorph.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 issue_2024_char_function_duplicate_and_missing.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 # Source INCLUDE expansion is unsupported; ffc now rejects instead of silently
