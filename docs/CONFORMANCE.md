@@ -75,6 +75,9 @@ Options:
 | `--files-from PATH` | Read suite-relative files from a list. Repeat to read more lists. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
+| `--sample N` | Measure a deterministic random subset of N files. Marks the report sampled and `full_run` false. |
+| `--seed S` | Seed for `--sample`. Default: 0. The same seed over the same corpus selects the same files. |
+| `--ref-cache DIR` | Reuse gfortran reference outputs cached under DIR, keyed by source content plus gfortran version. |
 | `--require-provenance` | Build ffc with `fo`, require clean compiler/dependency/corpus inputs, and record exact tree and file-list identities. |
 
 Smoke run (20 files, auto-discovers ffc):
@@ -138,6 +141,37 @@ scripts/conformance_check.sh --no-build --suite fortfront-f90 \
 
 Named selection requires `--suite`; the check forwards all `--file` and
 `--files-from` options to that suite.
+
+## Sampled runs and the reference cache
+
+A full four-suite run compiles the whole corpus with two compilers, which is
+slow enough that measurement gets skipped and the checked-in snapshot goes
+stale (#567). Two mechanisms make a routine progress read cheap without
+weakening the exact record.
+
+`--sample N` measures a deterministic random subset. `scripts/conformance_check.sh
+--sample N` stratifies that total across the available suites in proportion to
+their size, so every suite keeps its own margin:
+
+```bash
+scripts/conformance_check.sh --no-build --sample 1700 --seed 1
+scripts/conformance_check.sh --sample 1700 --print-sample-plan
+```
+
+About 1,700 files gives a 95% margin near plus or minus 2% against the full
+corpus, which is ample for deciding whether a change moved the corpus. The
+summary reports the margin next to the rate, and the report carries
+`"sampled":true` with `full_run` false. A sampled report is an estimate: the
+dashboard validator rejects it outright, so `test/conformance/parity_dashboard.tsv`
+stays a full, provenance-verified run.
+
+`--ref-cache DIR` caches the gfortran reference outcome (compile status, exit
+status, stdout) keyed by the source content, the sibling sources compiled with
+it, and the gfortran version. Roughly half a run is spent producing those
+references, and the reuse is exact rather than statistical: a cached comparison
+that does not match is discarded and the reference is rebuilt and rerun, so a
+stale or nondeterministic cached output can only cost time, never change a
+verdict. Sampling and caching compound.
 
 ## Repeated runs and FLAKY records
 
@@ -267,8 +301,11 @@ requires clean inputs across ffc and every dependency or corpus checkout, and
 rejects a binary older than any tracked compiler or dependency input.
 `corpus_files_sha256` hashes the exact suite-relative denominator.
 `worktree` is the absolute path of the checkout that produced the report.
-`full_run` is false when a report used `--file`, `--files-from`, or
-`--max-files`. Dashboard generation requires verified provenance and rejects
+`full_run` is false when a report used `--file`, `--files-from`,
+`--max-files`, or `--sample`. A sampled report additionally carries
+`sampled`, `sample_size`, `sample_population`, `sample_seed`, and
+`sample_margin_pct`, and dashboard validation rejects it as an estimate.
+Dashboard generation requires verified provenance and rejects
 partial reports, mismatched tree or file-list identities, a stale source
 digest, or a different selected compiler binary.
 

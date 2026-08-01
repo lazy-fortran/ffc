@@ -22,6 +22,17 @@
 #   --repeat N          run the selection N times and merge; a file whose
 #                       status differs between attempts is recorded FLAKY
 #                       instead of taking the last result (default: 1)
+#   --sample N          measure a deterministic random subset of N files
+#                       instead of the whole suite. The report is marked
+#                       sampled and full_run=false, so it can never be written
+#                       into the checked-in parity snapshot. The summary
+#                       carries the 95% confidence margin of the sampled rate.
+#   --seed S            seed for --sample (default: 0); same seed and same
+#                       corpus select exactly the same files
+#   --ref-cache DIR     cache gfortran reference outputs under DIR, keyed by
+#                       source content plus gfortran version. Reuse is exact:
+#                       a cached comparison that does not match is discarded
+#                       and the reference is rebuilt.
 #   --require-provenance require clean inputs and a freshly built compiler
 #
 # Environment variables (suite roots):
@@ -48,6 +59,13 @@ REPORT=""
 MAX_FILES=""
 TIMEOUT=5
 REPEAT=1
+SAMPLE_SIZE=""
+SAMPLE_SEED=0
+SAMPLE_POPULATION=0
+SAMPLED=false
+REF_CACHE_DIR=""
+REF_CACHE_HITS=0
+REF_CACHE_COMPILER=""
 REQUIRE_PROVENANCE=0
 HAS_FAIL=0
 SELECTOR_KINDS=()
@@ -87,6 +105,15 @@ while [ $# -gt 0 ]; do
         --repeat)
             if [ $# -lt 2 ]; then fail "--repeat requires a count"; fi
             REPEAT="$2"; shift 2 ;;
+        --sample)
+            if [ $# -lt 2 ]; then fail "--sample requires a count"; fi
+            SAMPLE_SIZE="$2"; shift 2 ;;
+        --seed)
+            if [ $# -lt 2 ]; then fail "--seed requires an integer"; fi
+            SAMPLE_SEED="$2"; shift 2 ;;
+        --ref-cache)
+            if [ $# -lt 2 ]; then fail "--ref-cache requires a directory"; fi
+            REF_CACHE_DIR="$2"; shift 2 ;;
         --require-provenance)
             REQUIRE_PROVENANCE=1; shift ;;
         *)
@@ -100,6 +127,18 @@ esac
 if [ "$REPEAT" -lt 1 ]; then
     fail "--repeat requires a positive integer"
 fi
+
+if [ -n "$SAMPLE_SIZE" ]; then
+    case "$SAMPLE_SIZE" in
+        ''|*[!0-9]*) fail "--sample requires a positive integer" ;;
+    esac
+    if [ "$SAMPLE_SIZE" -lt 1 ]; then
+        fail "--sample requires a positive integer"
+    fi
+fi
+case "$SAMPLE_SEED" in
+    ''|*[!0-9]*) fail "--seed requires a non-negative integer" ;;
+esac
 
 if [ -z "$SUITE" ]; then
     echo "ERROR: --suite is required. Choose from: $SUITES" >&2
@@ -317,6 +356,52 @@ write_result_record() {
         "$noref_json" >> "$REPORT"
 }
 
+# Reference-output cache. About half the gauntlet's work is running gfortran to
+# obtain the reference; its result changes only when the source, the sibling
+# sources compiled with it, or the gfortran version change. The key covers all
+# three, so a hit is exact rather than approximate, and any cached comparison
+# that does not match is thrown away and remeasured (see step 7b).
+reference_cache_key() {
+    local source="$1" arg
+    shift
+    {
+        printf 'compiler:%s\n' "$REF_CACHE_COMPILER"
+        printf 'suite:%s\n' "$SUITE"
+        printf 'source:%s\n' "$(sha256sum "$source" | cut -d ' ' -f 1)"
+        for arg in "$@"; do
+            if [ -f "$arg" ]; then
+                printf 'file:%s\n' "$(sha256sum "$arg" | cut -d ' ' -f 1)"
+            elif [ -d "$arg" ]; then
+                printf 'dir:%s\n' \
+                    "$(find "$arg" -type f -exec sha256sum {} + 2>/dev/null | \
+                        cut -d ' ' -f 1 | LC_ALL=C sort | sha256sum | \
+                        cut -d ' ' -f 1)"
+            else
+                printf 'arg:%s\n' "$arg"
+            fi
+        done
+    } | sha256sum | cut -d ' ' -f 1
+}
+
+reference_cache_store() {
+    local entry="$1" compile_status="$2" run_status="$3" out_file="$4"
+    [ -n "$REF_CACHE_DIR" ] || return 0
+    mkdir -p "$(dirname "$entry")" || return 0
+    printf '%s\n' "$compile_status" > "$entry.compile"
+    printf '%s\n' "$run_status" > "$entry.exit"
+    if [ -f "$out_file" ]; then
+        cp "$out_file" "$entry.out"
+    else
+        : > "$entry.out"
+    fi
+}
+
+reference_cache_discard() {
+    local entry="$1"
+    [ -n "$REF_CACHE_DIR" ] || return 0
+    rm -f "$entry.compile" "$entry.exit" "$entry.out"
+}
+
 git_revision() {
     git -C "$1" rev-parse HEAD 2>/dev/null || \
         printf '%040d\n' 0
@@ -324,6 +409,11 @@ git_revision() {
 
 # Setup
 export FFC_COMPILE_TIMEOUT="$TIMEOUT"
+if [ -n "$REF_CACHE_DIR" ]; then
+    mkdir -p "$REF_CACHE_DIR" || fail "cannot create cache dir: $REF_CACHE_DIR"
+    REF_CACHE_COMPILER=$(gfortran --version 2>/dev/null | head -1)
+    [ -n "$REF_CACHE_COMPILER" ] || REF_CACHE_COMPILER="unknown"
+fi
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
 SKIP_MANIFEST=$(resolve_skip_manifest)
@@ -380,12 +470,51 @@ FULL_RUN=true
 if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
     FULL_RUN=false
 fi
+if [ -n "$SAMPLE_SIZE" ]; then
+    SAMPLED=true
+    FULL_RUN=false
+fi
+
+# sample_margin_pct <observed> <sample> <population>
+# Half-width of the 95% confidence interval for the observed rate, in percent,
+# with the finite-population correction. A sampled figure is never an exact
+# one, so every sampled report states the margin next to the rate.
+sample_margin_pct() {
+    awk -v observed="$1" -v n="$2" -v pop="$3" 'BEGIN {
+        if (n <= 0 || pop <= 1 || n >= pop) { printf "0.0\n"; exit }
+        p = observed / n
+        fpc = (pop - n) / (pop - 1)
+        margin = 1.96 * sqrt(p * (1 - p) / n * fpc) * 100
+        printf "%.1f\n", margin
+    }'
+}
+
+echo_sample_line() {
+    local margin rate
+    [ "$SAMPLED" = true ] || return 0
+    margin=$(sample_margin_pct "$PASS_COUNT" "$TOTAL_COUNT" \
+        "$SAMPLE_POPULATION")
+    rate=$(awk -v p="$PASS_COUNT" -v n="$TOTAL_COUNT" 'BEGIN {
+        if (n <= 0) { printf "0.0\n"; exit }
+        printf "%.1f\n", 100 * p / n
+    }')
+    echo "  SAMPLED: $TOTAL_COUNT of $SAMPLE_POPULATION files (seed $SAMPLE_SEED); PASS rate ${rate}% +/- ${margin}% (95% CI)"
+    echo "  SAMPLED: estimate only; not valid for the parity snapshot"
+}
 
 write_summary() {
-    local flaky_json=""
+    local flaky_json="" sample_json="" margin
     if [ "$FLAKY_COUNT" -gt 0 ]; then
         flaky_json=$(printf ',"flaky":%d' "$FLAKY_COUNT")
     fi
+    if [ "$SAMPLED" = true ]; then
+        margin=$(sample_margin_pct "$PASS_COUNT" "$TOTAL_COUNT" \
+            "$SAMPLE_POPULATION")
+        sample_json=$(printf \
+            ',"sampled":true,"sample_size":%d,"sample_population":%d,"sample_seed":%d,"sample_margin_pct":"%s"' \
+            "$TOTAL_COUNT" "$SAMPLE_POPULATION" "$SAMPLE_SEED" "$margin")
+    fi
+    flaky_json="${flaky_json}${sample_json}"
     printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
@@ -438,11 +567,19 @@ run_repeated_attempts() {
     NOREF_COUNT=$(grep -c '"noref":true' "$REPORT" || true)
     WARNING_UNCHECKED_COUNT=$(grep -c '"warning_expectation":' "$REPORT" || true)
     TOTAL_COUNT=$(grep -c '"file":' "$REPORT" || true)
+    if [ "$SAMPLED" = true ]; then
+        # The children drew the sample; take the population they measured
+        # against so the merged summary states the same margin they do.
+        SAMPLE_POPULATION=$(grep -h -o '"sample_population":[0-9]*' \
+            "${attempt_reports[0]}" | head -1 | cut -d ':' -f 2)
+        SAMPLE_POPULATION=${SAMPLE_POPULATION:-0}
+    fi
     write_summary
 
     echo ""
     echo "=== $SUITE summary (merged over $REPEAT attempts) ==="
     echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  FLAKY=$FLAKY_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  TOTAL=$TOTAL_COUNT"
+    echo_sample_line
     echo "  Report: $REPORT"
 
     if [ "$FAIL_COUNT" -gt 0 ] || [ "$FLAKY_COUNT" -gt 0 ]; then
@@ -544,6 +681,53 @@ fi
 if [ "$MAX_FILES" -gt 0 ] 2>/dev/null; then
     head -n "$MAX_FILES" "$FILE_LIST" > "$TMPDIR_WORK/files_limited.txt"
     mv "$TMPDIR_WORK/files_limited.txt" "$FILE_LIST"
+fi
+
+# Stratified sampling happens per suite: each suite draws its own subset, so
+# every suite keeps its own margin. The draw is a deterministic function of the
+# seed and the file path (FNV-1a over "seed:path"), so the same seed over the
+# same corpus selects exactly the same files on any machine and in any locale,
+# and the selection stays in corpus order in the report.
+draw_sample() {
+    local size="$1" seed="$2" src="$3" dest="$4"
+    awk -v seed="$seed" '
+        function fnv(text,    i, hash) {
+            hash = 2166136261
+            for (i = 1; i <= length(text); i++) {
+                hash = xor_byte(hash, index(CHARS, substr(text, i, 1)) + 31)
+                hash = (hash * 16777619) % 4294967296
+            }
+            return hash
+        }
+        function xor_byte(value, byte,    i, bit, result, v, b) {
+            result = 0
+            v = value % 256
+            b = byte % 256
+            for (i = 0; i < 8; i++) {
+                bit = (int(v / 2 ^ i) % 2) != (int(b / 2 ^ i) % 2)
+                if (bit) result += 2 ^ i
+            }
+            return value - v + result
+        }
+        BEGIN {
+            CHARS = " !\"#$%&'"'"'()*+,-./0123456789:;<=>?@" \
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`" \
+                "abcdefghijklmnopqrstuvwxyz{|}~"
+        }
+        { printf "%010d\t%s\n", fnv(seed ":" $0), $0 }
+    ' "$src" | LC_ALL=C sort | head -n "$size" | cut -f 2- | LC_ALL=C sort \
+        > "$dest"
+}
+
+if [ -n "$SAMPLE_SIZE" ]; then
+    SAMPLE_POPULATION=$(wc -l < "$FILE_LIST")
+    if [ "$SAMPLE_SIZE" -lt "$SAMPLE_POPULATION" ]; then
+        draw_sample "$SAMPLE_SIZE" "$SAMPLE_SEED" "$FILE_LIST" \
+            "$TMPDIR_WORK/files_sampled.txt"
+        mv "$TMPDIR_WORK/files_sampled.txt" "$FILE_LIST"
+    else
+        SAMPLE_SIZE="$SAMPLE_POPULATION"
+    fi
 fi
 
 FILE_COUNT=$(wc -l < "$FILE_LIST")
@@ -853,10 +1037,42 @@ while IFS= read -r full_path <&3; do
 
     # Step 5: standard suite, compile with gfortran reference. Prerequisite
     # sibling sources (if any) are compiled together so the reference links.
-    if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
-        ref_exit=0
-    else
+    # With --ref-cache, a previously measured reference for byte-identical
+    # inputs and the same gfortran replaces the compile and the run.
+    ref_cached=0
+    ref_cache_entry=""
+    ref_compile_status=1
+    if [ -n "$REF_CACHE_DIR" ]; then
+        ref_cache_key=$(reference_cache_key "$full_path" "${ref_extra[@]}")
+        ref_cache_entry="$REF_CACHE_DIR/${ref_cache_key:0:2}/$ref_cache_key"
+        if [ -f "$ref_cache_entry.compile" ] && [ -f "$ref_cache_entry.exit" ]
+        then
+            if [ -f "$ref_cache_entry.out" ]; then
+                ref_compile_status=$(cat "$ref_cache_entry.compile")
+                ref_exit=$(cat "$ref_cache_entry.exit")
+                cp "$ref_cache_entry.out" "$ref_out"
+                ref_cached=1
+                REF_CACHE_HITS=$((REF_CACHE_HITS + 1))
+            fi
+        fi
+    fi
+
+    if [ "$ref_cached" -eq 0 ]; then
+        if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
+            ref_compile_status=0
+            ref_exit=0
+        else
+            ref_compile_status=1
+            ref_exit=1
+        fi
+    fi
+    if [ "$ref_compile_status" -ne 0 ]; then
         ref_exit=1
+    fi
+
+    if [ "$ref_cached" -eq 0 ] && [ "$ref_compile_status" -ne 0 ] && \
+        [ -n "$REF_CACHE_DIR" ]; then
+        reference_cache_store "$ref_cache_entry" 1 1 ""
     fi
 
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
@@ -890,8 +1106,28 @@ while IFS= read -r full_path <&3; do
     fi
 
     # Step 7: run gfortran reference
-    run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
-    ref_exit=$?
+    if [ "$ref_cached" -eq 0 ]; then
+        run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
+        ref_exit=$?
+        if [ -n "$REF_CACHE_DIR" ]; then
+            reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
+        fi
+    fi
+
+    # Step 7b: a cached reference that does not match is never trusted. The
+    # entry is discarded and the reference is rebuilt and rerun, so a stale or
+    # nondeterministic cached output can only cost time, never change a
+    # verdict; step 8b also needs the real executable to probe determinism.
+    if [ "$ref_cached" -eq 1 ] && [ -z "$noref_kind" ] && \
+        ! compare_outputs "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
+        reference_cache_discard "$ref_cache_entry"
+        ref_cached=0
+        if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
+            run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
+            ref_exit=$?
+            reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
+        fi
+    fi
 
     if [ -n "$noref_kind" ]; then
         if [ "$ffc_exit" -eq 0 ] && [ "$ref_exit" -eq 0 ]; then
@@ -980,6 +1216,10 @@ write_summary
 echo ""
 echo "=== $SUITE summary ==="
 echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  WARNING_UNCHECKED=$WARNING_UNCHECKED_COUNT  TOTAL=$TOTAL_COUNT"
+echo_sample_line
+if [ -n "$REF_CACHE_DIR" ]; then
+    echo "  Reference cache: $REF_CACHE_HITS hits in $REF_CACHE_DIR"
+fi
 echo "  Report: $REPORT"
 
 # Exit nonzero only if non-xfail FAILs occurred
