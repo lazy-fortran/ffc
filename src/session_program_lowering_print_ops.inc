@@ -32,7 +32,8 @@
         ! one exception: no blank is written between two consecutive character
         ! values, so they print concatenated.
         expr_count = size(node%expression_indices)
-        if (expr_count == 1) then
+        if (expr_count == 1 .and. &
+            .not. is_io_implied_do_item(arena, node%expression_indices(1))) then
             ! s(l:u) on a scalar character is a substring, not an array
             ! section: it prints as one character value, not element by element.
             if (.not. is_character_substring(arena, node%expression_indices(1), &
@@ -78,6 +79,10 @@
                     end if
                 type is (array_literal_node)
                     call emit_array_literal_print_items(arena, &
+                        node%expression_indices(i), context, array_handled, &
+                        error_msg)
+                type is (io_implied_do_node)
+                    call emit_io_implied_do_print_items(arena, &
                         node%expression_indices(i), context, array_handled, &
                         error_msg)
                 class default
