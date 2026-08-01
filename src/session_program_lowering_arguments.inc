@@ -49,6 +49,7 @@
         integer :: hidden_count
         integer :: sp
         integer :: param_count
+        logical :: handled_by_value
         ! Actual arguments in dummy-argument order: keyword actuals are moved
         ! to the slot their dummy name selects, and a slot no actual reaches
         ! holds 0 (an omitted optional, passed as a null reference).
@@ -102,6 +103,11 @@
             call check_scalar_actual_compatibility(arena, arg_indices(i), context, &
                 callee_name, call_arg_param_pos(i, sp), error_msg)
             if (len_trim(error_msg) > 0) return
+            call check_dummy_contract_actual(arena, arg_indices(i), context, &
+                callee_name, call_arg_param_pos(i, sp), handled_by_value, &
+                args(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (handled_by_value) cycle
             ! A scalar actual (literal or scalar variable, not an array element)
             ! passed where the callee declares an array dummy is a rank mismatch
             ! (F2018 15.5.2.4). callee_dummy_is_array only resolves against a
@@ -2120,3 +2126,61 @@ integer function expression_value_kind(arena, node_index, context, &
         operand%typ = lr_type_ptr_s(context%session%handle)
         operand%global_offset = 0_c_int64_t
     end function absent_optional_operand
+
+    subroutine check_dummy_contract_actual(arena, node_index, context, &
+                                           callee_name, param_pos, &
+                                           handled_by_value, arg, error_msg)
+        ! Apply the dummy's declared contract to one actual argument. A VALUE
+        ! dummy receives a copy, so the callee's assignments to it never reach
+        ! the caller's actual; handled_by_value reports that arg was filled
+        ! here. An INTENT(OUT) or INTENT(INOUT) dummy requires a definable
+        ! actual, so a literal is diagnosed instead of lowered. Both contracts
+        ! read the same way for a procedure defined in this unit and for one
+        ! imported from a .fmod artefact (#397).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        logical, intent(out) :: handled_by_value
+        type(lr_operand_desc_t), intent(out) :: arg
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        logical :: is_optional, is_value
+        integer :: intent_code, value_kind
+
+        call set_empty(error_msg)
+        handled_by_value = .false.
+        if (param_pos < 1) return
+        call callee_dummy_contracts(arena, context, callee_name, param_pos, &
+                                    is_optional, is_value, intent_code)
+        if (intent_code == ARG_INTENT_OUT .or. intent_code == ARG_INTENT_INOUT) then
+            if (is_literal(arena, node_index)) then
+                error_msg = 'Actual argument to '//intent_text(intent_code)// &
+                    ' dummy argument of '//trim(callee_name)// &
+                    ' must be a variable'
+                return
+            end if
+        end if
+        if (.not. is_value) return
+        value_kind = arg_default_kind(arena, context, callee_name, param_pos, &
+                                      VALUE_I32)
+        call lower_expression_by_kind(arena, node_index, context, value_kind, &
+                                      value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call make_reference_argument(context, value_kind, value, arg, error_msg)
+        if (len_trim(error_msg) > 0) return
+        handled_by_value = .true.
+    end subroutine check_dummy_contract_actual
+
+    function intent_text(intent_code) result(text)
+        ! The INTENT spelling used in a diagnostic (#397).
+        integer, intent(in) :: intent_code
+        character(len=:), allocatable :: text
+
+        if (intent_code == ARG_INTENT_OUT) then
+            text = 'INTENT(OUT)'
+        else
+            text = 'INTENT(INOUT)'
+        end if
+    end function intent_text

@@ -262,8 +262,147 @@
             procs(count)%arg_kinds = arg_tokens
             procs(count)%arg_names = fmod_procedure_arg_names(arena, &
                                                      procedure_indices(p))
+            call fmod_procedure_dummy_attributes(arena, procedure_indices(p), &
+                                                 procs(count)%arg_intents, &
+                                                 procs(count)%arg_optionals, &
+                                                 procs(count)%arg_values)
+            call fmod_procedure_result(arena, procedure_indices(p), kind_text, &
+                                       procs(count)%result_name, &
+                                       procs(count)%result_kind)
         end do
     end subroutine build_fmod_procedures
+
+    subroutine fmod_procedure_result(arena, node_index, kind_text, result_name, &
+                                     result_kind)
+        ! The result-variable name and scalar kind token of an exported module
+        ! function, so a using unit reconstructs the same result contract the
+        ! defining unit compiled. Both empty for a subroutine (#397).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: kind_text
+        character(len=:), allocatable, intent(out) :: result_name
+        character(len=:), allocatable, intent(out) :: result_kind
+        type(function_def_node), pointer :: fn_node
+
+        result_name = ''
+        result_kind = ''
+        if (trim(kind_text) == 'subroutine') return
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (.not. associated(fn_node)) return
+        if (allocated(fn_node%result_variable)) then
+            result_name = trim(fn_node%result_variable)
+        else if (allocated(fn_node%name)) then
+            result_name = trim(fn_node%name)
+        end if
+        result_kind = trim(kind_text)
+    end subroutine fmod_procedure_result
+
+    subroutine fmod_procedure_dummy_attributes(arena, node_index, intents, &
+                                               optionals, values)
+        ! The per-dummy INTENT, OPTIONAL, and VALUE contracts of an exported
+        ! module procedure, space-joined one token per dummy. A separately
+        ! compiled caller reads them back to omit absent optionals, to pass a
+        ! VALUE dummy a copy, and to reject a non-definable actual for an
+        ! INTENT(OUT) dummy, none of which it can infer without the source
+        ! (#397).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: intents
+        character(len=:), allocatable, intent(out) :: optionals
+        character(len=:), allocatable, intent(out) :: values
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: param_indices(:), body_indices(:)
+        character(len=:), allocatable :: intent_token
+        logical :: is_optional, is_value
+        integer :: i
+
+        intents = ''
+        optionals = ''
+        values = ''
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            if (allocated(fn_node%param_indices)) &
+                param_indices = fn_node%param_indices
+            if (allocated(fn_node%body_indices)) &
+                body_indices = fn_node%body_indices
+        else
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%param_indices)) &
+                param_indices = sb_node%param_indices
+            if (allocated(sb_node%body_indices)) &
+                body_indices = sb_node%body_indices
+        end if
+        if (.not. allocated(param_indices)) return
+        if (.not. allocated(body_indices)) allocate (body_indices(0))
+        do i = 1, size(param_indices)
+            call param_at_attributes(arena, param_indices, body_indices, i, &
+                                     intent_token, is_optional, is_value)
+            if (i > 1) then
+                intents = intents//' '
+                optionals = optionals//' '
+                values = values//' '
+            end if
+            intents = intents//intent_token
+            optionals = optionals//flag_token(is_optional)
+            values = values//flag_token(is_value)
+        end do
+    end subroutine fmod_procedure_dummy_attributes
+
+    function flag_token(flag) result(token)
+        logical, intent(in) :: flag
+        character(len=:), allocatable :: token
+
+        if (flag) then
+            token = '1'
+        else
+            token = '0'
+        end if
+    end function flag_token
+
+    subroutine param_at_attributes(arena, param_indices, body_indices, pos, &
+                                   intent_token, is_optional, is_value)
+        ! The declared INTENT ('in', 'out', 'inout', or 'none'), OPTIONAL, and
+        ! VALUE attributes of the pos-th dummy, taken from its declaration in
+        ! the procedure body (#397).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: pos
+        character(len=:), allocatable, intent(out) :: intent_token
+        logical, intent(out) :: is_optional
+        logical, intent(out) :: is_value
+        character(len=:), allocatable :: name, name_err
+        integer :: i
+
+        intent_token = 'none'
+        is_optional = .false.
+        is_value = .false.
+        if (.not. allocated(param_indices)) return
+        if (pos < 1 .or. pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. declaration_declares_name(decl, &
+                    trim(lowercase_text(name)))) cycle
+                is_optional = decl%is_optional
+                is_value = decl%is_value
+                if (decl%has_intent) then
+                    if (allocated(decl%intent)) then
+                        intent_token = lowercase_text(trim(decl%intent))
+                        if (len_trim(intent_token) == 0) intent_token = 'none'
+                    end if
+                end if
+                return
+            end select
+        end do
+    end subroutine param_at_attributes
+
 
     function fmod_procedure_arg_names(arena, node_index) result(tokens)
         ! Space-joined dummy-argument names of an exported module procedure, so

@@ -17,6 +17,10 @@ program test_session_read_fmod_compiler
     if (.not. test_use_module_fmod_rejects_unknown_only()) all_passed = .false.
     if (.not. test_use_module_fmod_not_found_errors()) all_passed = .false.
     if (.not. test_use_module_variable_from_fmod()) all_passed = .false.
+    if (.not. test_fmod_optional_dummy_separate_compilation()) all_passed = .false.
+    if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
+    if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
+    if (.not. test_fmod_schema_version_is_checked()) all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
     if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
     if (.not. test_use_two_locals_one_remote()) all_passed = .false.
@@ -449,6 +453,221 @@ contains
         end if
         ok = .true.
     end function test_same_file_conflicting_rename_rejected
+
+    integer function run_separate_compilation(dir, mod_source, prog_source, &
+                                              log_path) result(status)
+        ! Compile mod_source with -c in one ffc invocation, then prog_source in
+        ! a second, independent invocation that can only learn the module's
+        ! interface from the .fmod artefact the first invocation wrote. Returns
+        ! 0 when both compile and the program runs, 90 when no ffc binary was
+        ! found, 91 when the module compilation failed, 92 when the program
+        ! compilation failed, and 100 + exit status when the program ran.
+        ! Combined compiler output is appended to log_path.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: mod_source
+        character(len=*), intent(in) :: prog_source
+        character(len=*), intent(in) :: log_path
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        if (.not. write_file(dir//'/m.f90', mod_source)) return
+        if (.not. write_file(dir//'/p.f90', prog_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c m.f90 -o m.o >>'//log_path//' 2>&1 || exit 91; '// &
+            '"$exe" p.f90 m.o -o p >>'//log_path//' 2>&1 || exit 92; '// &
+            "./p; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            status = 90
+            return
+        end if
+        status = exit_stat
+    end function run_separate_compilation
+
+    logical function test_fmod_optional_dummy_separate_compilation() result(ok)
+        ! A module procedure with an OPTIONAL dummy stays callable with the
+        ! optional omitted, and with it supplied by keyword, from a separately
+        ! compiled program. The using unit can only know the dummy is optional,
+        ! and what it is named, from the .fmod artefact (#397).
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod397_optional'
+        character(len=*), parameter :: log_path = dir//'/log'
+        integer :: status
+
+        ok = .false.
+        status = run_separate_compilation(dir, &
+            'module fmod397_optional'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function combine(a, b) result(r)'//new_line('a')// &
+            '    integer, intent(in) :: a'//new_line('a')// &
+            '    integer, intent(in), optional :: b'//new_line('a')// &
+            '    r = a'//new_line('a')// &
+            '    if (present(b)) r = r + b'//new_line('a')// &
+            '  end function combine'//new_line('a')// &
+            'end module fmod397_optional', &
+            'program main'//new_line('a')// &
+            '  use fmod397_optional, only: combine'//new_line('a')// &
+            '  stop combine(4) + 10 * combine(4, b=3)'//new_line('a')// &
+            'end program main', log_path)
+        if (status /= 174) then
+            print *, 'FAIL: optional dummy through .fmod, status ', status
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_optional_dummy_separate_compilation
+
+    logical function test_fmod_value_dummy_separate_compilation() result(ok)
+        ! A VALUE dummy receives a copy: the callee's assignment to it must not
+        ! reach the caller's actual. The separately compiled caller can only
+        ! learn the attribute from the .fmod artefact, and must agree with the
+        ! same-unit compilation of the same program (#397).
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod397_value'
+        character(len=*), parameter :: log_path = dir//'/log'
+        character(len=*), parameter :: mod_source = &
+            'module fmod397_value'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function bump(x) result(r)'//new_line('a')// &
+            '    integer, value :: x'//new_line('a')// &
+            '    x = x + 1'//new_line('a')// &
+            '    r = x'//new_line('a')// &
+            '  end function bump'//new_line('a')// &
+            'end module fmod397_value'
+        character(len=*), parameter :: prog_source = &
+            'program main'//new_line('a')// &
+            '  use fmod397_value, only: bump'//new_line('a')// &
+            '  integer :: v'//new_line('a')// &
+            '  v = 5'//new_line('a')// &
+            '  stop bump(v) + v'//new_line('a')// &
+            'end program main'
+        character(len=:), allocatable :: error_msg
+        integer :: status, exit_stat, cmd_stat
+
+        ok = .false.
+        status = run_separate_compilation(dir, mod_source, prog_source, log_path)
+        if (status /= 111) then
+            print *, 'FAIL: VALUE dummy through .fmod, status ', status
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+        ! Same-unit compilation of the same module and program must agree.
+        call compile_with_include(mod_source//new_line('a')//prog_source, &
+            dir//'/same', dir, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: same-unit VALUE program rejected: ', trim(error_msg)
+            return
+        end if
+        call execute_command_line(dir//'/same', exitstat=exit_stat, &
+            cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 11) then
+            print *, 'FAIL: same-unit VALUE program exit ', exit_stat
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_value_dummy_separate_compilation
+
+    logical function test_fmod_intent_out_rejects_literal() result(ok)
+        ! A literal actual cannot be passed to an INTENT(OUT) dummy. The
+        ! separately compiled caller knows the dummy's intent only from the
+        ! .fmod artefact, so the diagnostic proves the intent round-tripped.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod397_intent'
+        character(len=*), parameter :: log_path = dir//'/log'
+        integer :: status, grep_stat, cmd_stat
+
+        ok = .false.
+        status = run_separate_compilation(dir, &
+            'module fmod397_intent'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine put(target_value)'//new_line('a')// &
+            '    integer, intent(out) :: target_value'//new_line('a')// &
+            '    target_value = 3'//new_line('a')// &
+            '  end subroutine put'//new_line('a')// &
+            'end module fmod397_intent', &
+            'program main'//new_line('a')// &
+            '  use fmod397_intent, only: put'//new_line('a')// &
+            '  call put(7)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main', log_path)
+        if (status /= 92) then
+            print *, 'FAIL: literal to INTENT(OUT) dummy was accepted, status ', &
+                status
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+        call execute_command_line('grep -qi "intent(out)" '//log_path, &
+            exitstat=grep_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. grep_stat /= 0) then
+            print *, 'FAIL: diagnostic did not mention INTENT(OUT)'
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_intent_out_rejects_literal
+
+    logical function test_fmod_schema_version_is_checked() result(ok)
+        ! A .fmod whose schema version this ffc does not implement is rejected
+        ! with an artefact-version diagnostic instead of being misread. An
+        ! artefact with no schema version at all (written before the field
+        ! existed) is stale and rejected the same way (#397).
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod397_schema'
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use m, only: value'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main'
+        type(module_info_t) :: info
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        info%name = 'm'
+        allocate (info%parameters(1))
+        info%parameters(1)%name = 'value'
+        info%parameters(1)%kind = 'integer'
+        info%parameters(1)%value = '37'
+        allocate (info%derived_types(0))
+        call write_fmod(dir//'/m.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod: ', trim(error_msg)
+            return
+        end if
+        ! The artefact this ffc just wrote carries its own schema version and
+        ! must be accepted.
+        call compile_with_include(source, dir//'/current', dir, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: current-schema .fmod rejected: ', trim(error_msg)
+            return
+        end if
+
+        call execute_command_line("sed -i 's/^fmod_schema = .*/"// &
+            "fmod_schema = 99999/' "//dir//'/m.fmod')
+        call compile_with_include(source, dir//'/future', dir, error_msg)
+        if (index(error_msg, 'schema version') == 0) then
+            print *, 'FAIL: future .fmod schema was not rejected: ', &
+                trim(error_msg)
+            return
+        end if
+
+        call execute_command_line("sed -i '/^fmod_schema = /d' "// &
+            dir//'/m.fmod')
+        call compile_with_include(source, dir//'/stale', dir, error_msg)
+        if (index(error_msg, 'schema version') == 0) then
+            print *, 'FAIL: unversioned .fmod was not rejected: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_schema_version_is_checked
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

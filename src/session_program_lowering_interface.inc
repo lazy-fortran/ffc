@@ -677,13 +677,17 @@
 
     subroutine add_external_procedure(context, fortran_name, c_name, &
                                       return_kind, arg_count, by_reference, &
-                                      arg_kinds, arg_names)
+                                      arg_kinds, arg_names, arg_optionals, &
+                                      arg_values, arg_intents)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
         logical, intent(in), optional :: by_reference
         integer, intent(in), optional :: arg_kinds(:)
         character(len=*), intent(in), optional :: arg_names(:)
+        logical, intent(in), optional :: arg_optionals(:)
+        logical, intent(in), optional :: arg_values(:)
+        integer, intent(in), optional :: arg_intents(:)
         integer :: j
 
         call grow_external_procedures(context)
@@ -710,6 +714,24 @@
                     ep%arg_names(j) = trim(arg_names(j))
                 end do
             end if
+            ep%arg_is_optional = .false.
+            ep%arg_is_value = .false.
+            ep%arg_intents = ARG_INTENT_NONE
+            if (present(arg_optionals)) then
+                do j = 1, min(arg_count, size(arg_optionals))
+                    ep%arg_is_optional(j) = arg_optionals(j)
+                end do
+            end if
+            if (present(arg_values)) then
+                do j = 1, min(arg_count, size(arg_values))
+                    ep%arg_is_value(j) = arg_values(j)
+                end do
+            end if
+            if (present(arg_intents)) then
+                do j = 1, min(arg_count, size(arg_intents))
+                    ep%arg_intents(j) = arg_intents(j)
+                end do
+            end if
         end associate
     end subroutine add_external_procedure
 
@@ -726,25 +748,25 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
-        integer :: n
+        integer :: empty_args(0)
 
-        n = 0
-        if (allocated(node%arg_indices)) n = size(node%arg_indices)
-        if (n /= context%external_procedures(ext_idx)%arg_count) then
-            call unsupported_feature_error('module function call', node%line, &
-                node%column, 'argument count does not match the module '// &
-                'interface for '//trim(node%name), error_msg)
-            return
-        end if
         if (allocated(node%arg_indices)) then
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         trim(node%name), node%arg_indices, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) return
             call prepare_reference_args(arena, node%arg_indices, context, &
                                         VALUE_I32, trim(node%name), args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         trim(node%name), empty_args, error_msg)
+            if (len_trim(error_msg) > 0) return
             allocate (args(0))
             allocate (copyback_indices(0))
         end if
+        call pad_absent_optional_args(context, ext_idx, args, copyback_indices)
         if (.not. emit_i32_call(context%session, &
                 trim(context%external_procedures(ext_idx)%c_name), args, value, &
                 error_msg)) return
@@ -763,26 +785,91 @@
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         character(len=:), allocatable :: call_name
-        integer :: n
 
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
-        n = 0
-        if (allocated(arg_indices)) n = size(arg_indices)
-        if (n /= context%external_procedures(ext_idx)%arg_count) then
-            error_msg = 'argument count does not match the module interface'
-            return
-        end if
+        if (.not. allocated(arg_indices)) allocate (arg_indices(0))
         call_name = trim(context%external_procedures(ext_idx)%fortran_name)
+        call check_module_call_arity(arena, context, ext_idx, call_name, &
+                                     arg_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
         call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                     call_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
+        call pad_absent_optional_args(context, ext_idx, args, copyback_indices)
         if (.not. emit_void_call(context%session, &
                 trim(context%external_procedures(ext_idx)%c_name), args, &
                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_module_proc_void_call
+
+    subroutine check_module_call_arity(arena, context, ext_idx, callee_name, &
+                                       actual_indices, error_msg)
+        ! A call to a separately compiled module procedure is checked against
+        ! the dummy list the .fmod carries: no call may supply more actuals than
+        ! there are dummies, and every dummy the call leaves unassociated must
+        ! be OPTIONAL. Keyword actuals are placed first, so `f(b=1)` is judged
+        ! on the dummy it names rather than on its written position (#397).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: ext_idx
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: actual_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: mapped(:)
+        integer :: i, arg_count
+        logical :: supplied
+
+        call resolve_keyword_actuals(arena, context, actual_indices, &
+                                     callee_name, 0, mapped, error_msg)
+        if (len_trim(error_msg) > 0) return
+        arg_count = context%external_procedures(ext_idx)%arg_count
+        if (size(mapped) > arg_count) then
+            error_msg = 'More actual than formal arguments in call to '// &
+                trim(callee_name)
+            return
+        end if
+        do i = 1, arg_count
+            supplied = i <= size(mapped)
+            if (supplied) supplied = mapped(i) /= 0
+            if (supplied) cycle
+            if (context%external_procedures(ext_idx)%arg_is_optional(i)) cycle
+            error_msg = 'Missing actual argument for dummy argument '// &
+                trim(context%external_procedures(ext_idx)%arg_names(i))// &
+                ' in call to '//trim(callee_name)
+            return
+        end do
+    end subroutine check_module_call_arity
+
+    subroutine pad_absent_optional_args(context, ext_idx, args, copyback_indices)
+        ! Pad a call to a separately compiled module procedure up to its
+        ! declared dummy count: each dummy no actual reached is OPTIONAL (the
+        ! arity check already established that) and passes as a null reference,
+        ! the same absent-optional encoding a same-unit call uses (#397).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: ext_idx
+        type(lr_operand_desc_t), allocatable, intent(inout) :: args(:)
+        integer, allocatable, intent(inout) :: copyback_indices(:)
+        type(lr_operand_desc_t), allocatable :: padded(:)
+        integer, allocatable :: padded_copyback(:)
+        integer :: arg_count, j
+
+        arg_count = context%external_procedures(ext_idx)%arg_count
+        if (size(args) >= arg_count) return
+        allocate (padded(arg_count))
+        allocate (padded_copyback(arg_count))
+        padded_copyback = 0
+        do j = 1, size(args)
+            padded(j) = args(j)
+            padded_copyback(j) = copyback_indices(j)
+        end do
+        do j = size(args) + 1, arg_count
+            padded(j) = absent_optional_operand(context)
+        end do
+        call move_alloc(padded, args)
+        call move_alloc(padded_copyback, copyback_indices)
+    end subroutine pad_absent_optional_args
 
     logical function has_bind_c(clause)
         character(len=:), allocatable, intent(in) :: clause

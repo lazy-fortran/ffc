@@ -503,6 +503,12 @@ module session_program_lowering_types
         integer :: return_kinds(MAX_GENERIC_SPECIFICS) = VALUE_I32
     end type operator_interface_t
 
+    ! INTENT contract of a dummy argument as carried in a .fmod (#397).
+    integer, parameter, public :: ARG_INTENT_NONE = 0
+    integer, parameter, public :: ARG_INTENT_IN = 1
+    integer, parameter, public :: ARG_INTENT_OUT = 2
+    integer, parameter, public :: ARG_INTENT_INOUT = 3
+
     type, public :: external_procedure_t
         character(len=64) :: fortran_name = ''
         character(len=64) :: c_name = ''
@@ -516,6 +522,12 @@ module session_program_lowering_types
         ! compiled module procedure resolved from a .fmod passes them by
         ! reference (Fortran ABI) and targets its mangled name (#284).
         logical :: by_reference = .false.
+        ! Per-dummy contracts the .fmod carries: OPTIONAL dummies may be
+        ! omitted at a call site, a VALUE dummy receives a copy, and an
+        ! INTENT(OUT)/INTENT(INOUT) dummy requires a definable actual (#397).
+        logical :: arg_is_optional(MAX_PROC_ARGS) = .false.
+        logical :: arg_is_value(MAX_PROC_ARGS) = .false.
+        integer :: arg_intents(MAX_PROC_ARGS) = ARG_INTENT_NONE
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32

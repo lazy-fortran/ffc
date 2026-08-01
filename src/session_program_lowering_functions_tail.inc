@@ -1610,3 +1610,78 @@
             count = ep%arg_count
         end associate
     end subroutine external_dummy_names
+
+    subroutine callee_dummy_contracts(arena, context, callee_name, param_pos, &
+                                      is_optional, is_value, intent_code)
+        ! The OPTIONAL, VALUE, and INTENT contracts of callee_name's param_pos-th
+        ! dummy. They come from the procedure's definition in this unit when it
+        ! has one, and otherwise from the .fmod artefact of a separately compiled
+        ! module procedure, which carries them precisely so a caller never has to
+        ! guess or rescan the defining source (#397).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        logical, intent(out) :: is_optional
+        logical, intent(out) :: is_value
+        integer, intent(out) :: intent_code
+        character(len=:), allocatable :: node_type, intent_token
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer :: n, idx
+
+        is_optional = .false.
+        is_value = .false.
+        intent_code = ARG_INTENT_NONE
+        if (param_pos < 1) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                call param_at_attributes(arena, sb_node%param_indices, &
+                    sb_node%body_indices, param_pos, intent_token, is_optional, &
+                    is_value)
+                intent_code = arg_intent_code(intent_token)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                call param_at_attributes(arena, fn_node%param_indices, &
+                    fn_node%body_indices, param_pos, intent_token, is_optional, &
+                    is_value)
+                intent_code = arg_intent_code(intent_token)
+                return
+            end if
+        end do
+        idx = external_procedure_index(context, callee_name)
+        if (idx <= 0) return
+        if (.not. context%external_procedures(idx)%by_reference) return
+        if (param_pos > context%external_procedures(idx)%arg_count) return
+        is_optional = context%external_procedures(idx)%arg_is_optional(param_pos)
+        is_value = context%external_procedures(idx)%arg_is_value(param_pos)
+        intent_code = context%external_procedures(idx)%arg_intents(param_pos)
+    end subroutine callee_dummy_contracts
+
+    integer function arg_intent_code(token) result(code)
+        ! The intent code an INTENT token denotes (#397).
+        character(len=*), intent(in) :: token
+
+        select case (trim(token))
+        case ('in')
+            code = ARG_INTENT_IN
+        case ('out')
+            code = ARG_INTENT_OUT
+        case ('inout')
+            code = ARG_INTENT_INOUT
+        case default
+            code = ARG_INTENT_NONE
+        end select
+    end function arg_intent_code
