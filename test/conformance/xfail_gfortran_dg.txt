@@ -1177,7 +1177,6 @@ namelist_61.f90 # owner=lazy-fortran/ffc#436; reason=read scalar NAMELIST groups
 namelist_62.f90 # owner=lazy-fortran/ffc#436; reason=read scalar NAMELIST groups
 namelist_64.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 namelist_66.f90 # owner=lazy-fortran/ffc#404; reason=fold typed component default initializers
-namelist_68.f90 # owner=lazy-fortran/ffc#436; reason=read scalar NAMELIST groups
 namelist_69.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 namelist_70.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 namelist_71.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1519,7 +1518,6 @@ pr84868.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to con
 pr84869.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 pr84957.f90 # owner=lazy-fortran/ffc#456; reason=lower procedure ENTRY points
 pr85138_1.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
-pr85138_2.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 pr85352.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 pr85520.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 pr85521_1.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
@@ -2160,6 +2158,13 @@ select_5.f90 # owner=lazy-fortran/ffc#447; reason=own declared integer kinds and
 structure_constructor_16.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 used_dummy_types_3.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 c_f_pointer_tests_5.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
+assumed_charlen_function_5.f90 # owner=lazy-fortran/ffc#348; reason=owns assumed-length CHARACTER procedure results and dummies
+blockdata_1.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA initialization
+external_procedure_4.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
+pr91564.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
+proc_ptr_comp_11.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
+realloc_on_assign_16.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
+reshape_transpose_1.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
 interface_48.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 non_module_public.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 pr125391.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
