@@ -73,289 +73,104 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end select
     end function resolve_concat_operand
 
- subroutine lower_deferred_concat_assignment(arena, node, context, &
-                                                  dest_symbol_index, error_msg)
+    subroutine lower_deferred_concat_assignment(arena, node, context, &
+                                                dest_symbol_index, error_msg)
+        ! str = <a // b // ...> for a deferred-length allocatable destination.
+        !
+        ! The concatenation tree is flattened to its leaf operands first, so an
+        ! arbitrary operand count works and every leaf kind char_expr_operands
+        ! understands - variable, literal, substring, function result,
+        ! trim()/adjustl()/repeat() - is an operand here. This is the same
+        ! flattening the fixed-length destination uses, so the two destinations
+        ! agree on what a concatenation is instead of each carrying its own
+        ! idea of one.
+        !
+        ! The result is heap storage the destination owns. Every operand is
+        ! copied into it before the destination releases the block it currently
+        ! holds, so an operand that aliases that block - `s = s // t`, or
+        ! `s = s // s` - still reads valid bytes.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: bin_op
-        integer :: bin_line, bin_col
-        integer :: left_idx
-        integer :: right_idx
-        type(lr_operand_desc_t) :: left_data
-        type(lr_operand_desc_t) :: left_len
-        type(lr_operand_desc_t) :: right_data
-        type(lr_operand_desc_t) :: right_len
-        type(lr_operand_desc_t) :: total_len
-        type(lr_operand_desc_t) :: new_ptr
-        type(lr_operand_desc_t) :: zero_i64
-        type(lr_operand_desc_t) :: one_i64
-        type(lr_operand_desc_t) :: running_offset
-        type(lr_operand_desc_t) :: old_data
-        type(lr_operand_desc_t) :: old_len_val
-        character(len=:), allocatable :: left_name
-        character(len=:), allocatable :: right_name
-        character(len=:), allocatable :: left_text
-        character(len=:), allocatable :: right_text
-        integer :: left_sym_idx
-        integer :: right_sym_idx
-        logical :: is_self_alias
-        logical :: left_is_literal
-        logical :: right_is_literal
-        logical :: left_is_call
-        logical :: right_is_call
-        logical :: left_is_view
-        logical :: right_is_view
-        type(lr_operand_desc_t) :: call_len_i32
-        character(len=:), allocatable :: literal_text
-        character(len=64) :: string_name
-        character(len=:), allocatable :: combined_text
-        integer(c_int64_t) :: combined_len
-        type(lr_operand_desc_t) :: alloca_size
-        type(lr_operand_desc_t) :: null_byte_ptr
-        type(lr_operand_desc_t) :: null_dest
-        character(len=64) :: null_name
-        integer(c_int64_t) :: new_storage_class
+        type(lr_operand_desc_t), allocatable :: data_ops(:), len_ops(:)
+        integer, allocatable :: stat_len(:)
+        type(lr_operand_desc_t) :: total_len, operand_len, wider_total
+        type(lr_operand_desc_t) :: alloc_size, buf, null_pos
+        integer :: count, i
 
         call set_empty(error_msg)
-        new_storage_class = LOWERING_CHARACTER_STORAGE_STACK
-        left_is_literal = .false.
-        right_is_literal = .false.
-        left_is_call = .false.
-        right_is_call = .false.
-        left_is_view = .false.
-        right_is_view = .false.
-        is_self_alias = .false.
-
-        ! A fixed-length result (character(len=N) :: s) uses the descriptor
-        ! return ABI but keeps its declared width: the concatenated value pads
-        ! with blanks or truncates to N instead of taking the operand sum.
+        ! A destination that reaches here with a declared width is a
+        ! fixed-length result using the descriptor return ABI. It keeps that
+        ! width: the concatenation pads with blanks or truncates to N instead
+        ! of taking the operand sum, which is what an ordinary fixed-length
+        ! assignment does.
         if (context%symbols(dest_symbol_index)%character_length > 0) then
             call lower_fixed_width_deferred_concat(arena, node, context, &
                                                    dest_symbol_index, error_msg)
             return
         end if
 
-        ! Get the binary // operands from the assignment value.
-        if (.not. is_binary_op(arena, node%value_index)) then
-            error_msg = 'expected binary // operator for deferred character '// &
-                        'concatenation'
-            return
-        end if
-        call get_binary_op_info(arena, node%value_index, bin_op, left_idx, &
-                                right_idx, bin_line, bin_col, error_msg)
+        allocate (data_ops(64), len_ops(64), stat_len(64))
+        count = 0
+        call collect_concat_operands(arena, node%value_index, context, data_ops, &
+                                     len_ops, stat_len, count, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (trim(bin_op) /= '//') then
-            error_msg = 'non-concat operator on deferred character: '// &
-                        trim(bin_op)
+        if (count == 0) then
+            error_msg = 'character concatenation has no operands'
             return
         end if
 
-        ! Resolve left operand: get symbol index or mark as literal
-        left_sym_idx = resolve_concat_operand(arena, left_idx, context, &
-            left_name, left_is_literal, error_msg, left_is_call, left_is_view)
-        if (len_trim(error_msg) > 0) return
-
-        ! Resolve right operand
-        right_sym_idx = resolve_concat_operand(arena, right_idx, context, &
-            right_name, right_is_literal, error_msg, right_is_call, &
-            right_is_view)
-        if (len_trim(error_msg) > 0) return
-
-        ! Detect self-aliasing: dest is one of the operands
-        if (left_sym_idx == dest_symbol_index .or. &
-            right_sym_idx == dest_symbol_index) then
-            is_self_alias = .true.
-        end if
-
-        ! For self-aliasing, we need to capture the old content
-        ! We do this by loading the old data pointer and length
-        if (is_self_alias) then
-            if (.not. emit_ptr_load(context%session,  &
-                context%symbols(dest_symbol_index)%deferred_data, &
-                old_data, error_msg)) return
-            if (.not. emit_i64_load(context%session,  &
-                context%symbols(dest_symbol_index)%deferred_length, &
-                old_len_val, error_msg)) return
-        end if
-
-        ! Get left operand text/content
-        if (left_is_view) then
-            call substring_operands(arena, left_idx, context, left_data, &
-                                    call_len_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
-                    left_len, error_msg)) return
-        else if (left_is_call) then
-            call char_result_call_operands(arena, left_idx, context, left_data, &
-                                           call_len_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
-                    left_len, error_msg)) return
-        else if (left_is_literal) then
-            call strip_literal_quotes(left_name, left_text)
-            call materialize_concat_literal(context, left_text, left_data, &
-                left_len, error_msg)
-            if (len_trim(error_msg) > 0) return
-        else
-            ! For self-aliasing, use captured old values
-            ! For non-self-aliasing, load from symbol
-            if (is_self_alias .and. left_sym_idx == dest_symbol_index) then
-                left_data = old_data
-                left_len = old_len_val
+        ! The result length is the sum of the operand lengths. A leaf with a
+        ! known declared width contributes it as a constant, including the
+        ! blank padding of a fixed-length operand; the rest contribute their
+        ! runtime length.
+        total_len = i64_immediate(context%session, 0_c_int64_t)
+        do i = 1, count
+            if (stat_len(i) >= 0) then
+                operand_len = i64_immediate(context%session, &
+                                            int(stat_len(i), c_int64_t))
             else
-                if (.not. emit_ptr_load(context%session,  &
-                    context%symbols(left_sym_idx)%deferred_data, &
-                    left_data, error_msg)) return
-                if (.not. emit_ptr_load(context%session,  &
-                    context%symbols(left_sym_idx)%deferred_length, &
-                    left_len, error_msg)) return
+                if (.not. emit_liric_i32_to_i64(context%session, len_ops(i), &
+                        operand_len, error_msg)) return
             end if
-        end if
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, total_len, &
+                    operand_len, wider_total, error_msg)) return
+            total_len = wider_total
+        end do
 
-        ! Get right operand text/content
-        if (right_is_view) then
-            call substring_operands(arena, right_idx, context, right_data, &
-                                    call_len_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
-                    right_len, error_msg)) return
-        else if (right_is_call) then
-            call char_result_call_operands(arena, right_idx, context, right_data, &
-                                           call_len_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
-                    right_len, error_msg)) return
-        else if (right_is_literal) then
-            call strip_literal_quotes(right_name, right_text)
-            call materialize_concat_literal(context, right_text, right_data, &
-                right_len, error_msg)
-            if (len_trim(error_msg) > 0) return
-        else
-            if (is_self_alias .and. right_sym_idx == dest_symbol_index) then
-                right_data = old_data
-                right_len = old_len_val
-            else
-                if (.not. emit_i64_load(context%session,  &
-                    context%symbols(right_sym_idx)%deferred_data, &
-                    right_data, error_msg)) return
-                if (.not. emit_i64_load(context%session,  &
-                    context%symbols(right_sym_idx)%deferred_length, &
-                    right_len, error_msg)) return
-            end if
-        end if
-
-        ! Compute total length
-        if (left_is_literal .and. right_is_literal) then
-            combined_text = trim(left_text) // trim(right_text)
-            combined_len = int(len(combined_text), c_int64_t)
-        else
-            ! Runtime concatenation: compute lengths and add
-            if (left_is_literal) then
-                left_len = i64_immediate(context%session,  &
-                    int(len(left_text), c_int64_t))
-            end if
-            if (right_is_literal) then
-                right_len = i64_immediate(context%session,  &
-                    int(len(right_text), c_int64_t))
-            end if
-            if (.not. emit_i64_binary(context%session,  &
-                LR_OP_ADD, left_len, right_len, total_len, error_msg)) return
-        end if
-
-        ! For literal-only concat, create a new global string
-        if (left_is_literal .and. right_is_literal) then
-            context%string_literal_count = context%string_literal_count + 1
-            string_name = ffc_unit_global_name( &
-                context, 'cat.', context%string_literal_count)
-            call materialize_liric_string(context%session, trim(string_name), &
-                                          combined_text, new_ptr, error_msg)
-            if (len_trim(error_msg) > 0) return
-
-            ! Store pointer and length in descriptor. The folded literal is a
-            ! global, so this is a borrow; release any owned block first.
-            call release_owned_character_storage(context, dest_symbol_index, &
-                                                 error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_ptr_store(context%session,  &
-                new_ptr, &
-                context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
-            if (.not. emit_i64_store(context%session,  &
-                i64_immediate(context%session, combined_len), &
-                context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
-            call set_character_storage(context, dest_symbol_index, &
-                i64_immediate(context%session, combined_len), &
-                LOWERING_CHARACTER_STORAGE_STATIC, error_msg)
-            if (len_trim(error_msg) > 0) return
-
-            context%symbols(dest_symbol_index)%value = new_ptr
-            context%symbols(dest_symbol_index)%has_character_value = .true.
-            call set_empty(error_msg)
-            return
-        end if
-
-        ! Runtime concatenation: alloca (total_len + 1) for trailing null,
-        ! memcpy operands, then write null byte so %s printers stay bounded.
-        if (.not. emit_i64_binary(context%session,  &
-            LR_OP_ADD, total_len, &
-            i64_immediate(context%session, 1_c_int64_t), &
-            alloca_size, error_msg)) return
-
-        if (context%in_internal_function .and. &
-            dest_symbol_index == context%current_function_result_index) then
-            if (.not. emit_malloc(context%session, alloca_size, new_ptr, &
+        ! One trailing NUL so the %s printers stop at the result's end.
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, total_len, &
+                i64_immediate(context%session, 1_c_int64_t), alloc_size, &
                 error_msg)) return
-            new_storage_class = LOWERING_CHARACTER_STORAGE_OWNED
-        else
-            if (.not. emit_alloca_bytes(context%session, alloca_size, new_ptr, &
-                error_msg)) return
-            new_storage_class = LOWERING_CHARACTER_STORAGE_STACK
-        end if
+        if (.not. emit_malloc(context%session, alloc_size, buf, error_msg)) return
 
-        if (.not. emit_memcpy(context%session,  &
-            new_ptr, left_data, left_len, error_msg)) return
-
-        if (.not. emit_i64_binary(context%session,  &
-            LR_OP_ADD, new_ptr, left_len, running_offset, error_msg)) return
-
-        if (.not. emit_memcpy(context%session,  &
-            running_offset, right_data, right_len, error_msg)) return
-
-        if (.not. emit_i64_binary(context%session,  &
-            LR_OP_ADD, running_offset, right_len, null_dest, &
-            error_msg)) return
-
-        context%string_literal_count = context%string_literal_count + 1
-        null_name = ffc_unit_global_name( &
-            context, 'cat.term.', context%string_literal_count)
-        call materialize_liric_string(context%session, trim(null_name), &
-                                      '', null_byte_ptr, error_msg)
+        ! A deferred destination takes the whole concatenation, so nothing is
+        ! clamped to a declared width here.
+        call emit_concat_copies(context, data_ops, len_ops, stat_len, count, &
+                                CONCAT_NO_CLAMP, buf, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_memcpy(context%session,  &
-            null_dest, null_byte_ptr, &
-            i64_immediate(context%session, 1_c_int64_t), error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, total_len, &
+                null_pos, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
 
-        ! Both operands have been copied out by now, so releasing the former
-        ! owned block here is safe even when the destination is also an operand
-        ! (s = s // suffix).
+        ! Every operand has been copied out, so the former block can go.
         call release_owned_character_storage(context, dest_symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_store(context%session,  &
-            new_ptr, context%symbols(dest_symbol_index)%deferred_data, &
-            error_msg)) return
-
-        if (.not. emit_i64_store(context%session,  &
-            total_len, context%symbols(dest_symbol_index)%deferred_length, &
-            error_msg)) return
+        if (.not. emit_ptr_store(context%session, buf, &
+                context%symbols(dest_symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, total_len, &
+                context%symbols(dest_symbol_index)%deferred_length, error_msg)) return
         call set_character_storage(context, dest_symbol_index, total_len, &
-                                   new_storage_class, error_msg)
+                                   LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        context%symbols(dest_symbol_index)%value = new_ptr
+        context%symbols(dest_symbol_index)%value = buf
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_concat_assignment
@@ -1172,6 +987,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
     ! operand present (trim), the lazy target is sized to fit, so copy in full.
     subroutine emit_concat_copies(context, data_ops, len_ops, stat_len, count, &
                                   dest_len, buf, error_msg)
+        ! Copy each operand into buf end to end. dest_len is the destination's
+        ! declared width, which a fixed-length destination clamps to; a
+        ! deferred-length destination passes CONCAT_NO_CLAMP because it takes
+        ! the whole concatenation whatever its length.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(in) :: data_ops(:), len_ops(:)
@@ -1184,7 +1003,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         logical :: all_static
 
         call set_empty(error_msg)
-        all_static = all(stat_len(1:count) >= 0)
+        all_static = all(stat_len(1:count) >= 0) .and. dest_len /= CONCAT_NO_CLAMP
         offset = buf
         written = 0
         do i = 1, count

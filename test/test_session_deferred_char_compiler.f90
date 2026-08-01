@@ -43,6 +43,11 @@ program test_session_deferred_char_compiler
     if (.not. test_substring_constant_bound_past_end_is_rejected()) &
         all_passed = .false.
     if (.not. test_substring_with_stride_is_rejected()) all_passed = .false.
+    if (.not. test_nested_concat_three_operands()) all_passed = .false.
+    if (.not. test_nested_concat_mixed_kinds()) all_passed = .false.
+    if (.not. test_nested_concat_self_append()) all_passed = .false.
+    if (.not. test_nested_concat_into_shorter_fixed()) all_passed = .false.
+    if (.not. test_nested_concat_does_not_leak()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: deferred-char function result ABI'
@@ -270,6 +275,130 @@ contains
             source, 'a substring has no stride', &
             '/tmp/ffc_session_substring_stride_test')
     end function test_substring_with_stride_is_rejected
+
+    logical function test_nested_concat_three_operands()
+        ! Three or more non-literal operands: the concatenation tree flattens
+        ! and the result is the operands joined in order.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a, b, s'//new_line('a')// &
+            '  a = "AB"'//new_line('a')// &
+            '  b = "CD"'//new_line('a')// &
+            '  s = a // "-" // b'//new_line('a')// &
+            '  print *, len(s), "[", s, "]"'//new_line('a')// &
+            '  s = a // b // a // b'//new_line('a')// &
+            '  print *, len(s), "[", s, "]"'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            'end program main'
+
+        test_nested_concat_three_operands = expect_output( &
+            source, &
+            '           5 [AB-CD]'//new_line('a')// &
+            '           8 [ABCDABCD]'//new_line('a'), &
+            '/tmp/ffc_session_nested_concat_test')
+    end function test_nested_concat_three_operands
+
+    logical function test_nested_concat_mixed_kinds()
+        ! Fixed-length, deferred-length and assumed-length operands in one
+        ! chain. A fixed-length operand contributes its declared width
+        ! including its blank padding, which is what gfortran does.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: d'//new_line('a')// &
+            '  character(len=4) :: f'//new_line('a')// &
+            '  d = "xy"'//new_line('a')// &
+            '  f = "PQ"'//new_line('a')// &
+            '  call show(d, f)'//new_line('a')// &
+            '  deallocate(d)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine show(dd, ff)'//new_line('a')// &
+            '    character(len=*), intent(in) :: dd'//new_line('a')// &
+            '    character(len=*), intent(in) :: ff'//new_line('a')// &
+            '    character(len=:), allocatable :: s'//new_line('a')// &
+            '    s = dd // "-" // ff // "-" // dd'//new_line('a')// &
+            '    print *, len(s), "[", s, "]"'//new_line('a')// &
+            '    deallocate(s)'//new_line('a')// &
+            '  end subroutine show'//new_line('a')// &
+            'end program main'
+
+        test_nested_concat_mixed_kinds = expect_output( &
+            source, '          10 [xy-PQ  -xy]'//new_line('a'), &
+            '/tmp/ffc_session_nested_concat_kinds_test')
+    end function test_nested_concat_mixed_kinds
+
+    logical function test_nested_concat_self_append()
+        ! The destination is also an operand. Every operand must be copied out
+        ! before the destination releases the block it currently holds, or the
+        ! result reads freed bytes.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: s, t'//new_line('a')// &
+            '  s = "ab"'//new_line('a')// &
+            '  t = "cd"'//new_line('a')// &
+            '  s = s // "-" // t'//new_line('a')// &
+            '  print *, len(s), "[", s, "]"'//new_line('a')// &
+            '  s = s // s'//new_line('a')// &
+            '  print *, len(s), "[", s, "]"'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  deallocate(t)'//new_line('a')// &
+            'end program main'
+
+        test_nested_concat_self_append = expect_output( &
+            source, &
+            '           5 [ab-cd]'//new_line('a')// &
+            '          10 [ab-cdab-cd]'//new_line('a'), &
+            '/tmp/ffc_session_nested_concat_self_test')
+    end function test_nested_concat_self_append
+
+    logical function test_nested_concat_into_shorter_fixed()
+        ! The intermediate result is longer than the fixed destination, so the
+        ! assignment truncates to the declared width; a shorter one pads.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a, b'//new_line('a')// &
+            '  character(len=5) :: short'//new_line('a')// &
+            '  character(len=14) :: wide'//new_line('a')// &
+            '  a = "ABC"'//new_line('a')// &
+            '  b = "DEF"'//new_line('a')// &
+            '  short = a // "-" // b'//new_line('a')// &
+            '  print *, "[", short, "]"'//new_line('a')// &
+            '  wide = a // "-" // b'//new_line('a')// &
+            '  print *, "[", wide, "]"'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            'end program main'
+
+        test_nested_concat_into_shorter_fixed = expect_output( &
+            source, &
+            ' [ABC-D]'//new_line('a')// &
+            ' [ABC-DEF       ]'//new_line('a'), &
+            '/tmp/ffc_session_nested_concat_fixed_test')
+    end function test_nested_concat_into_shorter_fixed
+
+    logical function test_nested_concat_does_not_leak()
+        ! Each result replaces the previous one, and a chain inside a loop must
+        ! release what it replaces rather than accumulate.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a, b, s'//new_line('a')// &
+            '  integer :: i'//new_line('a')// &
+            '  a = "AB"'//new_line('a')// &
+            '  b = "CD"'//new_line('a')// &
+            '  do i = 1, 4'//new_line('a')// &
+            '    s = a // "-" // b // "-" // a'//new_line('a')// &
+            '    print *, len(s)'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            '  deallocate(s)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_nested_concat_does_not_leak = expect_no_leaks( &
+            source, '/tmp/ffc_session_nested_concat_leak_test')
+    end function test_nested_concat_does_not_leak
 
     logical function test_assumed_length_len_inside_callee()
         ! len(s) inside a callee returns the actual length of a literal actual.
