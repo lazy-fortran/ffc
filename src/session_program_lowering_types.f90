@@ -547,6 +547,13 @@ module session_program_lowering_types
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
 
+    ! Namelist input scratch sizes and the IOSTAT values reported for a group
+    ! that ends before it closes and for malformed namelist input (#436).
+    integer, parameter, public :: NAMELIST_NAME_BUFFER = 63
+    integer, parameter, public :: NAMELIST_VALUE_BUFFER = 255
+    integer, parameter, public :: NAMELIST_IOSTAT_END = -1
+    integer, parameter, public :: NAMELIST_IOSTAT_BAD = 5010
+
     ! A NAMELIST group: maps a group name to its ordered member names so a
     ! WRITE(unit, nml=group) can emit the group banner plus each member's
     ! current value (#247 namelist I/O).
