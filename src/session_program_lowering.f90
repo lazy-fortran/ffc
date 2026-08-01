@@ -1082,6 +1082,7 @@ contains
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_const_fold.inc'
     include 'session_program_lowering_array_elements.inc'
+    include 'session_program_lowering_vector_subscript.inc'
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
@@ -1440,6 +1441,9 @@ contains
                     target, context, error_msg)
                 return
             end if
+            call lower_vector_subscript_assignment(arena, node, target, context, &
+                handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
             if (target%is_array_access) then
                 call lower_array_element_assignment(arena, node, target, context, &
                     value, error_msg)
