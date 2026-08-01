@@ -697,6 +697,18 @@ module session_program_lowering_types
         ! USE-associated procedure with the same spelling (#330).
         integer :: current_proc_node_index = 0
         integer :: current_function_result_index = 0
+        ! Character result temporaries created while lowering the current
+        ! statement. A character-returning call writes its result through a
+        ! return descriptor the caller stack-allocates; whoever consumes that
+        ! result reads the bytes but does not own them, so the temporary needs
+        ! an owner of its own. The statement is that owner: each temporary is
+        ! registered here as it is created and released once the statement
+        ! that produced it has finished with it. A consumer that takes
+        ! ownership instead - a deferred destination adopting the returned
+        ! descriptor - deregisters it, so a block is released exactly once.
+        type(lr_operand_desc_t), allocatable :: char_temp_data(:)
+        type(lr_operand_desc_t), allocatable :: char_temp_storage(:)
+        integer :: char_temp_count = 0
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
