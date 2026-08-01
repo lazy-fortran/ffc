@@ -125,9 +125,10 @@
 
         declaration_is_class_polymorphic = .false.
         if (.not. allocated(node%type_name)) return
-        ! An allocatable or pointer class entity keeps its existing
-        ! allocatable/pointer descriptor ABI until #421 gives it a dynamic
-        ! type; only a plain class(t) scalar takes the class descriptor.
+        ! A plain class(t) scalar takes the class descriptor here. A class
+        ! allocatable also carries one, but it is bound at its own declaration
+        ! path (#421) because its storage is deferred until ALLOCATE; a class
+        ! pointer still has no dynamic type.
         if (node%is_allocatable) return
         if (node%is_pointer) return
         declaration_is_class_polymorphic = is_class_derived_type_spec(node%type_name)

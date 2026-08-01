@@ -465,9 +465,10 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, spec_lc
-        integer :: symbol_index
+        integer :: symbol_index, spec_type_index
 
         call set_empty(error_msg)
+        spec_type_index = 0
         if (.not. node_exists(arena, node%var_indices(1)) .or. &
             .not. is_identifier(arena, node%var_indices(1))) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -501,7 +502,23 @@
         if (context%symbols(symbol_index)%is_derived .and. &
             context%symbols(symbol_index)%is_allocatable .and. &
             context%symbols(symbol_index)%array_rank == 0) then
-            call lower_allocate_scalar_derived(symbol_index, context, error_msg)
+            ! allocate(t :: x) names the dynamic type explicitly. For a class
+            ! allocatable it may be an extension of the declared type, in which
+            ! case that extension's layout is allocated and recorded (#421).
+            spec_type_index = find_derived_type(context, trim(spec_lc))
+            if (spec_type_index > 0) then
+                if (.not. derived_type_extends(context, spec_type_index, &
+                        context%symbols(symbol_index)%derived_type_index)) then
+                    error_msg = 'allocate type-spec "'//trim(spec_lc)// &
+                        '" is not type compatible with "'//trim(name)// &
+                        '" of declared type "'// &
+                        trim(context%derived_types(context%symbols( &
+                            symbol_index)%derived_type_index)%name)//'"'
+                    return
+                end if
+            end if
+            call lower_allocate_scalar_derived(symbol_index, context, error_msg, &
+                                               spec_type_index)
             return
         end if
         if (context%symbols(symbol_index)%is_derived) then

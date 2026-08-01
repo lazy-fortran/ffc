@@ -481,6 +481,37 @@ descriptor above unchanged. A receiver whose dynamic type is fixed at compile
 time (a `type(t)` entity) keeps a direct call: its dynamic type is its declared
 type by definition, so the vtable would only re-derive a known answer.
 
+## Type size table
+
+`__ffc_type_size_table` is a link-unit array of `i64` byte sizes indexed the
+same way as `__ffc_vtable_table`: entry `i` is the exact storage size of the
+type whose `ffc_type_info_t.id` is `i`, and entry `0` is the reserved zero.
+Allocating a class value whose dynamic type is only known at run time reads its
+concrete size from here, so the storage is the dynamic type's whole layout and
+not the declared type's prefix.
+
+## Scalar class allocatables
+
+A `class(t), allocatable` scalar owns one class descriptor in its frame — the
+same 32-byte descriptor above, no separate convention. Unallocated is the null
+descriptor with `declared_type` already filled in and `data == 0`,
+`dynamic_type == 0`, `ownership == 0`.
+
+`ALLOCATE` picks the concrete dynamic type — from `SOURCE=` (the source's own
+dynamic type, loaded from its descriptor when the source is itself
+polymorphic), from an explicit type-spec, or the declared type — allocates that
+type's exact size, copies the whole source value for `SOURCE=`, and stores
+`data`, `dynamic_type`, and `ownership = 2 (owned)`.
+
+`DEALLOCATE` finalizes the value, frees the storage once, and resets the
+descriptor to null, so the released address is no longer reachable and
+ownership is given up exactly once. The type-compatibility rule of F2018 C946
+is enforced at compile time: a `SOURCE=` or type-spec type must be the declared
+type or an extension of it.
+
+Because this is the same descriptor a class dummy receives, `SELECT TYPE` and
+type-bound dispatch consult it with no path of their own.
+
 ## Module artefact format
 
 `ffc -c <source>.f90` writes one `<modulename>.fmod` next to the object file

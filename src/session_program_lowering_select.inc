@@ -847,9 +847,9 @@
         if (context%symbols(sel_index)%value_kind /= VALUE_CLASS_STAR) then
             call unsupported_feature_error('select type statement', 0, 0, &
                 'direct LIRIC session supports select type on a class(*) '// &
-                'selector or a monomorphic declared-type class(t) object; '// &
-                'dynamic dispatch on an allocatable/pointer polymorphic '// &
-                'object needs a runtime vtable', error_msg)
+                'selector, a monomorphic declared-type class(t) object, or '// &
+                'any class entity carrying a class descriptor; a class '// &
+                'pointer has no dynamic type yet', error_msg)
             return
         end if
 

@@ -59,7 +59,9 @@ module session_program_lowering
         POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, &
         POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, &
         POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, &
-        POLYMORPHIC_DESCRIPTOR_SIZE, POLYMORPHIC_OWNERSHIP_BORROWED
+        POLYMORPHIC_DESCRIPTOR_SIZE, POLYMORPHIC_OWNERSHIP_BORROWED, &
+        POLYMORPHIC_OWNERSHIP_NONE, POLYMORPHIC_OWNERSHIP_OWNED, &
+        POLYMORPHIC_TYPE_ID_NONE
     use liric_session_bindings, only: destroy, begin_i32_main, &
         liric_session_t, &
         begin_i32_function, begin_i64_function, begin_void_subroutine, &
@@ -144,7 +146,8 @@ module session_program_lowering
         prepare_liric_print_runtime, &
         create_printf_format_global, &
         printf_format_ptr, &
-        create_type_info_global, create_pointer_table_global
+        create_type_info_global, create_pointer_table_global, &
+        create_i64_table_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
         synthesize_real4_printer, &
         synthesize_get_arg_helper, &

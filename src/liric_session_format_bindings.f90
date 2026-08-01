@@ -38,6 +38,7 @@ module liric_session_format_bindings
     public :: printf_format_ptr
     public :: create_type_info_global
     public :: create_pointer_table_global
+    public :: create_i64_table_global
     public :: create_i8_format_global_no_newline
     public :: create_i16_format_global_no_newline
     public :: emit_e_en_format_call
@@ -400,6 +401,46 @@ contains
                 int(slot - 1, c_size_t) * 8_c_size_t, c_sym)
         end do
     end subroutine create_pointer_table_global
+
+    subroutine create_i64_table_global(session, name, values, error_msg)
+        ! Emit a const global holding size(values) little-endian i64 entries.
+        ! This backs the link-unit type size table of docs/RUNTIME_ABI.md, which
+        ! a dense type id indexes to get the exact storage size of that type.
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        integer(c_int64_t), intent(in) :: values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:)
+        character(kind=c_char), allocatable, target :: bytes(:)
+        type(c_ptr) :: array_type
+        integer :: slot, k
+        integer(c_size_t) :: nbytes
+        integer(c_int32_t) :: global_id
+
+        call set_empty(error_msg)
+        if (size(values) <= 0) return
+        nbytes = int(size(values), c_size_t) * 8_c_size_t
+        allocate (bytes(nbytes))
+        do slot = 1, size(values)
+            do k = 0, 7
+                bytes((slot - 1) * 8 + 1 + k) = char(int(iand( &
+                    ishft(values(slot), -8 * k), 255_c_int64_t)), kind=c_char)
+            end do
+        end do
+
+        call to_c_chars(name, c_name)
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+            int(nbytes, c_int64_t))
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return an i64-table array type'
+            return
+        end if
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+            c_true, c_loc(bytes), nbytes)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create i64 table global '//trim(name)
+        end if
+    end subroutine create_i64_table_global
 
     include 'liric_session_format_e_en.inc'
 
