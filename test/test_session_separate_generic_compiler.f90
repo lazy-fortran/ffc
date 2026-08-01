@@ -55,6 +55,7 @@ program test_session_separate_generic_compiler
     if (.not. test_rank_aware_specifics_resolve()) all_passed = .false.
     if (.not. test_no_matching_rank_is_diagnosed()) all_passed = .false.
     if (.not. test_rank_only_specifics_share_one_generic()) all_passed = .false.
+    if (.not. test_assumed_shape_rank_specifics_accepted()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -259,6 +260,53 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_rank_only_specifics_share_one_generic
+
+    logical function test_assumed_shape_rank_specifics_accepted() result(ok)
+        ! Assumed-shape specifics that differ only in rank are distinguishable
+        ! too, and their dummies carry no shape on the parameter node - the
+        ! rank has to come from the dummy's own declaration. gfortran
+        ! -fsyntax-only accepts this source (#595).
+        character(len=:), allocatable :: dir
+        integer :: same_status
+        character(len=*), parameter :: module_source = &
+            'module fmod595_assumed'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    interface pick'//new_line('a')// &
+            '        module procedure pick_vec'//new_line('a')// &
+            '        module procedure pick_mat'//new_line('a')// &
+            '    end interface pick'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    integer function pick_vec(z) result(r)'//new_line('a')// &
+            '        integer, intent(in) :: z(:)'//new_line('a')// &
+            '        r = z(1)'//new_line('a')// &
+            '    end function pick_vec'//new_line('a')// &
+            '    integer function pick_mat(z) result(r)'//new_line('a')// &
+            '        integer, intent(in) :: z(:,:)'//new_line('a')// &
+            '        r = z(1,1)'//new_line('a')// &
+            '    end function pick_mat'//new_line('a')// &
+            'end module fmod595_assumed'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod595_assumed, only: pick'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '    integer :: m(2,2)'//new_line('a')// &
+            '    v = 1'//new_line('a')// &
+            '    m = 2'//new_line('a')// &
+            '    stop pick(v) + pick(m)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('ffc595_assumed', dir)
+        same_status = run_same_unit_compilation(dir, module_source, &
+                                                program_source)
+        if (same_status /= 103) then
+            print *, 'FAIL: assumed-shape rank specifics status ', same_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_assumed_shape_rank_specifics_accepted
 
     integer function run_separate_compilation(dir, mod_source, prog_source) &
             result(status)

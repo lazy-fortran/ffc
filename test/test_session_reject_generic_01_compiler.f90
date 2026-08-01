@@ -590,11 +590,11 @@ contains
             '   end interface'//new_line('a')// &
             'contains'//new_line('a')// &
             '   subroutine one_vec(a)'//new_line('a')// &
-            '      integer, intent(in) :: a(3)'//new_line('a')// &
+            '      integer, intent(in) :: a(:)'//new_line('a')// &
             '      print *, a(1)'//new_line('a')// &
             '   end subroutine'//new_line('a')// &
             '   subroutine other_vec(a)'//new_line('a')// &
-            '      integer, intent(in) :: a(4)'//new_line('a')// &
+            '      integer, intent(in) :: a(:)'//new_line('a')// &
             '      print *, a(1)'//new_line('a')// &
             '   end subroutine'//new_line('a')// &
             'end module'//new_line('a')// &
