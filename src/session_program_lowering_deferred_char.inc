@@ -1,6 +1,6 @@
 integer function resolve_concat_operand(arena, node_index, context, &
                                            out_name, operand_is_literal, error_msg, &
-                                           operand_is_call) &
+                                           operand_is_call, operand_is_view) &
       result(symbol_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -12,6 +12,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! literal nor a declared symbol: the caller materialises it through
         ! the descriptor return ABI before the concatenation reads it.
         logical, intent(out), optional :: operand_is_call
+        ! A substring is a borrowed view: it resolves to a data pointer and a
+        ! runtime length rather than to a symbol.
+        logical, intent(out), optional :: operand_is_view
         character(len=:), allocatable :: name
         character(len=:), allocatable :: lit_value, lit_type
         integer :: idx
@@ -19,6 +22,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         symbol_index = 0
         operand_is_literal = .false.
         if (present(operand_is_call)) operand_is_call = .false.
+        if (present(operand_is_view)) operand_is_view = .false.
         out_name = ''
         call set_empty(error_msg)
 
@@ -30,6 +34,13 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (present(operand_is_call)) then
             if (is_contained_char_result_call(arena, node_index, context)) then
                 operand_is_call = .true.
+                return
+            end if
+        end if
+
+        if (present(operand_is_view)) then
+            if (is_character_substring(arena, node_index, context)) then
+                operand_is_view = .true.
                 return
             end if
         end if
@@ -96,6 +107,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         logical :: right_is_literal
         logical :: left_is_call
         logical :: right_is_call
+        logical :: left_is_view
+        logical :: right_is_view
         type(lr_operand_desc_t) :: left_call_data_addr, left_call_storage_addr
         type(lr_operand_desc_t) :: right_call_data_addr, right_call_storage_addr
         type(lr_operand_desc_t) :: call_len_i32
@@ -115,6 +128,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
         right_is_literal = .false.
         left_is_call = .false.
         right_is_call = .false.
+        left_is_view = .false.
+        right_is_view = .false.
         is_self_alias = .false.
 
         ! A fixed-length result (character(len=N) :: s) uses the descriptor
@@ -143,12 +158,13 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         ! Resolve left operand: get symbol index or mark as literal
         left_sym_idx = resolve_concat_operand(arena, left_idx, context, &
-            left_name, left_is_literal, error_msg, left_is_call)
+            left_name, left_is_literal, error_msg, left_is_call, left_is_view)
         if (len_trim(error_msg) > 0) return
 
         ! Resolve right operand
         right_sym_idx = resolve_concat_operand(arena, right_idx, context, &
-            right_name, right_is_literal, error_msg, right_is_call)
+            right_name, right_is_literal, error_msg, right_is_call, &
+            right_is_view)
         if (len_trim(error_msg) > 0) return
 
         ! Detect self-aliasing: dest is one of the operands
@@ -169,7 +185,13 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Get left operand text/content
-        if (left_is_call) then
+        if (left_is_view) then
+            call substring_operands(arena, left_idx, context, left_data, &
+                                    call_len_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
+                    left_len, error_msg)) return
+        else if (left_is_call) then
             call char_result_call_operands(arena, left_idx, context, left_data, &
                                            call_len_i32, error_msg, &
                                            left_call_data_addr, &
@@ -199,7 +221,13 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Get right operand text/content
-        if (right_is_call) then
+        if (right_is_view) then
+            call substring_operands(arena, right_idx, context, right_data, &
+                                    call_len_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
+                    right_len, error_msg)) return
+        else if (right_is_call) then
             call char_result_call_operands(arena, right_idx, context, right_data, &
                                            call_len_i32, error_msg, &
                                            right_call_data_addr, &

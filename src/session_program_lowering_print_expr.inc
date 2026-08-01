@@ -378,6 +378,13 @@
             ! An integer literal falls through to the integer print below.
         end if
 
+        ! s(l:u) on a scalar character prints its view's bytes at the view's
+        ! runtime length, like any other character expression.
+        if (is_character_substring(arena, node_index, context)) then
+            call lower_print_char_expr(arena, node_index, context, error_msg)
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             ! Character // concatenation prints as a runtime string buffer; only
             ! the // operands case is handled here (intrinsic agent, bug 2).
@@ -827,10 +834,21 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_ptr
         type(lr_operand_desc_t) :: length
+        type(lr_operand_desc_t) :: view_buf
 
         call char_expr_operands(arena, node_index, context, data_ptr, length, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
+        ! The %s conversion stops at a NUL. A borrowed view (a substring)
+        ! points into the middle of its parent's bytes and carries no
+        ! terminator of its own, so print from a terminated copy of exactly
+        ! the view's length.
+        if (is_character_substring(arena, node_index, context)) then
+            call materialize_character_view(context, data_ptr, length, view_buf, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+            data_ptr = view_buf
+        end if
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_ptr, error_msg)) return
     end subroutine lower_print_char_expr

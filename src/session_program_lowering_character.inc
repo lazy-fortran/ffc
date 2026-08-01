@@ -558,6 +558,14 @@
                         context, symbol_index, error_msg)
                     return
                 end if
+            else if (is_character_substring(arena, node%value_index, context)) &
+                then
+                ! Deferred target receives a substring view: intrinsic
+                ! assignment copies the view's bytes at the view's length, so
+                ! the target never aliases its parent's storage.
+                call lower_deferred_char_view_assignment(arena, &
+                    node%value_index, context, symbol_index, error_msg)
+                return
             else if (is_identifier(arena, node%value_index)) then
                 ! Deferred target receives another character variable: copy the
                 ! source {data, len} into the target descriptor (str = other).
@@ -591,10 +599,12 @@
             if (len_trim(error_msg) > 0) return
             call strip_literal_quotes(lit_value, literal_text)
         else if (is_identifier(arena, node%value_index) .or. &
-                 is_char_expr_call(arena, node%value_index)) then
-            ! A character variable, trim()/adjustl()/adjustr()/achar()/repeat()
-            ! result assigned to a fixed-length target: pad or truncate to the
-            ! target's declared width like gfortran's fixed-length assignment.
+                 is_char_expr_call(arena, node%value_index) .or. &
+                 is_character_substring(arena, node%value_index, context)) then
+            ! A character variable, a substring view, or a
+            ! trim()/adjustl()/adjustr()/achar()/repeat() result assigned to a
+            ! fixed-length target: pad or truncate to the target's declared
+            ! width like gfortran's fixed-length assignment.
             call lower_fixed_char_expr_assignment(arena, node%value_index, &
                 context, symbol_index, error_msg)
             return
@@ -1373,6 +1383,11 @@
             end select
             return
         end if
+        if (is_character_substring(arena, node_index, context)) then
+            call substring_operands(arena, node_index, context, data_ptr, &
+                                    length, error_msg)
+            return
+        end if
         if (is_character_array_element(arena, node_index, context)) then
             select type (n => arena%entries(node_index)%node)
             type is (call_or_subscript_node)
@@ -1433,6 +1448,276 @@
             'direct LIRIC session only supports a character variable or '// &
             'trim() here', error_msg)
     end subroutine char_expr_operands
+
+    subroutine reject_constant_substring_overrun(arena, context, symbol_index, &
+                                                 lower_index, upper_index, &
+                                                 error_msg)
+        ! Reject s(l:u) whose constant bounds fall outside a parent of known
+        ! declared width. Only a fixed-length parent has a compile-time width;
+        ! a deferred-length parent's length is a run-time value, so nothing is
+        ! decidable here and the substring is accepted. Non-constant bounds are
+        ! likewise left alone.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: lower_index
+        integer, intent(in) :: upper_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lower_value, upper_value
+        logical :: lower_known, upper_known
+        integer :: declared_length
+
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%is_deferred_character) return
+        declared_length = context%symbols(symbol_index)%character_length
+        if (declared_length <= 0) return
+
+        call constant_i64_value(arena, lower_index, lower_value, lower_known)
+        call constant_i64_value(arena, upper_index, upper_value, upper_known)
+
+        if (lower_known) then
+            if (lower_value < 1_c_int64_t) then
+                error_msg = 'substring start index is below the string length'
+                return
+            end if
+        end if
+        if (upper_known) then
+            if (upper_value > int(declared_length, c_int64_t)) then
+                error_msg = 'substring end index exceeds the string length'
+                return
+            end if
+        end if
+    end subroutine reject_constant_substring_overrun
+
+    subroutine constant_i64_value(arena, node_index, value, is_known)
+        ! Fold a substring bound to a compile-time integer when it is a plain
+        ! integer literal. Anything else is a run-time expression.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer(c_int64_t), intent(out) :: value
+        logical, intent(out) :: is_known
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
+        integer :: ios
+
+        value = 0_c_int64_t
+        is_known = .false.
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        if (.not. is_literal(arena, node_index)) return
+        call get_literal_info(arena, node_index, lit_value, lit_type, lit_err)
+        if (len_trim(lit_err) > 0) return
+        if (verify(trim(adjustl(lit_value)), '0123456789') /= 0) return
+        read (lit_value, *, iostat=ios) value
+        is_known = ios == 0
+    end subroutine constant_i64_value
+
+    subroutine lower_deferred_char_view_assignment(arena, value_index, context, &
+                                                   symbol_index, error_msg)
+        ! str = other(l:u), where str is character(len=:), allocatable. The
+        ! right-hand side is a borrowed view into another variable's storage,
+        ! so the destination takes its own copy at the view's length. The copy
+        ! is made before the destination releases the block it held, which is
+        ! what keeps `s = s(2:4)` correct.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64, buf
+
+        call substring_operands(arena, value_index, context, data_ptr, len_i32, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
+                error_msg)) return
+
+        call copy_character_bytes_to_owned(context, data_ptr, len_i64, buf, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
+        call release_owned_character_storage(context, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_store(context%session, buf, &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, len_i64, &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        call set_character_storage(context, symbol_index, len_i64, &
+                                   LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%value = buf
+        context%symbols(symbol_index)%has_character_value = .true.
+        call set_empty(error_msg)
+    end subroutine lower_deferred_char_view_assignment
+
+    subroutine materialize_character_view(context, data_ptr, length, buf, &
+                                          error_msg)
+        ! Copy a borrowed character view into a fresh null-terminated buffer of
+        ! exactly its Fortran length. A view has no terminator of its own, so
+        ! anything that reads it as a C string needs this first. The buffer
+        ! follows the same convention as the other character expression
+        ! helpers: heap inside an internal function, where it has to outlive
+        ! the frame, and stack at program scope.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        type(lr_operand_desc_t), intent(in) :: length
+        type(lr_operand_desc_t), intent(out) :: buf
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: length64, bytes, null_pos
+
+        if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, length64, &
+                i64_immediate(context%session, 1_c_int64_t), bytes, &
+                error_msg)) return
+        if (context%in_internal_function) then
+            if (.not. emit_malloc(context%session, bytes, buf, error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, bytes, buf, error_msg)) &
+                return
+        end if
+        if (.not. emit_memcpy(context%session, buf, data_ptr, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, length64, &
+                null_pos, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+        call set_empty(error_msg)
+    end subroutine materialize_character_view
+
+    logical function is_character_substring(arena, node_index, context) &
+            result(is_substring)
+        ! True when node is s(l:u) on a scalar character variable. The parser
+        ! produces the same array_slice_node shape as an array section, so the
+        ! base symbol's rank is what separates a substring from a section.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: base_name, name_err
+        integer :: symbol_index
+
+        is_substring = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (n => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            if (n%num_dimensions /= 1) return
+            call identifier_name(arena, n%array_index, base_name, name_err)
+            if (len_trim(name_err) > 0) return
+            symbol_index = find_symbol_compat(context, base_name)
+            if (symbol_index <= 0) return
+            if (context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) return
+            if (context%symbols(symbol_index)%is_array) return
+            is_substring = .true.
+        end select
+    end function is_character_substring
+
+    subroutine substring_operands(arena, node_index, context, data_ptr, length, &
+                                  error_msg)
+        ! s(l:u) on a scalar character: a borrowed view into s's own storage.
+        ! The view's data pointer is s's data advanced by l - 1 bytes and its
+        ! Fortran length is u - l + 1; nothing is allocated and nothing is
+        ! copied, so the view stays valid exactly as long as s's storage does.
+        ! An omitted bound defaults to 1 for the lower and len(s) for the upper.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: base_name
+        integer :: symbol_index, bounds_index, lower_index, upper_index
+        type(lr_operand_desc_t) :: base_data, base_len, lower_i32, upper_i32
+        type(lr_operand_desc_t) :: zero_based, span
+
+        call set_empty(error_msg)
+        bounds_index = 0
+        lower_index = -1
+        upper_index = -1
+        select type (n => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call identifier_name(arena, n%array_index, base_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            bounds_index = n%bounds_indices(1)
+        class default
+            error_msg = 'expected a substring reference'
+            return
+        end select
+
+        symbol_index = find_symbol_compat(context, base_name)
+        if (symbol_index <= 0) then
+            error_msg = 'substring base was not declared: '//trim(base_name)
+            return
+        end if
+        call char_length_operands(context, symbol_index, base_data, base_len, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. node_exists(arena, bounds_index)) then
+            error_msg = 'substring bounds do not reference an AST node'
+            return
+        end if
+        ! The parser produces either shape for l:u depending on context.
+        select type (b => arena%entries(bounds_index)%node)
+        type is (array_bounds_node)
+            if (b%stride_index > 0) then
+                call unsupported_feature_error('substring', 0, 0, &
+                    'a substring has no stride', error_msg)
+                return
+            end if
+            lower_index = b%lower_bound_index
+            upper_index = b%upper_bound_index
+        type is (range_expression_node)
+            if (b%stride_index > 0) then
+                call unsupported_feature_error('substring', 0, 0, &
+                    'a substring has no stride', error_msg)
+                return
+            end if
+            lower_index = b%start_index
+            upper_index = b%end_index
+        class default
+            error_msg = 'substring bounds are not a range'
+            return
+        end select
+
+        ! A fixed-length parent has a known width, so constant bounds outside
+        ! it are rejected here rather than reading past the variable, matching
+        ! gfortran's "substring end index exceeds the string length".
+        call reject_constant_substring_overrun(arena, context, symbol_index, &
+                                               lower_index, upper_index, &
+                                               error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (lower_index > 0) then
+            call lower_i32_expression(arena, lower_index, context, lower_i32, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            lower_i32 = i32_immediate(context%session, 1_c_int64_t)
+        end if
+        if (upper_index > 0) then
+            call lower_i32_expression(arena, upper_index, context, upper_i32, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            upper_i32 = base_len
+        end if
+
+        ! data = base + (lower - 1)
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, lower_i32, &
+                i32_immediate(context%session, 1_c_int64_t), zero_based, &
+                error_msg)) return
+        call ptr_plus_i32(context, base_data, zero_based, data_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! length = upper - lower + 1
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
+                zero_based, span, error_msg)) return
+        length = span
+        call set_empty(error_msg)
+    end subroutine substring_operands
 
     logical function is_character_array_element(arena, node_index, context) &
             result(is_elem)

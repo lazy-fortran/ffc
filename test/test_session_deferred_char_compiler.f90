@@ -1,5 +1,6 @@
 program test_session_deferred_char_compiler
-    use ffc_test_support, only: expect_output, expect_exit_status, expect_no_leaks
+    use ffc_test_support, only: expect_output, expect_exit_status, &
+        expect_no_leaks, expect_error_contains
     implicit none
 
     logical :: all_passed
@@ -34,6 +35,14 @@ program test_session_deferred_char_compiler
         all_passed = .false.
     if (.not. test_repeated_deallocate_is_not_a_double_free()) &
         all_passed = .false.
+    if (.not. test_substring_of_deferred_character()) all_passed = .false.
+    if (.not. test_substring_of_fixed_character()) all_passed = .false.
+    if (.not. test_substring_with_runtime_bounds()) all_passed = .false.
+    if (.not. test_substring_assigned_and_concatenated()) all_passed = .false.
+    if (.not. test_substring_does_not_leak()) all_passed = .false.
+    if (.not. test_substring_constant_bound_past_end_is_rejected()) &
+        all_passed = .false.
+    if (.not. test_substring_with_stride_is_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: deferred-char function result ABI'
@@ -121,6 +130,146 @@ contains
         test_repeated_deallocate_is_not_a_double_free = expect_no_leaks( &
             source, '/tmp/ffc_session_deferred_double_free_test')
     end function test_repeated_deallocate_is_not_a_double_free
+
+    logical function test_substring_of_deferred_character()
+        ! A substring of a deferred-length scalar is a view of its bytes at the
+        ! requested Fortran positions: a(l:u) has length u - l + 1.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a'//new_line('a')// &
+            '  a = "hello world"'//new_line('a')// &
+            '  print *, a(1:5)'//new_line('a')// &
+            '  print *, a(7:11)'//new_line('a')// &
+            '  print *, a(1:1)'//new_line('a')// &
+            '  print *, len(a(3:9))'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_substring_of_deferred_character = expect_output( &
+            source, &
+            ' hello'//new_line('a')// &
+            ' world'//new_line('a')// &
+            ' h'//new_line('a')// &
+            '           7'//new_line('a'), &
+            '/tmp/ffc_session_substring_deferred_test')
+    end function test_substring_of_deferred_character
+
+    logical function test_substring_of_fixed_character()
+        ! The same view over a fixed-length scalar, whose length is a declared
+        ! constant rather than descriptor metadata.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=11) :: f'//new_line('a')// &
+            '  f = "hello world"'//new_line('a')// &
+            '  print *, f(1:5)'//new_line('a')// &
+            '  print *, f(7:11)'//new_line('a')// &
+            'end program main'
+
+        test_substring_of_fixed_character = expect_output( &
+            source, &
+            ' hello'//new_line('a')// &
+            ' world'//new_line('a'), &
+            '/tmp/ffc_session_substring_fixed_test')
+    end function test_substring_of_fixed_character
+
+    logical function test_substring_with_runtime_bounds()
+        ! Substring bounds are ordinary integer expressions, evaluated at run
+        ! time; the view length follows from them.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a'//new_line('a')// &
+            '  integer :: i, j'//new_line('a')// &
+            '  a = "hello world"'//new_line('a')// &
+            '  i = 3'//new_line('a')// &
+            '  j = 9'//new_line('a')// &
+            '  print *, a(i:j)'//new_line('a')// &
+            '  print *, len(a(i:j))'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_substring_with_runtime_bounds = expect_output( &
+            source, &
+            ' llo wor'//new_line('a')// &
+            '           7'//new_line('a'), &
+            '/tmp/ffc_session_substring_runtime_test')
+    end function test_substring_with_runtime_bounds
+
+    logical function test_substring_assigned_and_concatenated()
+        ! A substring is a character expression: it can be assigned to a
+        ! deferred or fixed destination and used as a concatenation operand,
+        ! with the usual padding and truncation on a fixed destination.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a, b'//new_line('a')// &
+            '  character(len=8) :: f'//new_line('a')// &
+            '  a = "hello world"'//new_line('a')// &
+            '  b = a(1:5)'//new_line('a')// &
+            '  print *, len(b), b'//new_line('a')// &
+            '  f = a(7:11)'//new_line('a')// &
+            '  print *, "[", f, "]"'//new_line('a')// &
+            '  b = a(1:5) // a(7:11)'//new_line('a')// &
+            '  print *, len(b), b'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            'end program main'
+
+        test_substring_assigned_and_concatenated = expect_output( &
+            source, &
+            '           5 hello'//new_line('a')// &
+            ' [world   ]'//new_line('a')// &
+            '          10 helloworld'//new_line('a'), &
+            '/tmp/ffc_session_substring_expr_test')
+    end function test_substring_assigned_and_concatenated
+
+    logical function test_substring_does_not_leak()
+        ! A substring is a borrowed view into its parent's storage: taking one
+        ! allocates nothing to release, and it never frees the parent.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a, b'//new_line('a')// &
+            '  a = "hello world"'//new_line('a')// &
+            '  b = a(1:5)'//new_line('a')// &
+            '  print *, len(b), b'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        test_substring_does_not_leak = expect_no_leaks( &
+            source, '/tmp/ffc_session_substring_leak_test')
+    end function test_substring_does_not_leak
+
+    logical function test_substring_constant_bound_past_end_is_rejected()
+        ! A constant upper bound beyond a fixed-length parent's declared width
+        ! is a source error, as gfortran reports it, rather than a read past
+        ! the variable.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=11) :: f'//new_line('a')// &
+            '  f = "hello world"'//new_line('a')// &
+            '  print *, f(1:20)'//new_line('a')// &
+            'end program main'
+
+        test_substring_constant_bound_past_end_is_rejected = &
+            expect_error_contains(source, &
+                'substring end index exceeds the string length', &
+                '/tmp/ffc_session_substring_overrun_test')
+    end function test_substring_constant_bound_past_end_is_rejected
+
+    logical function test_substring_with_stride_is_rejected()
+        ! A substring has no stride; s(l:u:k) is diagnosed rather than being
+        ! silently treated as a substring or an array section.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=:), allocatable :: a'//new_line('a')// &
+            '  a = "hello world"'//new_line('a')// &
+            '  print *, a(1:5:2)'//new_line('a')// &
+            'end program main'
+
+        test_substring_with_stride_is_rejected = expect_error_contains( &
+            source, 'a substring has no stride', &
+            '/tmp/ffc_session_substring_stride_test')
+    end function test_substring_with_stride_is_rejected
 
     logical function test_assumed_length_len_inside_callee()
         ! len(s) inside a callee returns the actual length of a literal actual.
