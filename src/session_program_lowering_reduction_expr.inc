@@ -205,8 +205,11 @@
     subroutine lower_general_expr_reduction(arena, arg_index, extent, vk, &
                                             context, value, error_msg, &
                                             reduction_name)
-        ! sum() (only) over a binary-op array expression argument, unrolled
-        ! over the compile-time extent determined by reduction_arg_extent.
+        !! Fold one reduction over an array-expression argument by iterating
+        !! the expression's elements, starting from the reduction's identity
+        !! and combining one element at a time. SUM, PRODUCT, MINVAL, MAXVAL,
+        !! COUNT, ANY, and ALL all share this loop; the operation appears only
+        !! in `reduction_identity` and `reduction_combine`.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_index
         integer, intent(in) :: extent
@@ -215,47 +218,36 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in) :: reduction_name
-        type(lr_operand_desc_t) :: candidate, next_value
-        integer :: i
+        type(lr_operand_desc_t) :: candidate, cond, one, zero
+        integer :: i, op
 
-        if (trim(reduction_name) /= 'sum') then
+        op = reduction_operation(reduction_name)
+        if (op == 0 .or. op == DIM_REDUCE_NORM2) then
             error_msg = trim(reduction_name)//' of a general array expression '// &
                         'is not supported'
             return
         end if
-
-        select case (vk)
-        case (VALUE_F32)
-            value = liric_f32_immediate(context%session, 0.0_c_float)
-            do i = 0, extent - 1
+        call reduction_identity(context, op, vk, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do i = 0, extent - 1
+            if (reduction_is_mask_valued(op)) then
+                ! A mask-valued reduction consumes the logical value of the
+                ! argument at this element, materialized as an i32 0 or 1.
+                call lower_where_mask_element(arena, arg_index, i, context, &
+                                              cond, error_msg)
+                if (len_trim(error_msg) > 0) return
+                one = i32_immediate(context%session, 1_c_int64_t)
+                zero = i32_immediate(context%session, 0_c_int64_t)
+                call select_value(context, cond, one, zero, candidate, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else
                 call lower_reduction_arg_element(arena, arg_index, &
                         int(i, c_int64_t), vk, context, candidate, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
-                        value, candidate, next_value, error_msg)) return
-                value = next_value
-            end do
-        case (VALUE_F64)
-            value = liric_f64_immediate(context%session, 0.0_c_double)
-            do i = 0, extent - 1
-                call lower_reduction_arg_element(arena, arg_index, &
-                        int(i, c_int64_t), vk, context, candidate, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
-                        value, candidate, next_value, error_msg)) return
-                value = next_value
-            end do
-        case default
-            value = i32_immediate(context%session, 0_c_int64_t)
-            do i = 0, extent - 1
-                call lower_reduction_arg_element(arena, arg_index, &
-                        int(i, c_int64_t), vk, context, candidate, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, value, &
-                        candidate, next_value, error_msg)) return
-                value = next_value
-            end do
-        end select
+            end if
+            call reduction_combine(context, op, vk, value, candidate, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
         call set_empty(error_msg)
     end subroutine lower_general_expr_reduction
 

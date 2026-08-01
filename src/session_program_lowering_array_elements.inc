@@ -2434,7 +2434,8 @@
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
-            call dim_reduction_identity(context, reduce_op, source_vk, acc)
+            call reduction_identity(context, reduce_op, source_vk, acc, error_msg)
+            if (len_trim(error_msg) > 0) return
             do j = 0, reduce_extent - 1
                 if (dim_value == 1_c_int64_t) then
                     lin = int(j, c_int64_t) + int(i, c_int64_t) * int(d1, c_int64_t)
@@ -2446,16 +2447,16 @@
                     call load_array_linear_element(context, src_sym, lin, elem, &
                                                    error_msg)
                     if (len_trim(error_msg) > 0) return
-                    call dim_reduction_accumulate_numeric(context, reduce_op, &
-                        source_vk, acc, elem, error_msg)
+                    call reduction_combine(context, reduce_op, source_vk, acc, &
+                                           elem, error_msg)
                     if (len_trim(error_msg) > 0) return
                 else
                     call dim_reduction_mask_element(arena, context, is_comparison, &
                         cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, src_sym, &
                         compare_vk, predicate, lin, cond, error_msg)
                     if (len_trim(error_msg) > 0) return
-                    call dim_reduction_accumulate_mask(context, reduce_op, acc, &
-                        cond, error_msg)
+                    call reduction_combine(context, reduce_op, source_vk, acc, &
+                                           cond, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end if
             end do
@@ -2610,70 +2611,6 @@
 
     ! Seed a reduction accumulator: 0/1 for sum/product, 0 count, 0 (false) any,
     ! 1 (true) all. Mask accumulators always start in i32.
-    subroutine dim_reduction_identity(context, reduce_op, source_vk, acc)
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: reduce_op, source_vk
-        type(lr_operand_desc_t), intent(out) :: acc
-
-        select case (reduce_op)
-        case (DIM_REDUCE_SUM)
-            select case (source_vk)
-            case (VALUE_F32); acc = liric_f32_immediate(context%session, 0.0_c_float)
-            case (VALUE_F64); acc = liric_f64_immediate(context%session, 0.0_c_double)
-            case default; acc = i32_immediate(context%session, 0_c_int64_t)
-            end select
-        case (DIM_REDUCE_PROD)
-            select case (source_vk)
-            case (VALUE_F32); acc = liric_f32_immediate(context%session, 1.0_c_float)
-            case (VALUE_F64); acc = liric_f64_immediate(context%session, 1.0_c_double)
-            case default; acc = i32_immediate(context%session, 1_c_int64_t)
-            end select
-        case (DIM_REDUCE_ALL)
-            acc = i32_immediate(context%session, 1_c_int64_t)
-        case default
-            acc = i32_immediate(context%session, 0_c_int64_t)
-        end select
-    end subroutine dim_reduction_identity
-
-    subroutine dim_reduction_accumulate_numeric(context, reduce_op, source_vk, &
-                                                acc, elem, error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: reduce_op, source_vk
-        type(lr_operand_desc_t), intent(inout) :: acc
-        type(lr_operand_desc_t), intent(in) :: elem
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: next
-
-        call set_empty(error_msg)
-        select case (source_vk)
-        case (VALUE_F32)
-            if (reduce_op == DIM_REDUCE_SUM) then
-                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, acc, &
-                                                elem, next, error_msg)) return
-            else
-                if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, acc, &
-                                                elem, next, error_msg)) return
-            end if
-        case (VALUE_F64)
-            if (reduce_op == DIM_REDUCE_SUM) then
-                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, acc, &
-                                                elem, next, error_msg)) return
-            else
-                if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, acc, &
-                                                elem, next, error_msg)) return
-            end if
-        case default
-            if (reduce_op == DIM_REDUCE_SUM) then
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, elem, &
-                                          next, error_msg)) return
-            else
-                if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, elem, &
-                                          next, error_msg)) return
-            end if
-        end select
-        acc = next
-    end subroutine dim_reduction_accumulate_numeric
-
     ! Produce the i32 0/1 mask element at linear index lin: a compare for the
     ! relational-source form (each side either a rank-2 array at lin or a
     ! broadcast scalar), or a direct logical load otherwise.
@@ -2715,26 +2652,3 @@
         end select
     end subroutine dim_reduction_mask_element
 
-    subroutine dim_reduction_accumulate_mask(context, reduce_op, acc, cond, &
-                                             error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: reduce_op
-        type(lr_operand_desc_t), intent(inout) :: acc
-        type(lr_operand_desc_t), intent(in) :: cond
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: next
-
-        call set_empty(error_msg)
-        select case (reduce_op)
-        case (DIM_REDUCE_ANY)
-            if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, cond, next, &
-                                      error_msg)) return
-        case (DIM_REDUCE_ALL)
-            if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, cond, next, &
-                                      error_msg)) return
-        case default
-            if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, cond, next, &
-                                      error_msg)) return
-        end select
-        acc = next
-    end subroutine dim_reduction_accumulate_mask
