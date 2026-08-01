@@ -114,8 +114,8 @@
             ! procedure defined or interfaced in this unit, so external calls
             ! without an explicit interface never trip this. An assumed-rank
             ! arr(..) dummy binds to any rank, scalar included, so it is excluded.
-            if (callee_dummy_is_array(arena, callee_name, &
-                                      call_arg_param_pos(i, sp)) .and. &
+            if (callee_dummy_is_array_ctx(arena, context, callee_name, &
+                                          call_arg_param_pos(i, sp)) .and. &
                 actual_is_definite_scalar(arena, arg_indices(i), context) .and. &
                 .not. callee_dummy_is_assumed_rank(arena, callee_name, &
                                                    call_arg_param_pos(i, sp))) then
@@ -160,7 +160,8 @@
                                            args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
-                     callee_dummy_is_array(arena, callee_name, i)) then
+                     callee_dummy_is_array_ctx(arena, context, callee_name, &
+                                               i)) then
                 ! Explicit-shape array actual to an array dummy: pass the
                 ! contiguous base address; the callee binds it as its dummy view.
                 call whole_array_actual_address(arena, arg_indices(i), context, &
@@ -187,8 +188,8 @@
                     context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_contiguous_section(arena, arg_indices(i), context) &
-                     .and. callee_dummy_is_array(arena, callee_name, &
-                                                 call_arg_param_pos(i, sp))) then
+                     .and. callee_dummy_is_array_ctx(arena, context, &
+                            callee_name, call_arg_param_pos(i, sp))) then
                 ! Contiguous rank-1 array section a(lo:hi) or whole column
                 ! a(:,j): pass the base address of the section's first element,
                 ! so the callee's rank-1 dummy views the section's storage in
@@ -2241,3 +2242,26 @@ integer function expression_value_kind(arena, node_index, context, &
             text = 'INTENT(INOUT)'
         end if
     end function intent_text
+
+    logical function callee_dummy_is_array_ctx(arena, context, callee_name, &
+                                               param_pos) result(is_array)
+        ! Whether the callee's param_pos-th dummy is an array. A procedure
+        ! defined or interfaced in this unit answers from its declaration; a
+        ! separately compiled module procedure answers from the rank the .fmod
+        ! recorded, so an array actual takes the array-argument ABI instead of
+        ! being rejected as an unsupported scalar (#415).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: idx
+
+        is_array = callee_dummy_is_array(arena, callee_name, param_pos)
+        if (is_array) return
+        if (param_pos < 1) return
+        idx = external_procedure_index(context, callee_name)
+        if (idx <= 0) return
+        if (.not. context%external_procedures(idx)%by_reference) return
+        if (param_pos > context%external_procedures(idx)%arg_count) return
+        is_array = context%external_procedures(idx)%arg_ranks(param_pos) > 0
+    end function callee_dummy_is_array_ctx

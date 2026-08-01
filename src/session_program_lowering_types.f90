@@ -537,6 +537,12 @@ module session_program_lowering_types
         logical :: arg_is_optional(MAX_PROC_ARGS) = .false.
         logical :: arg_is_value(MAX_PROC_ARGS) = .false.
         integer :: arg_intents(MAX_PROC_ARGS) = ARG_INTENT_NONE
+        ! Rank of each dummy (0 for a scalar) and, for an explicit-shape array
+        ! dummy, its total element count. A generic resolves an imported
+        ! specific by these ranks, and an array actual takes the base-address
+        ! ABI because the artefact said the dummy is an array (#415).
+        integer :: arg_ranks(MAX_PROC_ARGS) = 0
+        integer :: arg_extents(MAX_PROC_ARGS) = 0
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32

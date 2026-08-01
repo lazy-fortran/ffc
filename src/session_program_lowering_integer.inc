@@ -253,15 +253,17 @@
        call_name = degeneric_call_name(context, node%name, &
            call_arg_count, call_arg_kinds, call_arg_ranks)
 
-      if (external_procedure_index(context, node%name) > 0) then
+      ! A use-associated generic resolves to one of its specifics first, so the
+      ! external lookup uses the resolved name (#415).
+      if (external_procedure_index(context, call_name) > 0) then
           if (context%external_procedures( &
-                  external_procedure_index(context, node%name))%by_reference) then
+                  external_procedure_index(context, call_name))%by_reference) then
               call lower_module_proc_i32_call(arena, node, &
-                  external_procedure_index(context, node%name), context, value, &
-                  error_msg)
+                  external_procedure_index(context, call_name), context, value, &
+                  error_msg, call_name)
           else
               call lower_external_i32_call(arena, node, &
-                  external_procedure_index(context, node%name), context, value, &
+                  external_procedure_index(context, call_name), context, value, &
                   error_msg)
           end if
           return

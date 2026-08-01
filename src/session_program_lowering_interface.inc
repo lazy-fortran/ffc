@@ -678,7 +678,8 @@
     subroutine add_external_procedure(context, fortran_name, c_name, &
                                       return_kind, arg_count, by_reference, &
                                       arg_kinds, arg_names, arg_optionals, &
-                                      arg_values, arg_intents)
+                                      arg_values, arg_intents, arg_ranks, &
+                                      arg_extents)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
@@ -688,6 +689,8 @@
         logical, intent(in), optional :: arg_optionals(:)
         logical, intent(in), optional :: arg_values(:)
         integer, intent(in), optional :: arg_intents(:)
+        integer, intent(in), optional :: arg_ranks(:)
+        integer, intent(in), optional :: arg_extents(:)
         integer :: j
 
         call grow_external_procedures(context)
@@ -732,11 +735,23 @@
                     ep%arg_intents(j) = arg_intents(j)
                 end do
             end if
+            ep%arg_ranks = 0
+            ep%arg_extents = 0
+            if (present(arg_ranks)) then
+                do j = 1, min(arg_count, size(arg_ranks))
+                    ep%arg_ranks(j) = arg_ranks(j)
+                end do
+            end if
+            if (present(arg_extents)) then
+                do j = 1, min(arg_count, size(arg_extents))
+                    ep%arg_extents(j) = arg_extents(j)
+                end do
+            end if
         end associate
     end subroutine add_external_procedure
 
     subroutine lower_module_proc_i32_call(arena, node, ext_idx, context, value, &
-                                          error_msg)
+                                          error_msg, callee_name)
         ! Lower a call to a separately compiled integer module function. The
         ! arguments pass by reference (Fortran ABI) and the call targets the
         ! module procedure's mangled symbol resolved from the .fmod (#284).
@@ -746,22 +761,28 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        ! The name the call resolved to, which differs from the written name
+        ! when a use-associated generic selected a specific (#415).
+        character(len=*), intent(in), optional :: callee_name
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: resolved_name
         integer :: empty_args(0)
 
+        resolved_name = trim(node%name)
+        if (present(callee_name)) resolved_name = trim(callee_name)
         if (allocated(node%arg_indices)) then
             call check_module_call_arity(arena, context, ext_idx, &
-                                         trim(node%name), node%arg_indices, &
+                                         resolved_name, node%arg_indices, &
                                          error_msg)
             if (len_trim(error_msg) > 0) return
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_I32, trim(node%name), args, &
+                                        VALUE_I32, resolved_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             call check_module_call_arity(arena, context, ext_idx, &
-                                         trim(node%name), empty_args, error_msg)
+                                         resolved_name, empty_args, error_msg)
             if (len_trim(error_msg) > 0) return
             allocate (args(0))
             allocate (copyback_indices(0))

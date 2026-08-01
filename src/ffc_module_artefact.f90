@@ -24,7 +24,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 3
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 4
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -98,6 +98,12 @@ module ffc_module_artefact
         ! 'integer'); both empty for a subroutine (#397).
         character(len=:), allocatable :: result_name
         character(len=:), allocatable :: result_kind
+        ! Space-joined per-dummy rank (0 for a scalar) and, for an
+        ! explicit-shape array dummy, its total element count. A generic
+        ! resolves an imported specific by these ranks exactly as a same-unit
+        ! call resolves one by the declared ranks (#415).
+        character(len=:), allocatable :: arg_ranks
+        character(len=:), allocatable :: arg_extents
         integer :: nargs = 0
     end type fmod_procedure_t
 
@@ -206,6 +212,10 @@ contains
                     field(info%procedures(i)%result_name)//'"'
                 write (unit, '(A)') 'result_kind = "'// &
                     field(info%procedures(i)%result_kind)//'"'
+                write (unit, '(A)') 'arg_ranks = "'// &
+                    field(info%procedures(i)%arg_ranks)//'"'
+                write (unit, '(A)') 'arg_extents = "'// &
+                    field(info%procedures(i)%arg_extents)//'"'
             end do
         end if
 
@@ -307,6 +317,8 @@ contains
                 procs(nproc)%arg_values = ''
                 procs(nproc)%result_name = ''
                 procs(nproc)%result_kind = ''
+                procs(nproc)%arg_ranks = ''
+                procs(nproc)%arg_extents = ''
                 procs(nproc)%nargs = 0
                 cycle
             else if (line == '[[generic]]') then
@@ -371,6 +383,9 @@ contains
                     procs(nproc)%result_name = unquote(val)
                 if (key == 'result_kind') &
                     procs(nproc)%result_kind = unquote(val)
+                if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
+                if (key == 'arg_extents') &
+                    procs(nproc)%arg_extents = unquote(val)
                 if (key == 'nargs') then
                     read (val, *, iostat=io_read) procs(nproc)%nargs
                     if (io_read /= 0) procs(nproc)%nargs = 0
