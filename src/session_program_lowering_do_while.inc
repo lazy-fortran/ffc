@@ -15,11 +15,18 @@
         integer(c_int32_t) :: latch_block
         integer(c_int32_t) :: exit_block
         integer(c_int32_t) :: reserved_vreg
+        integer(c_int32_t) :: saved_loop_exit_block
+        integer(c_int32_t) :: saved_loop_latch_block
+        integer(c_int32_t), allocatable :: saved_loop_exit_blocks(:)
+        type(lr_operand_desc_t), allocatable :: saved_loop_exit_values(:,:)
+        integer :: saved_loop_exit_count
         integer, allocatable :: carried_indices(:)
         integer :: carried_count
         integer :: initial_symbol_count
         integer :: i
         logical :: body_terminated
+        logical :: body_exited
+        logical :: saved_in_loop
 
         value = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
@@ -71,17 +78,32 @@
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
         body_terminated = .false.
+        saved_loop_exit_block = context%current_loop_exit_block
+        saved_loop_latch_block = context%current_loop_latch_block
+        saved_in_loop = context%in_loop
+        context%current_loop_exit_block = exit_block
+        context%current_loop_latch_block = latch_block
+        context%in_loop = .true.
+        context%current_block_exited_loop = .false.
+        call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
+                                      saved_loop_exit_values, &
+                                      saved_loop_exit_count)
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       body_terminated, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
+        body_exited = context%current_block_exited_loop
+        context%current_loop_exit_block = saved_loop_exit_block
+        context%current_loop_latch_block = saved_loop_latch_block
+        context%in_loop = saved_in_loop
+        context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then
             error_msg = 'direct LIRIC session DO WHILE cannot merge '// &
                         'loop declarations'
             return
         end if
-        if (body_terminated) then
+        if (body_terminated .and. .not. body_exited) then
             call unsupported_feature_error('terminating do while body', &
                                            node%line, node%column, &
                                            'direct LIRIC session does not '// &
@@ -89,7 +111,9 @@
                                            'do while loops', error_msg)
             return
         end if
-        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+        if (.not. body_terminated) then
+            if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+        end if
 
         ! The body may end in a merge block (e.g. after a conditional stop), so
         ! the phi backedge must come from a dedicated latch, not body_block, or
@@ -108,9 +132,13 @@
         context%current_block_id = exit_block
         context%current_block_terminated = .false.
         do i = 1, carried_count
-            context%symbols(carried_indices(i))%value = &
-                header_values(carried_indices(i))
+            call merge_loop_exit_values(context, carried_indices(i), &
+                                        header_values(carried_indices(i)), &
+                                        header_block, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
+        call end_loop_exit_tracking(context, saved_loop_exit_blocks, &
+                                    saved_loop_exit_values, saved_loop_exit_count)
         value = i32_immediate(context%session, 0_c_int64_t)
         if (carried_count > 0) then
             deallocate(entry_values)

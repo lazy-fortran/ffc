@@ -743,8 +743,14 @@ module session_program_lowering_types
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
-        logical :: in_counted_do = .false.
+        logical :: in_loop = .false.
         logical :: current_block_exited_loop = .false.
+        ! Values captured at explicit EXIT edges. The loop's common exit block
+        ! merges these with the normal condition-false edge so an EXIT from a
+        ! branch preserves the values computed on that path.
+        integer :: loop_exit_count = 0
+        integer(c_int32_t), allocatable :: loop_exit_blocks(:)
+        type(lr_operand_desc_t), allocatable :: loop_exit_values(:,:)
         ! GOTO label table for a labeled program body (#270). Each labeled
         ! statement owns a LIRIC block; a `goto N` branches to label_blocks(k)
         ! where label_names(k) == 'N'. Active only while in_labeled_body.

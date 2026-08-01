@@ -3256,10 +3256,7 @@ where_14.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through
 where_15.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 where_16.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 where_17.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-while_02.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
-while_03.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 while_05.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-while_01.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 write_01.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 write_02.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 write_03.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
@@ -3299,7 +3296,6 @@ write_substr_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-leng
 class_06.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 submodule_04.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 submodule_02.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
-while_07.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 intrinsics_399.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 program_cmake_02.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering

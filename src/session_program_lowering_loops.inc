@@ -73,7 +73,10 @@
         logical :: body_exited
         integer(c_int32_t) :: saved_loop_exit_block
         integer(c_int32_t) :: saved_loop_latch_block
-        logical :: saved_in_counted_do
+        integer(c_int32_t), allocatable :: saved_loop_exit_blocks(:)
+        type(lr_operand_desc_t), allocatable :: saved_loop_exit_values(:,:)
+        integer :: saved_loop_exit_count
+        logical :: saved_in_loop
         logical :: step_is_runtime
 
         value = i32_immediate(context%session, 0_c_int64_t)
@@ -156,11 +159,14 @@
         body_terminated = .false.
         saved_loop_exit_block = context%current_loop_exit_block
         saved_loop_latch_block = context%current_loop_latch_block
-        saved_in_counted_do = context%in_counted_do
+        saved_in_loop = context%in_loop
         context%current_loop_exit_block = exit_block
         context%current_loop_latch_block = latch_block
-        context%in_counted_do = .true.
+        context%in_loop = .true.
         context%current_block_exited_loop = .false.
+        call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
+                                      saved_loop_exit_values, &
+                                      saved_loop_exit_count)
         ! The induction variable lives in the phi-carried %value register for
         ! the whole scaffold (condition/increment never touch memory). A
         ! memory-backed loop variable (COMMON, SAVE, ...) is read by address
@@ -178,7 +184,7 @@
         body_exited = context%current_block_exited_loop
         context%current_loop_exit_block = saved_loop_exit_block
         context%current_loop_latch_block = saved_loop_latch_block
-        context%in_counted_do = saved_in_counted_do
+        context%in_loop = saved_in_loop
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then
             error_msg = 'direct LIRIC session DO cannot merge loop declarations'
@@ -220,9 +226,13 @@
         context%current_block_id = exit_block
         context%current_block_terminated = .false.
         do i = 1, carried_count
-            context%symbols(carried_indices(i))%value = &
-                header_values(carried_indices(i))
+            call merge_loop_exit_values(context, carried_indices(i), &
+                                        header_values(carried_indices(i)), &
+                                        header_block, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
+        call end_loop_exit_tracking(context, saved_loop_exit_blocks, &
+                                    saved_loop_exit_values, saved_loop_exit_count)
         ! A normal (F2018 11.1.7.4.3) loop exit leaves the induction variable
         ! one step past the last executed value; publish that final %value to
         ! memory for a memory-backed loop variable, matching the per-iteration
@@ -245,6 +255,118 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_counted_loop
+
+    subroutine begin_loop_exit_tracking(context, saved_blocks, saved_values, &
+                                        saved_count)
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int32_t), allocatable, intent(out) :: saved_blocks(:)
+        type(lr_operand_desc_t), allocatable, intent(out) :: saved_values(:,:)
+        integer, intent(out) :: saved_count
+
+        saved_count = context%loop_exit_count
+        if (allocated(context%loop_exit_blocks)) then
+            call move_alloc(context%loop_exit_blocks, saved_blocks)
+        end if
+        if (allocated(context%loop_exit_values)) then
+            call move_alloc(context%loop_exit_values, saved_values)
+        end if
+        context%loop_exit_count = 0
+        allocate(context%loop_exit_blocks(0))
+        allocate(context%loop_exit_values(context%symbol_count, 0))
+    end subroutine begin_loop_exit_tracking
+
+    subroutine end_loop_exit_tracking(context, saved_blocks, saved_values, &
+                                      saved_count)
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int32_t), allocatable, intent(inout) :: saved_blocks(:)
+        type(lr_operand_desc_t), allocatable, intent(inout) :: saved_values(:,:)
+        integer, intent(in) :: saved_count
+
+        if (allocated(context%loop_exit_blocks)) then
+            deallocate(context%loop_exit_blocks)
+        end if
+        if (allocated(context%loop_exit_values)) then
+            deallocate(context%loop_exit_values)
+        end if
+        if (allocated(saved_blocks)) then
+            call move_alloc(saved_blocks, context%loop_exit_blocks)
+        end if
+        if (allocated(saved_values)) then
+            call move_alloc(saved_values, context%loop_exit_values)
+        end if
+        context%loop_exit_count = saved_count
+    end subroutine end_loop_exit_tracking
+
+    subroutine record_loop_exit(context, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t), allocatable :: new_blocks(:)
+        type(lr_operand_desc_t), allocatable :: new_values(:,:)
+        integer :: old_count
+        integer :: i
+
+        if (.not. allocated(context%loop_exit_blocks) .or. &
+            .not. allocated(context%loop_exit_values)) then
+            error_msg = 'direct LIRIC session EXIT has no active loop edge table'
+            return
+        end if
+        if (size(context%loop_exit_values, 1) /= context%symbol_count) then
+            error_msg = 'direct LIRIC session EXIT cannot capture changed symbols'
+            return
+        end if
+
+        old_count = context%loop_exit_count
+        allocate(new_blocks(old_count + 1))
+        allocate(new_values(context%symbol_count, old_count + 1))
+        if (old_count > 0) then
+            new_blocks(1:old_count) = context%loop_exit_blocks(1:old_count)
+            new_values(:, 1:old_count) = &
+                context%loop_exit_values(:, 1:old_count)
+        end if
+        new_blocks(old_count + 1) = context%current_block_id
+        do i = 1, context%symbol_count
+            new_values(i, old_count + 1) = context%symbols(i)%value
+        end do
+        call move_alloc(new_blocks, context%loop_exit_blocks)
+        call move_alloc(new_values, context%loop_exit_values)
+        context%loop_exit_count = old_count + 1
+        call set_empty(error_msg)
+    end subroutine record_loop_exit
+
+    subroutine merge_loop_exit_values(context, symbol_index, header_value, &
+                                      header_block, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: header_value
+        integer(c_int32_t), intent(in) :: header_block
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: values(:)
+        integer(c_int32_t), allocatable :: blocks(:)
+        integer :: incoming_count
+        integer :: i
+
+        if (context%loop_exit_count == 0) then
+            context%symbols(symbol_index)%value = header_value
+            call set_empty(error_msg)
+            return
+        end if
+
+        incoming_count = context%loop_exit_count + 1
+        allocate(values(incoming_count))
+        allocate(blocks(incoming_count))
+        values(1) = header_value
+        blocks(1) = header_block
+        do i = 1, context%loop_exit_count
+            values(i + 1) = context%loop_exit_values(symbol_index, i)
+            blocks(i + 1) = context%loop_exit_blocks(i)
+        end do
+        if (.not. emit_liric_phi_n(context%session, values, blocks, &
+                                   context%symbols(symbol_index)%value, &
+                                   error_msg)) return
+        deallocate(values)
+        deallocate(blocks)
+        call set_empty(error_msg)
+    end subroutine merge_loop_exit_values
 
     subroutine collect_carried_symbols(context, indices, count)
         ! A loop-modified scalar must flow through the header phi and the latch

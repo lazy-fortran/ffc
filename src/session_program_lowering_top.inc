@@ -1082,11 +1082,13 @@
             else if (context%in_internal_function) then
                 call lower_function_return(node, context, error_msg)
             else
-                call unsupported_feature_error('return statement', node%line, &
-                                               node%column, &
-                                               'direct LIRIC session does not '// &
-                                               'support return at top level', &
-                                               error_msg)
+                ! GNU Fortran accepts RETURN in a main program as an
+                ! extension. It terminates the program with the normal main
+                ! status, so lower it as an explicit return of zero.
+                if (.not. emit_ret_i32_operand(context%session, &
+                    i32_immediate(context%session, 0_c_int64_t), error_msg)) &
+                    return
+                context%current_block_terminated = .true.
             end if
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
@@ -1137,26 +1139,28 @@
                 context%current_block_terminated = .true.
             end if
         type is (exit_node)
-            if (.not. context%in_counted_do) then
+            if (.not. context%in_loop) then
                 call unsupported_feature_error('exit statement', node%line, &
                                                node%column, &
                                                'direct LIRIC session only '// &
-                                               'supports exit inside a counted '// &
-                                               'do', error_msg)
+                                               'supports exit inside a loop', &
+                                               error_msg)
                 return
             end if
+            call record_loop_exit(context, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_br(context%session, &
                                     context%current_loop_exit_block, &
                                     error_msg)) return
             context%current_block_terminated = .true.
             context%current_block_exited_loop = .true.
         type is (cycle_node)
-            if (.not. context%in_counted_do) then
+            if (.not. context%in_loop) then
                 call unsupported_feature_error('cycle statement', node%line, &
                                                node%column, &
                                                'direct LIRIC session only '// &
-                                               'supports cycle inside a counted '// &
-                                               'do', error_msg)
+                                               'supports cycle inside a loop', &
+                                               error_msg)
                 return
             end if
             if (.not. emit_liric_br(context%session, &
