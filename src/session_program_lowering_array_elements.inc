@@ -2234,6 +2234,7 @@
         case ('count'); reduce_op = DIM_REDUCE_COUNT
         case ('any'); reduce_op = DIM_REDUCE_ANY
         case ('all'); reduce_op = DIM_REDUCE_ALL
+        case ('norm2'); reduce_op = DIM_REDUCE_NORM2
         case default; return
         end select
 
@@ -2263,6 +2264,7 @@
         call dim_reduction_array_symbol(arena, source_arg, context, src_sym)
         if (src_sym <= 0) then
             if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) return
+            if (reduce_op == DIM_REDUCE_NORM2) return
             call dim_reduction_comparison(arena, source_arg, context, cmp_op, &
                                           cmp_lsym, cmp_lscalar, cmp_rsym, &
                                           cmp_rscalar, src_sym, compare_vk, &
@@ -2286,7 +2288,13 @@
 
         ! Numeric sum/product keep the source kind; mask reductions work in i32
         ! (count -> integer count, any/all -> logical 0/1).
-        if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) then
+        if (reduce_op == DIM_REDUCE_NORM2) then
+            select case (source_vk)
+            case (VALUE_F32, VALUE_F64)
+            case default; return
+            end select
+            if (result_vk /= source_vk) return
+        else if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) then
             select case (source_vk)
             case (VALUE_I32, VALUE_F32, VALUE_F64)
             case default; return
@@ -2313,6 +2321,15 @@
         end if
 
         do i = 0, out_size - 1
+            if (reduce_op == DIM_REDUCE_NORM2) then
+                call dim_reduction_norm2_slice(context, src_sym, source_vk, &
+                    dim_value, d1, i, reduce_extent, acc, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_array_linear_element(context, symbol_index, &
+                                                int(i, c_int64_t), acc, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             call dim_reduction_identity(context, reduce_op, source_vk, acc)
             do j = 0, reduce_extent - 1
                 if (dim_value == 1_c_int64_t) then
@@ -2345,6 +2362,39 @@
         handled = .true.
         call set_empty(error_msg)
     end subroutine lower_dim_reduction_assignment
+
+    ! One norm2 slice of a dim-wise reduction: the reduce_extent elements of
+    ! the rank-2 source that contribute to output element i, reduced with the
+    ! scaled sum-of-squares algorithm.
+    subroutine dim_reduction_norm2_slice(context, src_sym, source_vk, dim_value, &
+                                         d1, i, reduce_extent, acc, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: src_sym
+        integer, intent(in) :: source_vk
+        integer(c_int64_t), intent(in) :: dim_value
+        integer, intent(in) :: d1
+        integer, intent(in) :: i
+        integer, intent(in) :: reduce_extent
+        type(lr_operand_desc_t), intent(out) :: acc
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: elems(:)
+        integer(c_int64_t) :: lin
+        integer :: j
+
+        call set_empty(error_msg)
+        allocate (elems(reduce_extent))
+        do j = 0, reduce_extent - 1
+            if (dim_value == 1_c_int64_t) then
+                lin = int(j, c_int64_t) + int(i, c_int64_t) * int(d1, c_int64_t)
+            else
+                lin = int(i, c_int64_t) + int(j, c_int64_t) * int(d1, c_int64_t)
+            end if
+            call load_array_linear_element(context, src_sym, lin, elems(j + 1), &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call emit_norm2_from_elements(context, source_vk, elems, acc, error_msg)
+    end subroutine dim_reduction_norm2_slice
 
     ! Separate a reduction call's actuals into the source (first positional) and
     ! the dim (second positional or dim= keyword). Zero when absent.
