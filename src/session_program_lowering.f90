@@ -238,6 +238,7 @@ module session_program_lowering
         generic_interface_t, &
         operator_interface_t, &
         MAX_PROC_ARGS, &
+        ARG_INTENT_NONE, ARG_INTENT_IN, ARG_INTENT_OUT, ARG_INTENT_INOUT, &
         MAX_GENERIC_SPECIFICS, &
         MODVAR_OK, MODVAR_UNSUPPORTED, &
         common_slot_t, COMMON_MAX_SLOTS, &

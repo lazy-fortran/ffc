@@ -381,6 +381,8 @@
         character(len=:), allocatable :: local_name
         integer, allocatable :: arg_kinds(:)
         character(len=64), allocatable :: arg_names(:)
+        logical, allocatable :: arg_optionals(:), arg_values(:)
+        integer, allocatable :: arg_intents(:)
         integer :: return_kind
         logical :: forced, imported
 
@@ -409,11 +411,80 @@
         call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_names(proc, arg_names)
+        call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
+        call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
+        call parse_fmod_arg_intents(proc, arg_intents)
         mangled = module_procedure_mangled(module_name, trim(proc%name))
         call add_external_procedure(context, trim(local_name), mangled, &
                                     return_kind, proc%nargs, .true., arg_kinds, &
-                                    arg_names)
+                                    arg_names, arg_optionals, arg_values, &
+                                    arg_intents)
     end subroutine import_fmod_procedure
+
+    subroutine parse_fmod_arg_flags(text, nargs, flags)
+        ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into
+        ! logicals. A shorter or absent list leaves the remaining dummies
+        ! without the attribute (#397).
+        character(len=:), allocatable, intent(in) :: text
+        integer, intent(in) :: nargs
+        logical, allocatable, intent(out) :: flags(:)
+        character(len=:), allocatable :: rest
+        integer :: n, sep
+
+        allocate (flags(max(nargs, 0)))
+        if (nargs <= 0) return
+        flags = .false.
+        if (.not. allocated(text)) return
+        rest = trim(adjustl(text))
+        n = 0
+        do while (len_trim(rest) > 0 .and. n < nargs)
+            sep = index(rest, ' ')
+            n = n + 1
+            if (sep == 0) then
+                flags(n) = trim(rest) == '1'
+                rest = ''
+            else
+                flags(n) = rest(1:sep - 1) == '1'
+                rest = adjustl(rest(sep + 1:))
+            end if
+        end do
+    end subroutine parse_fmod_arg_flags
+
+    subroutine parse_fmod_arg_intents(proc, intents)
+        ! Split the .fmod per-dummy INTENT token list into intent codes (#397).
+        type(fmod_procedure_t), intent(in) :: proc
+        integer, allocatable, intent(out) :: intents(:)
+        character(len=:), allocatable :: rest, token
+        integer :: n, sep
+
+        allocate (intents(max(proc%nargs, 0)))
+        if (proc%nargs <= 0) return
+        intents = ARG_INTENT_NONE
+        if (.not. allocated(proc%arg_intents)) return
+        rest = trim(adjustl(proc%arg_intents))
+        n = 0
+        do while (len_trim(rest) > 0 .and. n < proc%nargs)
+            sep = index(rest, ' ')
+            n = n + 1
+            if (sep == 0) then
+                token = trim(rest)
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            select case (trim(token))
+            case ('in')
+                intents(n) = ARG_INTENT_IN
+            case ('out')
+                intents(n) = ARG_INTENT_OUT
+            case ('inout')
+                intents(n) = ARG_INTENT_INOUT
+            case default
+                intents(n) = ARG_INTENT_NONE
+            end select
+        end do
+    end subroutine parse_fmod_arg_intents
 
     subroutine parse_fmod_arg_names(proc, arg_names)
         ! Split the .fmod arg_names token string into per-dummy names, which a

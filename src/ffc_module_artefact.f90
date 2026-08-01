@@ -19,6 +19,13 @@ module ffc_module_artefact
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
+    ! The .fmod schema this ffc writes and is able to read. Every artefact
+    ! carries it as `fmod_schema` in its [module] header. A reader rejects any
+    ! other value, and an artefact without the field, so a stale or
+    ! newer-than-supported artefact is diagnosed instead of silently misread
+    ! (#397).
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 2
+
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
         character(len=:), allocatable :: kind
@@ -54,6 +61,17 @@ module ffc_module_artefact
         ! Space-joined dummy-argument names (e.g. "hi lo"), so a using unit
         ! can associate keyword actuals with this signature (#408).
         character(len=:), allocatable :: arg_names
+        ! Space-joined per-dummy INTENT tokens, one per dummy: 'in', 'out',
+        ! 'inout', or 'none' when no INTENT was declared (#397).
+        character(len=:), allocatable :: arg_intents
+        ! Space-joined per-dummy attribute flags, one '0'/'1' per dummy, for the
+        ! OPTIONAL and VALUE attributes respectively (#397).
+        character(len=:), allocatable :: arg_optionals
+        character(len=:), allocatable :: arg_values
+        ! A function's result-variable name and its scalar kind token (e.g.
+        ! 'integer'); both empty for a subroutine (#397).
+        character(len=:), allocatable :: result_name
+        character(len=:), allocatable :: result_kind
         integer :: nargs = 0
     end type fmod_procedure_t
 
@@ -95,6 +113,7 @@ contains
         write (unit, '(A)') '[module]'
         write (unit, '(A)') 'name = "'//mod_name(info)//'"'
         write (unit, '(A)') 'ffc_version = "'//FFC_FMOD_VERSION//'"'
+        write (unit, '(A,I0)') 'fmod_schema = ', FMOD_SCHEMA_VERSION
 
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
@@ -151,6 +170,16 @@ contains
                     field(info%procedures(i)%arg_kinds)//'"'
                 write (unit, '(A)') 'arg_names = "'// &
                     field(info%procedures(i)%arg_names)//'"'
+                write (unit, '(A)') 'arg_intents = "'// &
+                    field(info%procedures(i)%arg_intents)//'"'
+                write (unit, '(A)') 'arg_optionals = "'// &
+                    field(info%procedures(i)%arg_optionals)//'"'
+                write (unit, '(A)') 'arg_values = "'// &
+                    field(info%procedures(i)%arg_values)//'"'
+                write (unit, '(A)') 'result_name = "'// &
+                    field(info%procedures(i)%result_name)//'"'
+                write (unit, '(A)') 'result_kind = "'// &
+                    field(info%procedures(i)%result_kind)//'"'
             end do
         end if
 
@@ -188,6 +217,7 @@ contains
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
         integer :: nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
+        integer :: schema
         character(len=:), allocatable :: cname, ckind
 
         allocate (character(len=0) :: error_msg)
@@ -204,6 +234,7 @@ contains
         nvar = 0
         nproc = 0
         ngen = 0
+        schema = 0
         section = ''
 
         open (newunit=unit, file=path, status='old', action='read', iostat=io_stat)
@@ -246,6 +277,11 @@ contains
                 procs(nproc)%kind = ''
                 procs(nproc)%arg_kinds = ''
                 procs(nproc)%arg_names = ''
+                procs(nproc)%arg_intents = ''
+                procs(nproc)%arg_optionals = ''
+                procs(nproc)%arg_values = ''
+                procs(nproc)%result_name = ''
+                procs(nproc)%result_kind = ''
                 procs(nproc)%nargs = 0
                 cycle
             else if (line == '[[generic]]') then
@@ -282,6 +318,10 @@ contains
             select case (section)
             case ('module')
                 if (key == 'name') info%name = unquote(val)
+                if (key == 'fmod_schema') then
+                    read (val, *, iostat=io_read) schema
+                    if (io_read /= 0) schema = 0
+                end if
             case ('parameter')
                 if (key == 'name') params(nparam)%name = unquote(val)
                 if (key == 'kind') params(nparam)%kind = unquote(val)
@@ -297,6 +337,15 @@ contains
                 if (key == 'kind') procs(nproc)%kind = unquote(val)
                 if (key == 'arg_kinds') procs(nproc)%arg_kinds = unquote(val)
                 if (key == 'arg_names') procs(nproc)%arg_names = unquote(val)
+                if (key == 'arg_intents') &
+                    procs(nproc)%arg_intents = unquote(val)
+                if (key == 'arg_optionals') &
+                    procs(nproc)%arg_optionals = unquote(val)
+                if (key == 'arg_values') procs(nproc)%arg_values = unquote(val)
+                if (key == 'result_name') &
+                    procs(nproc)%result_name = unquote(val)
+                if (key == 'result_kind') &
+                    procs(nproc)%result_kind = unquote(val)
                 if (key == 'nargs') then
                     read (val, *, iostat=io_read) procs(nproc)%nargs
                     if (io_read /= 0) procs(nproc)%nargs = 0
@@ -314,9 +363,41 @@ contains
         info%variables = vars(1:nvar)
         info%procedures = procs(1:nproc)
         info%generics = gens(1:ngen)
-        if (len_trim(info%name) == 0) error_msg = 'malformed .fmod (no module name): '// &
-            trim(path)
+        if (len_trim(info%name) == 0) then
+            error_msg = 'malformed .fmod (no module name): '//trim(path)
+            return
+        end if
+        ! Reject an artefact this ffc cannot read rather than misinterpret it:
+        ! a missing field means it predates the versioned schema, any other
+        ! value means it was written by a different ffc (#397).
+        if (schema /= FMOD_SCHEMA_VERSION) then
+            error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
+                ' in '//trim(path)//' (this ffc reads schema version '// &
+                int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
+        end if
     end subroutine read_fmod
+
+    function schema_text(schema) result(text)
+        ! The schema version as it appears in a diagnostic; an artefact with no
+        ! version field reports as unversioned.
+        integer, intent(in) :: schema
+        character(len=:), allocatable :: text
+
+        if (schema <= 0) then
+            text = ' (unversioned)'
+        else
+            text = ' '//int_text(schema)
+        end if
+    end function schema_text
+
+    function int_text(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=32) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function int_text
 
     subroutine flush_component(comps, ncomp, dtypes, ndtype)
         ! Attach accumulated component rows to the current derived type.
