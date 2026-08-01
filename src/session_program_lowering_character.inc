@@ -1749,12 +1749,30 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
 
+        integer :: sym
+
         is_elem = .false.
         if (.not. node_exists(arena, node_index)) return
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (n%is_array_access) &
+            ! The symbol table decides what the name is. The parser's
+            ! is_array_access flag is not set on every subscripted reference
+            ! (an implied-do object, for one), so trusting it made the same
+            ! reference a character element in one context and not in another.
+            if (n%is_array_access) then
                 is_elem = array_access_value_kind(n, context) == VALUE_CHARACTER
+                return
+            end if
+            ! An implied-do object reaches here without the flag set, so fall
+            ! back on the symbol table for a fixed character array, whose
+            ! elements live in this file's contiguous block. An allocatable
+            ! character array keeps its own descriptor-based element path.
+            if (.not. allocated(n%name)) return
+            sym = find_symbol_compat(context, n%name)
+            if (sym <= 0) return
+            if (.not. context%symbols(sym)%is_array) return
+            if (context%symbols(sym)%is_allocatable) return
+            is_elem = context%symbols(sym)%value_kind == VALUE_CHARACTER
         end select
     end function is_character_array_element
 
