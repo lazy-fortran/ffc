@@ -131,6 +131,38 @@ program test_session_lazy_defaults_compiler
         'end program p'//new_line('a'), 'lf', &
         '  0.33333333333333331', 'ffc_lf_dummy_real_kind_sub')) ok = .false.
 
+    ! An external (non-contained) subroutine whose dummy is explicitly
+    ! declared `real` must not gain a second, competing declaration record
+    ! from the lazy default policy (#586).
+    if (.not. runs( &
+        'subroutine show(x)'//new_line('a')// &
+        '    real :: x'//new_line('a')// &
+        '    print *, x'//new_line('a')// &
+        'end subroutine show'//new_line('a')// &
+        ''//new_line('a')// &
+        'call show(1.0d0/3.0d0)'//new_line('a'), 'lf', &
+        '  0.33333333333333331', 'ffc_lf_external_real_dummy')) ok = .false.
+
+    ! Same for an explicitly INTENT(IN) real dummy of an external unit.
+    if (.not. runs( &
+        'subroutine show(x)'//new_line('a')// &
+        '    real, intent(in) :: x'//new_line('a')// &
+        '    print *, x'//new_line('a')// &
+        'end subroutine show'//new_line('a')// &
+        ''//new_line('a')// &
+        'call show(1.0d0/3.0d0)'//new_line('a'), 'lf', &
+        '  0.33333333333333331', 'ffc_lf_external_intent_in_real_dummy')) ok = .false.
+
+    ! An implicitly typed function result gets its type from inference alone;
+    ! the lazy default must merge into that record, not duplicate it (#586).
+    if (.not. runs( &
+        'function twice(x) result(y)'//new_line('a')// &
+        '    y = 2.0*x'//new_line('a')// &
+        'end function twice'//new_line('a')// &
+        ''//new_line('a')// &
+        'print *, twice(1.0d0/6.0d0)'//new_line('a'), 'lf', &
+        '  0.33333333333333331', 'ffc_lf_inferred_real_result')) ok = .false.
+
     if (.not. ok) stop 1
     print *, 'PASS: lazy default real kind and default dummy intent apply'
 
