@@ -665,6 +665,10 @@ while IFS= read -r full_path <&3; do
                 ref_exit=1
                 NOREF_COUNT=$((NOREF_COUNT + 1))
                 IS_NOREF_RECORD=1
+                # Same category as the reference-only rejection below: the
+                # reference produced no oracle. Leaving it empty emits an
+                # unapproved noref reason that the dashboard rejects.
+                NOREF_RECORD_REASON="reference-rejected"
                 status="PASS"
                 note="gfortran rejects too; no reference (NO-REF)"
                 PASS_COUNT=$((PASS_COUNT + 1))
