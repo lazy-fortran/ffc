@@ -661,6 +661,10 @@ The complete runtime ABI. Adding an entry point means editing
 | `_ffc_unit_rewind` | `int _ffc_unit_rewind(int unit)` | Repositions to the first record. |
 | `_ffc_unit_close` | `int _ffc_unit_close(int unit)` | Disconnects the unit. Succeeds on a unit that is not connected. |
 | `_ffc_unit_status` | `int _ffc_unit_status(void)` | Status of the most recent unit operation. |
+| `_ffc_random_seed_size` | `int _ffc_random_seed_size(void)` | Size of the seed array `RANDOM_SEED(SIZE=)` reports. The generator behind `RANDOM_NUMBER` has one integer of state, so this is 1. |
+| `_ffc_random_seed_put` | `void _ffc_random_seed_put(const int *seed)` | `RANDOM_SEED(PUT=)`. Restarts the generator from `seed[0]`, so an identical PUT replays an identical sequence. Null is ignored. |
+| `_ffc_random_seed_get` | `void _ffc_random_seed_get(int *seed)` | `RANDOM_SEED(GET=)`. Writes the current seed into `seed[0]`. Null is ignored. |
+| `_ffc_random_seed_default` | `void _ffc_random_seed_default(void)` | Argument-less `RANDOM_SEED()`. Resets the generator to the processor's default seed, which repeats across runs (permitted by F2018 16.9.155). |
 
 ### File-unit state (#396)
 

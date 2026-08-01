@@ -47,6 +47,7 @@ int _ffc_runtime_probe(void) {
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #define FFC_UNIT_MIN 0
 #define FFC_UNIT_MAX 2048
@@ -222,4 +223,46 @@ int _ffc_unit_close(int unit) {
     }
     ffc_unit_last_status = 0;
     return 0;
+}
+
+/* ---- RANDOM_SEED (issue #588) ---------------------------- */
+
+/* RANDOM_NUMBER draws from glibc's random(), whose state is
+ * seeded by srandom(). That state is one integer, so the
+ * seed array RANDOM_SEED works with has size 1 and only its
+ * first element is read or written. The last seed put is
+ * kept here because srandom() offers no way to read it back,
+ * and RANDOM_SEED(GET=) must report it. */
+
+static int ffc_random_seed_state = 1;
+
+/* RANDOM_SEED(SIZE=n): the seed array size, always 1. */
+int _ffc_random_seed_size(void) {
+    return 1;
+}
+
+/* RANDOM_SEED(PUT=seed): restart the generator from seed[0],
+ * so an identical PUT replays an identical sequence. */
+void _ffc_random_seed_put(const int *seed) {
+    if (seed == NULL) {
+        return;
+    }
+    ffc_random_seed_state = seed[0];
+    srandom((unsigned int) seed[0]);
+}
+
+/* RANDOM_SEED(GET=seed): report the current seed. */
+void _ffc_random_seed_get(int *seed) {
+    if (seed == NULL) {
+        return;
+    }
+    seed[0] = ffc_random_seed_state;
+}
+
+/* RANDOM_SEED() with no arguments: reset to the processor's
+ * default seed, which is glibc's own initial random() state
+ * (srandom(1)). Repeatable across runs, as F2018 permits. */
+void _ffc_random_seed_default(void) {
+    ffc_random_seed_state = 1;
+    srandom(1u);
 }

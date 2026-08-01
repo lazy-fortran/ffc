@@ -206,7 +206,9 @@ module session_program_lowering
         emit_liric_f64_load, &
         emit_liric_f64_store
     use liric_session_timing_bindings, only: emit_cpu_time_value, &
-        emit_system_clock_value, emit_random_number_value
+        emit_system_clock_value, emit_random_number_value, &
+        emit_random_seed_size, emit_random_seed_put, emit_random_seed_get, &
+        emit_random_seed_default
     use session_lowering_ops, only: integer_compare_predicate, &
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
@@ -1981,6 +1983,10 @@ contains
             call lower_random_number(arena, arg_indices, context, error_msg)
             return
         end if
+        if (same_name(call_name, 'random_seed')) then
+            call lower_random_seed(arena, arg_indices, context, error_msg)
+            return
+        end if
         if (is_method_subroutine_call(call_name)) then
             call lower_method_subroutine_call(arena, call_name, arg_indices, &
                 context, error_msg)
@@ -2091,6 +2097,101 @@ contains
         if (.not. emit_random_number_value(context%session, value, error_msg)) return
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
     end subroutine lower_random_number
+
+    subroutine lower_random_seed(arena, arg_indices, context, error_msg)
+        ! random_seed([size=n] | [put=seed] | [get=seed]): control the
+        ! generator RANDOM_NUMBER draws from. The runtime owns the seed state
+        ! (_ffc_random_seed_*), so the size and the PUT/GET semantics live in
+        ! one place instead of being duplicated in emitted code. Exactly one
+        ! keyword per call is supported, which covers every corpus use.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, address
+        character(len=:), allocatable :: kw_name
+        integer :: kw_value, symbol_index
+
+        call set_empty(error_msg)
+        if (size(arg_indices) == 0) then
+            if (.not. emit_random_seed_default(context%session, error_msg)) return
+            return
+        end if
+        if (size(arg_indices) /= 1) then
+            error_msg = 'random_seed supports one of size=, put= or get= per call'
+            return
+        end if
+        call reshape_keyword_arg(arena, arg_indices(1), kw_name, kw_value)
+        if (kw_name == 'size') then
+            call intrinsic_out_scalar(arena, [kw_value], context, 'random_seed', &
+                VALUE_I32, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_random_seed_size(context%session, value, error_msg)) return
+            call store_intrinsic_scalar_result(context, symbol_index, value, &
+                error_msg)
+            return
+        end if
+        if (kw_name /= 'put') then
+            if (kw_name /= 'get') then
+                error_msg = 'random_seed argument must be size=, put= or get='
+                return
+            end if
+        end if
+        call random_seed_array_address(arena, kw_value, context, address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (kw_name == 'put') then
+            if (.not. emit_random_seed_put(context%session, address, error_msg)) &
+                return
+        else
+            if (.not. emit_random_seed_get(context%session, address, error_msg)) &
+                return
+        end if
+    end subroutine lower_random_seed
+
+    subroutine random_seed_array_address(arena, node_index, context, address, &
+            error_msg)
+        ! Base address of the integer seed array a PUT/GET actual names. An
+        ! allocatable's storage is behind its descriptor, so load the data
+        ! pointer; an explicit-shape array is its own storage.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: symbol_index
+
+        if (.not. is_identifier(arena, node_index)) then
+            error_msg = 'random_seed put=/get= argument must be an integer array'
+            return
+        end if
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'random_seed argument is not declared: '//trim(id_name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array) then
+            error_msg = 'random_seed put=/get= argument must be an array: '// &
+                        trim(id_name)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'random_seed put=/get= argument must be a default '// &
+                        'integer array: '//trim(id_name)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_allocatable) then
+            if (.not. emit_ptr_load(context%session, &
+                context%symbols(symbol_index)%allocatable_descriptor_address, &
+                address, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+        address = context%symbols(symbol_index)%element_address
+        call set_empty(error_msg)
+    end subroutine random_seed_array_address
 
     subroutine intrinsic_out_scalar(arena, arg_indices, context, name, kind, &
             symbol_index, error_msg)

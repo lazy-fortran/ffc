@@ -116,6 +116,8 @@ contains
         text = text//NL
         text = text// &
             '#include <stdio.h>'//NL
+        text = text// &
+            '#include <stdlib.h>'//NL
         text = text//NL
         text = text// &
             '#define FFC_UNIT_MIN 0'//NL
@@ -451,6 +453,83 @@ contains
             '    ffc_unit_last_status = 0;'//NL
         text = text// &
             '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* ---- RANDOM_SEED (issue #588) ---------------------------- */'//NL
+        text = text//NL
+        text = text// &
+            '/* RANDOM_NUMBER draws from glibc''s random(), whose state is'//NL
+        text = text// &
+            ' * seeded by srandom(). That state is one integer, so the'//NL
+        text = text// &
+            ' * seed array RANDOM_SEED works with has size 1 and only its'//NL
+        text = text// &
+            ' * first element is read or written. The last seed put is'//NL
+        text = text// &
+            ' * kept here because srandom() offers no way to read it back,'//NL
+        text = text// &
+            ' * and RANDOM_SEED(GET=) must report it. */'//NL
+        text = text//NL
+        text = text// &
+            'static int ffc_random_seed_state = 1;'//NL
+        text = text//NL
+        text = text// &
+            '/* RANDOM_SEED(SIZE=n): the seed array size, always 1. */'//NL
+        text = text// &
+            'int _ffc_random_seed_size(void) {'//NL
+        text = text// &
+            '    return 1;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* RANDOM_SEED(PUT=seed): restart the generator from seed[0],'//NL
+        text = text// &
+            ' * so an identical PUT replays an identical sequence. */'//NL
+        text = text// &
+            'void _ffc_random_seed_put(const int *seed) {'//NL
+        text = text// &
+            '    if (seed == NULL) {'//NL
+        text = text// &
+            '        return;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_random_seed_state = seed[0];'//NL
+        text = text// &
+            '    srandom((unsigned int) seed[0]);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* RANDOM_SEED(GET=seed): report the current seed. */'//NL
+        text = text// &
+            'void _ffc_random_seed_get(int *seed) {'//NL
+        text = text// &
+            '    if (seed == NULL) {'//NL
+        text = text// &
+            '        return;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    seed[0] = ffc_random_seed_state;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* RANDOM_SEED() with no arguments: reset to the processor''s'//NL
+        text = text// &
+            ' * default seed, which is glibc''s own initial random() state'//NL
+        text = text// &
+            ' * (srandom(1)). Repeatable across runs, as F2018 permits. */'//NL
+        text = text// &
+            'void _ffc_random_seed_default(void) {'//NL
+        text = text// &
+            '    ffc_random_seed_state = 1;'//NL
+        text = text// &
+            '    srandom(1u);'//NL
         text = text// &
             '}'//NL
     end subroutine ffc_runtime_source_text
