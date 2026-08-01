@@ -376,6 +376,8 @@ module session_program_lowering
     integer, parameter :: DIM_REDUCE_ANY = 4
     integer, parameter :: DIM_REDUCE_ALL = 5
     integer, parameter :: DIM_REDUCE_NORM2 = 6
+    integer, parameter :: DIM_REDUCE_MIN = 7
+    integer, parameter :: DIM_REDUCE_MAX = 8
 
     ! Pull-based cursor over a DATA value list. A scalar value yields once; an
     ! implied-do value (e.g. (i*1.0, i=1,2)) unrolls its inner expression,

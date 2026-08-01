@@ -1307,6 +1307,163 @@
                                         error_msg)) return
     end subroutine lower_f64_intrinsic_arg
 
+    integer function reduction_operation(name) result(op)
+        !! Map an intrinsic reduction name onto its DIM_REDUCE_* operation.
+        !! Returns 0 for a name that is not a reduction.
+        character(len=*), intent(in) :: name
+
+        select case (trim(adjustl(lowercase_text(name))))
+        case ('sum'); op = DIM_REDUCE_SUM
+        case ('product'); op = DIM_REDUCE_PROD
+        case ('count'); op = DIM_REDUCE_COUNT
+        case ('any'); op = DIM_REDUCE_ANY
+        case ('all'); op = DIM_REDUCE_ALL
+        case ('norm2'); op = DIM_REDUCE_NORM2
+        case ('minval'); op = DIM_REDUCE_MIN
+        case ('maxval'); op = DIM_REDUCE_MAX
+        case default; op = 0
+        end select
+    end function reduction_operation
+
+    logical function reduction_is_mask_valued(op) result(is_mask)
+        !! COUNT, ANY, and ALL consume a logical element and accumulate an i32
+        !! 0/1 value; the other reductions consume an element of the source's
+        !! own type.
+        integer, intent(in) :: op
+
+        is_mask = (op == DIM_REDUCE_COUNT .or. op == DIM_REDUCE_ANY .or. &
+                   op == DIM_REDUCE_ALL)
+    end function reduction_is_mask_valued
+
+    subroutine reduction_identity(context, op, vk, acc, error_msg)
+        !! The identity element of one reduction over element kind vk. Folding
+        !! starts here, so this is also the value of the reduction over an
+        !! empty array, which is what the intrinsic definitions require:
+        !! SUM 0, PRODUCT 1, COUNT 0, ANY false, ALL true, MINVAL HUGE, and
+        !! MAXVAL -HUGE for the kind involved.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: op
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(out) :: acc
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (reduction_is_mask_valued(op)) then
+            if (op == DIM_REDUCE_ALL) then
+                acc = i32_immediate(context%session, 1_c_int64_t)
+            else
+                acc = i32_immediate(context%session, 0_c_int64_t)
+            end if
+            return
+        end if
+        select case (op)
+        case (DIM_REDUCE_SUM)
+            select case (vk)
+            case (VALUE_F32); acc = liric_f32_immediate(context%session, 0.0_c_float)
+            case (VALUE_F64); acc = liric_f64_immediate(context%session, 0.0_c_double)
+            case default; acc = i32_immediate(context%session, 0_c_int64_t)
+            end select
+        case (DIM_REDUCE_PROD)
+            select case (vk)
+            case (VALUE_F32); acc = liric_f32_immediate(context%session, 1.0_c_float)
+            case (VALUE_F64); acc = liric_f64_immediate(context%session, 1.0_c_double)
+            case default; acc = i32_immediate(context%session, 1_c_int64_t)
+            end select
+        case (DIM_REDUCE_MIN)
+            select case (vk)
+            case (VALUE_F32)
+                acc = liric_f32_immediate(context%session, huge(0.0_c_float))
+            case (VALUE_F64)
+                acc = liric_f64_immediate(context%session, huge(0.0_c_double))
+            case default
+                acc = i32_immediate(context%session, 2147483647_c_int64_t)
+            end select
+        case (DIM_REDUCE_MAX)
+            select case (vk)
+            case (VALUE_F32)
+                acc = liric_f32_immediate(context%session, -huge(0.0_c_float))
+            case (VALUE_F64)
+                acc = liric_f64_immediate(context%session, -huge(0.0_c_double))
+            case default
+                acc = i32_immediate(context%session, -2147483648_c_int64_t)
+            end select
+        case default
+            error_msg = 'reduction has no identity element for this operation'
+        end select
+    end subroutine reduction_identity
+
+    subroutine reduction_combine(context, op, vk, acc, elem, error_msg)
+        !! Fold one element into the accumulator. Every reduction here is
+        !! associative and commutative over its identity, so the standard
+        !! leaves the traversal order unspecified and the fold runs in
+        !! ascending linear-index order. Integer SUM and PRODUCT wrap exactly
+        !! as the source operations do; real SUM and PRODUCT accumulate in
+        !! that same order, which fixes the rounding sequence.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: op
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(inout) :: acc
+        type(lr_operand_desc_t), intent(in) :: elem
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: next, cond
+
+        call set_empty(error_msg)
+        if (reduction_is_mask_valued(op)) then
+            select case (op)
+            case (DIM_REDUCE_ANY)
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, elem, &
+                                          next, error_msg)) return
+            case (DIM_REDUCE_ALL)
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, elem, &
+                                          next, error_msg)) return
+            case default
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, elem, &
+                                          next, error_msg)) return
+            end select
+            acc = next
+            return
+        end if
+
+        select case (op)
+        case (DIM_REDUCE_SUM, DIM_REDUCE_PROD)
+            select case (vk)
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_binary(context%session, &
+                        merge(LR_OP_FADD, LR_OP_FMUL, op == DIM_REDUCE_SUM), &
+                        acc, elem, next, error_msg)) return
+            case (VALUE_F64)
+                if (.not. emit_liric_f64_binary(context%session, &
+                        merge(LR_OP_FADD, LR_OP_FMUL, op == DIM_REDUCE_SUM), &
+                        acc, elem, next, error_msg)) return
+            case default
+                if (.not. emit_i32_binary(context%session, &
+                        merge(LR_OP_ADD, LR_OP_MUL, op == DIM_REDUCE_SUM), &
+                        acc, elem, next, error_msg)) return
+            end select
+        case (DIM_REDUCE_MIN, DIM_REDUCE_MAX)
+            select case (vk)
+            case (VALUE_F32)
+                if (.not. emit_liric_f32_call(context%session, &
+                        merge('fminf', 'fmaxf', op == DIM_REDUCE_MIN), &
+                        [acc, elem], next, error_msg)) return
+            case (VALUE_F64)
+                if (.not. emit_liric_f64_call(context%session, &
+                        merge('fmin', 'fmax', op == DIM_REDUCE_MIN), &
+                        [acc, elem], next, error_msg)) return
+            case default
+                if (.not. emit_liric_i32_icmp(context%session, &
+                        merge(LR_CMP_SLT, LR_CMP_SGT, op == DIM_REDUCE_MIN), &
+                        elem, acc, cond, error_msg)) return
+                call select_value(context, cond, elem, acc, next, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        case default
+            error_msg = 'reduction operation has no element combine rule'
+            return
+        end select
+        acc = next
+    end subroutine reduction_combine
+
     subroutine select_value(context, condition, true_value, false_value, value, &
                             error_msg)
         type(lowering_context_t), intent(inout) :: context
