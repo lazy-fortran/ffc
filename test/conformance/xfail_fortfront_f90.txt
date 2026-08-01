@@ -17,7 +17,6 @@ dtio_interface_unformatted.f90 # owner=lazy-fortran/ffc#427; reason=return stabl
 f2003_abstract_interface.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 f2003_block_construct.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 f2003_type_bound_array_call.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
-issue_1324_if_inside_do_loop.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 issue_1353_class_pointer_declaration.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer association
 issue_1570_pure_elemental_preservation.f90 # owner=lazy-fortran/ffc#405; reason=lower elemental procedures through array expressions
 issue_1607_final_procedures.f90 # owner=lazy-fortran/ffc#403; reason=invoke scalar final procedures once

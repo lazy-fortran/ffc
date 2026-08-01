@@ -33,13 +33,14 @@
     end function declaration_is_assumed_shape
 
     logical function declaration_is_runtime_rank1(node, context) result(is_runtime)
-        ! A rank-1 explicit-shape array whose single extent is a runtime integer
-        ! expression (a dummy-argument value such as dimension(n)) rather than a
-        ! compile-time constant. Allocatable and assumed-shape declarations are
-        ! excluded; they have their own lowering paths.
+        ! A rank-1 or rank-2 explicit-shape array at least one of whose extents
+        ! is a runtime integer expression (a dummy-argument value such as
+        ! dimension(n)) rather than a compile-time constant. Allocatable and
+        ! assumed-shape declarations are excluded; they have their own lowering
+        ! paths.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
-        integer :: dim_index
+        integer :: dim_index, d, rank
         integer(c_int64_t) :: folded
         character(len=:), allocatable :: fold_error
 
@@ -47,19 +48,22 @@
         if (.not. node%is_array) return
         if (node%is_allocatable) return
         if (.not. allocated(node%dimension_indices)) return
-        if (size(node%dimension_indices) /= 1) return
+        rank = size(node%dimension_indices)
+        if (rank < 1 .or. rank > 2) return
         if (declaration_is_assumed_shape(node, context)) return
-        dim_index = node%dimension_indices(1)
-        if (.not. node_exists(context%arena, dim_index)) return
-        select type (dim_node => context%arena%entries(dim_index)%node)
-        type is (range_expression_node)
-            call eval_i32_constant(context%arena, dim_node%end_index, context, &
-                                   folded, fold_error)
-        class default
-            call eval_i32_constant(context%arena, dim_index, context, folded, &
-                                   fold_error)
-        end select
-        is_runtime = len_trim(fold_error) > 0
+        do d = 1, rank
+            dim_index = node%dimension_indices(d)
+            if (.not. node_exists(context%arena, dim_index)) return
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                call eval_i32_constant(context%arena, dim_node%end_index, &
+                                       context, folded, fold_error)
+            class default
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       folded, fold_error)
+            end select
+            if (len_trim(fold_error) > 0) is_runtime = .true.
+        end do
     end function declaration_is_runtime_rank1
 
     recursive logical function bound_expr_references_variable(arena, idx, context) &
@@ -130,11 +134,16 @@
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
 
+        integer :: d
+
         is_var = .false.
         if (.not. allocated(node%dimension_indices)) return
-        if (size(node%dimension_indices) /= 1) return
-        is_var = bound_expr_references_variable(context%arena, &
-                                                node%dimension_indices(1), context)
+        if (size(node%dimension_indices) < 1 .or. &
+            size(node%dimension_indices) > 2) return
+        do d = 1, size(node%dimension_indices)
+            if (bound_expr_references_variable(context%arena, &
+                    node%dimension_indices(d), context)) is_var = .true.
+        end do
     end function declaration_bound_is_variable_driven
 
     logical function declaration_is_runtime_local_array(node, context, value_kind) &
