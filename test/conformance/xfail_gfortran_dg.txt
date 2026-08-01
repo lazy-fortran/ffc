@@ -503,7 +503,6 @@ data_array_4.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA init
 data_array_7.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 data_components_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 data_implied_do_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-data_initialized_3.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 data_initialized_4.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 data_namelist_conflict.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 data_pointer_3.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -925,7 +924,6 @@ inquiry_type_ref_5.f90 # owner=lazy-fortran/ffc#457; reason=register resolved de
 int_2.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 int_3.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 integer_plus.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
-intent_decl_1.f90 # owner=lazy-fortran/fortfront#2895; reason=reject incompatible declaration attributes
 intent_out_14.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
 intent_out_16.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 intent_out_17.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
@@ -949,7 +947,6 @@ interface_49.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length 
 interface_53.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 interface_54.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 interface_59.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-interface_62.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 interface_63.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 interface_9.f90 # owner=lazy-fortran/ffc#328; reason=resolve same-unit USE export identity
 interface_abstract_5.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
@@ -2087,7 +2084,6 @@ implicit_16.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved sy
 initialization_9.f90 # owner=lazy-fortran/ffc#384; reason=require valid character length expressions
 integer_exponentiation_2.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 intrinsic_actual_4.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-oldstyle_3.f90 # owner=lazy-fortran/ffc#383; reason=enforce DATA object and initializer restrictions
 stfunc_8.f90 # scope=legacy; reason=obsolete statement-function semantics
 stmt_func_1.f90 # scope=legacy; reason=obsolete statement-function semantics
 string_4.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
@@ -2146,6 +2142,13 @@ implicit_15.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved sy
 pr66575.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 pr67496.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
+alloc_comp_constructor_2.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
+generic_37.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
+interface_14.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
+interface_assignment_5.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
+pr123943.f90 # owner=lazy-fortran/fortfront#2901; reason=validate DO CONCURRENT locality constraints
+pr71935.f90 # owner=lazy-fortran/ffc#453; reason=owns typed scalar inquiry intrinsics and argument evaluation
+pr77583.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 dup_save_1.f90 # owner=lazy-fortran/ffc#466; reason=preserve saved local storage across calls
 entry_17.f90 # owner=lazy-fortran/ffc#456; reason=own valid function ENTRY points and their declared results
 parent_result_ref_2.f90 # owner=lazy-fortran/ffc#330; reason=own function result bindings referenced by contained procedures

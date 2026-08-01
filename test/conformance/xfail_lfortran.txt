@@ -767,7 +767,6 @@ c_sizeof_03.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived 
 c_sizeof_04.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 c_sizeof_05.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 c_sizeof_06.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-custom_operator_01.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 custom_operator_03.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 custom_operator_05.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 custom_operator_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1638,7 +1637,6 @@ intent_out_finalize_04.f90 # owner=lazy-fortran/ffc#403; reason=invoke scalar fi
 intent_out_module_dealloc.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 intent_out_nested_allocatable_01.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 intent_out_struct_member_no_dealloc.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
-interface_01.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_03.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 interface_04.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_07.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
@@ -2485,6 +2483,7 @@ pdt_04.f90 # owner=lazy-fortran/ffc#411; reason=support constant integer kind an
 pdt_05.f90 # owner=lazy-fortran/ffc#411; reason=support constant integer kind and length type parameters
 pdt_06.f90 # owner=lazy-fortran/ffc#411; reason=support constant integer kind and length type parameters
 pdt_07.f90 # owner=lazy-fortran/ffc#411; reason=support constant integer kind and length type parameters
+pdt_08.f90 # owner=lazy-fortran/ffc#411; reason=support constant integer kind and length type parameters
 pdt_09.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 pdt_10.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 pdt_11.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
@@ -2871,7 +2870,6 @@ separate_compilation_21b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent
 separate_compilation_21.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 separate_compilation_22b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 separate_compilation_22.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
-separate_compilation_23a.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 separate_compilation_23b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 separate_compilation_23.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 separate_compilation_24b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
