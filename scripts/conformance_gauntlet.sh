@@ -371,6 +371,10 @@ FORTFRONT_TREE=$(git_tree_revision "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfron
 LIRIC_TREE=$(git_tree_revision "${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}" || printf '%040d\n' 0)
 CORPUS_TREE=$(git_tree_revision "$SUITE_ROOT" || printf '%040d\n' 0)
 CORPUS_FILES_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+# ffc #642: identical commits built in two worktrees have been observed to
+# disagree on corpus results. Every report names the checkout that produced it,
+# so a cross-worktree comparison is visibly invalid instead of silently wrong.
+WORKTREE_ID=$(readlink -f "$PROJECT_DIR")
 PROVENANCE_VERIFIED=false
 FULL_RUN=true
 if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
@@ -382,14 +386,14 @@ write_summary() {
     if [ "$FLAKY_COUNT" -gt 0 ]; then
         flaky_json=$(printf ',"flaky":%d' "$FLAKY_COUNT")
     fi
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s"%s}\n' \
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
         "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
         "$FFC_SOURCE_SHA256" "$FFC_BINARY_SHA256" "$FORTFRONT_REVISION" \
         "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE" \
         "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" \
-        "$flaky_json" >> "$REPORT"
+        "$WORKTREE_ID" "$flaky_json" >> "$REPORT"
 }
 
 # Repeated runs: a single run cannot distinguish a stable result from a case

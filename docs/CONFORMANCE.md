@@ -256,7 +256,7 @@ Fields:
 A final SUMMARY record closes the file:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"..."}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc"}
 ```
 
 The revision and tree fields are full Git hashes. `ffc_revision` identifies the
@@ -266,10 +266,23 @@ tested compiler commit. `ffc_source_sha256` hashes `src`, `app`, and `fpm.toml`;
 requires clean inputs across ffc and every dependency or corpus checkout, and
 rejects a binary older than any tracked compiler or dependency input.
 `corpus_files_sha256` hashes the exact suite-relative denominator.
+`worktree` is the absolute path of the checkout that produced the report.
 `full_run` is false when a report used `--file`, `--files-from`, or
 `--max-files`. Dashboard generation requires verified provenance and rejects
 partial reports, mismatched tree or file-list identities, a stale source
 digest, or a different selected compiler binary.
+
+## Comparing two reports
+
+Two clean worktrees at the same commit have been observed to disagree on corpus
+results (ffc #642), so a delta measured across worktrees carries unknown error.
+Sound A/B measurement is same-worktree before/after: measure the baseline,
+apply the change, rebuild, measure again, all in one checkout.
+
+`scripts/compare_conformance_reports.sh BASELINE.jsonl CANDIDATE.jsonl` enforces
+that. It exits 0 when no per-file status changed, 1 when some did (the changes
+are printed), and 2 when the pair is not comparable at all — different
+`worktree` values, a missing `worktree` field, or different suites.
 
 ## Disposition states
 
