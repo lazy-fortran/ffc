@@ -155,14 +155,16 @@ function row_field_allowed(key) {
     return key == "suite" || key == "file" || key == "status" ||
         key == "ffc_exit" || key == "ref_exit" || key == "note" ||
         key == "noref" || key == "noref_reason" ||
-        key == "warning_expectation"
+        key == "warning_expectation" ||
+        key == "attempts" || key == "observed"
 }
 
 function summary_field_allowed(key) {
     return key == "suite" || key == "status" || key == "pass" ||
         key == "xfail" || key == "xpass" || key == "fail" ||
         key == "noref" || key == "skip" || key == "warning_unchecked" ||
-        key == "total" || key == "schema_version" || key == "full_run" ||
+        key == "total" || key == "flaky" ||
+        key == "schema_version" || key == "full_run" ||
         key == "provenance_verified" ||
         key == "ffc_revision" || key == "ffc_source_sha256" ||
         key == "ffc_binary_sha256" || key == "fortfront_revision" ||
@@ -173,7 +175,7 @@ function summary_field_allowed(key) {
 
 function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         fail_count, noref_count, skip_count, warning_count, total_count,
-        ffc_revision, source_digest, binary_digest, fortfront_revision,
+        flaky_count, ffc_revision, source_digest, binary_digest, fortfront_revision,
         fortfront_tree, liric_revision, liric_tree, corpus_revision,
         corpus_tree, corpus_files_digest) {
     for (key in field_value) {
@@ -190,6 +192,9 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
     skip_count = require_integer("skip", 1)
     warning_count = require_integer("warning_unchecked", 1)
     total_count = require_integer("total", 1)
+    flaky_count = 0
+    if ("flaky" in field_value) flaky_count = require_integer("flaky", 1)
+    if (counts["FLAKY"] != flaky_count) report_error("SUMMARY flaky mismatch")
     if (require_integer("schema_version", 1) != 1) {
         report_error("unknown report schema version")
     }
@@ -240,7 +245,7 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if (suite != expected_suite) report_error("mixed or unexpected suite: " suite)
     status = require_string("status")
     if (status != "PASS" && status != "XFAIL" && status != "XPASS" &&
-            status != "FAIL" && status != "SKIP") {
+            status != "FAIL" && status != "SKIP" && status != "FLAKY") {
         report_error("unknown status: " status)
     }
     file_name = require_string("file")
@@ -253,9 +258,19 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if (has_ffc) {
         require_integer("ffc_exit", 0)
         require_integer("ref_exit", 0)
-    } else if (status != "SKIP" &&
+    } else if (status != "SKIP" && status != "FLAKY" &&
             !(status == "FAIL" && field_value["note"] ~ /directive/)) {
         report_error("result is missing exit fields")
+    }
+    if (status == "FLAKY") {
+        if (require_integer("attempts", 1) < 2) {
+            report_error("FLAKY row needs at least two attempts")
+        }
+        if (require_string("observed") !~ /\|/) {
+            report_error("FLAKY row needs differing observed statuses")
+        }
+    } else if ("attempts" in field_value || "observed" in field_value) {
+        report_error("attempt fields outside a FLAKY row")
     }
     is_noref = 0
     if ("noref" in field_value) {

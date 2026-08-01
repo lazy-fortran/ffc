@@ -19,6 +19,9 @@
 #   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
 #   --timeout N         per-file timeout in seconds (default: 5)
+#   --repeat N          run the selection N times and merge; a file whose
+#                       status differs between attempts is recorded FLAKY
+#                       instead of taking the last result (default: 1)
 #   --require-provenance require clean inputs and a freshly built compiler
 #
 # Environment variables (suite roots):
@@ -44,6 +47,7 @@ FFC_BIN=""
 REPORT=""
 MAX_FILES=""
 TIMEOUT=5
+REPEAT=1
 REQUIRE_PROVENANCE=0
 HAS_FAIL=0
 SELECTOR_KINDS=()
@@ -53,6 +57,8 @@ fail() {
     echo "ERROR: $*" >&2
     exit 1
 }
+
+ORIGINAL_ARGS=("$@")
 
 # Argument parsing
 SUITE=""
@@ -78,12 +84,22 @@ while [ $# -gt 0 ]; do
             MAX_FILES="$2"; shift 2 ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
+        --repeat)
+            if [ $# -lt 2 ]; then fail "--repeat requires a count"; fi
+            REPEAT="$2"; shift 2 ;;
         --require-provenance)
             REQUIRE_PROVENANCE=1; shift ;;
         *)
             fail "unknown option $1" ;;
     esac
 done
+
+case "$REPEAT" in
+    ''|*[!0-9]*) fail "--repeat requires a positive integer" ;;
+esac
+if [ "$REPEAT" -lt 1 ]; then
+    fail "--repeat requires a positive integer"
+fi
 
 if [ -z "$SUITE" ]; then
     echo "ERROR: --suite is required. Choose from: $SUITES" >&2
@@ -340,6 +356,7 @@ FAIL_COUNT=0
 NOREF_COUNT=0
 SKIP_COUNT=0
 WARNING_UNCHECKED_COUNT=0
+FLAKY_COUNT=0
 TOTAL_COUNT=0
 IS_NOREF_RECORD=0
 NOREF_RECORD_REASON=""
@@ -361,14 +378,83 @@ if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null;
 fi
 
 write_summary() {
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s"}\n' \
+    local flaky_json=""
+    if [ "$FLAKY_COUNT" -gt 0 ]; then
+        flaky_json=$(printf ',"flaky":%d' "$FLAKY_COUNT")
+    fi
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
         "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
         "$FFC_SOURCE_SHA256" "$FFC_BINARY_SHA256" "$FORTFRONT_REVISION" \
         "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE" \
-        "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" >> "$REPORT"
+        "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" \
+        "$flaky_json" >> "$REPORT"
 }
+
+# Repeated runs: a single run cannot distinguish a stable result from a case
+# that flips between attempts. Each attempt is a fully independent child run
+# through the same classification path; the merge below records a file whose
+# status is not identical in every attempt as FLAKY, so nothing downstream can
+# read an intermittent pass as a stable one.
+run_repeated_attempts() {
+    local attempt child_args=() attempt_reports=() skip_next=0 arg
+    local attempt_dir merged_status
+
+    for arg in "${ORIGINAL_ARGS[@]}"; do
+        if [ "$skip_next" -eq 1 ]; then
+            skip_next=0
+            continue
+        fi
+        case "$arg" in
+            --repeat|--report) skip_next=1 ;;
+            *) child_args+=("$arg") ;;
+        esac
+    done
+
+    attempt_dir="$TMPDIR_WORK/attempts"
+    mkdir -p "$attempt_dir"
+    for attempt in $(seq 1 "$REPEAT"); do
+        echo "=== attempt $attempt/$REPEAT ==="
+        attempt_reports+=("$attempt_dir/attempt_${attempt}.jsonl")
+        bash "$0" "${child_args[@]}" --repeat 1 \
+            --report "$attempt_dir/attempt_${attempt}.jsonl" || true
+    done
+
+    : > "$REPORT"
+    awk -v suite="$SUITE" -f "$SCRIPT_DIR/merge_repeated_report.awk" \
+        "${attempt_reports[@]}" >> "$REPORT"
+
+    PASS_COUNT=$(count_merged_status PASS)
+    XFAIL_COUNT=$(count_merged_status XFAIL)
+    XPASS_COUNT=$(count_merged_status XPASS)
+    FAIL_COUNT=$(count_merged_status FAIL)
+    SKIP_COUNT=$(count_merged_status SKIP)
+    FLAKY_COUNT=$(count_merged_status FLAKY)
+    NOREF_COUNT=$(grep -c '"noref":true' "$REPORT" || true)
+    WARNING_UNCHECKED_COUNT=$(grep -c '"warning_expectation":' "$REPORT" || true)
+    TOTAL_COUNT=$(grep -c '"file":' "$REPORT" || true)
+    write_summary
+
+    echo ""
+    echo "=== $SUITE summary (merged over $REPEAT attempts) ==="
+    echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  FLAKY=$FLAKY_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  TOTAL=$TOTAL_COUNT"
+    echo "  Report: $REPORT"
+
+    if [ "$FAIL_COUNT" -gt 0 ] || [ "$FLAKY_COUNT" -gt 0 ]; then
+        return 1
+    fi
+    return 0
+}
+
+count_merged_status() {
+    grep -c "\"status\":\"$1\"" "$REPORT" || true
+}
+
+if [ "$REPEAT" -gt 1 ]; then
+    run_repeated_attempts
+    exit $?
+fi
 
 # Clear report
 > "$REPORT"
