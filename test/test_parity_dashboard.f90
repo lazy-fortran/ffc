@@ -418,19 +418,33 @@ contains
         call execute_command_line("sed -i '/^digest[[:space:]]manifests/"// &
             "s/[^[:space:]]*$/"//repeat('9', 64)//"/' "//ROOT//'/bad.tsv')
         ok = expect_snapshot_failure('stale snapshot manifest digest') .and. ok
+        ! Perturb the recorded counts arithmetically rather than by literal
+        ! text: a refreshed snapshot changes every number, and a hard-coded
+        ! substitution silently stops perturbing anything.
         call copy_production_snapshot()
-        call execute_command_line("sed -i '/^suite[[:space:]]fortfront-f90/"// &
-            "{s/442/443/;s/342/343/;}' "//ROOT//'/bad.tsv')
+        call bump_field('$1 == "suite" && $2 == "fortfront-f90"', 3)
         ok = expect_snapshot_failure('All totals do not equal suites') .and. ok
         call copy_production_snapshot()
-        call execute_command_line("sed -i '/^view[[:space:]]Scoped/"// &
-            "{s/10399/10398/;s/2470/2469/;}' "//ROOT//'/bad.tsv')
+        call bump_field('$1 == "view" && $2 == "Scoped"', 3)
         ok = expect_snapshot_failure('Scoped totals do not equal') .and. ok
         call copy_production_snapshot()
-        call execute_command_line("sed -i '/owner=lazy-fortran.ffc#297/"// &
-            "s/2$/3/' "//ROOT//'/bad.tsv')
+        call bump_field('$1 == "owner" && !bumped++', 6)
         ok = expect_snapshot_failure('owner totals do not equal') .and. ok
     end function snapshot_negative_cases_fail
+
+    subroutine bump_field(selector, field)
+        ! Add one to a numeric column of the first snapshot row the awk
+        ! selector matches, leaving every other row untouched.
+        character(len=*), intent(in) :: selector
+        integer, intent(in) :: field
+        character(len=32) :: field_text
+
+        write(field_text, '(I0)') field
+        call execute_command_line('awk -F ''\t'' ''BEGIN { OFS = FS } '// &
+            selector//' { $'//trim(field_text)//' = $'//trim(field_text)// &
+            ' + 1 } { print }'' '//ROOT//'/bad.tsv > '//ROOT// &
+            '/bumped.tsv && mv '//ROOT//'/bumped.tsv '//ROOT//'/bad.tsv')
+    end subroutine bump_field
 
     subroutine copy_production_snapshot()
         call execute_command_line('cp test/conformance/parity_dashboard.tsv '// &

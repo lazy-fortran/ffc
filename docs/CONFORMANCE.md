@@ -185,19 +185,21 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 100 |
-| `test/conformance/xfail_fortfront_lf.txt` | 59 |
+| `test/conformance/xfail_fortfront_f90.txt` | 95 |
+| `test/conformance/xfail_fortfront_lf.txt` | 57 |
 | `test/conformance/noref_fortfront_f90.txt` | 5 |
-| `test/conformance/xfail_lfortran.txt` | 3419 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2132 |
+| `test/conformance/xfail_lfortran.txt` | 3336 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2090 |
 | `test/conformance/skip_lfortran.txt` | 1 |
-| `test/conformance/skip_gfortran_dg.txt` | 2298 |
+| `test/conformance/skip_gfortran_dg.txt` | 2299 |
+| `test/conformance/fail_owners_fortfront_f90.txt` | 8 |
+| `test/conformance/fail_owners_fortfront_lf.txt` | 11 |
 | `test/conformance/fail_owners_lfortran.txt` | 11 |
-| `test/conformance/fail_owners_gfortran_dg.txt` | 333 |
+| `test/conformance/fail_owners_gfortran_dg.txt` | 177 |
 | `test/conformance/scopes_fortfront_f90.txt` | 4 |
 | `test/conformance/scopes_lfortran.txt` | 302 |
 | `test/conformance/scopes_gfortran_dg.txt` | 219 |
-| `test/conformance/owner_subsystems.txt` | 135 |
+| `test/conformance/owner_subsystems.txt` | 128 |
 
 Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
 snapshot. The seed baselines below are historical starting points, not current
