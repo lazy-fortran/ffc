@@ -2063,7 +2063,6 @@ intrinsics_98.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar pr
 intrinsics_99.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 intrinsics_open_close_read_write.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 io_direct_slash.f90 # owner=lazy-fortran/ffc#434; reason=read A and L fixed-width fields
-ip_01.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 iso_c_binding_01.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 iso_c_binding_02.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 iso_c_binding_04.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
@@ -2572,7 +2571,6 @@ proc_ptr_14.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar exp
 proc_ptr_15.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 proc_ptr_17.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 proc_ptr_18.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
-proc_ptr_nopass_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 product_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 product_02.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 program_01.f90 # owner=lazy-fortran/ffc#330; reason=map procedure and host bindings to storage
@@ -3303,6 +3301,8 @@ submodule_04.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces 
 submodule_02.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 while_07.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 intrinsics_399.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
+associate_18.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
+program_cmake_02.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
 array_section_09.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets

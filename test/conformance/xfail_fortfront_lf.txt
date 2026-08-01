@@ -58,5 +58,6 @@ issue_2815_ieee_arithmetic.lf # owner=lazy-fortran/ffc#448; reason=lower same-un
 issue_2816_walrus_redeclaration.lf # scope=harness; reason=FortFront Lazy semantic rejection fixture
 # Derived-type constructor in lazy mode lowered as a real function call.
 derived_type_simple.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
+derived_type_end_field.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
 issue_2142_mono_wrong_return_types.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
 monomorphization_simple.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
