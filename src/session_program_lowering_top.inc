@@ -712,6 +712,8 @@
         if (len_trim(error_msg) > 0) return
         call check_storage_association_restrictions(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_purity_attribute_restrictions(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call check_result_and_entry_rules(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_derived_type_definition_forms(arena, error_msg)
