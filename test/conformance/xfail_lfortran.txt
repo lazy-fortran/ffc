@@ -345,7 +345,6 @@ assign_to1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declaratio
 assign_to2.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 associate_01.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 associate_02.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
-associate_04.f90 # owner=lazy-fortran/ffc#331; reason=bind BLOCK and ASSOCIATE storage scopes
 associate_05.f90 # owner=lazy-fortran/ffc#331; reason=bind BLOCK and ASSOCIATE storage scopes
 associate_06_module.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 associate_08.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
@@ -806,7 +805,6 @@ data_23.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar express
 data_implied_do_07.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 data_implied_do_08.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 data_implied_do_09.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-datastmt_01.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 dealloc_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 dealloc_02.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 dealloc_03.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
@@ -1469,7 +1467,6 @@ gpu_metal_50.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_52.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_53.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_54.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_55.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_56.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_57.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_58.f90 # scope=GPU; reason=excluded GPU or device-backend case

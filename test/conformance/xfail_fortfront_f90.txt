@@ -96,7 +96,6 @@ issue_2819_implied_do_index_out_of_scope.f90 # scope=harness; reason=FortFront s
 issue_2837_interface_type_return.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 # Unary user-defined operator: FortFront emits a dangling operand index
 # ("argument index does not reference an AST node"). Blocked on FortFront.
-issue_2838_unary_defined_operator.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 impure_assignment_2_valid.f90 # owner=lazy-fortran/ffc#449; reason=lower scalar derived pointer components
 # VALUE attribute on dummy args mis-declared as a symbol named "value".
 # New corpus examples added by the fortfront update for features ffc does not
