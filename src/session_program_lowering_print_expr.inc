@@ -839,11 +839,13 @@
         call char_expr_operands(arena, node_index, context, data_ptr, length, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
-        ! The %s conversion stops at a NUL. A borrowed view (a substring)
-        ! points into the middle of its parent's bytes and carries no
-        ! terminator of its own, so print from a terminated copy of exactly
-        ! the view's length.
-        if (is_character_substring(arena, node_index, context)) then
+        ! The %s conversion stops at a NUL. A borrowed view carries no
+        ! terminator of its own: a substring points into the middle of its
+        ! parent's bytes, and since #347 a character array element is followed
+        ! immediately by the next element. Both print from a terminated copy of
+        ! exactly the view's length.
+        if (is_character_substring(arena, node_index, context) .or. &
+            is_character_array_element(arena, node_index, context)) then
             call materialize_character_view(context, data_ptr, length, view_buf, &
                                             error_msg)
             if (len_trim(error_msg) > 0) return

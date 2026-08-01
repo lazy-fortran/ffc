@@ -32,36 +32,6 @@
         ! one exception: no blank is written between two consecutive character
         ! values, so they print concatenated.
         expr_count = size(node%expression_indices)
-        if (expr_count == 1 .and. &
-            .not. is_io_implied_do_item(arena, node%expression_indices(1))) then
-            ! s(l:u) on a scalar character is a substring, not an array
-            ! section: it prints as one character value, not element by element.
-            if (.not. is_character_substring(arena, node%expression_indices(1), &
-                                             context)) then
-                select type (section_node => arena%entries( &
-                        node%expression_indices(1))%node)
-                type is (array_slice_node)
-                    call lower_array_section_print(arena, section_node, context, &
-                                                   error_msg)
-                    return
-                end select
-            end if
-            block
-                logical :: handled
-                call emit_array_literal_print_items(arena, &
-                    node%expression_indices(1), context, handled, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (handled) then
-                    if (.not. emit_liric_print_newline(context%session, error_msg)) &
-                        return
-                    call set_empty(error_msg)
-                    return
-                end if
-                call lower_whole_array_print(arena, node%expression_indices(1), &
-                                             context, handled, error_msg)
-                if (handled .or. len_trim(error_msg) > 0) return
-            end block
-        end if
         prev_is_char = .false.
         do i = 1, expr_count
             ! A bare whole array or array section among other items prints each
@@ -84,7 +54,7 @@
                 type is (io_implied_do_node)
                     call emit_io_implied_do_print_items(arena, &
                         node%expression_indices(i), context, array_handled, &
-                        error_msg)
+                        error_msg, prev_is_char)
                 class default
                     call emit_whole_array_print_items(arena, &
                         node%expression_indices(i), context, array_handled, &
@@ -92,8 +62,16 @@
                 end select
                 if (len_trim(error_msg) > 0) return
                 if (array_handled) then
-                    prev_is_char = char_print_item(arena, &
-                        node%expression_indices(i), context)
+                    ! An implied-do reports the separator state of its last
+                    ! object through prev_is_char; every other array item ends
+                    ! with a value of the item's own type.
+                    select type (item => arena%entries( &
+                            node%expression_indices(i))%node)
+                    type is (io_implied_do_node)
+                    class default
+                        prev_is_char = char_print_item(arena, &
+                            node%expression_indices(i), context)
+                    end select
                     cycle
                 end if
             end block
@@ -1030,6 +1008,25 @@
                     is_char = .true.
                     return
                 end if
+            end if
+            ! A subscripted reference to a declared character array is a
+            ! character element whether or not the parser marked the node as an
+            ! array access; the symbol table is the authority on what the name
+            ! is, so ask it rather than trusting the flag.
+            if (allocated(node%name)) then
+                block
+                    integer :: sym
+                    sym = find_symbol_compat(context, node%name)
+                    if (sym > 0) then
+                        if (context%symbols(sym)%is_array) then
+                            if (context%symbols(sym)%value_kind == &
+                                VALUE_CHARACTER) then
+                                is_char = .true.
+                                return
+                            end if
+                        end if
+                    end if
+                end block
             end if
             if (.not. node%is_array_access .and. allocated(node%name)) then
                 if (is_contained_deferred_char_function(context, node%name)) then

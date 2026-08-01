@@ -14,7 +14,7 @@
 
     recursive subroutine emit_io_implied_do_print_items(arena, item_index, &
                                                         context, handled, &
-                                                        error_msg)
+                                                        error_msg, prev_is_char)
         !! List-directed print of an I/O implied-do item,
         !! print *, (obj, ..., i = lo, hi [, step]).
         !! The trip count must fold at compile time; the control variable is
@@ -26,6 +26,11 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
+        !! Carries the list-directed separator state in and out, so the rule
+        !! that no blank is written between two consecutive character values
+        !! holds across the boundary of this item as well as inside it.
+        logical, intent(inout), optional :: prev_is_char
+        logical :: char_state
         integer(c_int64_t) :: lo, hi, step, ival
         integer :: vsym, b
         logical :: created_temp
@@ -34,6 +39,8 @@
 
         handled = .false.
         call set_empty(error_msg)
+        char_state = .false.
+        if (present(prev_is_char)) char_state = prev_is_char
         if (.not. node_exists(arena, item_index)) return
 
         select type (idn => arena%entries(item_index)%node)
@@ -76,7 +83,7 @@
                 context%symbols(vsym)%is_reference = .false.
                 do b = 1, size(objects)
                     call emit_io_implied_do_object(arena, objects(b), &
-                                                   context, error_msg)
+                                                   context, char_state, error_msg)
                     if (len_trim(error_msg) > 0) then
                         call release_io_implied_do_var(context, vsym, &
                                                        created_temp, saved_sym)
@@ -86,19 +93,24 @@
                 ival = ival + step
             end do
             call release_io_implied_do_var(context, vsym, created_temp, saved_sym)
+            if (present(prev_is_char)) prev_is_char = char_state
             handled = .true.
         end select
     end subroutine emit_io_implied_do_print_items
 
     recursive subroutine emit_io_implied_do_object(arena, object_index, context, &
-                                                   error_msg)
+                                                   prev_is_char, error_msg)
         !! One object of an unrolled I/O implied-do: a nested implied-do
-        !! recurses, anything else prints as a list-directed scalar item.
+        !! recurses through the same path, anything else prints as a
+        !! list-directed scalar item. The item's type decides how it prints,
+        !! which is the one place that decision is made for an implied-do.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: object_index
         type(lowering_context_t), intent(inout) :: context
+        logical, intent(inout) :: prev_is_char
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: nested_handled
+        logical :: this_is_char
 
         call set_empty(error_msg)
         if (node_exists(arena, object_index)) then
@@ -106,15 +118,27 @@
             type is (io_implied_do_node)
                 call emit_io_implied_do_print_items(arena, object_index, &
                                                     context, nested_handled, &
-                                                    error_msg)
+                                                    error_msg, prev_is_char)
                 if (len_trim(error_msg) > 0) return
                 if (.not. nested_handled) &
                     error_msg = 'nested io implied-do is not supported'
                 return
             end select
         end if
-        if (.not. emit_liric_print_space(context%session, error_msg)) return
-        call lower_print_expression_value(arena, object_index, context, error_msg)
+        this_is_char = char_print_item(arena, object_index, context)
+        if (.not. (this_is_char .and. prev_is_char)) then
+            if (.not. emit_liric_print_space(context%session, error_msg)) return
+        end if
+        if (this_is_char) then
+            ! A character object prints its bytes at its own length, not the
+            ! integer those bytes would be read as.
+            call lower_print_char_expr(arena, object_index, context, error_msg)
+        else
+            call lower_print_expression_value(arena, object_index, context, &
+                                              error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        prev_is_char = this_is_char
     end subroutine emit_io_implied_do_object
 
     subroutine bind_io_implied_do_var(context, var_name, vsym, created_temp, &
