@@ -1515,6 +1515,11 @@ contains
         end if
         if (context%symbols(symbol_index)%is_allocatable .and. &
             context%symbols(symbol_index)%array_rank > 0) then
+            if (context%symbols(symbol_index)%is_derived) then
+                call lower_derived_array_whole_assignment(arena, node, context, &
+                    symbol_index, handled, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            end if
             if (is_alloc_array_result_call(arena, node%value_index, context)) then
                 call lower_alloc_array_result_assignment(arena, node%value_index, &
                     symbol_index, context, error_msg)

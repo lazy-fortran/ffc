@@ -435,6 +435,11 @@
         ! type(t), allocatable :: x (scalar): storage is deferred until allocate,
         ! so record the symbol as unassociated derived rather than reserving a
         ! stack instance.
+        if (node%is_allocatable .and. node%is_array) then
+            call declare_allocatable_derived_array(context, node, &
+                                                    derived_type_index, error_msg)
+            return
+        end if
         if (node%is_allocatable .and. .not. node%is_array) then
             call declare_scalar_allocatable_derived(context, node, &
                                                     derived_type_index, error_msg)
@@ -479,6 +484,170 @@
             error_msg = 'derived type declaration did not expose a variable name'
         end if
     end subroutine lower_derived_type_declaration
+
+    subroutine declare_allocatable_derived_array(context, node, type_index, &
+                                                 error_msg)
+        ! A deferred-shape derived array uses the canonical allocatable
+        ! descriptor; its element size is the complete flat instance, not one
+        ! i32 slot. Class arrays additionally keep one dynamic-type descriptor
+        ! so SELECT TYPE can narrow their elements later.
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: rank, symbol_index
+        integer(c_int64_t) :: element_bytes
+        logical :: is_class
+
+        if (node%is_multi_declaration .or. .not. allocated(node%var_name)) then
+            error_msg = 'multi-variable derived allocatable arrays are not supported'
+            return
+        end if
+        rank = 0
+        if (allocated(node%dimension_indices)) rank = size(node%dimension_indices)
+        if (rank < 1 .or. rank > 2) then
+            call unsupported_feature_error('derived allocatable array declaration', &
+                node%line, node%column, 'direct LIRIC session supports rank-1 '// &
+                'and rank-2 derived allocatable arrays', error_msg)
+            return
+        end if
+        element_bytes = int(total_component_slots(context, type_index), &
+                            c_int64_t) * 4_c_int64_t
+        call declare_allocatable(context, node%var_name, rank, VALUE_DERIVED, &
+                                 error_msg, element_bytes)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, node%var_name)
+        if (symbol_index <= 0) then
+            error_msg = 'derived allocatable array was not declared: '// &
+                        trim(node%var_name)
+            return
+        end if
+        context%symbols(symbol_index)%is_array = .true.
+        context%symbols(symbol_index)%is_derived = .true.
+        context%symbols(symbol_index)%derived_type_index = type_index
+        context%symbols(symbol_index)%array_rank = rank
+        context%symbols(symbol_index)%array_size = 0
+        context%symbols(symbol_index)%array_lower_bound = 1
+        is_class = .false.
+        if (allocated(node%type_name)) is_class = &
+            is_class_derived_type_spec(node%type_name)
+        if (is_class) call bind_class_allocatable_descriptor(context, &
+            symbol_index, type_index, error_msg)
+    end subroutine declare_allocatable_derived_array
+
+    subroutine lower_allocate_derived_array(arena, size_index1, size_index2, &
+                                             symbol_index, context, error_msg)
+        ! Allocate a rank-1 or rank-2 derived allocatable through the canonical
+        ! array descriptor. Shape specs may be scalar extents or lower:upper
+        ! ranges; the descriptor retains the declared lower bounds.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: size_index1, size_index2, symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lowers(2), extents(2), count_i64, data_ptr
+        type(lr_operand_desc_t) :: product_i64, descriptor
+        integer :: rank, type_index
+        integer(c_int64_t) :: element_bytes
+
+        call set_empty(error_msg)
+        rank = context%symbols(symbol_index)%array_rank
+        if (rank < 1 .or. rank > 2) then
+            error_msg = 'derived allocatable array rank is not supported'
+            return
+        end if
+        call lower_derived_allocate_shape(arena, size_index1, context, lowers(1), &
+                                          extents(1), error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (rank == 2) then
+            call lower_derived_allocate_shape(arena, size_index2, context, lowers(2), &
+                                              extents(2), error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, extents(1), &
+                    extents(2), product_i64, error_msg)) return
+            count_i64 = product_i64
+        else
+            count_i64 = extents(1)
+        end if
+        type_index = context%symbols(symbol_index)%derived_type_index
+        element_bytes = int(total_component_slots(context, type_index), &
+                            c_int64_t) * 4_c_int64_t
+        if (.not. emit_malloc(context%session, count_i64, data_ptr, error_msg, &
+                elem_size=i64_immediate(context%session, element_bytes))) return
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
+                                 error_msg)) return
+        call emit_alloc_desc_allocate_shape(context, descriptor, VALUE_DERIVED, rank, &
+            extents(1:rank), error_msg, lowers_i64=lowers(1:rank), &
+            element_bytes=element_bytes)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%element_address = data_ptr
+        if (context%symbols(symbol_index)%is_polymorphic) then
+            call record_class_allocation(context, symbol_index, data_ptr, &
+                i64_immediate(context%session, int(type_index, c_int64_t)), error_msg)
+        end if
+    end subroutine lower_allocate_derived_array
+
+    subroutine lower_derived_allocate_shape(arena, shape_index, context, lower_i64, &
+                                            extent_i64, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: lower_i64, extent_i64
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lower_i32, upper_i32, extent_i32
+        type(lr_operand_desc_t) :: upper_i64, difference_i64
+
+        lower_i32 = i32_immediate(context%session, 1_c_int64_t)
+        if (node_exists(arena, shape_index)) then
+            select type (shape => arena%entries(shape_index)%node)
+            type is (range_expression_node)
+                if (shape%start_index > 0) then
+                    call lower_i32_expression(arena, shape%start_index, context, &
+                                              lower_i32, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                if (shape%end_index <= 0) then
+                    error_msg = 'derived allocatable allocate range needs an upper bound'
+                    return
+                end if
+                call lower_i32_expression(arena, shape%end_index, context, upper_i32, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+            type is (array_bounds_node)
+                if (shape%lower_bound_index > 0) then
+                    call lower_i32_expression(arena, shape%lower_bound_index, &
+                                              context, lower_i32, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                if (shape%upper_bound_index <= 0) then
+                    error_msg = 'derived allocatable allocate range needs an upper bound'
+                    return
+                end if
+                call lower_i32_expression(arena, shape%upper_bound_index, context, &
+                                          upper_i32, error_msg)
+                if (len_trim(error_msg) > 0) return
+            class default
+                call lower_i32_expression(arena, shape_index, context, extent_i32, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                lower_i32 = i32_immediate(context%session, 1_c_int64_t)
+                upper_i32 = extent_i32
+            end select
+        else
+            error_msg = 'derived allocatable allocate shape is missing'
+            return
+        end if
+        if (.not. emit_liric_i32_to_i64(context%session, lower_i32, lower_i64, &
+                                       error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, upper_i32, upper_i64, &
+                                       error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper_i64, lower_i64, &
+                                  difference_i64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, difference_i64, &
+                i64_immediate(context%session, 1_c_int64_t), extent_i64, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine lower_derived_allocate_shape
 
     subroutine lower_derived_scalar_initializer(node, context, type_index, &
                                                 error_msg)
@@ -778,6 +947,8 @@
         type(lr_operand_desc_t), intent(out) :: offset
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: sub_val, zero_based, term, acc, summed
+        type(lr_operand_desc_t) :: lower64, lower32, extent64, extent32
+        type(lr_operand_desc_t) :: stride32, next_stride32, scale32, elem_bytes
         integer :: rank, i, lower, stride
 
         rank = size(arg_indices)
@@ -791,6 +962,59 @@
                             'declared shape'
                 return
             end if
+        end if
+        if (context%symbols(symbol_index)%is_allocatable) then
+            stride32 = i32_immediate(context%session, 1_c_int64_t)
+            do i = 1, rank
+                call emit_alloc_desc_load_lower(context, &
+                    context%symbols(symbol_index)%allocatable_descriptor_address, &
+                    i, lower64, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i64_to_i32(context%session, lower64, lower32, &
+                                                error_msg)) return
+                call lower_i32_expression(arena, arg_indices(i), context, sub_val, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                        lower32, zero_based, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
+                        stride32, term, error_msg)) return
+                if (i == 1) then
+                    acc = term
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, term, &
+                            summed, error_msg)) return
+                    acc = summed
+                end if
+                if (i < rank) then
+                    call emit_alloc_desc_load_extent(context, &
+                        context%symbols(symbol_index)%allocatable_descriptor_address, &
+                        i, extent64, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i64_to_i32(context%session, extent64, &
+                                                    extent32, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, stride32, &
+                            extent32, next_stride32, error_msg)) return
+                    stride32 = next_stride32
+                end if
+            end do
+            if (context%symbols(symbol_index)%is_polymorphic) then
+                if (.not. emit_i64_load_at(context%session, &
+                    context%symbols(symbol_index)%allocatable_descriptor_address, &
+                    int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), &
+                    elem_bytes, error_msg)) return
+                if (.not. emit_i64_binary(context%session, LR_OP_LSHR, elem_bytes, &
+                        i64_immediate(context%session, 2_c_int64_t), elem_bytes, &
+                        error_msg)) return
+                if (.not. emit_liric_i64_to_i32(context%session, elem_bytes, scale32, &
+                                                error_msg)) return
+            else
+                scale32 = i32_immediate(context%session, int(slots, c_int64_t))
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, scale32, &
+                                      offset, error_msg)) return
+            call set_empty(error_msg)
+            return
         end if
         stride = 1
         do i = 1, rank
@@ -999,6 +1223,7 @@
         integer :: symbol_index, type_index, component_index, width
         character(len=:), allocatable :: comp_name
         type(lr_operand_desc_t) :: sub_val, zero_based, scaled
+        type(lr_operand_desc_t) :: slot64, byte_offset
 
         if (present(comp_kind)) comp_kind = VALUE_I32
         call resolve_component_ref(arena, access_index, context, symbol_index, &
@@ -1988,7 +2213,9 @@
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: desc_addr, data_ptr, n_i32, n_i64, bytes_i64
+        type(lr_operand_desc_t) :: lower_i32, upper_i32, difference_i32
         integer :: comp_kind, base_type, comp_index, inner_bytes
+        integer :: component_access_index, shape_index
 
         handled = .false.
         call set_empty(error_msg)
@@ -1999,8 +2226,18 @@
             if (target%base_expr_index <= 0) return
             if (.not. allocated(target%arg_indices)) return
             if (size(target%arg_indices) /= 1) return
-            if (.not. node_exists(arena, target%base_expr_index)) return
-            select type (base => arena%entries(target%base_expr_index)%node)
+            component_access_index = target%base_expr_index
+            shape_index = target%arg_indices(1)
+        type is (array_slice_node)
+            if (target%array_index <= 0 .or. target%num_dimensions /= 1) return
+            component_access_index = target%array_index
+            shape_index = target%bounds_indices(1)
+        class default
+            return
+        end select
+
+        if (.not. node_exists(arena, component_access_index)) return
+        select type (base => arena%entries(component_access_index)%node)
             type is (component_access_node)
                 if (.not. component_access_is_alloc_array(arena, base, context)) &
                     return
@@ -2015,36 +2252,70 @@
                 end if
             class default
                 return
-            end select
-            call alloc_array_component_descriptor(arena, target%base_expr_index, &
-                                                  context, desc_addr, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_i32_expression(arena, target%arg_indices(1), context, n_i32, &
+        end select
+
+        call alloc_array_component_descriptor(arena, component_access_index, &
+                                              context, desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. node_exists(arena, shape_index)) return
+        select type (shape => arena%entries(shape_index)%node)
+        type is (range_expression_node)
+            lower_i32 = i32_immediate(context%session, 1_c_int64_t)
+            if (shape%start_index > 0) then
+                call lower_i32_expression(arena, shape%start_index, context, &
+                                          lower_i32, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (shape%end_index <= 0) return
+            call lower_i32_expression(arena, shape%end_index, context, upper_i32, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, &
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
+                    lower_i32, difference_i32, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference_i32, &
+                    i32_immediate(context%session, 1_c_int64_t), n_i32, &
                     error_msg)) return
-            if (inner_bytes > 0) then
-                ! Allocatable array of a derived element type: zero-initialise so
-                ! every element's inline component descriptors start unallocated.
-                if (.not. emit_calloc(context%session, n_i64, &
-                        i64_immediate(context%session, &
-                            int(inner_bytes, c_int64_t)), data_ptr, error_msg)) &
-                    return
-            else
-                if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, &
-                        i64_immediate(context%session, &
-                            allocatable_elem_size(comp_kind)), bytes_i64, &
-                        error_msg)) return
-                if (.not. emit_malloc(context%session, bytes_i64, data_ptr, &
-                        error_msg)) return
+        type is (array_bounds_node)
+            lower_i32 = i32_immediate(context%session, 1_c_int64_t)
+            if (shape%lower_bound_index > 0) then
+                call lower_i32_expression(arena, shape%lower_bound_index, context, &
+                                          lower_i32, error_msg)
+                if (len_trim(error_msg) > 0) return
             end if
-            if (.not. emit_ptr_store(context%session, data_ptr, desc_addr, &
-                                     error_msg)) return
-            if (.not. emit_i64_store_at(context%session, n_i64, desc_addr, &
-                    8_c_int64_t, error_msg)) return
-            handled = .true.
+            if (shape%upper_bound_index <= 0) return
+            call lower_i32_expression(arena, shape%upper_bound_index, context, &
+                                      upper_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
+                    lower_i32, difference_i32, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference_i32, &
+                    i32_immediate(context%session, 1_c_int64_t), n_i32, &
+                    error_msg)) return
+        class default
+            call lower_i32_expression(arena, shape_index, context, n_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
         end select
+        if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, &
+                error_msg)) return
+        if (inner_bytes > 0) then
+            ! Allocatable array of a derived element type: zero-initialise so
+            ! every element's inline component descriptors start unallocated.
+            if (.not. emit_calloc(context%session, n_i64, &
+                    i64_immediate(context%session, &
+                        int(inner_bytes, c_int64_t)), data_ptr, error_msg)) return
+        else
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, &
+                    i64_immediate(context%session, &
+                        allocatable_elem_size(comp_kind)), bytes_i64, &
+                    error_msg)) return
+            if (.not. emit_malloc(context%session, bytes_i64, data_ptr, &
+                    error_msg)) return
+        end if
+        if (.not. emit_ptr_store(context%session, data_ptr, desc_addr, &
+                                 error_msg)) return
+        if (.not. emit_i64_store_at(context%session, n_i64, desc_addr, &
+                8_c_int64_t, error_msg)) return
+        handled = .true.
     end subroutine lower_allocate_array_component
 
     subroutine lower_alloc_array_component_assignment(arena, node, target, &
@@ -2094,6 +2365,151 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_alloc_array_component_assignment
+
+    subroutine lower_alloc_array_component_section_assignment(arena, node, target, &
+                                                               context, error_msg)
+        ! Assign a scalar or constructor to a rank-1 allocatable component
+        ! section. The component descriptor supplies the runtime extent for a
+        ! scalar broadcast; constructor values are lowered before any store.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(array_slice_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: desc_addr, data_ptr, value
+        type(lr_operand_desc_t), allocatable :: rhs_values(:)
+        integer, allocatable :: flat(:)
+        integer :: comp_kind, i, n
+        integer(c_int32_t) :: entry_block, header_block, body_block, &
+                              latch_block, exit_block, idx_vreg
+        type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: condition, next_idx
+
+        call set_empty(error_msg)
+        if (target%array_index <= 0) then
+            error_msg = 'allocatable component section has no base'
+            return
+        end if
+        select type (component => arena%entries(target%array_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_alloc_array(arena, component, context)) then
+                error_msg = 'array section is not an allocatable component'
+                return
+            end if
+            comp_kind = derived_component_access_kind(arena, component, context)
+        class default
+            error_msg = 'allocatable component section requires obj%component'
+            return
+        end select
+        call alloc_array_component_descriptor(arena, target%array_index, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (array_literal_node)
+                if (is_implied_do_constructor(arena, rhs) .or. &
+                    .not. allocated(rhs%element_indices)) then
+                    error_msg = 'allocatable component section constructor is not supported'
+                    return
+                end if
+                allocate (flat(0))
+                call flatten_constructor_elements(arena, rhs%element_indices, flat, &
+                                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                n = size(flat)
+                allocate (rhs_values(n))
+                do i = 1, n
+                    call lower_component_rhs_value(arena, flat(i), comp_kind, context, &
+                                                   rhs_values(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                call realloc_alloc_component(context, desc_addr, comp_kind, n, &
+                                             data_ptr, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, n
+                    call store_alloc_component_element(context, data_ptr, comp_kind, &
+                                                       i - 1, rhs_values(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                return
+            class default
+            end select
+        end if
+
+        call lower_component_rhs_value(arena, node%value_index, comp_kind, context, &
+                                       value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call alloc_component_extent_i32(context, desc_addr, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        entry_idx = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive component index vreg'
+            return
+        end if
+        backedge_idx = i32_vreg(context%session, idx_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                backedge_idx, latch_block, header_idx, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        call store_alloc_component_element_runtime(context, desc_addr, comp_kind, &
+                                                   header_idx, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_alloc_array_component_section_assignment
+
+    subroutine store_alloc_component_element_runtime(context, desc_addr, comp_kind, &
+                                                      index_i32, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: desc_addr, index_i32, value
+        integer, intent(in) :: comp_kind
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr, index_i64, byte_offset, addr
+
+        if (.not. emit_ptr_load(context%session, desc_addr, data_ptr, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, index_i32, index_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index_i64, &
+                i64_immediate(context%session, &
+                    int(allocatable_elem_size(comp_kind), c_int64_t)), byte_offset, &
+                error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, addr, &
+                error_msg)) return
+        if (.not. emit_allocatable_element_store(context, comp_kind, value, addr, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine store_alloc_component_element_runtime
 
     subroutine alloc_component_assign_shape(arena, value_index, context, &
                                             from_ctor, flat, src_sym, n, error_msg)
@@ -2750,6 +3166,7 @@
         character(len=:), allocatable :: id_name
         integer :: symbol_index, slots
         type(lr_operand_desc_t) :: sub_val, zero_based, scaled
+        type(lr_operand_desc_t) :: descriptor, data_ptr, slot64, byte_offset
 
         type_index = 0
         if (.not. node_exists(arena, node_index)) then
@@ -2805,10 +3222,23 @@
             call derived_array_slot_offset(arena, base%arg_indices, context, &
                 symbol_index, slots, scaled, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_array_element_addr(context%session, &
-                    context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, scaled, addr, &
-                    error_msg)) return
+            if (context%symbols(symbol_index)%is_allocatable) then
+                if (.not. emit_ptr_load(context%session, &
+                    context%symbols(symbol_index)%allocatable_descriptor_address, &
+                    data_ptr, error_msg)) return
+                if (.not. emit_liric_i32_to_i64(context%session, scaled, slot64, &
+                                                error_msg)) return
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, slot64, &
+                        i64_immediate(context%session, 4_c_int64_t), byte_offset, &
+                        error_msg)) return
+                if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                                              addr, error_msg)) return
+            else
+                if (.not. emit_i32_array_element_addr(context%session, &
+                        context%symbols(symbol_index)%array_size, &
+                        context%symbols(symbol_index)%element_address, scaled, addr, &
+                        error_msg)) return
+            end if
             call set_empty(error_msg)
         type is (component_access_node)
             call nested_scalar_component_addr(arena, base, context, addr, &
@@ -2959,6 +3389,7 @@
         integer :: type_index
         integer :: base_type
         type(lr_operand_desc_t) :: element_base, slot, element_ptr
+        type(lr_operand_desc_t) :: descriptor, data_ptr, slot64, byte_offset
 
         if (access_chain_has_heap_hop(arena, node%base_expr_index, context)) then
             call derived_instance_addr(arena, node%base_expr_index, context, &
@@ -3001,6 +3432,25 @@
                                            trim(context%derived_types(type_index)%name)// &
                                            ': '//trim(node%component_name), &
                                            error_msg)
+            return
+        end if
+
+        if (context%symbols(symbol_index)%is_allocatable .and. &
+            context%symbols(symbol_index)%array_rank > 0) then
+            descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
+                                    error_msg)) return
+            if (.not. emit_liric_i32_to_i64(context%session, element_base, slot64, &
+                                            error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, slot64, &
+                    i64_immediate(context%session, 4_c_int64_t), byte_offset, &
+                    error_msg)) return
+            if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                                          element_ptr, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, element_ptr, &
+                    int(component_start_slot(context, type_index, component_index) * 4, &
+                        c_int64_t), component_address, error_msg)) return
+            call set_empty(error_msg)
             return
         end if
 

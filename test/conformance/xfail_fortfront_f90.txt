@@ -6,6 +6,7 @@
 ast_coverage_control_flow.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 ast_coverage_literals_calls.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 ast_forall_pointer.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
+block_local_scope.f90 # owner=lazy-fortran/ffc#331; reason=bind BLOCK and ASSOCIATE storage scopes
 call_graph_internal_procedures.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 compiler_resolved_expression_kinds.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 control_flow_associate_construct.f90 # owner=lazy-fortran/ffc#331; reason=bind BLOCK and ASSOCIATE storage scopes

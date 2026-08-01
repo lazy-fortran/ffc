@@ -217,6 +217,7 @@
         ! node%type_spec as a string. Route by the type-spec text.
         if (allocated(node%type_spec)) then
             if (len_trim(node%type_spec) > 0 .and. &
+                is_identifier(arena, node%var_indices(1)) .and. &
                 (.not. allocated(node%shape_indices) .or. &
                  size(node%shape_indices) == 0)) then
                 call lower_allocate_type_spec(arena, node, context, error_msg)
@@ -270,7 +271,10 @@
             return
         end if
 
-        if (context%symbols(symbol_index)%array_rank == 2) then
+        if (context%symbols(symbol_index)%is_derived) then
+            call lower_allocate_derived_array(arena, size_index1, size_index2, &
+                                               symbol_index, context, error_msg)
+        else if (context%symbols(symbol_index)%array_rank == 2) then
             call lower_allocate_i32_2d(arena, size_index1, size_index2, &
                                        symbol_index, context, error_msg)
             if (len_trim(error_msg) == 0) &
@@ -306,14 +310,6 @@
         logical :: handled
 
         call set_empty(error_msg)
-        if (allocated(node%type_spec)) then
-            if (len_trim(node%type_spec) > 0) then
-                call unsupported_feature_error('allocate statement', node%line, &
-                    node%column, 'multi-variable allocate with a type-spec is '// &
-                    'not supported', error_msg)
-                return
-            end if
-        end if
         if (node%mold_expr_index > 0 .or. node%source_expr_index > 0) then
             call unsupported_feature_error('allocate statement', node%line, &
                 node%column, 'multi-variable allocate with mold= or source= is '// &
@@ -912,8 +908,19 @@
             name = v%name
             size_index1 = v%arg_indices(1)
             if (size(v%arg_indices) == 2) size_index2 = v%arg_indices(2)
+        type is (array_slice_node)
+            if (v%array_index <= 0 .or. v%num_dimensions < 1 .or. &
+                v%num_dimensions > 2) then
+                error_msg = 'allocate target must name an array with a size'
+                return
+            end if
+            call get_identifier_name(arena, v%array_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            size_index1 = v%bounds_indices(1)
+            if (v%num_dimensions == 2) size_index2 = v%bounds_indices(2)
         class default
-            error_msg = 'allocate target must be a scalar array name'
+            error_msg = 'allocate target must be a scalar array name ('// &
+                        trim(arena%entries(node%var_indices(1))%node_type)//')'
         end select
     end subroutine allocate_target
 
@@ -1846,7 +1853,8 @@
         end select
     end function allocatable_elem_size
 
-    subroutine declare_allocatable(context, name, rank, value_kind, error_msg)
+    subroutine declare_allocatable(context, name, rank, value_kind, error_msg, &
+                                   element_bytes)
         ! Stack-allocate a 40-byte descriptor and zero it. Layout:
         !   offset  0: data pointer (i64)
         !   offset  8: lower1 (i64)
@@ -1860,6 +1868,7 @@
         integer, intent(in) :: rank
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t), intent(in), optional :: element_bytes
         type(lr_operand_desc_t) :: descriptor, zero
         integer :: index, k
 
@@ -1914,7 +1923,7 @@
         end do
         if (rank >= 1) then
             call emit_alloc_desc_header(context, descriptor, value_kind, rank, &
-                                        error_msg)
+                                        error_msg, element_bytes)
             if (len_trim(error_msg) > 0) return
         end if
 

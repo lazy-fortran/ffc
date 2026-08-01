@@ -1408,6 +1408,18 @@
         integer :: k, k2, n
         integer(c_int64_t) :: tgt_lin, src_lin
 
+        if (node_exists(arena, target%array_index)) then
+            select type (component => arena%entries(target%array_index)%node)
+            type is (component_access_node)
+                if (component_access_is_alloc_array(arena, component, context)) then
+                    call lower_alloc_array_component_section_assignment(arena, node, &
+                        target, context, error_msg)
+                    return
+                end if
+            class default
+            end select
+        end if
+
         call describe_array_section(arena, target, context, tinfo, error_msg)
         if (len_trim(error_msg) > 0) return
         n = int(tinfo%section_extents(1))
@@ -2651,4 +2663,3 @@
                                           cond, error_msg)) return
         end select
     end subroutine dim_reduction_mask_element
-

@@ -22,7 +22,7 @@
     end function alloc_desc_dim_offset
 
     subroutine emit_alloc_desc_header(context, descriptor, value_kind, rank, &
-                                      error_msg)
+                                      error_msg, element_bytes)
         ! Write the rank-invariant header of an allocatable's descriptor. Called
         ! where the entity is declared, so the element kind and rank are known
         ! before any ALLOCATE runs and an unallocated descriptor still describes
@@ -32,10 +32,15 @@
         integer, intent(in) :: value_kind
         integer, intent(in) :: rank
         character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t), intent(in), optional :: element_bytes
+        type(lr_operand_desc_t) :: element_size
 
+        element_size = i64_immediate(context%session, &
+            allocatable_elem_size(value_kind))
+        if (present(element_bytes)) element_size = &
+            i64_immediate(context%session, element_bytes)
         if (.not. emit_i64_store_at(context%session, &
-                i64_immediate(context%session, &
-                    allocatable_elem_size(value_kind)), descriptor, &
+                element_size, descriptor, &
                 int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), &
                 error_msg)) return
         call store_descriptor_i32(context, assumed_shape_element_type(value_kind), &
@@ -149,7 +154,8 @@
     end subroutine emit_alloc_desc_load_upper
 
     subroutine emit_alloc_desc_allocate_shape(context, descriptor, value_kind, &
-                                              rank, extents_i64, error_msg)
+                                              rank, extents_i64, error_msg, &
+                                              lowers_i64, element_bytes)
         ! Install the shape an ALLOCATE just produced: unit lower bounds, the
         ! requested extents, and contiguous column-major byte strides, with the
         ! allocated/owning flags set. Storage must already be stored at offset 0.
@@ -159,11 +165,14 @@
         integer, intent(in) :: rank
         type(lr_operand_desc_t), intent(in) :: extents_i64(:)
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), intent(in), optional :: lowers_i64(:)
+        integer(c_int64_t), intent(in), optional :: element_bytes
         type(lr_operand_desc_t) :: running, next_running, one
+        type(lr_operand_desc_t) :: lower
         integer :: d
 
         call emit_alloc_desc_header(context, descriptor, value_kind, rank, &
-                                    error_msg)
+                                    error_msg, element_bytes)
         if (len_trim(error_msg) > 0) return
         call emit_alloc_desc_flags(context, descriptor, .true., error_msg)
         if (len_trim(error_msg) > 0) return
@@ -171,8 +180,12 @@
         one = i64_immediate(context%session, 1_c_int64_t)
         running = i64_immediate(context%session, &
                                 allocatable_elem_size(value_kind))
+        if (present(element_bytes)) running = &
+            i64_immediate(context%session, element_bytes)
         do d = 1, rank
-            call emit_alloc_desc_set_dim(context, descriptor, d, one, &
+            lower = one
+            if (present(lowers_i64)) lower = lowers_i64(d)
+            call emit_alloc_desc_set_dim(context, descriptor, d, lower, &
                                          extents_i64(d), running, error_msg)
             if (len_trim(error_msg) > 0) return
             if (d < rank) then

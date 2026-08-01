@@ -23,6 +23,9 @@
         integer :: i
 
         is_assumed = .false.
+        ! An allocatable colon is a deferred-shape specification, not an
+        ! assumed-shape dummy. Its extent is supplied by ALLOCATE later.
+        if (node%is_allocatable) return
         if (.not. allocated(node%dimension_indices)) return
         if (size(node%dimension_indices) < 1) return
         do i = 1, size(node%dimension_indices)

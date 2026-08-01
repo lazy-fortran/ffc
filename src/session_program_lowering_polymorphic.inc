@@ -853,7 +853,8 @@
     end subroutine runtime_guard_match_ids
 
     subroutine bind_runtime_guard_symbol(context, sel_index, assoc_name, &
-                                         guard_type_index, exact)
+                                         guard_type_index, exact, &
+                                         selector_element_address)
         ! Bind the associate name inside a guard's arm. It aliases the
         ! selector's storage (same element_address), so writes in the arm reach
         ! the selector, but its declared identity is narrowed to the guard's
@@ -865,6 +866,7 @@
         character(len=*), intent(in) :: assoc_name
         integer, intent(in) :: guard_type_index
         logical, intent(in) :: exact
+        type(lr_operand_desc_t), intent(in), optional :: selector_element_address
         integer :: idx
 
         idx = find_symbol_compat(context, assoc_name)
@@ -878,6 +880,15 @@
         context%symbols(idx)%derived_type_index = guard_type_index
         context%symbols(idx)%array_size = &
             total_component_slots(context, guard_type_index)
+        if (present(selector_element_address)) then
+            context%symbols(idx)%is_array = .false.
+            context%symbols(idx)%array_rank = 0
+            context%symbols(idx)%is_allocatable = .false.
+            context%symbols(idx)%allocatable_static_size = 0
+            context%symbols(idx)%element_address = selector_element_address
+            context%symbols(idx)%has_address = .true.
+            context%symbols(idx)%is_reference = .true.
+        end if
         if (exact) then
             context%symbols(idx)%is_polymorphic = .false.
             context%symbols(idx)%has_dynamic_type_address = .false.
@@ -1025,6 +1036,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: selector_idx, default_idx, g, i, declared_index
+        integer :: selector_expr_index, selector_type_index
         integer, allocatable :: guard_indices(:), ordered(:), ids(:)
         integer, allocatable :: body(:)
         character(len=:), allocatable :: guard_kind
@@ -1036,10 +1048,38 @@
         logical :: terminated, captured
         type(branch_result_t), allocatable :: results(:)
         integer :: nresults
+        logical :: selector_is_element
+        type(lr_operand_desc_t) :: selector_element_address
 
         call set_empty(error_msg)
         call get_select_type_info(arena, node_index, selector_idx, &
                                   guard_indices, default_idx)
+        selector_is_element = .false.
+        selector_expr_index = 0
+        if (node_exists(arena, selector_idx)) then
+            select type (selector => arena%entries(selector_idx)%node)
+            type is (assignment_node)
+                selector_expr_index = selector%value_index
+            type is (pointer_assignment_node)
+                selector_expr_index = selector%target_index
+            class default
+                selector_expr_index = selector_idx
+            end select
+        end if
+        if (node_exists(arena, selector_expr_index)) then
+            select type (selector_expr => arena%entries(selector_expr_index)%node)
+            type is (call_or_subscript_node)
+                if (selector_expr%base_expr_index <= 0 .and. &
+                    allocated(selector_expr%name) .and. &
+                    allocated(selector_expr%arg_indices)) then
+                    call derived_instance_addr(arena, selector_expr_index, context, &
+                        selector_element_address, selector_type_index, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    selector_is_element = selector_type_index > 0
+                end if
+            class default
+            end select
+        end if
         declared_index = context%symbols(sel_index)%derived_type_index
         call validate_runtime_guards(arena, guard_indices, context, &
                                      declared_index, error_msg)
@@ -1099,9 +1139,14 @@
             context%current_block_id = arm_block
             context%current_block_terminated = .false.
             call restore_symbols(context, baseline, baseline_count)
-            call bind_runtime_guard_symbol(context, sel_index, assoc_name, &
-                                           guard_type_index, &
-                                           trim(guard_kind) == 'type_is')
+            if (selector_is_element) then
+                call bind_runtime_guard_symbol(context, sel_index, assoc_name, &
+                    guard_type_index, trim(guard_kind) == 'type_is', &
+                    selector_element_address)
+            else
+                call bind_runtime_guard_symbol(context, sel_index, assoc_name, &
+                    guard_type_index, trim(guard_kind) == 'type_is')
+            end if
             call select_type_guard_body(arena, ordered(g), body)
             terminated = .false.
             if (allocated(body)) then

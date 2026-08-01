@@ -467,6 +467,146 @@
         end select
     end subroutine mask_scalar_element
 
+    subroutine try_alloc_component_constructor_mask_reduction(arena, node, context, is_all, &
+                                                  handled, value, error_msg)
+        ! Handle any()/all() of an integer/real allocatable component against
+        ! an explicit constructor. The component extent is runtime-owned, but
+        ! the constructor gives this conformance path a fixed, independently
+        ! checkable number of elements to compare.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_all
+        logical, intent(out) :: handled
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op
+        integer :: arg_index, left_idx, right_idx, line, col
+        integer :: component_idx, constructor_idx, comp_kind, i, n
+        integer, allocatable :: flat(:)
+        logical :: component_on_left
+        type(lr_operand_desc_t) :: desc_addr, component_value, constructor_value
+        type(lr_operand_desc_t) :: condition, accumulator, next_acc
+        integer(c_int) :: predicate
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) return
+        arg_index = node%arg_indices(1)
+        if (.not. is_binary_op(arena, arg_index)) return
+        call get_binary_op_info(arena, arg_index, op, left_idx, right_idx, line, col, &
+                                error_msg)
+        if (len_trim(error_msg) > 0 .or. .not. is_relational_operator(op)) then
+            call set_empty(error_msg)
+            return
+        end if
+
+        component_idx = 0
+        constructor_idx = 0
+        component_on_left = .false.
+        if (node_exists(arena, left_idx)) then
+            select type (left => arena%entries(left_idx)%node)
+            type is (component_access_node)
+                if (component_access_is_alloc_array(arena, left, context)) then
+                    component_idx = left_idx
+                    constructor_idx = right_idx
+                    component_on_left = .true.
+                    comp_kind = derived_component_access_kind(arena, left, context)
+                end if
+            class default
+            end select
+        end if
+        if (component_idx == 0 .and. node_exists(arena, right_idx)) then
+            select type (right => arena%entries(right_idx)%node)
+            type is (component_access_node)
+                if (component_access_is_alloc_array(arena, right, context)) then
+                    component_idx = right_idx
+                    constructor_idx = left_idx
+                    component_on_left = .false.
+                    comp_kind = derived_component_access_kind(arena, right, context)
+                end if
+            class default
+            end select
+        end if
+        if (component_idx == 0 .or. .not. node_exists(arena, constructor_idx)) return
+        select type (constructor => arena%entries(constructor_idx)%node)
+        type is (array_literal_node)
+            if (is_implied_do_constructor(arena, constructor) .or. &
+                .not. allocated(constructor%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, constructor%element_indices, flat, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            return
+        end select
+        n = size(flat)
+        if (n <= 0) return
+
+        call alloc_array_component_descriptor(arena, component_idx, context, desc_addr, &
+                                              error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (comp_kind /= VALUE_I32 .and. comp_kind /= VALUE_F32 .and. &
+            comp_kind /= VALUE_F64) then
+            return
+        end if
+        if (comp_kind == VALUE_F32 .or. comp_kind == VALUE_F64) then
+            call real_compare_predicate(op, predicate, error_msg)
+        else
+            call integer_compare_predicate(op, predicate, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+
+        if (is_all) then
+            accumulator = i32_immediate(context%session, 1_c_int64_t)
+        else
+            accumulator = i32_immediate(context%session, 0_c_int64_t)
+        end if
+        do i = 0, n - 1
+            call load_alloc_component_element(context, desc_addr, comp_kind, &
+                i32_immediate(context%session, int(i, c_int64_t)), component_value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_component_rhs_value(arena, flat(i + 1), comp_kind, context, &
+                                           constructor_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (component_on_left) then
+                if (comp_kind == VALUE_F32) then
+                    if (.not. emit_liric_f32_fcmp(context%session, predicate, &
+                            component_value, constructor_value, condition, error_msg)) return
+                else if (comp_kind == VALUE_F64) then
+                    if (.not. emit_liric_f64_fcmp(context%session, predicate, &
+                            component_value, constructor_value, condition, error_msg)) return
+                else
+                    if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                            component_value, constructor_value, condition, error_msg)) return
+                end if
+            else
+                if (comp_kind == VALUE_F32) then
+                    if (.not. emit_liric_f32_fcmp(context%session, predicate, &
+                            constructor_value, component_value, condition, error_msg)) return
+                else if (comp_kind == VALUE_F64) then
+                    if (.not. emit_liric_f64_fcmp(context%session, predicate, &
+                            constructor_value, component_value, condition, error_msg)) return
+                else
+                    if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                            constructor_value, component_value, condition, error_msg)) return
+                end if
+            end if
+            if (is_all) then
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, accumulator, &
+                        condition, next_acc, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, accumulator, &
+                        condition, next_acc, error_msg)) return
+            end if
+            accumulator = next_acc
+        end do
+        value = accumulator
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine try_alloc_component_constructor_mask_reduction
+
     ! any()/all() over a whole-array relational comparison whose operands are
     ! declared/allocatable arrays, array constructors, or scalars, e.g.
     ! any(a /= b), all(p == [1, 2, 3]), any(arr /= 10). Unrolls over the static
@@ -497,6 +637,9 @@
         else
             accumulate = 'any'
         end if
+        call try_alloc_component_constructor_mask_reduction(arena, node, context, is_all, &
+                                                handled, value, error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
         call try_general_mask_reduction(arena, node, context, accumulate, &
                                         handled, value, error_msg)
         if (handled .or. len_trim(error_msg) > 0) return

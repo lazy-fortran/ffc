@@ -1114,6 +1114,28 @@ while IFS= read -r full_path <&3; do
         fi
     fi
 
+    # A reference program that compiles but terminates abnormally cannot serve
+    # as a behavioral oracle. Keep a successfully running ffc case visible as
+    # NO-REF rather than comparing it against the reference compiler's failure.
+    if [ "$ref_exit" -ne 0 ] && [ "$ffc_exit" -eq 0 ]; then
+        NOREF_COUNT=$((NOREF_COUNT + 1))
+        IS_NOREF_RECORD=1
+        NOREF_RECORD_REASON="reference-runtime-failure"
+        if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
+            status="XPASS"
+            note="listed in xfail manifest; gfortran terminates but ffc runs"
+            XPASS_COUNT=$((XPASS_COUNT + 1))
+            echo "  XPASS: $rel_path (gfortran terminates, ffc runs)"
+        else
+            status="PASS"
+            note="gfortran terminates; ffc runs (NO-REF)"
+            PASS_COUNT=$((PASS_COUNT + 1))
+        fi
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
+        continue
+    fi
+
     # Step 7b: a cached reference that does not match is never trusted. The
     # entry is discarded and the reference is rebuilt and rerun, so a stale or
     # nondeterministic cached output can only cost time, never change a

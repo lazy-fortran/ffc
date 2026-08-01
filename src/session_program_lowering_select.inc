@@ -987,16 +987,47 @@
             ! the selector variable.
             call get_identifier_name(arena, sel%pointer_index, assoc_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            call get_identifier_name(arena, sel%target_index, sel_name, error_msg)
+            call selector_base_name(arena, sel%target_index, sel_name, error_msg)
         type is (assignment_node)
             call get_identifier_name(arena, sel%target_index, assoc_name, error_msg)
             if (len_trim(error_msg) > 0) return
-            call get_identifier_name(arena, sel%value_index, sel_name, error_msg)
+            call selector_base_name(arena, sel%value_index, sel_name, error_msg)
         class default
             error_msg = 'select type selector must be a class(*) variable or '// &
                         'an associate (name => variable)'
         end select
     end subroutine select_type_selector
+
+    subroutine selector_base_name(arena, node_index, name, error_msg)
+        ! SELECT TYPE associate syntax may select an array element, e.g.
+        ! `value => values(i)`. Resolve the selector's base symbol while the
+        ! lowering path retains the original expression for address formation.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(name)
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'select type selector does not reference an AST node'
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            return
+        end if
+        select type (selector => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(selector%name)) then
+                name = selector%name
+            else
+                error_msg = 'select type selector array element has no base name'
+            end if
+        class default
+            error_msg = 'select type selector base is not a variable reference'
+        end select
+    end subroutine selector_base_name
 
 
     subroutine select_type_guard_id(arena, guard_index, context, guard_id, &

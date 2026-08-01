@@ -179,7 +179,6 @@ pr105501.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definitio
 pr115260.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
 pr119836_4.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
 pr123375.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
-pr125263.f90 # owner=lazy-fortran/ffc#422; reason=owns allocatable polymorphic arrays, concrete element size, and SELECT TYPE narrowing
 pr125391.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
 pr19936_2.f90 # owner=lazy-fortran/fortfront#2898; reason=reject malformed iterators and delimiters
 pr19936_3.f90 # owner=lazy-fortran/fortfront#2891; reason=reject malformed type and SELECT TYPE syntax
