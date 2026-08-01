@@ -537,6 +537,14 @@ module session_program_lowering_types
     integer, parameter, public :: ARG_INTENT_OUT = 2
     integer, parameter, public :: ARG_INTENT_INOUT = 3
 
+    ! A Lazy procedure whose untyped dummies FortFront could not resolve to one
+    ! concrete type, so it monomorphized instead: the written name is not a
+    ! callable body, and each concrete signature lives in its own typed copy
+    ! (#437).
+    type, public :: lazy_specialization_t
+        character(len=64) :: procedure_name = ''
+    end type lazy_specialization_t
+
     type, public :: external_procedure_t
         character(len=64) :: fortran_name = ''
         character(len=64) :: c_name = ''
@@ -737,6 +745,8 @@ module session_program_lowering_types
         ! A call to such a name inlines the body with actuals bound to dummies.
         type(statement_function_t), allocatable :: statement_functions(:)
         integer :: statement_function_count = 0
+        type(lazy_specialization_t), allocatable :: lazy_specializations(:)
+        integer :: lazy_specialization_count = 0
         ! OPEN(unit=6, sign='plus') reconfigures the preconnected stdout
         ! connection's sign mode (#280): PRINT and WRITE(*,...) share that
         ! connection, so a forced-plus mode applies to their F editing too.

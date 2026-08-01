@@ -250,6 +250,9 @@
                                call_arg_count, call_arg_kinds)
        call call_argument_ranks(arena, node, context, call_arg_count, &
                                 call_arg_ranks)
+       call reject_monomorphized_call(context, trim(node%name), node%line, &
+                                      node%column, error_msg)
+       if (len_trim(error_msg) > 0) return
        call_name = degeneric_call_name(context, node%name, &
            call_arg_count, call_arg_kinds, call_arg_ranks)
 
