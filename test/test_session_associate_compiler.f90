@@ -8,6 +8,7 @@ program test_session_associate
 
     all_passed = .true.
     if (.not. test_associate_scalar_alias()) all_passed = .false.
+    if (.not. test_associate_scalar_write_alias()) all_passed = .false.
     if (.not. test_associate_expression_selector()) all_passed = .false.
     if (.not. test_associate_two_names()) all_passed = .false.
     if (.not. test_associate_scope_drops_binding()) all_passed = .false.
@@ -35,6 +36,24 @@ contains
             source, 7, &
             '/tmp/ffc_session_associate_scalar')
     end function test_associate_scalar_alias
+
+    logical function test_associate_scalar_write_alias()
+        ! A bare scalar selector is an alias, so a write through the associate
+        ! name must update the original variable after END ASSOCIATE.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: n'//new_line('a')// &
+            'n = 7'//new_line('a')// &
+            'associate (x => n)'//new_line('a')// &
+            '    x = x + 1'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'print *, n'//new_line('a')// &
+            'end program main'
+
+        test_associate_scalar_write_alias = expect_output( &
+            source, '           8'//new_line('a'), &
+            '/tmp/ffc_session_associate_scalar_write')
+    end function test_associate_scalar_write_alias
 
     logical function test_associate_expression_selector()
         character(len=*), parameter :: source = &

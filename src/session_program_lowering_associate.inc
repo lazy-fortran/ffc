@@ -74,6 +74,9 @@
             call get_identifier_name(arena, assoc%expr_index, sel_name, name_err)
             src_idx = resolve_symbol_at_node(context, assoc%expr_index, sel_name)
             if (src_idx > 0) then
+                call materialize_scalar_associate_source(context, src_idx, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
                 idx = associate_symbol_slot(context, binding)
                 context%symbols(idx) = context%symbols(src_idx)
                 context%symbols(idx)%name = trim(assoc%name)
@@ -142,6 +145,52 @@
         context%symbols(idx)%is_allocatable = .false.
         call attach_symbol_binding(context, idx, binding)
     end subroutine bind_associate_name
+
+    subroutine materialize_scalar_associate_source(context, symbol_index, &
+                                                    error_msg)
+        ! Ordinary local scalars use SSA values until an ASSOCIATE selector
+        ! needs storage. Materialize that value once so the original and the
+        ! associate name share storage for subsequent reads and writes.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: current_value
+        logical :: ok
+
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%has_address) return
+        if (context%symbols(symbol_index)%is_array .or. &
+            context%symbols(symbol_index)%is_derived) return
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            ok = emit_i32_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case (VALUE_I64)
+            ok = emit_i64_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case (VALUE_I8)
+            ok = emit_i8_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case (VALUE_I16)
+            ok = emit_i16_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case (VALUE_F32)
+            ok = emit_liric_f32_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case (VALUE_F64)
+            ok = emit_liric_f64_alloca(context%session, &
+                context%symbols(symbol_index)%address, error_msg)
+        case default
+            return
+        end select
+        if (.not. ok) return
+        context%symbols(symbol_index)%has_address = .true.
+        context%symbols(symbol_index)%is_reference = .true.
+        current_value = context%symbols(symbol_index)%value
+        call store_reference_value(context, symbol_index, &
+            current_value, error_msg)
+    end subroutine materialize_scalar_associate_source
 
     recursive logical function associate_selector_is_array(arena, node_index, &
                                                            context) result(is_arr)
