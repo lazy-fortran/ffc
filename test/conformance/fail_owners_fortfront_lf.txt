@@ -1,0 +1,13 @@
+# Current FAIL ownership for the parity dashboard.
+# Entries annotate reports and do not change gauntlet dispositions.
+api_complex_transform.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+docs_mixed_type_operations.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+docs_type_validation_calculate.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+function_param_memory_safety.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+issue_1260_subroutine_named_end.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+issue_1883_intent_result.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+issue_1890_lazy_function_return.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
+issue_1893_module_result_intent.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+issue_2068_nested_function_type_inference_mismatch.lf # owner=lazy-fortran/ffc#437; reason=emit one-unit Lazy procedure specializations
+issue_509_mixed_constructs_input.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations
+module_contains_suite.lf # owner=lazy-fortran/ffc#586; reason=merge Lazy default real metadata into explicit declarations

@@ -1,0 +1,10 @@
+# Current FAIL ownership for the parity dashboard.
+# Entries annotate reports and do not change gauntlet dispositions.
+class_is_1_ok.f90 # owner=lazy-fortran/ffc#584; reason=resolve host-associated declarations in nested scopes
+do_concurrent_3_valid.f90 # owner=lazy-fortran/ffc#588; reason=provide missing intrinsic runtime entry points
+elemental_pointer_1_valid.f90 # owner=lazy-fortran/ffc#428; reason=allocate scalar pointer targets
+pr19936_3_ok.f90 # owner=lazy-fortran/ffc#459; reason=lower implied-DO array constructors in output lists
+pr91715_ok.f90 # owner=lazy-fortran/ffc#348; reason=lower prefix-form fixed-length character results
+pure_formal_proc_3_valid.f90 # owner=lazy-fortran/ffc#467; reason=emit thunks for procedure actual arguments
+submodule_module_prefix_valid.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
+type_is_1_ok.f90 # owner=lazy-fortran/ffc#584; reason=resolve host-associated declarations in nested scopes
