@@ -255,30 +255,125 @@
         if (len_trim(ff_error) > 0) return
         count = 0
         do p = 1, size(procedure_indices)
-            call fmod_procedure_signature(arena, context, procedure_indices(p), &
-                                          mod_node, kind_text, nargs, &
-                                          arg_tokens, rank_tokens, extent_tokens)
-            if (len_trim(kind_text) == 0) cycle
-            count = count + 1
-            call grow_fmod_procs(procs, count)
-            procs(count)%name = procedure_fortran_name(arena, &
-                                                        procedure_indices(p))
-            procs(count)%kind = kind_text
-            procs(count)%nargs = nargs
-            procs(count)%arg_kinds = arg_tokens
-            procs(count)%arg_ranks = rank_tokens
-            procs(count)%arg_extents = extent_tokens
-            procs(count)%arg_names = fmod_procedure_arg_names(arena, &
-                                                     procedure_indices(p))
-            call fmod_procedure_dummy_attributes(arena, procedure_indices(p), &
-                                                 procs(count)%arg_intents, &
-                                                 procs(count)%arg_optionals, &
-                                                 procs(count)%arg_values)
-            call fmod_procedure_result(arena, procedure_indices(p), kind_text, &
-                                       procs(count)%result_name, &
-                                       procs(count)%result_kind)
+            call record_fmod_procedure(arena, context, procedure_indices(p), &
+                                       mod_node, .false., procs, count)
+        end do
+        ! A module procedure whose interface the module declares and whose body
+        ! a submodule supplies is exported too: its symbol is mangled to this
+        ! module, so a separately compiled caller resolves and links it exactly
+        ! like a contained module procedure, and a separately compiled submodule
+        ! reads the interface it has to implement from here (#297).
+        do p = 1, size(declaration_indices)
+            call record_fmod_interface_procedures(arena, context, &
+                                                  declaration_indices(p), &
+                                                  mod_node, procs, count)
         end do
     end subroutine build_fmod_procedures
+
+    subroutine record_fmod_interface_procedures(arena, context, node_index, &
+                                                mod_node, procs, count)
+        ! Record every deferred module-procedure interface body of one interface
+        ! block. A plain interface block declares an external procedure with no
+        ! module mangling, so only bodies written `module function` /
+        ! `module subroutine` are recorded (#297).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        type(module_node), intent(in) :: mod_node
+        type(fmod_procedure_t), allocatable, intent(inout) :: procs(:)
+        integer, intent(inout) :: count
+        integer :: i
+
+        if (.not. node_exists(arena, node_index)) return
+        select type (block => arena%entries(node_index)%node)
+        type is (interface_block_node)
+            if (block%is_abstract) return
+            if (.not. allocated(block%procedure_indices)) return
+            do i = 1, size(block%procedure_indices)
+                if (.not. procedure_is_deferred_module_body(arena, &
+                        block%procedure_indices(i))) cycle
+                call record_fmod_procedure(arena, context, &
+                                           block%procedure_indices(i), &
+                                           mod_node, .true., procs, count)
+            end do
+        end select
+    end subroutine record_fmod_interface_procedures
+
+    logical function procedure_is_deferred_module_body(arena, node_index) &
+            result(is_module_body)
+        ! Whether an interface body is written `module function` /
+        ! `module subroutine`, which makes it a module procedure of the
+        ! enclosing module whose body a submodule supplies (F2018 15.6.2.5).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        is_module_body = .false.
+        if (.not. node_exists(arena, node_index)) return
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            is_module_body = prefix_has_module(fn_node%prefix_keywords)
+            return
+        end if
+        sb_node => get_node_as_subroutine_def(arena, node_index)
+        if (associated(sb_node)) &
+            is_module_body = prefix_has_module(sb_node%prefix_keywords)
+    end function procedure_is_deferred_module_body
+
+    logical function prefix_has_module(prefix_keywords) result(has_module)
+        character(len=16), allocatable, intent(in) :: prefix_keywords(:)
+        integer :: i
+
+        has_module = .false.
+        if (.not. allocated(prefix_keywords)) return
+        do i = 1, size(prefix_keywords)
+            if (trim(lowercase_text(prefix_keywords(i))) == 'module') then
+                has_module = .true.
+                return
+            end if
+        end do
+    end function prefix_has_module
+
+    subroutine record_fmod_procedure(arena, context, node_index, mod_node, &
+                                     deferred_body, procs, count)
+        ! Append one exportable module procedure's signature record. The same
+        ! record describes a procedure whose body this module contains and one
+        ! whose body a submodule supplies; deferred_body only says which, since
+        ! both carry the same mangled symbol and the same call contract (#297).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: node_index
+        type(module_node), intent(in) :: mod_node
+        logical, intent(in) :: deferred_body
+        type(fmod_procedure_t), allocatable, intent(inout) :: procs(:)
+        integer, intent(inout) :: count
+        character(len=:), allocatable :: kind_text, arg_tokens
+        character(len=:), allocatable :: rank_tokens, extent_tokens
+        integer :: nargs
+
+        call fmod_procedure_signature(arena, context, node_index, mod_node, &
+                                      kind_text, nargs, arg_tokens, &
+                                      rank_tokens, extent_tokens)
+        if (len_trim(kind_text) == 0) return
+        count = count + 1
+        call grow_fmod_procs(procs, count)
+        procs(count)%name = procedure_fortran_name(arena, node_index)
+        procs(count)%kind = kind_text
+        procs(count)%nargs = nargs
+        procs(count)%arg_kinds = arg_tokens
+        procs(count)%arg_ranks = rank_tokens
+        procs(count)%arg_extents = extent_tokens
+        procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
+        procs(count)%deferred_body = deferred_body
+        call fmod_procedure_dummy_attributes(arena, node_index, &
+                                             procs(count)%arg_intents, &
+                                             procs(count)%arg_optionals, &
+                                             procs(count)%arg_values)
+        call fmod_procedure_result(arena, node_index, kind_text, &
+                                   procs(count)%result_name, &
+                                   procs(count)%result_kind)
+    end subroutine record_fmod_procedure
 
     subroutine fmod_procedure_result(arena, node_index, kind_text, result_name, &
                                      result_kind)
@@ -516,7 +611,7 @@
             if (.not. allocated(fn_node%name)) return
             if (module_symbol_is_private(arena, mod_node, fn_node%name)) return
             if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
-            if (.not. return_type_is_integer(fn_node%return_type)) return
+            if (.not. fmod_function_result_is_integer(arena, fn_node)) return
             if (.not. params_all_supported(arena, context, &
                                     fn_node%param_indices, fn_node%body_indices, &
                                     nargs, arg_tokens, rank_tokens, &
@@ -536,6 +631,44 @@
             kind_text = 'subroutine'
         end if
     end subroutine fmod_procedure_signature
+
+    logical function fmod_function_result_is_integer(arena, fn_node) &
+            result(is_integer)
+        ! Whether a module function returns a default integer. A contained
+        ! function states its type in the header; a deferred module-procedure
+        ! interface body may instead declare its result variable in the
+        ! interface body, so that declaration is consulted too (#297).
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: fn_node
+        character(len=:), allocatable :: result_name, kind_err
+        integer :: value_kind, i
+
+        is_integer = return_type_is_integer(fn_node%return_type)
+        if (is_integer) return
+        if (allocated(fn_node%return_type)) then
+            if (len_trim(fn_node%return_type) > 0) return
+        end if
+        result_name = ''
+        if (allocated(fn_node%result_variable)) result_name = &
+            trim(fn_node%result_variable)
+        if (len_trim(result_name) == 0 .and. allocated(fn_node%name)) &
+            result_name = trim(fn_node%name)
+        if (len_trim(result_name) == 0) return
+        if (.not. allocated(fn_node%body_indices)) return
+        do i = 1, size(fn_node%body_indices)
+            if (.not. node_exists(arena, fn_node%body_indices(i))) cycle
+            select type (decl => arena%entries(fn_node%body_indices(i))%node)
+            type is (declaration_node)
+                if (decl%is_array) cycle
+                if (.not. declaration_declares_name(decl, &
+                    trim(lowercase_text(result_name)))) cycle
+                call declaration_value_kind(decl, value_kind, kind_err)
+                if (len_trim(kind_err) > 0) return
+                is_integer = value_kind == VALUE_I32
+                return
+            end select
+        end do
+    end function fmod_function_result_is_integer
 
     logical function return_type_is_integer(return_type)
         character(len=:), allocatable, intent(in) :: return_type

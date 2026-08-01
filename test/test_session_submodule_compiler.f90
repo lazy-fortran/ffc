@@ -12,6 +12,8 @@ program test_session_submodule_compiler
     if (.not. test_separate_module_function()) all_passed = .false.
     if (.not. test_generic_interface_body_specific()) all_passed = .false.
     if (.not. test_parent_module_not_found()) all_passed = .false.
+    if (.not. test_caller_links_deferred_module_procedure()) all_passed = .false.
+    if (.not. test_plain_interface_is_not_exported()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: single-file submodules lower against the parent module'
@@ -154,5 +156,187 @@ contains
             source, 'submodule parent module not found', &
             '/tmp/ffc_session_submod_orphan_test')
     end function test_parent_module_not_found
+
+    logical function test_caller_links_deferred_module_procedure() result(ok)
+        ! A module procedure whose interface the parent declares and whose body
+        ! a submodule supplies must reach a separately compiled caller: the
+        ! caller sees only the parent's .fmod, and can resolve and link the
+        ! procedure only because the artefact carries that deferred interface
+        ! (#297).
+        character(len=:), allocatable :: dir
+        integer :: separate_status, same_status
+        character(len=*), parameter :: module_source = &
+            'module fmod297_parent'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    interface'//new_line('a')// &
+            '        module function twice(x) result(r)'//new_line('a')// &
+            '            integer, intent(in) :: x'//new_line('a')// &
+            '            integer :: r'//new_line('a')// &
+            '        end function twice'//new_line('a')// &
+            '    end interface'//new_line('a')// &
+            'end module fmod297_parent'//new_line('a')// &
+            'submodule (fmod297_parent) fmod297_impl'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    module procedure twice'//new_line('a')// &
+            '        r = 2 * x'//new_line('a')// &
+            '    end procedure twice'//new_line('a')// &
+            'end submodule fmod297_impl'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod297_parent, only: twice'//new_line('a')// &
+            '    stop twice(21)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod297_deferred', dir)
+        separate_status = run_separate_compilation(dir, module_source, &
+                                                   program_source)
+        same_status = run_same_unit_compilation(dir, module_source, &
+                                                program_source)
+        if (same_status /= 142) then
+            print *, 'FAIL: same-unit deferred module procedure status ', &
+                same_status
+            call show_log(dir)
+            return
+        end if
+        if (separate_status /= same_status) then
+            print *, 'FAIL: separately compiled caller status ', &
+                separate_status, ' differs from same-unit ', same_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_caller_links_deferred_module_procedure
+
+    logical function test_plain_interface_is_not_exported() result(ok)
+        ! A plain interface block declares an external procedure with no module
+        ! mangling, so it must not be published as a module procedure of the
+        ! enclosing module: a caller that resolved it there would link against
+        ! a symbol the module never defines.
+        character(len=:), allocatable :: dir
+        integer :: separate_status
+        character(len=*), parameter :: module_source = &
+            'module fmod297_external'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    interface'//new_line('a')// &
+            '        integer function outside(x)'//new_line('a')// &
+            '            integer, intent(in) :: x'//new_line('a')// &
+            '        end function outside'//new_line('a')// &
+            '    end interface'//new_line('a')// &
+            'end module fmod297_external'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod297_external, only: outside'//new_line('a')// &
+            '    stop outside(1)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod297_plain', dir)
+        separate_status = run_separate_compilation(dir, module_source, &
+                                                   program_source)
+        if (separate_status /= 92) then
+            print *, 'FAIL: plain interface was exported as a module '// &
+                'procedure, status ', separate_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_plain_interface_is_not_exported
+
+    integer function run_separate_compilation(dir, mod_source, prog_source) &
+            result(status)
+        ! Compile the module (with its submodule) in one ffc invocation, then
+        ! the program in a second, independent invocation that can only learn
+        ! the module's procedures from the .fmod artefact. Returns 90 when no
+        ! ffc binary was found, 91/92 when a compilation failed, and
+        ! 100 + exit status when the program ran.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: mod_source
+        character(len=*), intent(in) :: prog_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_source(dir//'/m.f90', mod_source)) return
+        if (.not. write_source(dir//'/p.f90', prog_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c m.f90 -o m.o >>log 2>&1 || exit 91; '// &
+            '"$exe" p.f90 m.o -o p >>log 2>&1 || exit 92; '// &
+            "./p; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_separate_compilation
+
+    integer function run_same_unit_compilation(dir, mod_source, prog_source) &
+            result(status)
+        ! Compile the same module, submodule, and program as one unit, so the
+        ! separate result can be held against it.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: mod_source
+        character(len=*), intent(in) :: prog_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_source(dir//'/same.f90', mod_source//new_line('a')// &
+                               prog_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" same.f90 -o same >>log 2>&1 || exit 92; '// &
+            "./same; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_same_unit_compilation
+
+    subroutine make_scratch_dir(tag, dir)
+        ! A scratch directory of this run's own, so concurrent builds of other
+        ! worktrees never share it (ffc #547).
+        character(len=*), intent(in) :: tag
+        character(len=:), allocatable, intent(out) :: dir
+        character(len=32) :: stamp
+        integer :: values(8)
+
+        call date_and_time(values=values)
+        write (stamp, '(I0,A,I0)') values(6)*60000 + values(7)*1000 + &
+            values(8), '_', values(5)
+        dir = '/tmp/ffc_'//tag//'_'//trim(stamp)
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+    end subroutine make_scratch_dir
+
+    subroutine remove_scratch_dir(dir)
+        character(len=*), intent(in) :: dir
+
+        call execute_command_line('rm -rf '//dir)
+    end subroutine remove_scratch_dir
+
+    subroutine show_log(dir)
+        character(len=*), intent(in) :: dir
+
+        call execute_command_line('cat '//dir//'/log 2>/dev/null')
+    end subroutine show_log
+
+    logical function write_source(path, contents) result(ok)
+        character(len=*), intent(in) :: path
+        character(len=*), intent(in) :: contents
+        integer :: unit, io_stat
+
+        ok = .false.
+        open (newunit=unit, file=path, status='replace', action='write', &
+              iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: could not write ', path
+            return
+        end if
+        write (unit, '(A)', iostat=io_stat) contents
+        close (unit)
+        ok = io_stat == 0
+    end function write_source
 
 end program test_session_submodule_compiler

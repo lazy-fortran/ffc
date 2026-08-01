@@ -24,7 +24,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 4
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 5
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -104,6 +104,11 @@ module ffc_module_artefact
         ! call resolves one by the declared ranks (#415).
         character(len=:), allocatable :: arg_ranks
         character(len=:), allocatable :: arg_extents
+        ! True when this module's interface declares the procedure and a
+        ! submodule supplies its body. The symbol and call contract are the
+        ! same either way; a separately compiled submodule reads the interface
+        ! it has to implement from these records (#297).
+        logical :: deferred_body = .false.
         integer :: nargs = 0
     end type fmod_procedure_t
 
@@ -216,6 +221,8 @@ contains
                     field(info%procedures(i)%arg_ranks)//'"'
                 write (unit, '(A)') 'arg_extents = "'// &
                     field(info%procedures(i)%arg_extents)//'"'
+                write (unit, '(A)') 'deferred_body = '// &
+                    bool_text(info%procedures(i)%deferred_body)
             end do
         end if
 
@@ -319,6 +326,7 @@ contains
                 procs(nproc)%result_kind = ''
                 procs(nproc)%arg_ranks = ''
                 procs(nproc)%arg_extents = ''
+                procs(nproc)%deferred_body = .false.
                 procs(nproc)%nargs = 0
                 cycle
             else if (line == '[[generic]]') then
@@ -386,6 +394,8 @@ contains
                 if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
                 if (key == 'arg_extents') &
                     procs(nproc)%arg_extents = unquote(val)
+                if (key == 'deferred_body') &
+                    procs(nproc)%deferred_body = unquote(val) == '1'
                 if (key == 'nargs') then
                     read (val, *, iostat=io_read) procs(nproc)%nargs
                     if (io_read /= 0) procs(nproc)%nargs = 0
