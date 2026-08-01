@@ -130,6 +130,13 @@
                                                   call_arg_param_pos(i, sp), &
                                                   error_msg)
             if (len_trim(error_msg) > 0) return
+            ! A type(t) dummy borrows the actual's slot layout whichever ABI
+            ! carries it (bare address, array descriptor), so check declared
+            ! type conformance once here rather than per ABI branch.
+            call check_derived_actual_type(arena, arg_indices(i), context, &
+                                           callee_name, &
+                                           call_arg_param_pos(i, sp), error_msg)
+            if (len_trim(error_msg) > 0) return
             ! A character actual passed to a character(len=*) dummy is a single
             ! reference parameter pointing at a {data, length} descriptor. Use
             ! that ABI only when the callee actually declares the dummy as
@@ -147,7 +154,9 @@
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
-            else if (actual_is_derived(arena, arg_indices(i), context)) then
+            else if (actual_is_derived(arena, arg_indices(i), context) .and. &
+                     callee_dummy_assumed_shape_dims(arena, callee_name, &
+                                        call_arg_param_pos(i, sp)) < 1) then
                 ! A derived actual reaching a class(t) dummy is passed as the
                 ! scalar class descriptor so the dummy carries the actual's
                 ! dynamic type; a type(t) dummy takes the bare base address of
@@ -1194,9 +1203,6 @@
         call class_dummy_declared_type_index(context, arena, callee_name, &
                                              param_pos, declared_index)
         if (declared_index <= 0) then
-            call check_derived_actual_type(arena, node_index, context, &
-                                           callee_name, param_pos, error_msg)
-            if (len_trim(error_msg) > 0) return
             call derived_actual_address(arena, node_index, context, address, &
                                         error_msg)
             return

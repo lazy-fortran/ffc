@@ -241,7 +241,15 @@
             return
         end if
         value_kind = context%symbols(symbol_index)%value_kind
-        element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
+        if (value_kind == VALUE_DERIVED) then
+            ! A derived element spans its type's whole flat slot block, not one
+            ! intrinsic slot, so the descriptor's element size and strides step
+            ! by whole instances (#406).
+            element_bytes = 4_c_int64_t*int(total_component_slots(context, &
+                context%symbols(symbol_index)%derived_type_index), c_int64_t)
+        else
+            element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
+        end if
 
         call assumed_shape_actual_base(arena, node_index, context, base, error_msg)
         if (len_trim(error_msg) > 0) return
