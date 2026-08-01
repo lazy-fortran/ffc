@@ -73,6 +73,7 @@ module session_program_lowering
         finish_and_emit_object, emit_void_call, &
         emit_i32_call, emit_i64_call, emit_ptr_call, &
         emit_i32_indirect_call, &
+        emit_f64_indirect_call, &
         emit_void_indirect_call, &
         liric_session_create, lr_session_config_t, &
         i32_immediate, i32_vreg, f32_vreg, f64_vreg, lr_operand_desc_t, &
@@ -1907,6 +1908,7 @@ contains
     include 'session_program_lowering_transfer.inc'
     include 'session_program_lowering_c_ptr.inc'
     include 'session_program_lowering_pointer.inc'
+    include 'session_program_lowering_proc_dummy.inc'
     include 'session_program_lowering_fmod.inc'
     include 'session_program_lowering_statement_function.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)

@@ -1290,6 +1290,18 @@
             slot = slot + 1
             call parameter_name(arena, param_indices(i), name, error_msg)
             if (len_trim(error_msg) > 0) return
+            ! A dummy whose signature comes from an interface body in this
+            ! scope is a procedure dummy: it carries a callable address, not
+            ! data storage (#467, #606).
+            if (present(body_indices)) then
+                if (dummy_is_procedure(arena, body_indices, name)) then
+                    call define_procedure_dummy_symbol(context, name, &
+                                                       slot - 1 + offset, &
+                                                       error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    cycle
+                end if
+            end if
             value_kind = VALUE_I32
             if (present(body_indices)) then
                 value_kind = param_at_value_kind(arena, param_indices, &
