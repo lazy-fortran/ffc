@@ -218,19 +218,185 @@
             error_msg = ff_error
             return
         end if
-        if (.not. module_node_defined(arena, parent_module)) then
-            call unsupported_feature_error('submodule', &
-                get_node_line(arena, submodule_index), &
-                get_node_column(arena, submodule_index), &
-                'submodule parent module not found', error_msg)
-            return
-        end if
+        call bind_submodule_parent(arena, submodule_index, parent_module, &
+                                   proc_indices, context, error_msg)
+        if (len_trim(error_msg) > 0) return
         do p = 1, size(proc_indices)
             call lower_one_submodule_procedure(arena, proc_indices(p), &
                                                parent_module, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_one_submodule_procedures
+
+    subroutine bind_submodule_parent(arena, submodule_index, parent_module, &
+                                     proc_indices, context, error_msg)
+        ! Bind a submodule to the parent module it extends. The parent is either
+        ! compiled in this unit or described by its .fmod artefact on the include
+        ! path; a submodule compiled on its own reads its parent's interfaces
+        ! from that artefact and is checked against them, so an implementation
+        ! that does not match the interface it claims is diagnosed here rather
+        ! than emitted under a symbol callers would then miscall (#297).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: submodule_index
+        character(len=*), intent(in) :: parent_module
+        integer, allocatable, intent(in) :: proc_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(module_info_t) :: parent_info
+        character(len=:), allocatable :: path
+        integer :: p
+
+        call set_empty(error_msg)
+        if (module_node_defined(arena, parent_module)) return
+        path = find_fmod_on_path(context, trim(parent_module))
+        if (len_trim(path) == 0) then
+            call unsupported_feature_error('submodule', &
+                get_node_line(arena, submodule_index), &
+                get_node_column(arena, submodule_index), &
+                'submodule parent module not found: '//trim(parent_module)// &
+                ' is not compiled in this unit and no '//trim(parent_module)// &
+                '.fmod was found on the include path', error_msg)
+            return
+        end if
+        call read_fmod(path, parent_info, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. allocated(proc_indices)) return
+        do p = 1, size(proc_indices)
+            call check_submodule_procedure_against_parent(arena, &
+                proc_indices(p), parent_module, parent_info, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine bind_submodule_parent
+
+    subroutine check_submodule_procedure_against_parent(arena, proc_index, &
+                                                        parent_module, &
+                                                        parent_info, context, &
+                                                        error_msg)
+        ! Check one implemented module procedure against the interface the
+        ! parent artefact declares for it: the parent must declare it, and the
+        ! implementation must restate the same dummy count and dummy kinds.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: proc_index
+        character(len=*), intent(in) :: parent_module
+        type(module_info_t), intent(in) :: parent_info
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: proc_name, kind_text, arg_tokens
+        character(len=:), allocatable :: rank_tokens, extent_tokens
+        integer :: idx, nargs
+
+        call set_empty(error_msg)
+        proc_name = procedure_fortran_name(arena, proc_index)
+        if (len_trim(proc_name) == 0) return
+        idx = fmod_procedure_index(parent_info, proc_name)
+        if (idx <= 0) then
+            call unsupported_feature_error('submodule procedure', &
+                get_node_line(arena, proc_index), &
+                get_node_column(arena, proc_index), &
+                'module procedure '//trim(proc_name)//' is not declared by '// &
+                'module '//trim(parent_module), error_msg)
+            return
+        end if
+        if (.not. submodule_body_restates_signature(arena, proc_index)) then
+            ! A `module procedure P` body inherits its dummy declarations from
+            ! the parent's interface, which this unit does not have as source.
+            call unsupported_feature_error('submodule procedure', &
+                get_node_line(arena, proc_index), &
+                get_node_column(arena, proc_index), &
+                'module procedure '//trim(proc_name)//' compiled apart from '// &
+                'module '//trim(parent_module)//' must restate its interface', &
+                error_msg)
+            return
+        end if
+        call fmod_procedure_signature(arena, context, proc_index, &
+                                      kind_text=kind_text, nargs=nargs, &
+                                      arg_tokens=arg_tokens, &
+                                      rank_tokens=rank_tokens, &
+                                      extent_tokens=extent_tokens)
+        if (len_trim(kind_text) == 0) return
+        if (nargs /= parent_info%procedures(idx)%nargs) then
+            call submodule_signature_mismatch(arena, proc_index, proc_name, &
+                parent_module, 'dummy argument count', error_msg)
+            return
+        end if
+        if (trim(arg_tokens) /= trim(field_text(parent_info%procedures(idx)% &
+                                                arg_kinds))) then
+            call submodule_signature_mismatch(arena, proc_index, proc_name, &
+                parent_module, 'dummy argument kinds', error_msg)
+            return
+        end if
+        if (trim(kind_text) /= trim(field_text(parent_info%procedures(idx)%kind))) &
+            call submodule_signature_mismatch(arena, proc_index, proc_name, &
+                parent_module, 'result kind', error_msg)
+    end subroutine check_submodule_procedure_against_parent
+
+    subroutine submodule_signature_mismatch(arena, proc_index, proc_name, &
+                                            parent_module, what, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: proc_index
+        character(len=*), intent(in) :: proc_name
+        character(len=*), intent(in) :: parent_module
+        character(len=*), intent(in) :: what
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call unsupported_feature_error('submodule procedure', &
+            get_node_line(arena, proc_index), &
+            get_node_column(arena, proc_index), &
+            'module procedure '//trim(proc_name)//' does not match the '// &
+            what//' its interface in module '//trim(parent_module)//' declares', &
+            error_msg)
+    end subroutine submodule_signature_mismatch
+
+    logical function submodule_body_restates_signature(arena, proc_index) &
+            result(restates)
+        ! Whether a submodule procedure restates its dummy list, as
+        ! `module function f(x) result(y)` does and `module procedure f` does
+        ! not.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: proc_index
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        restates = .false.
+        fn_node => get_node_as_function_def(arena, proc_index)
+        if (associated(fn_node)) then
+            restates = allocated(fn_node%param_indices)
+            if (restates) restates = size(fn_node%param_indices) > 0
+            return
+        end if
+        sb_node => get_node_as_subroutine_def(arena, proc_index)
+        if (.not. associated(sb_node)) return
+        restates = allocated(sb_node%param_indices)
+        if (restates) restates = size(sb_node%param_indices) > 0
+    end function submodule_body_restates_signature
+
+    integer function fmod_procedure_index(info, name) result(idx)
+        ! Index of the module procedure the artefact records under name, or 0.
+        type(module_info_t), intent(in) :: info
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        idx = 0
+        if (.not. allocated(info%procedures)) return
+        do i = 1, size(info%procedures)
+            if (.not. allocated(info%procedures(i)%name)) cycle
+            if (same_name(info%procedures(i)%name, name)) then
+                idx = i
+                return
+            end if
+        end do
+    end function fmod_procedure_index
+
+    function field_text(text) result(out)
+        character(len=:), allocatable, intent(in) :: text
+        character(len=:), allocatable :: out
+
+        if (allocated(text)) then
+            out = text
+        else
+            out = ''
+        end if
+    end function field_text
 
     subroutine lower_one_submodule_procedure(arena, proc_index, parent_module, &
                                              context, error_msg)
