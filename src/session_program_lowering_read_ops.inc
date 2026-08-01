@@ -165,12 +165,19 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), intent(in), optional :: ok_value
         type(lr_operand_desc_t) :: ok, eof_flag, fp_arg(1), success_code
+        type(lr_operand_desc_t), allocatable :: noargs(:)
+        character(len=:), allocatable :: iomsg_name
         integer(c_int32_t) :: ok_blk, eof_blk, done_blk
         integer :: sym
 
         call set_empty(error_msg)
         call read_iostat_symbol(node, context, sym, error_msg)
-        if (len_trim(error_msg) > 0 .or. sym <= 0) return
+        if (len_trim(error_msg) > 0) return
+        iomsg_name = ''
+        if (allocated(node%io_control_list)) &
+            call io_control_value(node%io_control_list, 'iomsg', iomsg_name)
+        if (sym <= 0 .and. len_trim(iomsg_name) == 0) return
+        allocate (noargs(0))
 
         ! feof(fp) is set only once a read hits end-of-file. The vararg fscanf
         ! return is not reliably captured by the backend, so use feof to detect
@@ -187,23 +194,38 @@
                                      error_msg)) return
 
         if (.not. set_liric_block(context%session, ok_blk, error_msg)) return
+        ! Tell the runtime which condition this was, so IOMSG= reports the
+        ! same thing IOSTAT= does and both come from one place (#427).
+        if (.not. emit_void_call(context%session, '_ffc_iostat_clear', noargs, &
+                                 error_msg)) return
         success_code = i32_immediate(context%session, 0_c_int64_t)
         if (present(ok_value)) success_code = ok_value
-        call assign_i32_to_symbol(context, sym, success_code, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (sym > 0) then
+            call assign_i32_to_symbol(context, sym, success_code, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
 
         if (.not. set_liric_block(context%session, eof_blk, error_msg)) return
-        call assign_i32_to_symbol(context, sym, &
-                                  i32_immediate(context%session, -1_c_int64_t), &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (.not. emit_void_call(context%session, '_ffc_iostat_set_end', &
+                                 noargs, error_msg)) return
+        if (sym > 0) then
+            call assign_i32_to_symbol(context, sym, &
+                                      i32_immediate(context%session, &
+                                                    -1_c_int64_t), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
 
         if (.not. set_liric_block(context%session, done_blk, error_msg)) return
         ! Both branches stored to the same slot; reload so later uses of the
         ! iostat variable see the merged value rather than a per-branch register.
-        call reload_i32_symbol(context, sym, error_msg)
+        if (sym > 0) then
+            call reload_i32_symbol(context, sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (len_trim(iomsg_name) > 0) &
+            call store_iomsg_text(context, iomsg_name, error_msg)
     end subroutine store_read_iostat_from_eof
 
     subroutine reload_i32_symbol(context, sym, error_msg)

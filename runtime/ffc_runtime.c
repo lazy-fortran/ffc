@@ -1,3 +1,17 @@
+/* The runtime states the language level and the feature set it
+ * needs, before any include, instead of inheriting whatever the
+ * invoking driver happens to default to.
+ *
+ * Three drivers compile this file: the system C compiler that
+ * links every emitted executable, clang in
+ * runtime/CMakeLists.txt, and any packager's. random() and
+ * srandom() are POSIX, not ISO C, so without this a strict
+ * driver reaches them only through an implicit declaration: a
+ * warning on a lenient toolchain, a hard error on a strict one
+ * or on a C23 default. Declaring the macro makes every driver
+ * agree. */
+#define _XOPEN_SOURCE 700
+
 /* ffc runtime support library.
  *
  * Single source of truth for the ffc runtime. Two consumers
@@ -382,4 +396,96 @@ int _ffc_write_text(int unit, const char *text) {
         return ffc_unit_last_status;
     }
     return ffc_write_failed(fputs(text, fp));
+}
+
+/* ---- IOSTAT and IOMSG (issue #427) ------------------------ */
+
+/* Fortran reports I/O status through IOSTAT= and IOMSG=. The
+ * classes are fixed by the standard and by what programs test
+ * for:
+ *
+ *   0    success
+ *   -1   end of file      (gfortran's IOSTAT_END)
+ *   -2   end of record    (gfortran's IOSTAT_EOR)
+ *   > 0  an error
+ *
+ * The runtime already records an internal status per unit
+ * operation. These map that to the Fortran class and to the
+ * message text, in one place, so every statement reports the
+ * same value for the same condition. */
+
+#define FFC_IOSTAT_END (-1)
+#define FFC_IOSTAT_EOR (-2)
+
+/* Fortran status of the most recent I/O operation. Internal
+ * codes are already positive error numbers, and the end-of-file
+ * and end-of-record classes are stored as themselves, so this
+ * is the recorded status unchanged. It exists so lowering has
+ * one name to call rather than knowing the mapping. */
+int _ffc_iostat(void) {
+    return ffc_unit_last_status;
+}
+
+/* Records an end-of-file condition, so a READ that hits it
+ * reports the same -1 every other statement reports. */
+void _ffc_iostat_set_end(void) {
+    ffc_unit_last_status = FFC_IOSTAT_END;
+}
+
+void _ffc_iostat_clear(void) {
+    ffc_unit_last_status = 0;
+}
+
+static const char *ffc_iostat_text(int status) {
+    switch (status) {
+    case 0:
+        return "";
+    case FFC_IOSTAT_END:
+        return "End of file";
+    case FFC_IOSTAT_EOR:
+        return "End of record";
+    case FFC_IOSTAT_BADUNIT:
+        return "Unit number is out of range";
+    case FFC_IOSTAT_NOUNIT:
+        return "Unit is not connected";
+    case FFC_IOSTAT_INUSE:
+        return "Unit is already connected";
+    case FFC_IOSTAT_OPEN:
+        return "Cannot open file";
+    case FFC_IOSTAT_NOSPACE:
+        return "No free unit for NEWUNIT";
+    case FFC_IOSTAT_WRITE:
+        return "Write failed";
+    default:
+        return "I/O error";
+    }
+}
+
+/* IOMSG= for the most recent operation, written with Fortran
+ * character assignment semantics: the text is truncated to len
+ * and the remainder is blank filled, never NUL terminated.
+ *
+ * The standard defines IOMSG only when an error or end-of-file
+ * condition occurs. After a successful operation this leaves the
+ * variable all blanks rather than untouched, so the destination
+ * is always defined and a program never reads whatever the
+ * buffer happened to hold.
+ *
+ * Writes exactly len characters and a terminating NUL, so dest
+ * must have room for len + 1: the compiler's character values
+ * are NUL-terminated buffers of the declared length. */
+void _ffc_iomsg(char *dest, int len) {
+    const char *text;
+    int i;
+    if (dest == NULL || len <= 0) {
+        return;
+    }
+    text = ffc_iostat_text(ffc_unit_last_status);
+    for (i = 0; i < len && text[i] != '\0'; i++) {
+        dest[i] = text[i];
+    }
+    for (; i < len; i++) {
+        dest[i] = ' ';
+    }
+    dest[len] = '\0';
 }

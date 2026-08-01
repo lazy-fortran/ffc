@@ -23,6 +23,33 @@ contains
 
         text = ''
         text = text// &
+            '/* The runtime states the language level and the feature set it'//NL
+        text = text// &
+            ' * needs, before any include, instead of inheriting whatever the'//NL
+        text = text// &
+            ' * invoking driver happens to default to.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Three drivers compile this file: the system C compiler that'//NL
+        text = text// &
+            ' * links every emitted executable, clang in'//NL
+        text = text// &
+            ' * runtime/CMakeLists.txt, and any packager''s. random() and'//NL
+        text = text// &
+            ' * srandom() are POSIX, not ISO C, so without this a strict'//NL
+        text = text// &
+            ' * driver reaches them only through an implicit declaration: a'//NL
+        text = text// &
+            ' * warning on a lenient toolchain, a hard error on a strict one'//NL
+        text = text// &
+            ' * or on a C23 default. Declaring the macro makes every driver'//NL
+        text = text// &
+            ' * agree. */'//NL
+        text = text// &
+            '#define _XOPEN_SOURCE 700'//NL
+        text = text//NL
+        text = text// &
             '/* ffc runtime support library.'//NL
         text = text// &
             ' *'//NL
@@ -754,6 +781,182 @@ contains
             '    }'//NL
         text = text// &
             '    return ffc_write_failed(fputs(text, fp));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* ---- IOSTAT and IOMSG (issue #427) ------------------------ */'//NL
+        text = text//NL
+        text = text// &
+            '/* Fortran reports I/O status through IOSTAT= and IOMSG=. The'//NL
+        text = text// &
+            ' * classes are fixed by the standard and by what programs test'//NL
+        text = text// &
+            ' * for:'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' *   0    success'//NL
+        text = text// &
+            ' *   -1   end of file      (gfortran''s IOSTAT_END)'//NL
+        text = text// &
+            ' *   -2   end of record    (gfortran''s IOSTAT_EOR)'//NL
+        text = text// &
+            ' *   > 0  an error'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * The runtime already records an internal status per unit'//NL
+        text = text// &
+            ' * operation. These map that to the Fortran class and to the'//NL
+        text = text// &
+            ' * message text, in one place, so every statement reports the'//NL
+        text = text// &
+            ' * same value for the same condition. */'//NL
+        text = text//NL
+        text = text// &
+            '#define FFC_IOSTAT_END (-1)'//NL
+        text = text// &
+            '#define FFC_IOSTAT_EOR (-2)'//NL
+        text = text//NL
+        text = text// &
+            '/* Fortran status of the most recent I/O operation. Internal'//NL
+        text = text// &
+            ' * codes are already positive error numbers, and the end-of-file'//NL
+        text = text// &
+            ' * and end-of-record classes are stored as themselves, so this'//NL
+        text = text// &
+            ' * is the recorded status unchanged. It exists so lowering has'//NL
+        text = text// &
+            ' * one name to call rather than knowing the mapping. */'//NL
+        text = text// &
+            'int _ffc_iostat(void) {'//NL
+        text = text// &
+            '    return ffc_unit_last_status;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Records an end-of-file condition, so a READ that hits it'//NL
+        text = text// &
+            ' * reports the same -1 every other statement reports. */'//NL
+        text = text// &
+            'void _ffc_iostat_set_end(void) {'//NL
+        text = text// &
+            '    ffc_unit_last_status = FFC_IOSTAT_END;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'void _ffc_iostat_clear(void) {'//NL
+        text = text// &
+            '    ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'static const char *ffc_iostat_text(int status) {'//NL
+        text = text// &
+            '    switch (status) {'//NL
+        text = text// &
+            '    case 0:'//NL
+        text = text// &
+            '        return "";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_END:'//NL
+        text = text// &
+            '        return "End of file";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_EOR:'//NL
+        text = text// &
+            '        return "End of record";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_BADUNIT:'//NL
+        text = text// &
+            '        return "Unit number is out of range";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_NOUNIT:'//NL
+        text = text// &
+            '        return "Unit is not connected";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_INUSE:'//NL
+        text = text// &
+            '        return "Unit is already connected";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_OPEN:'//NL
+        text = text// &
+            '        return "Cannot open file";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_NOSPACE:'//NL
+        text = text// &
+            '        return "No free unit for NEWUNIT";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_WRITE:'//NL
+        text = text// &
+            '        return "Write failed";'//NL
+        text = text// &
+            '    default:'//NL
+        text = text// &
+            '        return "I/O error";'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* IOMSG= for the most recent operation, written with Fortran'//NL
+        text = text// &
+            ' * character assignment semantics: the text is truncated to len'//NL
+        text = text// &
+            ' * and the remainder is blank filled, never NUL terminated.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * The standard defines IOMSG only when an error or end-of-file'//NL
+        text = text// &
+            ' * condition occurs. After a successful operation this leaves the'//NL
+        text = text// &
+            ' * variable all blanks rather than untouched, so the destination'//NL
+        text = text// &
+            ' * is always defined and a program never reads whatever the'//NL
+        text = text// &
+            ' * buffer happened to hold.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Writes exactly len characters and a terminating NUL, so dest'//NL
+        text = text// &
+            ' * must have room for len + 1: the compiler''s character values'//NL
+        text = text// &
+            ' * are NUL-terminated buffers of the declared length. */'//NL
+        text = text// &
+            'void _ffc_iomsg(char *dest, int len) {'//NL
+        text = text// &
+            '    const char *text;'//NL
+        text = text// &
+            '    int i;'//NL
+        text = text// &
+            '    if (dest == NULL || len <= 0) {'//NL
+        text = text// &
+            '        return;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    text = ffc_iostat_text(ffc_unit_last_status);'//NL
+        text = text// &
+            '    for (i = 0; i < len && text[i] != ''\0''; i++) {'//NL
+        text = text// &
+            '        dest[i] = text[i];'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    for (; i < len; i++) {'//NL
+        text = text// &
+            '        dest[i] = '' '';'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    dest[len] = ''\0'';'//NL
         text = text// &
             '}'//NL
     end subroutine ffc_runtime_source_text

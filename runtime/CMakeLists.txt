@@ -68,7 +68,13 @@ file(MAKE_DIRECTORY "${FFC_RUNTIME_ARTIFACT_DIR}")
 set(FFC_RUNTIME_BC "${CMAKE_CURRENT_BINARY_DIR}/ffc_runtime.bc")
 add_custom_command(
     OUTPUT "${FFC_RUNTIME_BC}"
-    COMMAND "${FFC_RUNTIME_CLANG}" -emit-llvm -c -O1
+    # C flags only, spelled out here rather than inherited. This project
+    # produces a C artifact, and a Fortran-only flag reaching this command
+    # (-J, -ffree-form, -fimplicit-none) is a hard error from clang rather
+    # than something to discover later. The language level matches the one
+    # the runtime source states for itself.
+    COMMAND "${FFC_RUNTIME_CLANG}" -x c -std=c11 -emit-llvm -c -O1
+            -Wall -Wextra -Werror
             -o "${FFC_RUNTIME_BC}"
             "${CMAKE_CURRENT_SOURCE_DIR}/ffc_runtime.c"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ffc_runtime.c"

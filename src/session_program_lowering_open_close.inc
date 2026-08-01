@@ -8,7 +8,8 @@
     ! --- spec-text helpers ---------------------------------------------------
 
     subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                file_quoted, status_str, sign_str, error_msg)
+                                file_quoted, status_str, sign_str, &
+                                iostat_var, iomsg_var, error_msg)
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
         character(len=*), intent(in) :: spec
@@ -18,6 +19,8 @@
         logical, intent(out) :: file_quoted
         character(len=:), allocatable, intent(out) :: status_str
         character(len=:), allocatable, intent(out) :: sign_str
+        character(len=:), allocatable, intent(out) :: iostat_var
+        character(len=:), allocatable, intent(out) :: iomsg_var
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: text, kw, val
         integer :: p, eq_pos, cp, qend, arg_end
@@ -31,6 +34,8 @@
         file_quoted = .false.
         status_str = ''
         sign_str = ''
+        iostat_var = ''
+        iomsg_var = ''
         text = trim(adjustl(spec))
         p = 1
         first_arg = .true.
@@ -101,6 +106,10 @@
                 status_str = spec_lower(trim(val))
             case ('sign')
                 sign_str = spec_lower(trim(val))
+            case ('iostat')
+                iostat_var = trim(val)
+            case ('iomsg')
+                iomsg_var = trim(val)
             end select
         end do
     end subroutine parse_open_spec
@@ -133,7 +142,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ustr, nuvar, fpath, sstr, signstr
-        type(lr_operand_desc_t) :: unit_op, args(4), unused
+        character(len=:), allocatable :: iostat_var, iomsg_var
+        type(lr_operand_desc_t) :: unit_op, args(4), status_op
         integer :: sym, ios, unit_number
         logical :: file_quoted
 
@@ -145,7 +155,7 @@
         end if
 
         call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, file_quoted, &
-                              sstr, signstr, error_msg)
+                              sstr, signstr, iostat_var, iomsg_var, error_msg)
         if (len_trim(error_msg) > 0) return
 
         ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
@@ -206,7 +216,12 @@
                                  error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_call(context%session, '_ffc_unit_open', args, &
-                                unused, error_msg)) return
+                                status_op, error_msg)) return
+        ! The OPEN's own return value is its IOSTAT=, so a failed connection
+        ! reports the runtime's code instead of being lost (#427).
+        call store_io_status(context, iostat_var, iomsg_var, status_op, &
+                             error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_open
 
@@ -319,6 +334,115 @@
 
 
 
+
+
+    ! --- IOSTAT= and IOMSG= (#427) -------------------------------------------
+
+    subroutine store_io_status(context, iostat_name, iomsg_name, status_op, &
+                               error_msg)
+        ! Report one I/O statement's outcome. status_op is the value the
+        ! runtime returned for the operation; when it is absent the caller
+        ! wants the runtime's record of the last operation instead, which is
+        ! the same number reached by a different route.
+        !
+        ! Both specifiers are optional and independent, and each is left
+        ! alone when its specifier is absent.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: iostat_name
+        character(len=*), intent(in) :: iomsg_name
+        type(lr_operand_desc_t), intent(in) :: status_op
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (len_trim(iostat_name) > 0) then
+            call store_iostat_value(context, iostat_name, status_op, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (len_trim(iomsg_name) > 0) then
+            call store_iomsg_text(context, iomsg_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+    end subroutine store_io_status
+
+    subroutine store_iostat_value(context, name, status_op, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: status_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, trim(name))
+        if (sym <= 0) then
+            error_msg = 'iostat target was not declared: '//trim(name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_I32) then
+            error_msg = 'iostat target must be a default integer: '//trim(name)
+            return
+        end if
+        call assign_i32_to_symbol(context, sym, status_op, error_msg)
+    end subroutine store_iostat_value
+
+    subroutine store_iomsg_text(context, name, error_msg)
+        ! _ffc_iomsg(buffer, len) fills a fresh buffer of the variable's
+        ! declared length with the message for the recorded status, truncated
+        ! or blank padded to that length by Fortran character assignment
+        ! rules. The symbol is rebound to the buffer, the same way a runtime
+        ! character assignment rebinds it.
+        use liric_session_memory_bindings, only: emit_malloc
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: buffer, args(2), unused
+        integer :: sym, length
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, trim(name))
+        if (sym <= 0) then
+            error_msg = 'iomsg target was not declared: '//trim(name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_CHARACTER) then
+            error_msg = 'iomsg target must be a character variable: '// &
+                trim(name)
+            return
+        end if
+        length = context%symbols(sym)%character_length
+        if (length <= 0) then
+            error_msg = 'iomsg target must have a declared length: '//trim(name)
+            return
+        end if
+        ! One byte more than the declared length: _ffc_iomsg writes len
+        ! characters and a terminating NUL, matching the NUL-terminated
+        ! buffers the compiler's character values point at.
+        if (.not. emit_malloc(context%session, &
+                              i64_immediate(context%session, &
+                                            int(length + 1, c_int64_t)), &
+                              buffer, error_msg)) return
+        args(1) = buffer
+        args(2) = i32_immediate(context%session, int(length, c_int64_t))
+        if (.not. emit_void_call(context%session, '_ffc_iomsg', args, &
+                                 error_msg)) return
+        context%symbols(sym)%value = buffer
+        context%symbols(sym)%has_character_value = .true.
+    end subroutine store_iomsg_text
+
+    function runtime_iostat_operand(context, error_msg) result(status_op)
+        ! The runtime's record of the last I/O operation, for statements that
+        ! do not have a single call whose return value is the status.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: status_op
+        type(lr_operand_desc_t), allocatable :: noargs(:)
+
+        allocate (noargs(0))
+        if (.not. emit_i32_call(context%session, '_ffc_iostat', noargs, &
+                                status_op, error_msg)) return
+        call set_empty(error_msg)
+    end function runtime_iostat_operand
 
     ! --- CLOSE ---------------------------------------------------------------
 
@@ -496,30 +620,25 @@
     end subroutine lower_write_file
 
     subroutine store_write_iostat_success(node, context, error_msg)
-        ! Populate a WRITE's iostat= target with 0 (success). The variable name
-        ! lives in the io_control_list text (iostat=<name>).
+        ! Report a file WRITE's outcome. The status comes from the runtime's
+        ! record of the operation rather than an assumed 0, so a write to an
+        ! unusable unit is visible to the program (#427). The specifier names
+        ! live in the io_control_list text (iostat=<name>, iomsg=<name>).
         type(write_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: var_name
-        integer :: sym
+        character(len=:), allocatable :: iostat_name, iomsg_name
+        type(lr_operand_desc_t) :: status_op
 
         call set_empty(error_msg)
         if (.not. allocated(node%io_control_list)) return
-        call io_control_value(node%io_control_list, 'iostat', var_name)
-        if (len_trim(var_name) == 0) return
-        sym = find_symbol_compat(context, var_name)
-        if (sym <= 0) then
-            error_msg = 'iostat target was not declared: '//trim(var_name)
-            return
-        end if
-        if (context%symbols(sym)%value_kind /= VALUE_I32) then
-            error_msg = 'iostat target must be a default integer: '//trim(var_name)
-            return
-        end if
-        call assign_i32_to_symbol(context, sym, &
-                                  i32_immediate(context%session, 0_c_int64_t), &
-                                  error_msg)
+        call io_control_value(node%io_control_list, 'iostat', iostat_name)
+        call io_control_value(node%io_control_list, 'iomsg', iomsg_name)
+        if (len_trim(iostat_name) == 0 .and. len_trim(iomsg_name) == 0) return
+        status_op = runtime_iostat_operand(context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call store_io_status(context, iostat_name, iomsg_name, status_op, &
+                             error_msg)
     end subroutine store_write_iostat_success
 
     integer function file_write_value_kind(arena, node_index, context)

@@ -44,6 +44,7 @@ program test_runtime_link_compiler
 
     call check_embedded_source_matches_file(failures)
     call check_runtime_c_is_out_of_the_fpm_tree(failures)
+    call check_runtime_builds_under_a_strict_c_driver(failures)
     call check_declared_symbols_are_defined(failures)
     call check_probe_runs_with_runtime(failures)
     call check_probe_fails_without_runtime(failures)
@@ -149,6 +150,34 @@ contains
             nfail = nfail + 1
         end if
     end subroutine check_runtime_c_is_out_of_the_fpm_tree
+
+    ! The runtime is compiled by whichever C driver is on the machine that
+    ! links an executable, and by clang in runtime/CMakeLists.txt. Building
+    ! only under a lenient driver is how a runtime that works here fails on
+    ! someone else's machine, so this pins the strict case: C11, pedantic,
+    ! warnings as errors. An implicit declaration of a POSIX function is the
+    ! failure this catches; the runtime declares its own feature-test macro
+    ! rather than inheriting the driver's default.
+    subroutine check_runtime_builds_under_a_strict_c_driver(nfail)
+        integer, intent(inout) :: nfail
+        character(len=*), parameter :: obj = WORK//'/strict.o'
+        character(len=:), allocatable :: link_input, error_msg
+        integer :: status
+
+        call ffc_runtime_link_input(link_input, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: runtime link input: ', trim(error_msg)
+            nfail = nfail + 1
+            return
+        end if
+        status = status_of('cc -std=c11 -Wall -Wextra -Werror -pedantic '// &
+                           '-c -o '//obj//' '//link_input)
+        if (status /= 0) then
+            print *, 'FAIL: the runtime does not build under a strict C ', &
+                'driver (C11, pedantic, warnings as errors)'
+            nfail = nfail + 1
+        end if
+    end subroutine check_runtime_builds_under_a_strict_c_driver
 
     ! Guards the lowerer: a symbol it is allowed to call must exist.
     subroutine check_declared_symbols_are_defined(nfail)
