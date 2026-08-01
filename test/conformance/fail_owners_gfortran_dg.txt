@@ -31,10 +31,6 @@ bound_resolve_after_error_1.f90 # owner=lazy-fortran/ffc#380; reason=reject inva
 bounds_check_3.f90 # owner=lazy-fortran/ffc#337; reason=owns triplet section bounds, stride sign, omitted bounds, and zero extents
 c_f_pointer_shape_test.f90 # owner=lazy-fortran/ffc#394; reason=require SHAPE for array C_F_POINTER targets
 c_f_pointer_tests_5.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
-c_f_strpointer-1.f90 # owner=lazy-fortran/ffc#361; reason=lower C_F_STRPOINTER character views
-c_f_strpointer-10.f90 # owner=lazy-fortran/ffc#361; reason=lower C_F_STRPOINTER character views
-c_f_strpointer-2.f90 # owner=lazy-fortran/ffc#361; reason=lower C_F_STRPOINTER character views
-c_f_strpointer-7.f90 # owner=lazy-fortran/ffc#361; reason=lower C_F_STRPOINTER character views
 c_loc_tests_17.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
 char_array_constructor_5.f90 # owner=lazy-fortran/ffc#459; reason=owns typed CHARACTER constructors and element conversion
 char_result_18.f90 # owner=lazy-fortran/ffc#384; reason=require valid character length expressions
