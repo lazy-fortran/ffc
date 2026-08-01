@@ -223,6 +223,102 @@ program test_session_character_function_result_compiler
         'end program main', &
         '/tmp/ffc_charfn_result_transfer_leak')) all_passed = .false.
 
+    ! A character result consumed through the generic character-expression
+    ! path is a temporary belonging to the statement that produced it. These
+    ! cases pin its output and, through expect_no_leaks, that it is released
+    ! exactly once. They passed while leaking before this was fixed, which is
+    ! why the leak check and not the output is what makes them meaningful.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: s'//new_line('a')// &
+        '  s = trim(pad(3))'//new_line('a')// &
+        '  print *, len(s), "[", s, "]"'//new_line('a')// &
+        '  deallocate(s)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function pad(k) result(t)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=8) :: t'//new_line('a')// &
+        '    t = repeat("z", k)'//new_line('a')// &
+        '  end function pad'//new_line('a')// &
+        'end program main', &
+        'trim_of_result')) all_passed = .false.
+
+    if (.not. expect_no_leaks( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: s'//new_line('a')// &
+        '  character(len=8) :: f'//new_line('a')// &
+        '  s = trim(pad(3))'//new_line('a')// &
+        '  print *, len(s)'//new_line('a')// &
+        '  f = trim(pad(4))'//new_line('a')// &
+        '  print *, "[", f, "]"'//new_line('a')// &
+        '  print *, trim(pad(5))'//new_line('a')// &
+        '  print *, len_trim(pad(6))'//new_line('a')// &
+        '  if (trim(pad(3)) == "zzz") print *, "eq"'//new_line('a')// &
+        '  deallocate(s)'//new_line('a')// &
+        '  stop 0'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function pad(k) result(t)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=8) :: t'//new_line('a')// &
+        '    t = repeat("z", k)'//new_line('a')// &
+        '  end function pad'//new_line('a')// &
+        'end program main', &
+        '/tmp/ffc_charfn_expr_temp_leak')) all_passed = .false.
+
+    ! Two result temporaries alive at once in a single statement: both are
+    ! consumed by the concatenation and both must be released.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: s'//new_line('a')// &
+        '  s = tag(2) // tag(3)'//new_line('a')// &
+        '  print *, len(s), "[", s, "]"'//new_line('a')// &
+        '  deallocate(s)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function tag(k) result(t)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=k) :: t'//new_line('a')// &
+        '    t = repeat("z", k)'//new_line('a')// &
+        '  end function tag'//new_line('a')// &
+        'end program main', &
+        'two_result_operands')) all_passed = .false.
+
+    if (.not. expect_no_leaks( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: s'//new_line('a')// &
+        '  s = tag(2) // tag(3)'//new_line('a')// &
+        '  print *, len(s)'//new_line('a')// &
+        '  deallocate(s)'//new_line('a')// &
+        '  stop 0'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function tag(k) result(t)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=k) :: t'//new_line('a')// &
+        '    t = repeat("z", k)'//new_line('a')// &
+        '  end function tag'//new_line('a')// &
+        'end program main', &
+        '/tmp/ffc_charfn_two_operand_leak')) all_passed = .false.
+
+    ! A result temporary inside a loop must be released each iteration rather
+    ! than accumulating, which a single-shot release would miss.
+    if (.not. expect_no_leaks( &
+        'program main'//new_line('a')// &
+        '  character(len=:), allocatable :: s'//new_line('a')// &
+        '  integer :: i'//new_line('a')// &
+        '  do i = 1, 4'//new_line('a')// &
+        '    s = trim(pad(i))'//new_line('a')// &
+        '    print *, len(s)'//new_line('a')// &
+        '  end do'//new_line('a')// &
+        '  deallocate(s)'//new_line('a')// &
+        '  stop 0'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function pad(k) result(t)'//new_line('a')// &
+        '    integer, intent(in) :: k'//new_line('a')// &
+        '    character(len=8) :: t'//new_line('a')// &
+        '    t = repeat("z", k)'//new_line('a')// &
+        '  end function pad'//new_line('a')// &
+        'end program main', &
+        '/tmp/ffc_charfn_loop_temp_leak')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: character function results lower through direct LIRIC session'
 

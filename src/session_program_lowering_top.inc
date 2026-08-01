@@ -903,6 +903,32 @@
     include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)
+        ! A statement owns the character result temporaries created while it is
+        ! lowered, and releases them once it is done. Doing it here, around the
+        ! whole dispatch, covers every consumer of a character-returning call
+        ! at one point and survives the early returns below. Nested statements
+        ! inside a construct take their own mark, so a construct never releases
+        ! a temporary belonging to the statement that contains it.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: release_error
+        integer :: temp_mark
+
+        temp_mark = char_temp_mark(context)
+        call lower_statement_body(arena, node_index, context, value, error_msg)
+        if (len_trim(error_msg) > 0) then
+            context%char_temp_count = min(context%char_temp_count, temp_mark)
+            return
+        end if
+        call release_char_temps_since(context, temp_mark, release_error)
+        if (len_trim(release_error) > 0) error_msg = release_error
+    end subroutine lower_statement
+
+    recursive subroutine lower_statement_body(arena, node_index, context, value, &
+                                              error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -1210,7 +1236,8 @@
                                                 error_msg)
             end if
         end select
-    end subroutine lower_statement
+    end subroutine lower_statement_body
+
     subroutine unsupported_statement_node(arena, node_index, node_type, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

@@ -109,8 +109,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
         logical :: right_is_call
         logical :: left_is_view
         logical :: right_is_view
-        type(lr_operand_desc_t) :: left_call_data_addr, left_call_storage_addr
-        type(lr_operand_desc_t) :: right_call_data_addr, right_call_storage_addr
         type(lr_operand_desc_t) :: call_len_i32
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
@@ -193,9 +191,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
                     left_len, error_msg)) return
         else if (left_is_call) then
             call char_result_call_operands(arena, left_idx, context, left_data, &
-                                           call_len_i32, error_msg, &
-                                           left_call_data_addr, &
-                                           left_call_storage_addr)
+                                           call_len_i32, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
                     left_len, error_msg)) return
@@ -229,9 +225,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
                     right_len, error_msg)) return
         else if (right_is_call) then
             call char_result_call_operands(arena, right_idx, context, right_data, &
-                                           call_len_i32, error_msg, &
-                                           right_call_data_addr, &
-                                           right_call_storage_addr)
+                                           call_len_i32, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_to_i64(context%session, call_len_i32, &
                     right_len, error_msg)) return
@@ -360,19 +354,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call set_character_storage(context, dest_symbol_index, total_len, &
                                    new_storage_class, error_msg)
         if (len_trim(error_msg) > 0) return
-
-        ! An operand that was a function result is a temporary this statement
-        ! took ownership of; its bytes are now in the concatenated buffer.
-        if (left_is_call) then
-            call release_character_descriptor_storage(context, &
-                left_call_data_addr, left_call_storage_addr, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end if
-        if (right_is_call) then
-            call release_character_descriptor_storage(context, &
-                right_call_data_addr, right_call_storage_addr, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end if
 
         context%symbols(dest_symbol_index)%value = new_ptr
         context%symbols(dest_symbol_index)%has_character_value = .true.
@@ -531,6 +512,86 @@ integer function resolve_concat_operand(arena, node_index, context, &
         context%symbols(dest_symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_folded_literal_assignment
+
+    subroutine register_char_temp(context, data_addr, storage_addr)
+        ! Record a character result temporary so the statement that created it
+        ! releases it. Registration is unconditional: a consumer that wants
+        ! ownership takes it back with adopt_char_temp, which is a smaller and
+        ! more obvious set of places than every consumer that does not.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_addr
+        type(lr_operand_desc_t), intent(in) :: storage_addr
+        type(lr_operand_desc_t), allocatable :: grown_data(:)
+        type(lr_operand_desc_t), allocatable :: grown_storage(:)
+        integer :: capacity
+
+        if (.not. allocated(context%char_temp_data)) then
+            allocate (context%char_temp_data(8))
+            allocate (context%char_temp_storage(8))
+            context%char_temp_count = 0
+        end if
+        capacity = size(context%char_temp_data)
+        if (context%char_temp_count >= capacity) then
+            allocate (grown_data(capacity*2))
+            allocate (grown_storage(capacity*2))
+            grown_data(1:capacity) = context%char_temp_data
+            grown_storage(1:capacity) = context%char_temp_storage
+            call move_alloc(grown_data, context%char_temp_data)
+            call move_alloc(grown_storage, context%char_temp_storage)
+        end if
+        context%char_temp_count = context%char_temp_count + 1
+        context%char_temp_data(context%char_temp_count) = data_addr
+        context%char_temp_storage(context%char_temp_count) = storage_addr
+    end subroutine register_char_temp
+
+    subroutine adopt_char_temp(context, mark)
+        ! A consumer took ownership of the temporaries created since mark, so
+        ! the statement must not release them. Used where a deferred
+        ! destination rebinds onto the return descriptor: the destination's own
+        ! descriptor now owns the block and releases it at its next assignment
+        ! or deallocate.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: mark
+
+        if (mark < 0) return
+        if (mark > context%char_temp_count) return
+        context%char_temp_count = mark
+    end subroutine adopt_char_temp
+
+    integer function char_temp_mark(context) result(mark)
+        ! How many temporaries are outstanding before lowering something.
+        type(lowering_context_t), intent(in) :: context
+
+        mark = context%char_temp_count
+    end function char_temp_mark
+
+    subroutine release_char_temps_since(context, mark, error_msg)
+        ! Release every character result temporary registered since mark, in
+        ! reverse order of creation, and forget them. Releasing is a no-op for
+        ! a borrowed result: release_character_descriptor_storage frees only a
+        ! descriptor whose storage class says it owns its bytes.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: mark
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (context%char_temp_count <= mark) return
+        ! A terminated block takes no more instructions; the frame is going
+        ! away with the process or the callee's return, so there is nothing to
+        ! release into.
+        if (context%current_block_terminated) then
+            context%char_temp_count = mark
+            return
+        end if
+        do i = context%char_temp_count, mark + 1, -1
+            call release_character_descriptor_storage(context, &
+                context%char_temp_data(i), context%char_temp_storage(i), &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        context%char_temp_count = mark
+    end subroutine release_char_temps_since
 
     subroutine allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                   data_addr, len_addr, &
@@ -747,9 +808,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: capacity_addr
         type(lr_operand_desc_t) :: storage_addr
         integer :: i
+        integer :: temp_mark
         character(len=:), allocatable :: func_name
 
         call set_empty(error_msg)
+        temp_mark = char_temp_mark(context)
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'deferred char call assignment value does not reference an AST node'
             return
@@ -773,6 +836,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
         call release_owned_character_storage(context, dest_symbol_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
+        temp_mark = char_temp_mark(context)
         call allocate_deferred_char_descriptor(context, descriptor_ptr, &
                                                data_addr, len_addr, error_msg, &
                                                capacity_addr, storage_addr)
@@ -807,6 +871,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
         if (.not. emit_ptr_load(context%session, data_addr, &
             context%symbols(dest_symbol_index)%value, error_msg)) return
         context%symbols(dest_symbol_index)%has_character_value = .true.
+        ! The destination now owns this descriptor, so the statement must not
+        ! release it: that is the ownership transfer #348 established. Any
+        ! temporary produced by the argument expressions stays registered.
+        call adopt_char_temp(context, temp_mark)
         call set_empty(error_msg)
     end subroutine lower_deferred_char_result_call
 
@@ -823,22 +891,16 @@ integer function resolve_concat_operand(arena, node_index, context, &
         integer, intent(in) :: dest_symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_ptr, length
-        type(lr_operand_desc_t) :: data_addr, storage_addr
 
         call char_result_call_operands(arena, node%value_index, context, &
-                                       data_ptr, length, error_msg, &
-                                       data_addr, storage_addr)
+                                       data_ptr, length, error_msg)
         if (len_trim(error_msg) > 0) return
         call store_fixed_character_value(context, dest_symbol_index, data_ptr, &
                                          length, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call release_character_descriptor_storage(context, data_addr, &
-                                                  storage_addr, error_msg)
     end subroutine lower_fixed_char_result_call
 
     subroutine char_result_call_operands(arena, node_index, context, data_ptr, &
-                                         length, error_msg, out_data_addr, &
-                                         out_storage_addr)
+                                         length, error_msg)
         ! Emit a call to a character-returning contained function through the
         ! deferred-character descriptor ABI (hidden first descriptor argument),
         ! then load the returned {data, len} as a scalar character expression.
@@ -853,8 +915,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t), allocatable :: user_args(:)
         type(lr_operand_desc_t), allocatable :: all_args(:)
         integer, allocatable :: copyback_indices(:)
-        type(lr_operand_desc_t), intent(out), optional :: out_data_addr
-        type(lr_operand_desc_t), intent(out), optional :: out_storage_addr
         type(lr_operand_desc_t) :: descriptor_ptr
         type(lr_operand_desc_t) :: data_addr
         type(lr_operand_desc_t) :: len_addr
@@ -906,10 +966,10 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                 error_msg)) return
         if (.not. emit_i32_load(context%session, len_addr, length, &
                                 error_msg)) return
-        ! A consumer that copies the value out can release the temporary; one
-        ! that keeps the pointer alive simply does not ask for the addresses.
-        if (present(out_data_addr)) out_data_addr = data_addr
-        if (present(out_storage_addr)) out_storage_addr = storage_addr
+        ! The result is a temporary owned by the statement being lowered, which
+        ! releases it once it has finished with it. Every consumer therefore
+        ! reads it the same way and none of them has to know it is a temporary.
+        call register_char_temp(context, data_addr, storage_addr)
         call set_empty(error_msg)
     end subroutine char_result_call_operands
 
@@ -938,6 +998,8 @@ integer function resolve_concat_operand(arena, node_index, context, &
                                                data_addr, len_addr, error_msg, &
                                                storage_addr=storage_addr)
         if (len_trim(error_msg) > 0) return
+        ! The printed result is a temporary the statement owns and releases.
+        call register_char_temp(context, data_addr, storage_addr)
 
         if (allocated(node%arg_indices)) then
             call prepare_deferred_char_call_args(arena, node%arg_indices, &
@@ -965,12 +1027,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! The list-directed leading blank is emitted by the print loop.
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_value, error_msg)) return
-        ! The result has been consumed by the transfer statement, so the
-        ! caller releases the temporary it took ownership of. A borrowed
-        ! result (a static literal) is left alone.
-        call release_character_descriptor_storage(context, data_addr, &
-                                                  storage_addr, error_msg)
-        if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_print_deferred_char_call
 
