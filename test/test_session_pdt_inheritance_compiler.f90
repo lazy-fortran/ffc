@@ -75,7 +75,7 @@ contains
             '  a%head(2) = 20'//new_line('a')// &
             '  a%tail(3) = 300'//new_line('a')// &
             '  b%head(4) = 40'//new_line('a')// &
-            '  b%tail(2) = 100'//new_line('a')// &
+            '  b%tail(1) = 100'//new_line('a')// &
             '  print *, a%head(2) + a%tail(3)'//new_line('a')// &
             '  print *, b%head(4) + b%tail(1)'//new_line('a')// &
             'end program main'
