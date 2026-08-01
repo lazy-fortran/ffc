@@ -489,3 +489,234 @@ void _ffc_iomsg(char *dest, int len) {
     }
     dest[len] = '\0';
 }
+
+/* ---- Descriptor storage allocation (issue #428) ----------- */
+
+/* Allocatable arrays and deferred-length characters used to
+ * reach malloc() and free() directly from emitted code, which
+ * meant every size computation, every overflow check, and every
+ * ownership decision was open-coded at each site. These helpers
+ * own that instead: the compiler still decides shape and type,
+ * the runtime decides whether a size is representable, whether
+ * a pointer may be released, and what the status is.
+ *
+ * Sizes arrive as a separate element count and element size, not
+ * as a product, so the multiplication that can overflow happens
+ * here, once, where it is checked. A count of zero is a valid
+ * request: Fortran allows a zero-sized array, and the result is
+ * a non-null pointer that can be released exactly like any
+ * other.
+ *
+ * Status codes are stable, and follow the IOSTAT ranges:
+ *
+ *   0                        success
+ *   FFC_ALLOC_NEGATIVE       negative count or element size
+ *   FFC_ALLOC_OVERFLOW       count * element size is not
+ *                            representable
+ *   FFC_ALLOC_NOMEM          the allocator refused
+ *   FFC_ALLOC_DOUBLE_FREE    release of a pointer that is not
+ *                            live
+ *   FFC_ALLOC_BORROWED       release of storage the descriptor
+ *                            does not own
+ */
+
+#include <stdint.h>
+#include <string.h>
+
+#define FFC_ALLOC_NEGATIVE 6001
+#define FFC_ALLOC_OVERFLOW 6002
+#define FFC_ALLOC_NOMEM 6003
+#define FFC_ALLOC_DOUBLE_FREE 6004
+#define FFC_ALLOC_BORROWED 6005
+
+static int ffc_alloc_last_status = 0;
+
+/* Live allocations handed out by _ffc_alloc, so releasing a
+ * pointer twice is reported instead of corrupting the heap.
+ * Open addressing, power-of-two capacity, grown before it is
+ * half full. Tombstones are not needed: a removed entry is
+ * refilled by rehashing its cluster. */
+static void **ffc_live;
+static size_t ffc_live_cap;
+static size_t ffc_live_count;
+
+static size_t ffc_live_slot(void **table, size_t cap, void *p) {
+    size_t mask = cap - 1;
+    size_t i = (size_t)((uintptr_t)p >> 4) & mask;
+    while (table[i] != NULL && table[i] != p) {
+        i = (i + 1) & mask;
+    }
+    return i;
+}
+
+static int ffc_live_grow(void) {
+    size_t new_cap = ffc_live_cap ? ffc_live_cap * 2 : 64;
+    void **fresh = calloc(new_cap, sizeof(*fresh));
+    size_t i;
+    if (fresh == NULL) {
+        return -1;
+    }
+    for (i = 0; i < ffc_live_cap; i++) {
+        if (ffc_live[i] != NULL) {
+            fresh[ffc_live_slot(fresh, new_cap, ffc_live[i])]
+                = ffc_live[i];
+        }
+    }
+    free(ffc_live);
+    ffc_live = fresh;
+    ffc_live_cap = new_cap;
+    return 0;
+}
+
+static int ffc_live_add(void *p) {
+    if (ffc_live_count * 2 + 1 >= ffc_live_cap) {
+        if (ffc_live_grow() != 0) {
+            return -1;
+        }
+    }
+    ffc_live[ffc_live_slot(ffc_live, ffc_live_cap, p)] = p;
+    ffc_live_count++;
+    return 0;
+}
+
+/* Removes p and rehashes the rest of its cluster, so lookups
+ * that probed past p still find their entries. */
+static int ffc_live_remove(void *p) {
+    size_t i, j, mask;
+    if (ffc_live_cap == 0) {
+        return 0;
+    }
+    mask = ffc_live_cap - 1;
+    i = ffc_live_slot(ffc_live, ffc_live_cap, p);
+    if (ffc_live[i] != p) {
+        return 0;
+    }
+    ffc_live[i] = NULL;
+    ffc_live_count--;
+    j = (i + 1) & mask;
+    while (ffc_live[j] != NULL) {
+        void *moved = ffc_live[j];
+        ffc_live[j] = NULL;
+        ffc_live_count--;
+        ffc_live_add(moved);
+        j = (j + 1) & mask;
+    }
+    return 1;
+}
+
+/* Status of the most recent allocation operation. */
+int _ffc_alloc_status(void) {
+    return ffc_alloc_last_status;
+}
+
+/* count elements of elem_size bytes each. Returns NULL and sets
+ * the status on any rejected request. */
+void *_ffc_alloc(long long count, long long elem_size) {
+    size_t bytes;
+    void *p;
+    if (count < 0 || elem_size < 0) {
+        ffc_alloc_last_status = FFC_ALLOC_NEGATIVE;
+        return NULL;
+    }
+    if (elem_size != 0 &&
+        count > (long long)(SIZE_MAX / 2)
+                    / elem_size) {
+        ffc_alloc_last_status = FFC_ALLOC_OVERFLOW;
+        return NULL;
+    }
+    bytes = (size_t)(count * elem_size);
+    /* A zero-sized array still needs a releasable pointer. */
+    p = malloc(bytes != 0 ? bytes : 1);
+    if (p == NULL) {
+        ffc_alloc_last_status = FFC_ALLOC_NOMEM;
+        return NULL;
+    }
+    if (ffc_live_add(p) != 0) {
+        free(p);
+        ffc_alloc_last_status = FFC_ALLOC_NOMEM;
+        return NULL;
+    }
+    ffc_alloc_last_status = 0;
+    return p;
+}
+
+/* Like _ffc_alloc, with the storage zeroed. An allocatable
+ * array of a derived element type needs this: every element's
+ * inline component descriptors must start null. */
+void *_ffc_calloc(long long count, long long elem_size) {
+    void *p = _ffc_alloc(count, elem_size);
+    if (p == NULL) {
+        return NULL;
+    }
+    if (count > 0 && elem_size > 0) {
+        memset(p, 0, (size_t)(count * elem_size));
+    }
+    return p;
+}
+
+/* Resizes an allocation, keeping min(old, new) bytes. old may
+ * be NULL, which makes this a plain allocation. On failure the
+ * old pointer is still live and unchanged. */
+void *_ffc_realloc(void *old, long long count,
+                   long long elem_size) {
+    size_t bytes;
+    void *p;
+    if (old == NULL) {
+        return _ffc_alloc(count, elem_size);
+    }
+    if (count < 0 || elem_size < 0) {
+        ffc_alloc_last_status = FFC_ALLOC_NEGATIVE;
+        return NULL;
+    }
+    if (elem_size != 0 &&
+        count > (long long)(SIZE_MAX / 2)
+                    / elem_size) {
+        ffc_alloc_last_status = FFC_ALLOC_OVERFLOW;
+        return NULL;
+    }
+    /* Drop the old key before realloc, which may free it: a
+     * freed pointer must not be read again, even as a hash
+     * key. A failed realloc leaves it valid, so it goes back. */
+    if (!ffc_live_remove(old)) {
+        ffc_alloc_last_status = FFC_ALLOC_DOUBLE_FREE;
+        return NULL;
+    }
+    bytes = (size_t)(count * elem_size);
+    p = realloc(old, bytes != 0 ? bytes : 1);
+    if (p == NULL) {
+        ffc_live_add(old);
+        ffc_alloc_last_status = FFC_ALLOC_NOMEM;
+        return NULL;
+    }
+    if (ffc_live_add(p) != 0) {
+        ffc_alloc_last_status = FFC_ALLOC_NOMEM;
+        return NULL;
+    }
+    ffc_alloc_last_status = 0;
+    return p;
+}
+
+/* Releases storage. owns is the descriptor's ownership flag: a
+ * borrowed descriptor, such as a section view or a dummy
+ * argument, never frees, and says so rather than doing nothing
+ * silently.
+ *
+ * Releasing a null pointer succeeds, matching Fortran's
+ * deallocate of an unallocated variable and free(NULL). */
+int _ffc_dealloc(void *p, int owns) {
+    if (p == NULL) {
+        ffc_alloc_last_status = 0;
+        return 0;
+    }
+    if (!owns) {
+        ffc_alloc_last_status = FFC_ALLOC_BORROWED;
+        return FFC_ALLOC_BORROWED;
+    }
+    if (!ffc_live_remove(p)) {
+        ffc_alloc_last_status = FFC_ALLOC_DOUBLE_FREE;
+        return FFC_ALLOC_DOUBLE_FREE;
+    }
+    free(p);
+    ffc_alloc_last_status = 0;
+    return 0;
+}

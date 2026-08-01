@@ -944,7 +944,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: m_i32, n_i32, m_i64, n_i64
-        type(lr_operand_desc_t) :: total_i64, bytes_i64, data_ptr, descriptor
+        type(lr_operand_desc_t) :: total_i64, data_ptr, descriptor
         type(lr_operand_desc_t) :: extents_i64(2)
 
         call lower_i32_expression(arena, size_index1, context, m_i32, error_msg)
@@ -956,15 +956,14 @@
         if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, error_msg)) &
             return
 
-        ! bytes = M * N * 4 (all in i64 to avoid overflow and reuse issues)
+        ! count = M * N; the element size goes to the runtime separately so
+        ! the byte product is formed and range-checked there (#428).
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, m_i64, n_i64, &
                 total_i64, error_msg)) return
-        if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
-                i64_immediate(context%session, &
-                    allocatable_elem_size(context%symbols(symbol_index)%value_kind)), &
-                bytes_i64, error_msg)) return
-        if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
-            return
+        if (.not. emit_malloc(context%session, total_i64, data_ptr, error_msg, &
+                elem_size=i64_immediate(context%session, &
+                    allocatable_elem_size( &
+                        context%symbols(symbol_index)%value_kind)))) return
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
@@ -983,21 +982,21 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: bytes_i32, bytes_i64, n_i64, data_ptr
+        type(lr_operand_desc_t) :: n_i64, data_ptr
         type(lr_operand_desc_t) :: descriptor
         type(lr_operand_desc_t) :: extents_i64(2)
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
-        if (.not. emit_i32_binary(context%session, LR_OP_MUL, n_i32, &
-                i32_immediate(context%session, &
-                    allocatable_elem_size(context%symbols(symbol_index)%value_kind)), &
-                bytes_i32, error_msg)) return
-        if (.not. emit_liric_i32_to_i64(context%session, bytes_i32, bytes_i64, &
-                error_msg)) return
-        if (.not. emit_malloc(context%session, bytes_i64, data_ptr, error_msg)) &
-            return
         if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, error_msg)) &
             return
+        ! The element count and the element size go to the runtime separately,
+        ! so the product is formed and range-checked there (#428). The former
+        ! i32 multiply here silently wrapped for a large extent.
+        if (.not. emit_malloc(context%session, n_i64, data_ptr, error_msg, &
+                elem_size=i64_immediate(context%session, &
+                    int(allocatable_elem_size( &
+                        context%symbols(symbol_index)%value_kind), &
+                        c_int64_t)))) return
 
         if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
                 error_msg)) return

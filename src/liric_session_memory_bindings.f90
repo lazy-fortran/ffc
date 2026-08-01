@@ -700,19 +700,30 @@ contains
         emit_alloca_bytes = .true.
     end function emit_alloca_bytes
 
-    logical function emit_malloc(session, size, result, error_msg)
+    logical function emit_malloc(session, size, result, error_msg, elem_size)
+        ! Heap storage through the runtime allocator (#428). `size` is an
+        ! element count and `elem_size` the bytes per element, so the
+        ! multiplication that can overflow happens in the runtime where it is
+        ! checked. A caller that already holds a byte count omits elem_size,
+        ! which then defaults to 1.
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: size
         type(lr_operand_desc_t), intent(out) :: result
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), intent(in), optional :: elem_size
         type(lr_error_t) :: error
-        type(lr_operand_desc_t) :: args(1)
+        type(lr_operand_desc_t) :: args(2)
         integer(c_int32_t) :: vreg
 
         emit_malloc = .false.
         if (.not. require_open_session(session, error_msg)) return
 
         args(1) = size
+        if (present(elem_size)) then
+            args(2) = elem_size
+        else
+            args(2) = i64_immediate(session, 1_c_int64_t)
+        end if
         vreg = emit_malloc_call(session%handle, args, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
@@ -774,35 +785,49 @@ contains
         emit_strnlen = .true.
     end function emit_strnlen
 
-    logical function emit_free(session, ptr, error_msg)
-        ! free(ptr). free(NULL) is a no-op, so callers need not null-check.
+    logical function emit_free(session, ptr, error_msg, owns)
+        ! Release heap storage through the runtime (#428). Releasing a null
+        ! pointer succeeds, so callers need not null-check, matching Fortran's
+        ! deallocate of an unallocated variable.
+        !
+        ! `owns` is the descriptor's ownership flag. A borrowed descriptor --
+        ! a section view or a dummy argument -- never frees, and the runtime
+        ! says so rather than doing nothing silently. It defaults to true
+        ! because every current caller releases storage it owns.
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: ptr
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: owns
         type(lr_error_t) :: error
+        type(lr_operand_desc_t) :: owns_op
         integer(c_int32_t) :: vreg
 
         emit_free = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        vreg = emit_free_call(session%handle, ptr, error)
+        owns_op = i32_immediate(session, 1_c_int64_t)
+        if (present(owns)) then
+            if (.not. owns) owns_op = i32_immediate(session, 0_c_int64_t)
+        end if
+        vreg = emit_free_call(session%handle, ptr, owns_op, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
         emit_free = .true.
     end function emit_free
 
-    function emit_free_call(handle, ptr, error) result(vreg)
+    function emit_free_call(handle, ptr, owns, error) result(vreg)
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: ptr
+        type(lr_operand_desc_t), intent(in) :: owns
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t), target :: operands(3)
         type(lr_inst_desc_t) :: inst
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: symbol_id
 
-        call to_c_chars('free', c_name)
+        call to_c_chars('_ffc_dealloc', c_name)
         symbol_id = lr_session_intern(handle, c_name)
         if (symbol_id < 0_c_int32_t) then
             call clear_liric_error(error)
@@ -812,12 +837,13 @@ contains
 
         operands(1) = ptr_global_operand(handle, symbol_id)
         operands(2) = ptr
+        operands(3) = owns
 
         inst%op = LR_OP_CALL
-        inst%typ = c_null_ptr
+        inst%typ = lr_type_i32_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
+        inst%num_operands = 3_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
@@ -825,7 +851,7 @@ contains
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
         inst%call_vararg = c_false
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_fixed_args = 2_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)

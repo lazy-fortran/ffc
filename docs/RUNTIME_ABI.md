@@ -778,8 +778,51 @@ condition rather than being derived independently.
 variables with a declared length; both are rejected with a named diagnostic
 otherwise.
 
-Runtime entry points for descriptor allocation are added by their own issue
-(#428).
+### Descriptor storage allocation (#428)
+
+Allocatable arrays and deferred-length characters reached `malloc` and `free`
+directly from emitted code, so every size computation, every overflow check,
+and every ownership decision was open-coded at each site. The runtime owns
+that now. The compiler still decides shape and type; the runtime decides
+whether a size is representable, whether a pointer may be released, and what
+the status is.
+
+| Symbol | Signature |
+|---|---|
+| `_ffc_alloc` | `void *_ffc_alloc(long long count, long long elem_size)` |
+| `_ffc_calloc` | `void *_ffc_calloc(long long count, long long elem_size)` |
+| `_ffc_realloc` | `void *_ffc_realloc(void *old, long long count, long long elem_size)` |
+| `_ffc_dealloc` | `int _ffc_dealloc(void *p, int owns)` |
+| `_ffc_alloc_status` | `int _ffc_alloc_status(void)` |
+
+Sizes arrive as a separate element count and element size, never as a
+product, so the multiplication that can overflow happens in the runtime, once,
+where it is checked.
+
+A count of zero is a valid request: Fortran allows a zero-sized array, and the
+result is a non-null pointer released exactly like any other. Releasing a null
+pointer succeeds, matching `deallocate` of an unallocated variable.
+
+`owns` is the descriptor's `ARRAY_FLAG_OWNS_DATA` bit. A borrowed descriptor —
+a section view or a dummy argument — never frees, and the runtime reports
+`6005` rather than doing nothing silently. See the ownership and view-lifetime
+rules in `ARRAY_DESCRIPTOR_ABI.md`, which this enforces at run time.
+
+The runtime tracks the allocations it hands out, so releasing a pointer twice
+is reported instead of corrupting the heap. That is also why emitted code must
+not mix allocators: storage from a direct `malloc` is unknown to the runtime,
+and releasing it would be reported as a double free.
+`test_session_runtime_allocation_helpers_compiler` fails if any
+compiler-emitted function still calls `malloc` or `free`.
+
+| Code | Condition |
+|---|---|
+| 0 | success |
+| 6001 | negative count or element size |
+| 6002 | `count * elem_size` is not representable |
+| 6003 | the allocator refused |
+| 6004 | release of a pointer that is not live |
+| 6005 | release of storage the descriptor does not own |
 
 ## Building the runtime
 

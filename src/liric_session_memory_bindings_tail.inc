@@ -250,14 +250,19 @@
         type(lr_operand_desc_t), intent(in) :: args(:)
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t), target :: operands(3)
         type(lr_inst_desc_t) :: inst
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: symbol_id
 
-        call to_c_chars('malloc', c_name)
+        ! _ffc_alloc(count, elem_size) rather than malloc(bytes): the
+        ! runtime validates the size and tracks the allocation so a double
+        ! release is reported instead of corrupting the heap (#428). A
+        ! caller with only a byte count passes it as the count with an
+        ! element size of 1.
+        call to_c_chars('_ffc_alloc', c_name)
         symbol_id = lr_session_intern(handle, c_name)
-        if (symbol_id < 0_c_int32_t .or. size(args) /= 1) then
+        if (symbol_id < 0_c_int32_t .or. size(args) /= 2) then
             call clear_liric_error(error)
             error%code = 1_c_int
             return
@@ -265,12 +270,13 @@
 
         operands(1) = ptr_global_operand(handle, symbol_id)
         operands(2) = args(1)
+        operands(3) = args(2)
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_ptr_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
+        inst%num_operands = 3_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
@@ -278,7 +284,7 @@
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
         inst%call_vararg = c_false
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_fixed_args = 2_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
@@ -334,7 +340,7 @@
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: symbol_id
 
-        call to_c_chars('calloc', c_name)
+        call to_c_chars('_ffc_calloc', c_name)
         symbol_id = lr_session_intern(handle, c_name)
         if (symbol_id < 0_c_int32_t .or. size(args) /= 2) then
             call clear_liric_error(error)
