@@ -117,19 +117,20 @@
     ! --- OPEN ----------------------------------------------------------------
 
     subroutine lower_open(arena, node, context, error_msg)
-        ! Emit fopen(file, mode) and store FILE* in the unit-variable's slot.
-        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store, &
-                                                  emit_i32_alloca, emit_i32_store
+        ! Connect a unit through the runtime (#396). The compiler decides
+        ! which unit number and which STATUS= apply; the runtime owns the
+        ! connection itself, so a unit opened here stays connected for the
+        ! life of the process rather than for the life of a lowered function.
+        use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(open_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ustr, nuvar, fpath, sstr, signstr
-        type(lr_operand_desc_t) :: file_handle
-        type(lr_operand_desc_t) :: uval_op, ptr_slot
-        type(lr_operand_desc_t), allocatable :: noargs(:)
-        integer :: unit_number, sym, ios
+        type(lr_operand_desc_t) :: unit_op, args(3), unused
+        integer :: sym, ios, unit_number
+
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
             call unsupported_feature_error('open statement', node%line, &
@@ -158,231 +159,135 @@
             context%stdout_force_plus_sign = (trim(signstr) == 'plus')
         end if
 
-        if (len_trim(fpath) == 0) then
-            ! A connection without file= is a scratch file. gfortran also
-            ! treats status='scratch' and a bare default connection as a
-            ! temporary; tmpfile() gives a read/write handle deleted on close.
-            allocate (noargs(0))
-            if (.not. emit_ptr_call(context%session, 'tmpfile', noargs, &
-                                     file_handle, error_msg)) return
-        else
-            ! Fortran units are read/write; use update modes so a unit can be
-            ! written, rewound, and read back within the same scope.
-            select case (trim(sstr))
-            case ('old')
-                call open_fixed_mode(context, fpath, 'r+', file_handle, &
-                                     error_msg)
-            case ('new', 'replace')
-                call open_fixed_mode(context, fpath, 'w+', file_handle, &
-                                     error_msg)
-            case default
-                ! No status, or status='unknown': gfortran preserves an
-                ! existing file's content and creates a fresh one otherwise.
-                call open_update_or_create(context, fpath, file_handle, &
-                                           error_msg)
-            end select
-            if (len_trim(error_msg) > 0) return
-        end if
-
         if (len_trim(nuvar) > 0) then
-            unit_number = int(context%next_file_unit)
-            context%next_file_unit = context%next_file_unit + 1_c_int32_t
-            uval_op = i32_immediate(context%session, int(unit_number, c_int64_t))
-            sym = find_symbol_compat(context, trim(nuvar))
-            if (sym > 0) then
-                if (.not. context%symbols(sym)%has_address) then
-                    if (.not. emit_i32_alloca(context%session, &
-                                               context%symbols(sym)%address, &
-                                               error_msg)) return
-                    context%symbols(sym)%has_address = .true.
-                    context%symbols(sym)%is_reference = .true.
-                end if
-                if (.not. emit_i32_store(context%session, uval_op, &
-                                          context%symbols(sym)%address, &
-                                          error_msg)) return
-                context%symbols(sym)%value = uval_op
-                if (.not. context%symbols(sym)%is_file_unit) then
-                    if (.not. emit_ptr_alloca(context%session, ptr_slot, &
-                                               error_msg)) return
-                    context%symbols(sym)%file_ptr_address = ptr_slot
-                    context%symbols(sym)%is_file_unit = .true.
-                end if
-                if (.not. emit_ptr_store(context%session, file_handle, &
-                                          context%symbols(sym)%file_ptr_address, &
-                                          error_msg)) return
-            end if
+            call allocate_newunit(context, nuvar, unit_op, error_msg)
+            if (len_trim(error_msg) > 0) return
         else if (len_trim(ustr) > 0) then
+            call unit_number_operand(ustr, context, unit_op, error_msg)
+            if (len_trim(error_msg) > 0) return
             read (ustr, *, iostat=ios) unit_number
             if (ios == 0) then
-                call track_literal_unit(context, unit_number, file_handle, &
-                                         error_msg)
+                call mark_unit_symbol(context, file_unit_pseudo_name(unit_number), &
+                                      error_msg)
             else
                 sym = find_symbol_compat(context, trim(ustr))
                 if (sym <= 0) then
                     error_msg = 'open unit= variable not declared: '//trim(ustr)
                     return
                 end if
-                if (.not. context%symbols(sym)%is_file_unit) then
-                    if (.not. emit_ptr_alloca(context%session, ptr_slot, &
-                                               error_msg)) return
-                    context%symbols(sym)%file_ptr_address = ptr_slot
-                    context%symbols(sym)%is_file_unit = .true.
-                end if
-                if (.not. emit_ptr_store(context%session, file_handle, &
-                                          context%symbols(sym)%file_ptr_address, &
-                                          error_msg)) return
-                ! Alias the numeric unit so references by literal number resolve
-                ! to the same FILE* slot as references by variable name.
+                context%symbols(sym)%is_file_unit = .true.
+                ! References by literal number reach the same connection,
+                ! because both resolve to the same runtime unit number.
                 if (context%symbols(sym)%has_unit_const) then
-                    call alias_unit_to_slot(context, &
-                        context%symbols(sym)%unit_const, &
-                        context%symbols(sym)%file_ptr_address, error_msg)
+                    call mark_unit_symbol(context, &
+                        file_unit_pseudo_name(context%symbols(sym)%unit_const), &
+                        error_msg)
                     if (len_trim(error_msg) > 0) return
                 end if
             end if
+            if (len_trim(error_msg) > 0) return
         else
             call unsupported_feature_error('open statement', node%line, &
                 node%column, 'unit= or newunit= required (#247 B5c)', error_msg)
             return
         end if
+
+        args(1) = unit_op
+        call unit_string_operand(context, 'open.file.', fpath, args(2), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call unit_string_operand(context, 'open.status.', trim(sstr), args(3), &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_call(context%session, '_ffc_unit_open', args, &
+                                unused, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_open
 
-    subroutine open_fixed_mode(context, fpath, mode_str, file_handle, error_msg)
-        ! fopen(fpath, mode_str) unconditionally.
+    subroutine unit_string_operand(context, tag, text, ptr_op, error_msg)
+        ! Materialise a NUL-terminated literal and yield a pointer to it.
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: fpath, mode_str
-        type(lr_operand_desc_t), intent(out) :: file_handle
+        character(len=*), intent(in) :: tag
+        character(len=*), intent(in) :: text
+        type(lr_operand_desc_t), intent(out) :: ptr_op
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, fa(2)
-        integer(c_int32_t) :: fgid, mgid
-        character(len=64) :: fgn, mgn
+        character(len=64) :: gname
+        integer(c_int32_t) :: gid
 
         call set_empty(error_msg)
         context%string_literal_count = context%string_literal_count + 1
-        fgn = ffc_unit_global_name( &
-            context, 'open.file.', context%string_literal_count)
-        call create_printf_format_global(context%session, trim(fgn), &
-                                         trim(fpath), fgid, error_msg)
+        gname = ffc_unit_global_name(context, tag, context%string_literal_count)
+        call create_printf_format_global(context%session, trim(gname), &
+                                         trim(text), gid, error_msg)
         if (len_trim(error_msg) > 0) return
-        file_ptr_op = printf_format_ptr(context%session, fgid)
+        ptr_op = printf_format_ptr(context%session, gid)
+    end subroutine unit_string_operand
 
-        context%string_literal_count = context%string_literal_count + 1
-        mgn = ffc_unit_global_name( &
-            context, 'open.mode.', context%string_literal_count)
-        call create_printf_format_global(context%session, trim(mgn), &
-                                         trim(mode_str), mgid, error_msg)
-        if (len_trim(error_msg) > 0) return
-        mode_ptr_op = printf_format_ptr(context%session, mgid)
-
-        fa(1) = file_ptr_op
-        fa(2) = mode_ptr_op
-        if (.not. emit_ptr_call(context%session, 'fopen', fa, file_handle, &
-                                error_msg)) return
-        call set_empty(error_msg)
-    end subroutine open_fixed_mode
-
-    subroutine open_update_or_create(context, fpath, file_handle, error_msg)
-        ! fopen(fpath, "r+") preserves an existing file's content, matching
-        ! gfortran's default STATUS='UNKNOWN'; "w+" always truncates, so probe
-        ! with "r+" first and fall back to "w+" only when that fails (the file
-        ! does not exist yet).
-        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store, &
-                                                  emit_ptr_load
+    subroutine allocate_newunit(context, nuvar, unit_op, error_msg)
+        ! OPEN(newunit=u): the runtime picks the unit number, so two scopes
+        ! that both use NEWUNIT= can never be handed the same unit.
+        use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: fpath
-        type(lr_operand_desc_t), intent(out) :: file_handle
+        character(len=*), intent(in) :: nuvar
+        type(lr_operand_desc_t), intent(out) :: unit_op
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: is_null, slot
-        integer(c_int32_t) :: create_block, done_block
-
-        call set_empty(error_msg)
-        call open_fixed_mode(context, fpath, 'r+', file_handle, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        if (.not. emit_ptr_alloca(context%session, slot, error_msg)) return
-        if (.not. emit_ptr_store(context%session, file_handle, slot, &
-                                 error_msg)) return
-        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, file_handle, &
-                null_ptr_operand(context), is_null, error_msg)) return
-        create_block = create_liric_block(context%session)
-        done_block = create_liric_block(context%session)
-        if (.not. emit_liric_condbr(context%session, is_null, create_block, &
-                                     done_block, error_msg)) return
-
-        if (.not. set_liric_block(context%session, create_block, error_msg)) return
-        call open_fixed_mode(context, fpath, 'w+', file_handle, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_store(context%session, file_handle, slot, &
-                                 error_msg)) return
-        if (.not. emit_liric_br(context%session, done_block, error_msg)) return
-
-        if (.not. set_liric_block(context%session, done_block, error_msg)) return
-        context%current_block_id = done_block
-        context%current_block_terminated = .false.
-        if (.not. emit_ptr_load(context%session, slot, file_handle, &
-                                error_msg)) return
-        call set_empty(error_msg)
-    end subroutine open_update_or_create
-
-    subroutine track_literal_unit(context, unit_number, file_handle, error_msg)
-        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: unit_number
-        type(lr_operand_desc_t), intent(in) :: file_handle
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=24) :: pseudo_name
-        type(lr_operand_desc_t) :: ptr_slot
-        integer :: sym
-
-        write (pseudo_name, '(A,I0)') '.unit.', unit_number
-        sym = find_symbol_compat(context, trim(pseudo_name))
-        if (sym <= 0) then
-            call define_symbol(context, trim(pseudo_name), VALUE_C_PTR, error_msg)
-            if (len_trim(error_msg) > 0) return
-            sym = find_symbol_compat(context, trim(pseudo_name))
-        end if
-        if (.not. context%symbols(sym)%is_file_unit) then
-            if (.not. emit_ptr_alloca(context%session, ptr_slot, error_msg)) return
-            context%symbols(sym)%file_ptr_address = ptr_slot
-            context%symbols(sym)%is_file_unit = .true.
-        end if
-        if (.not. emit_ptr_store(context%session, file_handle, &
-                                  context%symbols(sym)%file_ptr_address, &
-                                  error_msg)) return
-        call set_empty(error_msg)
-    end subroutine track_literal_unit
-
-    subroutine alias_unit_to_slot(context, unit_number, slot, error_msg)
-        ! Make the numeric pseudo-symbol .unit.<N> share an existing FILE* slot.
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: unit_number
-        type(lr_operand_desc_t), intent(in) :: slot
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=24) :: pseudo_name
+        type(lr_operand_desc_t), allocatable :: noargs(:)
         integer :: sym
 
         call set_empty(error_msg)
-        write (pseudo_name, '(A,I0)') '.unit.', unit_number
-        sym = find_symbol_compat(context, trim(pseudo_name))
+        allocate (noargs(0))
+        if (.not. emit_i32_call(context%session, '_ffc_unit_newunit', noargs, &
+                                unit_op, error_msg)) return
+        sym = find_symbol_compat(context, trim(nuvar))
         if (sym <= 0) then
-            call define_symbol(context, trim(pseudo_name), VALUE_C_PTR, error_msg)
-            if (len_trim(error_msg) > 0) return
-            sym = find_symbol_compat(context, trim(pseudo_name))
+            error_msg = 'open newunit= variable not declared: '//trim(nuvar)
+            return
         end if
-        context%symbols(sym)%file_ptr_address = slot
+        if (.not. context%symbols(sym)%has_address) then
+            if (.not. emit_i32_alloca(context%session, &
+                                       context%symbols(sym)%address, &
+                                       error_msg)) return
+            context%symbols(sym)%has_address = .true.
+            context%symbols(sym)%is_reference = .true.
+        end if
+        if (.not. emit_i32_store(context%session, unit_op, &
+                                  context%symbols(sym)%address, error_msg)) return
+        context%symbols(sym)%value = unit_op
         context%symbols(sym)%is_file_unit = .true.
-    end subroutine alias_unit_to_slot
+    end subroutine allocate_newunit
+
+    subroutine mark_unit_symbol(context, pseudo_name, error_msg)
+        ! Record that a numeric unit is in use, so statement classification
+        ! and INQUIRE(opened=) can tell a file unit from a plain integer.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: pseudo_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, pseudo_name)
+        if (sym <= 0) then
+            call define_symbol(context, pseudo_name, VALUE_I32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, pseudo_name)
+        end if
+        if (sym > 0) context%symbols(sym)%is_file_unit = .true.
+    end subroutine mark_unit_symbol
+
+
+
+
 
     ! --- CLOSE ---------------------------------------------------------------
 
     subroutine lower_close(node, context, error_msg)
-        use liric_session_memory_bindings, only: emit_ptr_load, emit_ptr_store
+        ! CLOSE hands the unit number to the runtime, which owns the
+        ! connection. Closing a unit that is not connected is not an error in
+        ! Fortran, and the runtime reports success for it, so the guard the
+        ! compiler used to emit around fclose is gone (#396).
         type(close_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: fp, fa(1), is_open, slot
-        integer(c_int32_t) :: do_close, after_close
+        type(lr_operand_desc_t) :: args(1), unused
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -390,53 +295,71 @@
                 node%column, 'missing unit specifier (#247 B5c)', error_msg)
             return
         end if
-        call resolve_unit_slot(node%unit_spec, context, slot, error_msg)
+        call unit_number_operand(node%unit_spec, context, args(1), error_msg)
         if (len_trim(error_msg) > 0) return
-
-        ! Guard fclose on a non-null handle and null the slot afterwards.
-        ! Closing an already-closed unit is a no-op in Fortran; without the
-        ! guard a second CLOSE would fclose a freed FILE* and abort.
-        if (.not. emit_ptr_load(context%session, slot, fp, error_msg)) return
-        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, fp, &
-                null_ptr_operand(context), is_open, error_msg)) return
-        do_close = create_liric_block(context%session)
-        after_close = create_liric_block(context%session)
-        if (.not. emit_liric_condbr(context%session, is_open, do_close, &
-                                     after_close, error_msg)) return
-
-        if (.not. set_liric_block(context%session, do_close, error_msg)) return
-        fa(1) = fp
-        if (.not. emit_void_call(context%session, 'fclose', fa, error_msg)) return
-        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
-                                  slot, error_msg)) return
-        if (.not. emit_liric_br(context%session, after_close, error_msg)) return
-
-        if (.not. set_liric_block(context%session, after_close, error_msg)) return
+        if (.not. emit_i32_call(context%session, '_ffc_unit_close', args, &
+                                unused, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_close
 
-    subroutine resolve_unit_slot(unit_spec, context, slot, error_msg)
-        ! Resolve unit_spec (raw OPEN/CLOSE specifier text, e.g. "u", "10",
-        ! "unit=u") to the alloca'd ptr slot holding the unit's FILE*.
+    subroutine unit_number_operand(unit_spec, context, unit_op, error_msg)
+        ! Resolve unit_spec (raw OPEN/CLOSE/REWIND specifier text, e.g. "u",
+        ! "10", "unit=u", "(u)") to an i32 operand holding the unit number.
+        !
+        ! A variable unit is read at run time rather than folded to the
+        ! constant it happened to hold at the point of OPEN, so a unit number
+        ! computed at run time reaches the right connection (#396).
+        use liric_session_memory_bindings, only: emit_i32_load
+        use, intrinsic :: iso_c_binding, only: c_int64_t
         character(len=*), intent(in) :: unit_spec
         type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: slot
+        type(lr_operand_desc_t), intent(out) :: unit_op
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: plain, head
-        integer :: unit_number, sym, ios, eq_pos, cpos
-        character(len=24) :: pseudo_name
+        character(len=:), allocatable :: plain
+        integer :: unit_number, sym, ios
 
         call set_empty(error_msg)
+        plain = unit_spec_text(unit_spec)
+
+        unit_number = -1
+        read (plain, *, iostat=ios) unit_number
+        if (ios == 0) then
+            unit_op = i32_immediate(context%session, &
+                                    int(unit_number, c_int64_t))
+            return
+        end if
+
+        sym = find_symbol_compat(context, trim(plain))
+        if (sym <= 0) then
+            error_msg = 'no open unit for: '//trim(unit_spec)//' (#247 B5c)'
+            return
+        end if
+        if (context%symbols(sym)%has_address .and. &
+            context%symbols(sym)%is_reference) then
+            if (.not. emit_i32_load(context%session, &
+                                     context%symbols(sym)%address, unit_op, &
+                                     error_msg)) return
+        else
+            unit_op = context%symbols(sym)%value
+        end if
+        call set_empty(error_msg)
+    end subroutine unit_number_operand
+
+    function unit_spec_text(unit_spec) result(plain)
+        ! Strip the surrounding parentheses REWIND/BACKSPACE keep, take the
+        ! first argument (CLOSE/REWIND carry trailing keywords such as
+        ! status="delete"), and drop a leading unit= keyword.
+        character(len=*), intent(in) :: unit_spec
+        character(len=:), allocatable :: plain
+        character(len=:), allocatable :: head
+        integer :: cpos, eq_pos
+
         plain = trim(adjustl(unit_spec))
-        ! REWIND/BACKSPACE keep the surrounding parentheses, e.g. "(u)".
         if (len(plain) >= 2) then
             if (plain(1:1) == '(' .and. plain(len(plain):len(plain)) == ')') then
                 plain = trim(adjustl(plain(2:len(plain) - 1)))
             end if
         end if
-        ! CLOSE/REWIND carry trailing keyword arguments (e.g. status="delete");
-        ! the unit is the first argument. Take only that argument, then drop a
-        ! leading unit= keyword if present.
         cpos = index(plain, ',')
         if (cpos > 0) then
             head = trim(adjustl(plain(1:cpos - 1)))
@@ -446,90 +369,25 @@
         eq_pos = index(head, '=')
         if (eq_pos > 0) head = adjustl(head(eq_pos + 1:))
         plain = trim(head)
-
-        unit_number = -1
-        read (plain, *, iostat=ios) unit_number
-        if (ios == 0) then
-            write (pseudo_name, '(A,I0)') '.unit.', unit_number
-            sym = find_symbol_compat(context, trim(pseudo_name))
-        else
-            unit_number = -1
-            sym = find_symbol_compat(context, trim(plain))
-            if (sym > 0) then
-                if (context%symbols(sym)%has_unit_const) &
-                    unit_number = context%symbols(sym)%unit_const
-            end if
-        end if
-        if (sym <= 0 .or. .not. context%symbols(sym)%is_file_unit) then
-            ! Implicit preconnection: a numeric unit used without OPEN connects
-            ! to fort.<N>, matching gfortran's default unit handling.
-            if (unit_number >= 0) then
-                call connect_implicit_unit(context, unit_number, sym, error_msg)
-                if (len_trim(error_msg) > 0) return
-            else
-                error_msg = 'no open unit for: '//trim(unit_spec)//' (#247 B5c)'
-                return
-            end if
-        end if
-        slot = context%symbols(sym)%file_ptr_address
-    end subroutine resolve_unit_slot
+    end function unit_spec_text
 
     subroutine load_unit_file_ptr(unit_spec, context, fp, error_msg)
-        ! Load the current FILE* for a unit from its alloca'd ptr slot.
-        use liric_session_memory_bindings, only: emit_ptr_load
+        ! The stream behind a unit, from the runtime. An unopened numeric unit
+        ! is connected to fort.<N> there, on first use, so implicit
+        ! preconnection no longer needs its own emitted fopen (#396).
         character(len=*), intent(in) :: unit_spec
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: fp
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: slot
+        type(lr_operand_desc_t) :: args(1)
 
-        call resolve_unit_slot(unit_spec, context, slot, error_msg)
+        call unit_number_operand(unit_spec, context, args(1), error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_load(context%session, slot, fp, error_msg)) return
+        if (.not. emit_ptr_call(context%session, '_ffc_unit_file', args, fp, &
+                                error_msg)) return
         call set_empty(error_msg)
     end subroutine load_unit_file_ptr
 
-    subroutine connect_implicit_unit(context, unit_number, sym, error_msg)
-        ! fopen("fort.<N>", "w+") for a numeric unit used without OPEN.
-        use liric_session_memory_bindings, only: emit_ptr_alloca, emit_ptr_store
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: unit_number
-        integer, intent(out) :: sym
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: file_ptr_op, mode_ptr_op, file_handle
-        type(lr_operand_desc_t) :: ptr_slot, fa(2)
-        character(len=64) :: fgn, mgn, fname
-        integer(c_int32_t) :: fgid, mgid
-
-        call set_empty(error_msg)
-        write (fname, '(A,I0)') 'fort.', unit_number
-        context%string_literal_count = context%string_literal_count + 1
-        fgn = ffc_unit_global_name( &
-            context, 'open.file.', context%string_literal_count)
-        call create_printf_format_global(context%session, trim(fgn), &
-                                         trim(fname), fgid, error_msg)
-        if (len_trim(error_msg) > 0) return
-        file_ptr_op = printf_format_ptr(context%session, fgid)
-
-        context%string_literal_count = context%string_literal_count + 1
-        mgn = ffc_unit_global_name( &
-            context, 'open.mode.', context%string_literal_count)
-        call create_printf_format_global(context%session, trim(mgn), 'w+', &
-                                         mgid, error_msg)
-        if (len_trim(error_msg) > 0) return
-        mode_ptr_op = printf_format_ptr(context%session, mgid)
-
-        fa(1) = file_ptr_op
-        fa(2) = mode_ptr_op
-        if (.not. emit_ptr_call(context%session, 'fopen', fa, file_handle, &
-                                error_msg)) return
-        if (.not. emit_ptr_alloca(context%session, ptr_slot, error_msg)) return
-        if (.not. emit_ptr_store(context%session, file_handle, ptr_slot, &
-                                 error_msg)) return
-        call alias_unit_to_slot(context, unit_number, ptr_slot, error_msg)
-        if (len_trim(error_msg) > 0) return
-        sym = find_symbol_compat(context, file_unit_pseudo_name(unit_number))
-    end subroutine connect_implicit_unit
 
     ! --- file-unit WRITE -----------------------------------------------------
 

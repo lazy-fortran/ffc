@@ -623,9 +623,39 @@ The complete runtime ABI. Adding an entry point means editing
 | Symbol | Signature | Contract |
 |---|---|---|
 | `_ffc_runtime_probe` | `int _ffc_runtime_probe(void)` | Returns 42. Lets a consumer confirm end to end that the runtime it linked or loaded really resolves. |
+| `_ffc_unit_newunit` | `int _ffc_unit_newunit(void)` | Lowest free unit at or above 1000, above anything a program names explicitly. Returns -1 and sets status 5005 when none is free. |
+| `_ffc_unit_open` | `int _ffc_unit_open(int unit, const char *path, const char *status)` | Connects `unit`. `status` is the lower-cased Fortran `STATUS=` value. A null or empty `path`, or `status` `scratch`, connects a temporary file removed on close. |
+| `_ffc_unit_is_open` | `int _ffc_unit_is_open(int unit)` | 1 when the unit is connected, 0 otherwise. Never fails. |
+| `_ffc_unit_file` | `FILE *_ffc_unit_file(int unit)` | The stream behind a unit, connecting an unopened numeric unit to `fort.<N>` on first use. NULL only when the unit is unusable. |
+| `_ffc_unit_rewind` | `int _ffc_unit_rewind(int unit)` | Repositions to the first record. |
+| `_ffc_unit_close` | `int _ffc_unit_close(int unit)` | Disconnects the unit. Succeeds on a unit that is not connected. |
+| `_ffc_unit_status` | `int _ffc_unit_status(void)` | Status of the most recent unit operation. |
 
-Runtime entry points for file units, formatted output, IOSTAT/IOMSG, and
-descriptor allocation are added by their own issues (#396, #423, #427, #428).
+### File-unit state (#396)
+
+The runtime owns file-unit state: which units are connected, the `FILE*`
+behind each, and the status of the last operation. It is per process and keyed
+by the unit number the program computes at run time, so a unit opened inside a
+procedure is still connected after that procedure returns. Before #396 the
+compiler emitted one stack slot per unit inside the function that opened it,
+which scoped a connection to a lowered function.
+
+Units run from 0 through 2048. `NEWUNIT=` allocates from 1000 upwards and
+releases the number on `CLOSE`.
+
+Status codes are stable. They are the values `IOSTAT=` reports:
+
+| Code | Meaning |
+|---|---|
+| 0 | success |
+| 5001 | unit number outside the supported range |
+| 5002 | operation on a unit that is not connected |
+| 5003 | `OPEN` on a unit that is already connected |
+| 5004 | the file could not be opened |
+| 5005 | no free unit left for `NEWUNIT=` |
+
+Runtime entry points for formatted output, IOSTAT/IOMSG, and descriptor
+allocation are added by their own issues (#423, #427, #428).
 
 ### Dependencies
 

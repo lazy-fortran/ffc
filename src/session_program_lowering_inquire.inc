@@ -270,26 +270,20 @@
         character(len=*), intent(in) :: unit_str, opened_var, exist_var
         character(len=*), intent(in) :: iostat_var
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: sym, ios, unit_number
-        logical :: is_opened
-        character(len=24) :: pseudo_name
+        type(lr_operand_desc_t) :: unit_args(1), opened_op
 
         call set_empty(error_msg)
-        is_opened = .false.
-        read (unit_str, *, iostat=ios) unit_number
-        if (ios == 0) then
-            write (pseudo_name, '(A,I0)') '.unit.', unit_number
-            sym = find_symbol_compat(context, trim(pseudo_name))
-        else
-            sym = find_symbol_compat(context, trim(unit_str))
-        end if
-        if (sym > 0) is_opened = context%symbols(sym)%is_file_unit
 
         if (len_trim(opened_var) > 0) then
+            ! Ask the runtime, which owns the connection, instead of reading a
+            ! compile-time flag that could not see a unit opened elsewhere in
+            ! the program (#396).
+            call unit_number_operand(unit_str, context, unit_args(1), error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_call(context%session, '_ffc_unit_is_open', &
+                                    unit_args, opened_op, error_msg)) return
             call store_inquire_logical(context, node, opened_var, 'opened', &
-                i32_immediate(context%session, &
-                              merge(1_c_int64_t, 0_c_int64_t, is_opened)), &
-                error_msg)
+                                       opened_op, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
 

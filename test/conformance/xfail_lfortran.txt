@@ -2746,7 +2746,6 @@ read_78.f90 # owner=lazy-fortran/ffc#349; reason=migrate deferred scalar charact
 read_80.f90 # owner=lazy-fortran/ffc#451; reason=lower scalar formatted input
 read_81.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 read_82.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-read_83.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 read_85.f90 # owner=lazy-fortran/ffc#451; reason=lower scalar formatted input
 read_86.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 read_87.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering

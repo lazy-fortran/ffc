@@ -583,10 +583,12 @@
     end subroutine set_read_slot
 
     subroutine lower_rewind(node, context, error_msg)
+        ! REWIND repositions through the runtime, which knows whether the unit
+        ! is connected and connects an unopened numeric unit on the way (#396).
         type(rewind_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: fp, fa(1)
+        type(lr_operand_desc_t) :: args(1), unused
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -594,15 +596,15 @@
                 node%column, 'missing unit specifier (#247)', error_msg)
             return
         end if
-        call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
+        call unit_number_operand(node%unit_spec, context, args(1), error_msg)
         if (len_trim(error_msg) > 0) then
             error_msg = ''
             call unsupported_feature_error('rewind statement', node%line, &
                 node%column, 'unit not opened in same scope (#247)', error_msg)
             return
         end if
-        fa(1) = fp
-        if (.not. emit_void_call(context%session, 'rewind', fa, error_msg)) return
+        if (.not. emit_i32_call(context%session, '_ffc_unit_rewind', args, &
+                                unused, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_rewind
 
