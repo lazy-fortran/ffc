@@ -347,14 +347,16 @@
         end do
     end function callee_dummy_is_class_star
 
-    subroutine dummy_class_declared_type(arena, body_indices, param_name, &
-                                         type_name)
-        ! Declared type name of a class(t) dummy, empty when the dummy is not
-        ! declared class(t). Mirrors dummy_is_class_star, but selects exactly
-        ! the polymorphic-derived spelling the class descriptor ABI covers.
+    subroutine dummy_declared_derived_type(arena, body_indices, param_name, &
+                                           want_class, type_name)
+        ! Declared type name of a derived dummy, empty when the dummy is not
+        ! declared with the requested spelling. want_class selects class(t),
+        ! the polymorphic-derived spelling the class descriptor ABI covers;
+        ! otherwise type(t), the monomorphic by-reference spelling.
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: body_indices(:)
         character(len=*), intent(in) :: param_name
+        logical, intent(in) :: want_class
         character(len=:), allocatable, intent(out) :: type_name
         integer :: i, k
         logical :: matches
@@ -366,7 +368,12 @@
             select type (decl => arena%entries(body_indices(i))%node)
             type is (declaration_node)
                 if (.not. allocated(decl%type_name)) cycle
-                if (.not. is_class_derived_type_spec(decl%type_name)) cycle
+                if (want_class) then
+                    if (.not. is_class_derived_type_spec(decl%type_name)) cycle
+                else
+                    if (is_class_derived_type_spec(decl%type_name)) cycle
+                    if (.not. is_derived_type_spec(decl%type_name)) cycle
+                end if
                 ! An allocatable or pointer class dummy aliases the caller's
                 ! own allocatable/pointer descriptor; that ABI is unchanged
                 ! here and gains its dynamic identity with #421.
@@ -388,15 +395,18 @@
                 end if
             end select
         end do
-    end subroutine dummy_class_declared_type
+    end subroutine dummy_declared_derived_type
 
-    subroutine callee_dummy_class_declared_type(arena, callee_name, param_pos, &
-                                                type_name)
+    subroutine callee_dummy_declared_derived_type(arena, callee_name, &
+                                                  param_pos, want_class, &
+                                                  type_name)
         ! Declared type name of the callee's param_pos-th dummy when that dummy
-        ! is class(t); empty otherwise.
+        ! carries the requested derived spelling (class(t) or type(t)); empty
+        ! otherwise.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
+        logical, intent(in) :: want_class
         character(len=:), allocatable, intent(out) :: type_name
         integer :: n
         character(len=:), allocatable :: name, name_err
@@ -420,8 +430,8 @@
                         call parameter_name(arena, sb_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
-                        call dummy_class_declared_type(arena, &
-                            sb_node%body_indices, name, type_name)
+                        call dummy_declared_derived_type(arena, &
+                            sb_node%body_indices, name, want_class, type_name)
                         return
                     end if
                 end if
@@ -437,14 +447,14 @@
                         call parameter_name(arena, fn_node%param_indices(param_pos), &
                                             name, name_err)
                         if (len_trim(name_err) > 0) return
-                        call dummy_class_declared_type(arena, &
-                            fn_node%body_indices, name, type_name)
+                        call dummy_declared_derived_type(arena, &
+                            fn_node%body_indices, name, want_class, type_name)
                         return
                     end if
                 end if
             end if
         end do
-    end subroutine callee_dummy_class_declared_type
+    end subroutine callee_dummy_declared_derived_type
 
     logical function dummy_is_array(arena, body_indices, param_name)
         ! A dummy is an array when a body declaration names it with an array

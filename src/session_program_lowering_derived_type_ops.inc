@@ -562,7 +562,10 @@
         character(len=:), allocatable :: name
         integer :: lower_bound, n_elems, slots, index
         integer :: binding_index
+        integer :: dim_count
+        integer :: extents(2)
         logical :: is_dummy
+        logical :: is_assumed
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: binding_error
 
@@ -621,8 +624,23 @@
                 end if
             end if
         end if
-        call get_array_bounds(node, context, lower_bound, n_elems, error_msg)
-        if (len_trim(error_msg) > 0) return
+        is_assumed = declaration_is_assumed_shape(node, context)
+        if (is_assumed) then
+            if (.not. is_dummy) then
+                call unsupported_feature_error('derived array declaration', &
+                    node%line, node%column, 'an assumed-shape derived array '// &
+                    'is valid only as a dummy argument', error_msg)
+                return
+            end if
+            call derived_assumed_shape_extents(node, context, name, dim_count, &
+                                               extents, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lower_bound = 1
+            n_elems = product(extents(1:dim_count))
+        else
+            call get_array_bounds(node, context, lower_bound, n_elems, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (n_elems <= 0) then
             call unsupported_feature_error('derived array declaration', node%line, &
                 node%column, 'derived arrays need a positive compile-time size', &
@@ -642,8 +660,15 @@
         context%symbols(index)%derived_type_index = derived_type_index
         context%symbols(index)%array_size = n_elems * slots
         context%symbols(index)%array_lower_bound = lower_bound
-        call record_derived_array_shape(node, context, index, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (is_assumed) then
+            context%symbols(index)%array_rank = dim_count
+            context%symbols(index)%array_dim_lowers(1:dim_count) = 1
+            context%symbols(index)%array_dim_sizes(1:dim_count) = &
+                extents(1:dim_count)
+        else
+            call record_derived_array_shape(node, context, index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (is_dummy) then
             context%symbols(index)%element_address = &
                 context%symbols(index)%address
@@ -658,6 +683,48 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine lower_derived_array_declaration
+
+    subroutine derived_assumed_shape_extents(node, context, name, dim_count, &
+                                             extents, error_msg)
+        ! Per-dimension extents of an assumed-shape derived dummy type(t) :: a(:).
+        ! The outer array descriptor is the caller's contiguous derived storage,
+        ! so the dummy only needs its shape; recover it from the whole-array
+        ! actual at the call site, exactly as intrinsic assumed-shape dummies do.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(out) :: dim_count
+        integer, intent(out) :: extents(2)
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical :: ok
+
+        extents = 0
+        dim_count = 0
+        if (allocated(node%dimension_indices)) &
+            dim_count = size(node%dimension_indices)
+        if (dim_count < 1 .or. dim_count > 2) then
+            call unsupported_feature_error('assumed-shape derived array', &
+                node%line, node%column, 'direct LIRIC session supports rank-1 '// &
+                'and rank-2 assumed-shape derived dummies', error_msg)
+            return
+        end if
+        if (.not. allocated(context%current_proc_name)) then
+            call unsupported_feature_error('assumed-shape derived array', &
+                node%line, node%column, 'assumed-shape derived dummies are '// &
+                'supported only inside a contained procedure', error_msg)
+            return
+        end if
+        call resolve_assumed_shape_extents(context, context%current_proc_name, &
+                                           name, dim_count, extents, ok)
+        if (.not. ok) then
+            call unsupported_feature_error('assumed-shape derived array', &
+                node%line, node%column, 'assumed-shape derived dummy extent '// &
+                'must come from a whole-array actual of compile-time size', &
+                error_msg)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine derived_assumed_shape_extents
 
     subroutine record_derived_array_shape(node, context, index, error_msg)
         ! Fold each declared dimension of a derived array so element addressing
@@ -936,6 +1003,13 @@
                 error_msg)
             return
         end if
+        if (symbol_index <= 0) then
+            ! Fixed-size array components address through one symbol's flat slot
+            ! block, which an element or nested base does not provide.
+            error_msg = 'fixed-size array component requires a plain derived '// &
+                        'variable base: '//trim(comp_name)
+            return
+        end if
         call resolve_array_component(arena, access_index, context, symbol_index, &
                                      type_index, component_index, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1075,18 +1149,32 @@
             return
         end select
 
-        call component_base_name(arena, base_index, base_name, error_msg)
-        if (len_trim(error_msg) > 0) return
-        symbol_index = find_symbol_compat(context, base_name)
-        if (symbol_index <= 0) then
-            error_msg = 'component base was not declared: '//trim(base_name)
-            return
+        if (is_identifier(arena, base_index)) then
+            call component_base_name(arena, base_index, base_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol_compat(context, base_name)
+            if (symbol_index <= 0) then
+                error_msg = 'component base was not declared: '//trim(base_name)
+                return
+            end if
+            if (.not. context%symbols(symbol_index)%is_derived) then
+                error_msg = 'component base is not a derived type: '// &
+                            trim(base_name)
+                return
+            end if
+            type_index = context%symbols(symbol_index)%derived_type_index
+        else
+            ! The owning instance is a derived-array element arr(i) or a nested
+            ! component x%c rather than a plain symbol. Its declared type still
+            ! resolves statically; symbol_index stays 0 so the flat-slot
+            ! addressing path (which needs one symbol base) rejects it and the
+            ! pointer-based path takes over.
+            type_index = component_base_type_index(arena, base_index, context)
+            if (type_index <= 0) then
+                error_msg = 'component base is not a derived type'
+                return
+            end if
         end if
-        if (.not. context%symbols(symbol_index)%is_derived) then
-            error_msg = 'component base is not a derived type: '//trim(base_name)
-            return
-        end if
-        type_index = context%symbols(symbol_index)%derived_type_index
         component_index = find_derived_component(context, type_index, comp_name)
         if (component_index <= 0) then
             error_msg = 'component is not declared for type '// &

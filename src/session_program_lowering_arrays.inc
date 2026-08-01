@@ -3267,6 +3267,19 @@
                 call set_empty(error_msg)
                 return
             end if
+            if (context%symbols(source_index)%is_derived) then
+                if (context%symbols(source_index)%array_rank >= 1) then
+                    ! A derived array's array_size counts i32 slots, not
+                    ! elements; size() is the element count, so multiply the
+                    ! per-dimension extents instead.
+                    value = i32_immediate(context%session, &
+                        int(product(context%symbols(source_index)% &
+                            array_dim_sizes(1:context%symbols(source_index)% &
+                                array_rank)), c_int64_t))
+                    call set_empty(error_msg)
+                    return
+                end if
+            end if
             value = i32_immediate(context%session, &
                                   int(context%symbols(source_index)%array_size, &
                                       c_int64_t))

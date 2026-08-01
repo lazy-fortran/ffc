@@ -610,7 +610,11 @@
         end do
     end subroutine module_decl_for_name
 
-    subroutine target_base_name(arena, node_index, name)
+    recursive subroutine target_base_name(arena, node_index, name)
+        ! Name of the variable a definition context ultimately reaches. A
+        ! component or element chain (x%c, arr(i)%c%e(j)) defines the variable
+        ! at the root of the chain, so walk down to it; a plain subscript or
+        ! identifier is that root already.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=:), allocatable, intent(out) :: name
@@ -621,6 +625,12 @@
         type is (identifier_node)
             if (allocated(nd%name)) name = trim(nd%name)
         type is (call_or_subscript_node)
-            if (allocated(nd%name)) name = trim(nd%name)
+            if (nd%base_expr_index > 0) then
+                call target_base_name(arena, nd%base_expr_index, name)
+            else if (allocated(nd%name)) then
+                name = trim(nd%name)
+            end if
+        type is (component_access_node)
+            call target_base_name(arena, nd%base_expr_index, name)
         end select
     end subroutine target_base_name
