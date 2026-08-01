@@ -702,6 +702,8 @@
         if (len_trim(error_msg) > 0) return
         call check_pointer_target_contracts(arena, error_msg)
         if (len_trim(error_msg) > 0) return
+        call check_declaration_conflicts(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call check_constant_initialization_exprs(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_constant_expression_overflow(arena, error_msg)

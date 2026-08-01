@@ -2847,4 +2847,5 @@ contains
     include 'session_program_lowering_reject_alloc.inc'
     include 'session_program_lowering_reject_result.inc'
     include 'session_program_lowering_reject_generic.inc'
+    include 'session_program_lowering_reject_decl_conflict.inc'
 end module session_program_lowering

@@ -59,6 +59,11 @@
                                                is_lazy, nd%line, nd%column, &
                                                error_msg)
                 if (len_trim(error_msg) > 0) return
+                if (.not. is_lazy) then
+                    call check_ctor_char_lengths(arena, nd%element_indices, &
+                                                 nd%line, nd%column, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
             end select
         end do
     end subroutine check_array_ctor_element_agreement
@@ -102,6 +107,65 @@
             return
         end do
     end subroutine check_ctor_elements_agree
+
+    ! Rule 5 (standard mode only): without a type-spec the character length of
+    ! an array
+    ! constructor is that of its values, so character literals of differing
+    ! length leave the element length undetermined (F2018 7.8, gfortran
+    ! "Different CHARACTER lengths in array constructor"). A type-spec fixes
+    ! the length and pads shorter values, which the caller already skips.
+    subroutine check_ctor_char_lengths(arena, elems, line, col, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: elems(:)
+        integer, intent(in) :: line, col
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: location
+        integer :: i, elem_len, first_len, first_pos
+
+        call set_empty(error_msg)
+        first_len = -1
+        first_pos = 0
+        do i = 1, size(elems)
+            elem_len = ctor_char_literal_length(arena, elems(i))
+            if (elem_len < 0) cycle
+            if (first_len < 0) then
+                first_len = elem_len
+                first_pos = i
+                cycle
+            end if
+            if (elem_len == first_len) cycle
+            if (line > 0 .and. col > 0) then
+                write (location, '(" at line ",I0,", column ",I0)') line, col
+            else
+                location = ''
+            end if
+            error_msg = 'array constructor'//trim(location)// &
+                        ' has different CHARACTER lengths ('// &
+                        int_to_text(first_len)//'/'//int_to_text(elem_len)// &
+                        ') in element '//int_to_text(first_pos)//' and '// &
+                        'element '//int_to_text(i)// &
+                        ': a constructor without a type-spec has one '// &
+                        'element length'
+            return
+        end do
+    end subroutine check_ctor_char_lengths
+
+    ! Length of a character literal ac-value, or -1 when the value is not a
+    ! character literal the driver can measure statically.
+    integer function ctor_char_literal_length(arena, idx) result(char_len)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable :: value, literal_type, err, text
+
+        char_len = -1
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        if (.not. is_character_literal(arena, idx)) return
+        call get_literal_info(arena, idx, value, literal_type, err)
+        if (len_trim(err) > 0) return
+        call strip_literal_quotes(value, text)
+        char_len = len(text)
+    end function ctor_char_literal_length
 
     ! The intrinsic type of a literal ac-value, distinguishing integer from
     ! real (cmp_class_name lumps both into "numeric", which is too coarse to
