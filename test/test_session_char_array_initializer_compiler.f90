@@ -33,7 +33,9 @@ contains
     logical function test_padding_and_len_trim()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  character(len=6) :: m(2) = ["ab", "cdef"]'//new_line('a')// &
+            ! Without a type-spec the ac-values would need equal lengths.
+            '  character(len=6) :: m(2) = [character(len=4) :: "ab", "cdef"]'// &
+            new_line('a')// &
             '  if (len_trim(m(1)) /= 2) error stop'//new_line('a')// &
             '  if (len_trim(m(2)) /= 4) error stop'//new_line('a')// &
             '  if (m(1) /= "ab") error stop'//new_line('a')// &
