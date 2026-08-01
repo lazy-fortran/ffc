@@ -191,7 +191,10 @@ module session_program_lowering_types
     integer, parameter, public :: ARRAY_MAX_RANK = 7
     ! Byte size of an allocatable array descriptor: data pointer plus the
     ! lower/upper bound pair of each of the two supported dimensions, all i64.
-    integer, parameter, public :: ALLOC_DESCRIPTOR_BYTES = 40
+    ! Allocatable arrays are described by the canonical array descriptor
+    ! (docs/ARRAY_DESCRIPTOR_ABI.md), so their stack or global slot is that
+    ! record's size (#336).
+    integer, parameter, public :: ALLOC_DESCRIPTOR_BYTES = 200
     type, public :: common_slot_t
         character(len=:), allocatable :: block_name
         character(len=:), allocatable :: var_name

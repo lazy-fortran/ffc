@@ -285,11 +285,9 @@
 
     subroutine actual_extent_i64(arena, node_index, context, dim, extent, &
                                  error_msg)
-        ! Runtime extent (i64) of dimension dim of the whole-array actual bound
-        ! to a hidden extent argument. Only a rank-1 or rank-2 allocatable
-        ! identifier is supported; its descriptor bounds give upper - lower + 1.
-        ! Bounds live at descriptor offsets (8, 16) for dim 1 and (24, 32) for
-        ! dim 2 (session_program_lowering_allocatable.inc).
+        ! Runtime extent (i64) of dimension dim of a whole-array allocatable
+        ! actual, read straight out of that allocatable's canonical array
+        ! descriptor (docs/ARRAY_DESCRIPTOR_ABI.md).
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -298,8 +296,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: id_name
         integer :: symbol_index
-        integer(c_int64_t) :: lower_off, upper_off
-        type(lr_operand_desc_t) :: descriptor, lower, upper, span
+        type(lr_operand_desc_t) :: descriptor
 
         if (.not. is_identifier(arena, node_index)) then
             error_msg = 'assumed-shape actual extent must come from a '// &
@@ -318,24 +315,9 @@
                         'whole-array allocatable actual: '//trim(id_name)
             return
         end if
-        if (dim == 1) then
-            lower_off = 8_c_int64_t
-            upper_off = 16_c_int64_t
-        else
-            lower_off = 24_c_int64_t
-            upper_off = 32_c_int64_t
-        end if
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
-        if (.not. emit_i64_load_at(context%session, descriptor, lower_off, &
-                                   lower, error_msg)) return
-        if (.not. emit_i64_load_at(context%session, descriptor, upper_off, &
-                                   upper, error_msg)) return
-        if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper, lower, &
-                                  span, error_msg)) return
-        if (.not. emit_i64_binary(context%session, LR_OP_ADD, span, &
-                                  i64_immediate(context%session, 1_c_int64_t), &
-                                  extent, error_msg)) return
-        call set_empty(error_msg)
+        call emit_alloc_desc_load_extent(context, descriptor, dim, extent, &
+                                         error_msg)
     end subroutine actual_extent_i64
 
 
