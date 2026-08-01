@@ -220,6 +220,13 @@
             call destroy(context%session)
             return
         end if
+        ! Record which Lazy procedures FortFront monomorphized, before any call
+        ! is lowered against the untyped original they left behind (#437).
+        call collect_lazy_specializations(arena, root_index, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call lower_internal_functions(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)

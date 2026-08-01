@@ -244,6 +244,7 @@ module session_program_lowering
         derived_type_info_t, &
         module_exports_t, &
         external_procedure_t, &
+        lazy_specialization_t, &
         generic_interface_t, &
         operator_interface_t, &
         MAX_PROC_ARGS, &
@@ -952,6 +953,7 @@ contains
     include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'
     include 'session_program_lowering_inferred.inc'
+    include 'session_program_lowering_lazy_monomorph.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
@@ -1944,6 +1946,11 @@ contains
                     context)
             end do
         end if
+        call reject_monomorphized_call(context, trim(name), &
+                                       get_node_line(arena, node_index), &
+                                       get_node_column(arena, node_index), &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, name, call_arg_count, call_arg_kinds, &
             call_arg_ranks)
         if (same_name(call_name, 'get_command_argument')) then
