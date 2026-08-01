@@ -363,7 +363,11 @@ real value for the argument's kind, usable in real expressions, conditions, and
 `print`. Scalar `transfer(source, mold)` reinterprets `source`'s bit pattern as
 `mold`'s type between `integer(4)`/`real(4)` and between `integer(8)`/`real(8)`,
 via a typed stack-slot store/load round trip; same-kind `transfer` is the
-identity. `open`/`close`/`rewind` map to `fopen`/`fclose`/
+identity, and a whole-array `source` contributes its first element. The same
+reinterpretation runs elementwise for a whole-array `transfer` assignment
+(`a = transfer(r, a)`), including a compile-time constant `size` argument that
+must match the result array's size; `size` must not be negative and the source
+must supply at least as many elements as the result. `open`/`close`/`rewind` map to `fopen`/`fclose`/
 `rewind`, preserving an existing file's content when `status=` is omitted;
 a file unit's list-directed and numeric-edit-descriptor `read` covers
 integer, real, and fixed-length character scalars. Internal `read (buf, *)

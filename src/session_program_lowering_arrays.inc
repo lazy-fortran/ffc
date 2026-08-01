@@ -2796,6 +2796,15 @@
                 if (len_trim(error_msg) > 0) return
                 if (reduction_handled) return
                 if (allocated(rhs%name)) then
+                    ! Array-valued TRANSFER runs before the shared kind gate
+                    ! below: it reinterprets bits and so also serves integer(8)
+                    ! and real(8) targets.
+                    if (same_name(rhs%name, 'transfer')) then
+                        call lower_transfer_array_assignment(arena, node, &
+                                                             symbol_index, &
+                                                             context, error_msg)
+                        return
+                    end if
                     if (is_whole_array_intrinsic_name(rhs%name)) then
                         if (context%symbols(symbol_index)%value_kind == &
                                 VALUE_I64 .or. &
