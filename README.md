@@ -125,7 +125,8 @@ is sized from its own subscripts and an optional `stat=` integer is set to 0 on
 success. A rank-2 allocatable also supports whole-array scalar broadcast
 (`m = 9`) once allocated to a compile-time-constant shape. Scalar
 integer `pointer`/`target` with `p => t`, read/write through `p`,
-`associated(p)`, and `nullify(p)` is supported. Rank-1 and rank-2 fixed-size
+`associated(p)`, and `nullify(p)` is supported, as is `allocate(p)` on a
+scalar pointer, which gives it fresh heap storage. Rank-1 and rank-2 fixed-size
 `integer`/`real`/`logical`/`complex` `pointer`/`target` arrays support whole-
 array `p => t` aliasing, so element read/write, `lbound`/`ubound`, and
 `print` through `p` reach `t`'s storage, as are constant-folded

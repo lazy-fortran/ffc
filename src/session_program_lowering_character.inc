@@ -816,7 +816,29 @@
 
         len_pos = index(lowered, 'len=')
         if (len_pos <= 0) then
-            error_msg = 'only character(len=N) declarations are supported'
+            ! Positional form: character(N), character(*), character(:).
+            start_pos = index(lowered, '(')
+            close_pos = index(lowered, ')', back=.true.)
+            if (start_pos <= 0 .or. close_pos <= start_pos) then
+                error_msg = 'only character(len=N) declarations are supported'
+                return
+            end if
+            length_text = adjustl(lowered(start_pos + 1:close_pos - 1))
+            if (index(length_text, '=') > 0) then
+                error_msg = 'only character(len=N) declarations are supported'
+                return
+            end if
+            if (trim(length_text) == ':' .or. trim(length_text) == '*') then
+                character_length = -1
+                call set_empty(error_msg)
+                return
+            end if
+            read (length_text, *, iostat=io_stat) character_length
+            if (io_stat /= 0 .or. character_length <= 0) then
+                error_msg = 'only character(len=N) declarations are supported'
+                return
+            end if
+            call set_empty(error_msg)
             return
         end if
 

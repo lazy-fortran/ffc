@@ -237,6 +237,15 @@
                     call lower_allocate_scalar(symbol_index, context, error_msg)
                     return
                 end if
+                ! allocate(p) for a scalar POINTER: give the pointer fresh
+                ! heap storage and mark it associated (F2018 9.7.1.1).
+                if (context%symbols(symbol_index)%is_pointer .and. &
+                    .not. context%symbols(symbol_index)%is_array) then
+                    call lower_allocate_scalar(symbol_index, context, error_msg)
+                    if (len_trim(error_msg) == 0) &
+                        context%symbols(symbol_index)%is_associated = .true.
+                    return
+                end if
             end if
         end if
 
