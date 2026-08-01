@@ -1624,7 +1624,6 @@ implied_do_loops40.f90 # owner=lazy-fortran/ffc#459; reason=lower typed array co
 implied_do_loops41.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 implied_do_loops42.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 implied_do_loops43.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
-implied_do_loops4.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 implied_do_loops5.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 implied_do_loops6.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 implied_do_loops7.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -2486,7 +2485,6 @@ optional_07.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar proc
 optional_08.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 optional_09.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 optional_10.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
-optional_11.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 optional_12.f90 # owner=lazy-fortran/ffc#344; reason=make overlapping array assignment alias-safe
 optional_13.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 parameter_01.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants

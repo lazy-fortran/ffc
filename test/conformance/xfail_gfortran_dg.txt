@@ -640,7 +640,6 @@ direct_io_5.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IO
 direct_io_6.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 direct_io_7.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 direct_io_8.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
-do_check_14.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 do_check_15.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 do_check_17.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 do_check_7.f90 # owner=lazy-fortran/ffc#448; reason=validate and lower the scalar procedure call
@@ -1520,7 +1519,6 @@ pr69739.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar express
 pr70040.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 pr70409.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 pr70673.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-pr70673_2.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 pr71085.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 pr71764.f90 # owner=lazy-fortran/ffc#454; reason=lower ISO C pointer round-trips
 pr77420_4.f90 # scope=harness; reason=requires a companion module outside this suite invocation
@@ -1579,7 +1577,6 @@ pr90344.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length chara
 pr91553.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 pr91566.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 pr91577.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-pr91660_2.f90 # owner=lazy-fortran/ffc#390; reason=reject the malformed derived type specification
 pr91661.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 pr91784.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 pr91862.f90 # owner=lazy-fortran/ffc#459; reason=lower typed array constructors

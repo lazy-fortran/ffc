@@ -277,7 +277,6 @@ use_rename_11.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE expor
 use_rename_5.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 used_types_23.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved and use-before-definition symbols
 used_types_25.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
-value_3.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
 value_5.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
 volatile14.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 whole_file_16.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
