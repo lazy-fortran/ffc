@@ -959,6 +959,453 @@ contains
             '    dest[len] = ''\0'';'//NL
         text = text// &
             '}'//NL
+        text = text//NL
+        text = text// &
+            '/* ---- Descriptor storage allocation (issue #428) ----------- */'//NL
+        text = text//NL
+        text = text// &
+            '/* Allocatable arrays and deferred-length characters used to'//NL
+        text = text// &
+            ' * reach malloc() and free() directly from emitted code, which'//NL
+        text = text// &
+            ' * meant every size computation, every overflow check, and every'//NL
+        text = text// &
+            ' * ownership decision was open-coded at each site. These helpers'//NL
+        text = text// &
+            ' * own that instead: the compiler still decides shape and type,'//NL
+        text = text// &
+            ' * the runtime decides whether a size is representable, whether'//NL
+        text = text// &
+            ' * a pointer may be released, and what the status is.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Sizes arrive as a separate element count and element size, not'//NL
+        text = text// &
+            ' * as a product, so the multiplication that can overflow happens'//NL
+        text = text// &
+            ' * here, once, where it is checked. A count of zero is a valid'//NL
+        text = text// &
+            ' * request: Fortran allows a zero-sized array, and the result is'//NL
+        text = text// &
+            ' * a non-null pointer that can be released exactly like any'//NL
+        text = text// &
+            ' * other.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Status codes are stable, and follow the IOSTAT ranges:'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' *   0                        success'//NL
+        text = text// &
+            ' *   FFC_ALLOC_NEGATIVE       negative count or element size'//NL
+        text = text// &
+            ' *   FFC_ALLOC_OVERFLOW       count * element size is not'//NL
+        text = text// &
+            ' *                            representable'//NL
+        text = text// &
+            ' *   FFC_ALLOC_NOMEM          the allocator refused'//NL
+        text = text// &
+            ' *   FFC_ALLOC_DOUBLE_FREE    release of a pointer that is not'//NL
+        text = text// &
+            ' *                            live'//NL
+        text = text// &
+            ' *   FFC_ALLOC_BORROWED       release of storage the descriptor'//NL
+        text = text// &
+            ' *                            does not own'//NL
+        text = text// &
+            ' */'//NL
+        text = text//NL
+        text = text// &
+            '#include <stdint.h>'//NL
+        text = text// &
+            '#include <string.h>'//NL
+        text = text//NL
+        text = text// &
+            '#define FFC_ALLOC_NEGATIVE 6001'//NL
+        text = text// &
+            '#define FFC_ALLOC_OVERFLOW 6002'//NL
+        text = text// &
+            '#define FFC_ALLOC_NOMEM 6003'//NL
+        text = text// &
+            '#define FFC_ALLOC_DOUBLE_FREE 6004'//NL
+        text = text// &
+            '#define FFC_ALLOC_BORROWED 6005'//NL
+        text = text//NL
+        text = text// &
+            'static int ffc_alloc_last_status = 0;'//NL
+        text = text//NL
+        text = text// &
+            '/* Live allocations handed out by _ffc_alloc, so releasing a'//NL
+        text = text// &
+            ' * pointer twice is reported instead of corrupting the heap.'//NL
+        text = text// &
+            ' * Open addressing, power-of-two capacity, grown before it is'//NL
+        text = text// &
+            ' * half full. Tombstones are not needed: a removed entry is'//NL
+        text = text// &
+            ' * refilled by rehashing its cluster. */'//NL
+        text = text// &
+            'static void **ffc_live;'//NL
+        text = text// &
+            'static size_t ffc_live_cap;'//NL
+        text = text// &
+            'static size_t ffc_live_count;'//NL
+        text = text//NL
+        text = text// &
+            'static size_t ffc_live_slot(void **table, size_t cap, void *p) {'//NL
+        text = text// &
+            '    size_t mask = cap - 1;'//NL
+        text = text// &
+            '    size_t i = (size_t)((uintptr_t)p >> 4) & mask;'//NL
+        text = text// &
+            '    while (table[i] != NULL && table[i] != p) {'//NL
+        text = text// &
+            '        i = (i + 1) & mask;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return i;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'static int ffc_live_grow(void) {'//NL
+        text = text// &
+            '    size_t new_cap = ffc_live_cap ? ffc_live_cap * 2 : 64;'//NL
+        text = text// &
+            '    void **fresh = calloc(new_cap, sizeof(*fresh));'//NL
+        text = text// &
+            '    size_t i;'//NL
+        text = text// &
+            '    if (fresh == NULL) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    for (i = 0; i < ffc_live_cap; i++) {'//NL
+        text = text// &
+            '        if (ffc_live[i] != NULL) {'//NL
+        text = text// &
+            '            fresh[ffc_live_slot(fresh, new_cap, ffc_live[i])]'//NL
+        text = text// &
+            '                = ffc_live[i];'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    free(ffc_live);'//NL
+        text = text// &
+            '    ffc_live = fresh;'//NL
+        text = text// &
+            '    ffc_live_cap = new_cap;'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'static int ffc_live_add(void *p) {'//NL
+        text = text// &
+            '    if (ffc_live_count * 2 + 1 >= ffc_live_cap) {'//NL
+        text = text// &
+            '        if (ffc_live_grow() != 0) {'//NL
+        text = text// &
+            '            return -1;'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_live[ffc_live_slot(ffc_live, ffc_live_cap, p)] = p;'//NL
+        text = text// &
+            '    ffc_live_count++;'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Removes p and rehashes the rest of its cluster, so lookups'//NL
+        text = text// &
+            ' * that probed past p still find their entries. */'//NL
+        text = text// &
+            'static int ffc_live_remove(void *p) {'//NL
+        text = text// &
+            '    size_t i, j, mask;'//NL
+        text = text// &
+            '    if (ffc_live_cap == 0) {'//NL
+        text = text// &
+            '        return 0;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    mask = ffc_live_cap - 1;'//NL
+        text = text// &
+            '    i = ffc_live_slot(ffc_live, ffc_live_cap, p);'//NL
+        text = text// &
+            '    if (ffc_live[i] != p) {'//NL
+        text = text// &
+            '        return 0;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_live[i] = NULL;'//NL
+        text = text// &
+            '    ffc_live_count--;'//NL
+        text = text// &
+            '    j = (i + 1) & mask;'//NL
+        text = text// &
+            '    while (ffc_live[j] != NULL) {'//NL
+        text = text// &
+            '        void *moved = ffc_live[j];'//NL
+        text = text// &
+            '        ffc_live[j] = NULL;'//NL
+        text = text// &
+            '        ffc_live_count--;'//NL
+        text = text// &
+            '        ffc_live_add(moved);'//NL
+        text = text// &
+            '        j = (j + 1) & mask;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return 1;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Status of the most recent allocation operation. */'//NL
+        text = text// &
+            'int _ffc_alloc_status(void) {'//NL
+        text = text// &
+            '    return ffc_alloc_last_status;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* count elements of elem_size bytes each. Returns NULL and sets'//NL
+        text = text// &
+            ' * the status on any rejected request. */'//NL
+        text = text// &
+            'void *_ffc_alloc(long long count, long long elem_size) {'//NL
+        text = text// &
+            '    size_t bytes;'//NL
+        text = text// &
+            '    void *p;'//NL
+        text = text// &
+            '    if (count < 0 || elem_size < 0) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NEGATIVE;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (elem_size != 0 &&'//NL
+        text = text// &
+            '        count > (long long)(SIZE_MAX / 2)'//NL
+        text = text// &
+            '                    / elem_size) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_OVERFLOW;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    bytes = (size_t)(count * elem_size);'//NL
+        text = text// &
+            '    /* A zero-sized array still needs a releasable pointer. */'//NL
+        text = text// &
+            '    p = malloc(bytes != 0 ? bytes : 1);'//NL
+        text = text// &
+            '    if (p == NULL) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NOMEM;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (ffc_live_add(p) != 0) {'//NL
+        text = text// &
+            '        free(p);'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NOMEM;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_alloc_last_status = 0;'//NL
+        text = text// &
+            '    return p;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Like _ffc_alloc, with the storage zeroed. An allocatable'//NL
+        text = text// &
+            ' * array of a derived element type needs this: every element''s'//NL
+        text = text// &
+            ' * inline component descriptors must start null. */'//NL
+        text = text// &
+            'void *_ffc_calloc(long long count, long long elem_size) {'//NL
+        text = text// &
+            '    void *p = _ffc_alloc(count, elem_size);'//NL
+        text = text// &
+            '    if (p == NULL) {'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (count > 0 && elem_size > 0) {'//NL
+        text = text// &
+            '        memset(p, 0, (size_t)(count * elem_size));'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return p;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Resizes an allocation, keeping min(old, new) bytes. old may'//NL
+        text = text// &
+            ' * be NULL, which makes this a plain allocation. On failure the'//NL
+        text = text// &
+            ' * old pointer is still live and unchanged. */'//NL
+        text = text// &
+            'void *_ffc_realloc(void *old, long long count,'//NL
+        text = text// &
+            '                   long long elem_size) {'//NL
+        text = text// &
+            '    size_t bytes;'//NL
+        text = text// &
+            '    void *p;'//NL
+        text = text// &
+            '    if (old == NULL) {'//NL
+        text = text// &
+            '        return _ffc_alloc(count, elem_size);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (count < 0 || elem_size < 0) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NEGATIVE;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (elem_size != 0 &&'//NL
+        text = text// &
+            '        count > (long long)(SIZE_MAX / 2)'//NL
+        text = text// &
+            '                    / elem_size) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_OVERFLOW;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    /* Drop the old key before realloc, which may free it: a'//NL
+        text = text// &
+            '     * freed pointer must not be read again, even as a hash'//NL
+        text = text// &
+            '     * key. A failed realloc leaves it valid, so it goes back. */'//NL
+        text = text// &
+            '    if (!ffc_live_remove(old)) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_DOUBLE_FREE;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    bytes = (size_t)(count * elem_size);'//NL
+        text = text// &
+            '    p = realloc(old, bytes != 0 ? bytes : 1);'//NL
+        text = text// &
+            '    if (p == NULL) {'//NL
+        text = text// &
+            '        ffc_live_add(old);'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NOMEM;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (ffc_live_add(p) != 0) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_NOMEM;'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_alloc_last_status = 0;'//NL
+        text = text// &
+            '    return p;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Releases storage. owns is the descriptor''s ownership flag: a'//NL
+        text = text// &
+            ' * borrowed descriptor, such as a section view or a dummy'//NL
+        text = text// &
+            ' * argument, never frees, and says so rather than doing nothing'//NL
+        text = text// &
+            ' * silently.'//NL
+        text = text// &
+            ' *'//NL
+        text = text// &
+            ' * Releasing a null pointer succeeds, matching Fortran''s'//NL
+        text = text// &
+            ' * deallocate of an unallocated variable and free(NULL). */'//NL
+        text = text// &
+            'int _ffc_dealloc(void *p, int owns) {'//NL
+        text = text// &
+            '    if (p == NULL) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = 0;'//NL
+        text = text// &
+            '        return 0;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (!owns) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_BORROWED;'//NL
+        text = text// &
+            '        return FFC_ALLOC_BORROWED;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (!ffc_live_remove(p)) {'//NL
+        text = text// &
+            '        ffc_alloc_last_status = FFC_ALLOC_DOUBLE_FREE;'//NL
+        text = text// &
+            '        return FFC_ALLOC_DOUBLE_FREE;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    free(p);'//NL
+        text = text// &
+            '    ffc_alloc_last_status = 0;'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
     end subroutine ffc_runtime_source_text
 
 end module ffc_runtime_source
