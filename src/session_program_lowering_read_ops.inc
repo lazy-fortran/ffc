@@ -45,9 +45,11 @@
         ! Field widths are not enforced; whitespace- and newline-separated
         ! records read correctly, which covers the formatted-read corpus.
         if (allocated(node%format_spec)) then
-            call check_read_format_supported(node%format_spec, node%line, &
-                                             node%column, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (.not. format_has_al_descriptor(node%format_spec)) then
+                call check_read_format_supported(node%format_spec, node%line, &
+                                                 node%column, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         end if
         call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
         if (len_trim(error_msg) > 0) then
@@ -55,6 +57,12 @@
             call unsupported_feature_error('read from file unit', node%line, &
                 node%column, 'unit not opened in same scope (#247)', error_msg)
             return
+        end if
+        if (allocated(node%format_spec)) then
+            if (format_has_al_descriptor(node%format_spec)) then
+                call lower_read_file_al(arena, node, fp, context, error_msg)
+                return
+            end if
         end if
         if (.not. allocated(node%var_indices)) then
             call store_read_iostat_success(node, context, error_msg)
@@ -131,15 +139,18 @@
                                   error_msg)
     end subroutine store_read_iostat_success
 
-    subroutine store_read_iostat_from_eof(node, fp, context, error_msg)
+    subroutine store_read_iostat_from_eof(node, fp, context, error_msg, ok_value)
         ! Map end-of-file to a Fortran iostat: feof(fp) == 0 -> 0 (success),
         ! otherwise -1 (end-of-file), matching gfortran's iostat_end.
+        ! ok_value overrides the success code, so a fixed-width field error
+        ! detected before end-of-file still reaches the iostat= target.
         use liric_session_complex_print_bindings, only: emit_extern_i32_call
         type(read_statement_node), intent(in) :: node
         type(lr_operand_desc_t), intent(in) :: fp
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: ok, eof_flag, fp_arg(1)
+        type(lr_operand_desc_t), intent(in), optional :: ok_value
+        type(lr_operand_desc_t) :: ok, eof_flag, fp_arg(1), success_code
         integer(c_int32_t) :: ok_blk, eof_blk, done_blk
         integer :: sym
 
@@ -162,9 +173,9 @@
                                      error_msg)) return
 
         if (.not. set_liric_block(context%session, ok_blk, error_msg)) return
-        call assign_i32_to_symbol(context, sym, &
-                                  i32_immediate(context%session, 0_c_int64_t), &
-                                  error_msg)
+        success_code = i32_immediate(context%session, 0_c_int64_t)
+        if (present(ok_value)) success_code = ok_value
+        call assign_i32_to_symbol(context, sym, success_code, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
 
