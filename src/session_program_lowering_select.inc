@@ -830,6 +830,13 @@
             error_msg = 'select type selector was not declared: '//trim(sel_name)
             return
         end if
+        ! A class(t) scalar bound to a class descriptor carries its dynamic type
+        ! at run time (#417), so the live arm is chosen from that identity.
+        if (select_type_selector_is_runtime_polymorphic(context, sel_index)) then
+            call lower_select_type_runtime(arena, node_index, sel_index, &
+                                           assoc_name, context, error_msg)
+            return
+        end if
         ! A monomorphic declared-type selector (class(t) dummy/local lowered as
         ! type(t)) resolves statically: the dynamic type is the declared type.
         if (select_type_selector_is_monomorphic(context, sel_index)) then
