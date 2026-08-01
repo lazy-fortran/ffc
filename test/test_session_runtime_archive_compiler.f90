@@ -8,8 +8,11 @@
 !
 ! It also pins the selection contract: `default` selects the copy-patch
 ! artifact, a missing archive and a backend-mismatched archive each report the
-! exact backend, and an unset FFC_RUNTIME_ARCHIVE_DIR preserves the inline
-! runtime path.
+! exact backend, and a blank artifact directory is an error.
+!
+! #565 removed the FFC_RUNTIME_ARCHIVE_DIR opt-in and the inline-runtime path
+! it used to fall back to, so the directory is now an explicit argument and
+! every failure to install a requested archive is loud.
 program test_session_runtime_archive_compiler
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
         destroy, lr_session_config_t, lr_operand_desc_t, emit_i32_call, &
@@ -19,25 +22,8 @@ program test_session_runtime_archive_compiler
         effective_archive_backend, &
         LR_SESSION_BACKEND_DEFAULT, LR_SESSION_BACKEND_ISEL, &
         LR_SESSION_BACKEND_COPY_PATCH
-    use, intrinsic :: iso_c_binding, only: c_int, c_char
+    use, intrinsic :: iso_c_binding, only: c_int
     implicit none
-
-    interface
-        function setenv_c(name, value, overwrite) result(status) &
-            bind(c, name='setenv')
-            import :: c_char, c_int
-            character(kind=c_char), intent(in) :: name(*)
-            character(kind=c_char), intent(in) :: value(*)
-            integer(c_int), value :: overwrite
-            integer(c_int) :: status
-        end function setenv_c
-
-        function unsetenv_c(name) result(status) bind(c, name='unsetenv')
-            import :: c_char, c_int
-            character(kind=c_char), intent(in) :: name(*)
-            integer(c_int) :: status
-        end function unsetenv_c
-    end interface
 
     character(len=*), parameter :: build_dir = '/tmp/ffc_runtime_376_build'
     character(len=*), parameter :: artifact_root = build_dir//'/artifacts'
@@ -57,7 +43,7 @@ program test_session_runtime_archive_compiler
         call check_missing_archive(failures)
         call check_backend_mismatch(failures)
     end if
-    call check_unset_preserves_inline_path(failures)
+    call check_blank_directory_is_an_error(failures)
 
     if (failures /= 0) then
         print *, 'FAIL: ', failures, ' runtime archive check(s) failed'
@@ -138,7 +124,6 @@ contains
         character(len=*), parameter :: exe = '/tmp/ffc_runtime_376_probe'
         integer :: stat
 
-        call set_archive_dir(artifact_root)
         config = lr_session_config_t()
         config%backend = backend
 
@@ -149,8 +134,8 @@ contains
             return
         end if
 
-        if (.not. install_runtime_archive(session, backend, 'host', &
-                                          error_msg)) then
+        if (.not. install_runtime_archive(session, artifact_root, backend, &
+                                          'host', error_msg)) then
             print *, 'FAIL: ', label, ' archive install: ', trim(error_msg)
             call destroy(session)
             nfail = nfail + 1
@@ -201,7 +186,6 @@ contains
         type(lr_session_config_t) :: config
         character(len=:), allocatable :: error_msg
 
-        call set_archive_dir('/tmp/ffc_runtime_376_absent')
         config = lr_session_config_t()
         config%backend = LR_SESSION_BACKEND_ISEL
         call liric_session_create(session, error_msg, config)
@@ -210,8 +194,9 @@ contains
             nfail = nfail + 1
             return
         end if
-        if (install_runtime_archive(session, LR_SESSION_BACKEND_ISEL, &
-                                    'host', error_msg)) then
+        if (install_runtime_archive(session, '/tmp/ffc_runtime_376_absent', &
+                                    LR_SESSION_BACKEND_ISEL, 'host', &
+                                    error_msg)) then
             print *, 'FAIL: missing archive was accepted'
             nfail = nfail + 1
         else if (index(error_msg, 'ffc-runtime-v2-isel.lrarch') == 0) then
@@ -242,7 +227,6 @@ contains
             return
         end if
 
-        call set_archive_dir(bad_root)
         config = lr_session_config_t()
         config%backend = LR_SESSION_BACKEND_ISEL
         call liric_session_create(session, error_msg, config)
@@ -251,8 +235,9 @@ contains
             nfail = nfail + 1
             return
         end if
-        if (install_runtime_archive(session, LR_SESSION_BACKEND_ISEL, &
-                                    'host', error_msg)) then
+        if (install_runtime_archive(session, bad_root, &
+                                    LR_SESSION_BACKEND_ISEL, 'host', &
+                                    error_msg)) then
             print *, 'FAIL: backend-mismatched archive was accepted'
             nfail = nfail + 1
         else
@@ -267,51 +252,31 @@ contains
         call run('rm -rf '//bad_root, stat)
     end subroutine check_backend_mismatch
 
-    ! With no archive directory configured, installation is a silent no-op so
-    ! the established inline-runtime lowering path is preserved.
-    subroutine check_unset_preserves_inline_path(nfail)
+    ! A blank artifact directory is a caller error, not a licence to skip
+    ! installation. The opt-out that used to live here is gone (#565).
+    subroutine check_blank_directory_is_an_error(nfail)
         integer, intent(inout) :: nfail
         type(liric_session_t) :: session
         type(lr_session_config_t) :: config
         character(len=:), allocatable :: error_msg
-        integer :: stat
 
-        call run('true', stat)
-        call unset_archive_dir()
         config = lr_session_config_t()
         call liric_session_create(session, error_msg, config)
         if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: session create for unset check'
+            print *, 'FAIL: session create for blank-directory check'
             nfail = nfail + 1
             return
         end if
-        if (.not. install_runtime_archive(session, &
-                                          LR_SESSION_BACKEND_DEFAULT, &
-                                          'host', error_msg)) then
-            print *, 'FAIL: unset archive dir was treated as an error: ', &
-                trim(error_msg)
+        if (install_runtime_archive(session, '   ', &
+                                    LR_SESSION_BACKEND_DEFAULT, 'host', &
+                                    error_msg)) then
+            print *, 'FAIL: a blank archive directory was accepted'
             nfail = nfail + 1
-        else if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: unset archive dir reported ', trim(error_msg)
+        else if (len_trim(error_msg) == 0) then
+            print *, 'FAIL: a blank archive directory failed without a reason'
             nfail = nfail + 1
         end if
         call destroy(session)
-    end subroutine check_unset_preserves_inline_path
-
-    subroutine set_archive_dir(value)
-        character(len=*), intent(in) :: value
-        integer(c_int) :: stat
-
-        stat = setenv_c('FFC_RUNTIME_ARCHIVE_DIR'//achar(0), &
-                        trim(value)//achar(0), 1_c_int)
-        if (stat /= 0) print *, 'WARNING: setenv failed'
-    end subroutine set_archive_dir
-
-    subroutine unset_archive_dir()
-        integer(c_int) :: stat
-
-        stat = unsetenv_c('FFC_RUNTIME_ARCHIVE_DIR'//achar(0))
-        if (stat /= 0) print *, 'WARNING: unsetenv failed'
-    end subroutine unset_archive_dir
+    end subroutine check_blank_directory_is_an_error
 
 end program test_session_runtime_archive_compiler

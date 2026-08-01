@@ -1,6 +1,6 @@
 program test_session_scalar_procedure_call_compiler
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
-                                expect_no_error
+                                expect_exe_has_symbol
     implicit none
 
     logical :: all_passed
@@ -158,6 +158,14 @@ contains
         ! An interface block at host level declares an external procedure whose
         ! body lives in another translation unit (#416), so it lowers to a call
         ! that the linker resolves rather than a "body unavailable" rejection.
+        !
+        ! The artifact that can legitimately carry the unresolved reference is
+        ! an object, so that is what this compiles. Linking the same source
+        ! into an executable on its own fails at the link step, because no
+        ! translation unit defines `missing_body` -- the same outcome gfortran
+        ! gives. That became visible in #565, when every emitted executable
+        ! started going through the system linker; before it, ffc produced a
+        ! binary that died with an undefined symbol only when run.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
@@ -169,8 +177,12 @@ contains
             '  stop missing_body(1)'//new_line('a')// &
             'end program main'
 
-        test_host_interface_is_external = expect_no_error( &
-            source, '/tmp/ffc_session_scalar_proc_missing')
+        test_host_interface_is_external = expect_exe_has_symbol( &
+            source, '/tmp/ffc_session_scalar_proc_missing.o', 'missing_body')
+        if (.not. test_host_interface_is_external) return
+        test_host_interface_is_external = expect_error_contains( &
+            source, 'linker failed', &
+            '/tmp/ffc_session_scalar_proc_missing')
     end function test_host_interface_is_external
 
 end program test_session_scalar_procedure_call_compiler

@@ -5,10 +5,13 @@
 ! archives themselves are produced by runtime/CMakeLists.txt (#374); see
 ! docs/RUNTIME_ABI.md for the artifact names and the archive header format.
 !
-! Selection is opt-in: with FFC_RUNTIME_ARCHIVE_DIR unset or blank, nothing is
-! installed and the established inline-runtime lowering path is preserved
-! exactly. A configured directory is strict: a missing archive, or one built
-! for a different backend or target, is an error rather than a fallback.
+! Selection is strict and unconditional: the caller names the artifact
+! directory, and a missing archive, or one built for a different backend or
+! target, is an error rather than a fallback. #565 removed the environment
+! variable that used to make this opt-in, along with the inline-runtime path
+! it fell back to; ffc now links its runtime into every executable it emits
+! (see ffc_runtime_link), and this facility serves sessions that must resolve
+! runtime calls without a system linker.
 module liric_session_runtime_bindings
     use liric_session_common, only: liric_session_t, lr_error_t, LR_OK, &
         status_ok, require_open_session, set_empty
@@ -210,36 +213,33 @@ contains
         end if
     end function backend_label
 
-    ! Installs the archive matching `backend` and `target` into `session`.
-    ! Returns .true. and leaves error_msg empty when no archive directory is
-    ! configured: that preserves the inline-runtime path unchanged.
-    logical function install_runtime_archive(session, backend, target, &
-                                             error_msg) result(ok)
+    ! Installs the archive matching `backend` and `target` into `session`,
+    ! reading it from `directory`.
+    !
+    ! The directory is an explicit argument, with no environment variable
+    ! behind it. #565 retired the opt-in form of this call: a caller either
+    ! installs an archive or it does not, and every failure to install a
+    ! requested archive is an error. Nothing falls back to synthesising the
+    ! runtime entry points inline. Executables emitted by ffc get their
+    ! runtime by static link instead (see ffc_runtime_link); this facility
+    ! remains for sessions that resolve runtime calls without a system linker.
+    logical function install_runtime_archive(session, directory, backend, &
+                                             target, error_msg) result(ok)
         type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: directory
         integer(c_int), intent(in) :: backend
         character(len=*), intent(in) :: target
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: directory
         character(len=:), allocatable :: path
         integer(c_int8_t), allocatable, target :: bytes(:)
         type(lr_error_t) :: error
         integer(c_int) :: status
-        integer :: length, ios
 
         ok = .false.
         call set_empty(error_msg)
 
-        call get_environment_variable('FFC_RUNTIME_ARCHIVE_DIR', &
-                                      length=length, status=ios)
-        if (ios /= 0 .or. length <= 0) then
-            ! Unset configuration: keep the inline-runtime path.
-            ok = .true.
-            return
-        end if
-        allocate (character(len=length) :: directory)
-        call get_environment_variable('FFC_RUNTIME_ARCHIVE_DIR', directory)
         if (len_trim(directory) == 0) then
-            ok = .true.
+            error_msg = 'no runtime archive directory was given'
             return
         end if
 

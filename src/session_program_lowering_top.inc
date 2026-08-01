@@ -67,15 +67,11 @@
         if (present(opt_level)) session_config%opt_level = int(opt_level, c_int)
         call liric_session_create(context%session, error_msg, session_config)
         if (len_trim(error_msg) > 0) return
-        ! Install the runtime archive matching this backend and target before
-        ! any runtime call is lowered (#376). With no archive directory
-        ! configured this is a no-op and the inline-runtime path is kept.
-        if (.not. install_runtime_archive(context%session, &
-                                          session_config%backend, &
-                                          'host', error_msg)) then
-            call destroy(context%session)
-            return
-        end if
+        ! The runtime reaches an emitted executable by being linked into it
+        ! (see emit_executable_output and ffc_runtime_link, #565), not by
+        ! installing a separately built archive into the session. Nothing is
+        ! configured here, so there is no unset-configuration case and no
+        ! inline-runtime fallback to fall into.
         allocate(context%symbols(16))
         allocate(context%derived_types(8))
         allocate(context%module_exports(4))
@@ -548,15 +544,34 @@
         character(len=*), intent(in) :: output_path
         character(len=*), intent(in), optional :: link_objects(:)
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, parameter :: PATH_BUFFER_LEN = 4096
+        character(len=:), allocatable :: runtime_input
+        character(len=PATH_BUFFER_LEN), allocatable :: inputs(:)
+        integer :: n, i
 
-        if (present(link_objects)) then
-            if (size(link_objects) > 0) then
-                ok = finish_and_emit_exe_objects(session, output_path, &
-                                                 link_objects, error_msg)
-                return
-            end if
+        ok = .false.
+        ! Every emitted executable is linked against the ffc runtime, so a
+        ! lowered runtime call always resolves. There is no unlinked variant
+        ! and no inline fallback: when the runtime cannot be provided, this
+        ! fails by name (#565).
+        call ffc_runtime_link_input(runtime_input, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (len_trim(runtime_input) > PATH_BUFFER_LEN) then
+            error_msg = 'ffc runtime link input path is too long: '// &
+                runtime_input
+            return
         end if
-        ok = finish_and_emit_exe(session, output_path, error_msg)
+
+        n = 0
+        if (present(link_objects)) n = size(link_objects)
+        allocate (inputs(n + 1))
+        do i = 1, n
+            inputs(i) = link_objects(i)
+        end do
+        inputs(n + 1) = runtime_input
+
+        ok = finish_and_emit_exe_objects(session, output_path, inputs, &
+                                         error_msg)
     end function emit_executable_output
     subroutine validate_program(arena, root_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
