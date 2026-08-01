@@ -1672,7 +1672,6 @@ intent_out_struct_member_no_dealloc.f90 # owner=lazy-fortran/ffc#449; reason=low
 interface_01.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_03.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 interface_04.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
-interface_05.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_07.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 interface_09.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_11.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
@@ -2148,7 +2147,6 @@ lbound_01.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expr
 lbound_02.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 legacy_array_sections_02.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 legacy_array_sections_04.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-legacy_array_sections_05.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 legacy_array_sections_06.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 legacy_array_sections_07.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 legacy_array_sections_08.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
@@ -2909,7 +2907,6 @@ separate_compilation_13.f90 # owner=lazy-fortran/ffc#328; reason=map USE binding
 separate_compilation_15a.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 separate_compilation_15.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 separate_compilation_16b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
-separate_compilation_16.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
 separate_compilation_17b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 separate_compilation_17.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 separate_compilation_18b.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
