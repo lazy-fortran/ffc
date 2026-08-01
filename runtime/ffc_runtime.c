@@ -48,7 +48,9 @@ int _ffc_runtime_probe(void) {
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#define FFC_PATH_MAX 4096
 #define FFC_UNIT_MIN 0
 #define FFC_UNIT_MAX 2048
 #define FFC_NEWUNIT_FIRST 1000
@@ -147,27 +149,45 @@ static FILE *ffc_unit_fopen(const char *path,
  * than a silent reconnection, so a leaked unit surfaces where it
  * happens. */
 int _ffc_unit_open(int unit, const char *path,
-                   const char *status) {
+                   int path_len, const char *status) {
     FILE *fp;
+    char name[FFC_PATH_MAX];
+    int n;
     if (!ffc_unit_valid(unit)) {
         return ffc_unit_fail(FFC_IOSTAT_BADUNIT);
     }
     if (ffc_units[unit].connected) {
         return ffc_unit_fail(FFC_IOSTAT_INUSE);
     }
+    /* FILE= carries the whole declared width of a Fortran
+     * character value, so trailing blanks are padding and never
+     * part of the file name. */
+    n = path == NULL ? 0 : path_len;
+    if (n < 0) {
+        n = 0;
+    }
+    if (n > (int)sizeof(name) - 1) {
+        n = (int)sizeof(name) - 1;
+    }
+    while (n > 0 &&
+           (path[n - 1] == ' ' || path[n - 1] == '\0')) {
+        n--;
+    }
+    if (n > 0) {
+        memcpy(name, path, (size_t)n);
+    }
+    name[n] = '\0';
     /* OPEN on a preconnected unit without FILE= reconfigures
      * that connection rather than replacing it, so unit 6 keeps
      * writing to standard output. */
-    if ((path == NULL || path[0] == '\0') &&
-        ffc_unit_standard(unit)) {
+    if (n == 0 && ffc_unit_standard(unit)) {
         ffc_unit_last_status = 0;
         return 0;
     }
-    if (path == NULL || path[0] == '\0' ||
-        ffc_streq(status, "scratch")) {
+    if (n == 0 || ffc_streq(status, "scratch")) {
         fp = tmpfile();
     } else {
-        fp = ffc_unit_fopen(path, status);
+        fp = ffc_unit_fopen(name, status);
     }
     if (fp == NULL) {
         return ffc_unit_fail(FFC_IOSTAT_OPEN);
