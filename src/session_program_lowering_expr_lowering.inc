@@ -343,6 +343,14 @@
             return
         end if
 
+        ! An integer derived-type component read (v%k, v%part%k) in a real
+        ! expression is an integer subexpression and needs the same int->real
+        ! coercion as an integer scalar identifier.
+        if (is_integer_component_access(arena, node_index, context)) then
+            is_int = .true.
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bl, br, &
                                     blin, bcol, id_err)
@@ -351,6 +359,34 @@
                      is_integer_operand(arena, br, context)
         end if
     end function is_integer_operand
+
+    ! True when the node is a scalar derived-type component read whose
+    ! component is integer-valued. Allocatable, pointer and array components
+    ! keep their own lowering paths and are excluded.
+    logical function is_integer_component_access(arena, node_index, context) &
+        result(is_int)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: type_index, comp_index
+
+        is_int = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (acc => arena%entries(node_index)%node)
+        type is (component_access_node)
+            ! A base that is not a declared derived value (a complex %re/%im
+            ! access, for instance) has no integer component to read.
+            type_index = component_base_type_index(arena, acc%base_expr_index, &
+                                                   context)
+            if (type_index <= 0) return
+            comp_index = find_derived_component(context, type_index, &
+                                                acc%component_name)
+            if (comp_index <= 0) return
+            if (component_is_allocatable(context, type_index, comp_index)) return
+            if (component_is_indirect(context, type_index, comp_index)) return
+            is_int = component_kind(context, type_index, comp_index) == VALUE_I32
+        end select
+    end function is_integer_component_access
 
     recursive subroutine lower_f32_expression(arena, node_index, context, &
                                               value, error_msg)
@@ -465,6 +501,11 @@
                     .true., value, matched, error_msg)
                 if (matched .or. len_trim(error_msg) > 0) return
             end block
+            if (is_integer_component_access(arena, node_index, context)) then
+                call lower_f32_operand(arena, node_index, context, value, &
+                                       error_msg)
+                return
+            end if
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real(4) expressions'
@@ -821,6 +862,11 @@
                     .false., value, matched, error_msg)
                 if (matched .or. len_trim(error_msg) > 0) return
             end block
+            if (is_integer_component_access(arena, node_index, context)) then
+                call lower_f64_operand(arena, node_index, context, value, &
+                                       error_msg)
+                return
+            end if
             call lower_derived_component_load(arena, node, context, value, error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real expressions'
