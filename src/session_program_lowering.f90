@@ -1853,6 +1853,7 @@ contains
     include 'session_program_lowering_cmp_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
+    include 'session_program_lowering_read_al.inc'
     include 'session_program_lowering_print_ops.inc'
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
