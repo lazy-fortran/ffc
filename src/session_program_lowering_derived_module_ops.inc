@@ -557,6 +557,7 @@
         if (present(force)) forced = force
         if (.not. allocated(proc%name)) return
         if (len_trim(proc%name) == 0) return
+        if (.not. proc%callable) return
         if (forced) then
             local_name = trim(proc%name)
             imported = .true.

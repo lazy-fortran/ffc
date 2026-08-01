@@ -3301,7 +3301,6 @@ submodule_04.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces 
 submodule_02.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 while_07.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 intrinsics_399.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-associate_18.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 program_cmake_02.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
 array_section_09.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views

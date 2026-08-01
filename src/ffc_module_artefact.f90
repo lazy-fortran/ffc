@@ -77,9 +77,9 @@ module ffc_module_artefact
     ! A module procedure exported for separate compilation: its Fortran name,
     ! result kind ('integer' for an integer function, 'subroutine' for a
     ! subroutine), argument count, and the space-joined per-argument scalar-kind
-    ! tokens (e.g. "integer real"). Only procedures whose arguments are all
-    ! supported by-reference scalars are recorded, so a using unit can call them
-    ! by reference and link against the module object (#284).
+    ! tokens (e.g. "integer real"). Unsupported procedures are also recorded
+    ! with callable=false so a using unit can validate USE ONLY without
+    ! pretending that ffc can lower a call to them (#584).
     type :: fmod_procedure_t
         character(len=:), allocatable :: name
         character(len=:), allocatable :: kind
@@ -104,6 +104,9 @@ module ffc_module_artefact
         ! call resolves one by the declared ranks (#415).
         character(len=:), allocatable :: arg_ranks
         character(len=:), allocatable :: arg_extents
+        ! False means the export is known to exist but its call ABI is outside
+        ! the direct-session backend. It remains visible to USE validation.
+        logical :: callable = .true.
         ! True when this module's interface declares the procedure and a
         ! submodule supplies its body. The symbol and call contract are the
         ! same either way; a separately compiled submodule reads the interface
@@ -221,6 +224,8 @@ contains
                     field(info%procedures(i)%arg_ranks)//'"'
                 write (unit, '(A)') 'arg_extents = "'// &
                     field(info%procedures(i)%arg_extents)//'"'
+                write (unit, '(A)') 'callable = '// &
+                    bool_text(info%procedures(i)%callable)
                 write (unit, '(A)') 'deferred_body = '// &
                     bool_text(info%procedures(i)%deferred_body)
             end do
@@ -326,6 +331,7 @@ contains
                 procs(nproc)%result_kind = ''
                 procs(nproc)%arg_ranks = ''
                 procs(nproc)%arg_extents = ''
+                procs(nproc)%callable = .true.
                 procs(nproc)%deferred_body = .false.
                 procs(nproc)%nargs = 0
                 cycle
@@ -394,6 +400,8 @@ contains
                 if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
                 if (key == 'arg_extents') &
                     procs(nproc)%arg_extents = unquote(val)
+                if (key == 'callable') &
+                    procs(nproc)%callable = unquote(val) == '1'
                 if (key == 'deferred_body') &
                     procs(nproc)%deferred_body = unquote(val) == '1'
                 if (key == 'nargs') then

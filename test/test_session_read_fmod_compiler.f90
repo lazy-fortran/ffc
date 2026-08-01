@@ -17,6 +17,8 @@ program test_session_read_fmod_compiler
     if (.not. test_use_module_fmod_rejects_unknown_only()) all_passed = .false.
     if (.not. test_use_module_fmod_not_found_errors()) all_passed = .false.
     if (.not. test_use_module_variable_from_fmod()) all_passed = .false.
+    if (.not. test_fmod_preserves_unsupported_public_procedure()) &
+        all_passed = .false.
     if (.not. test_fmod_optional_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
@@ -257,6 +259,38 @@ contains
         end if
         ok = .true.
     end function test_use_module_variable_from_fmod
+
+    logical function test_fmod_preserves_unsupported_public_procedure() result(ok)
+        ! A public procedure remains a valid USE ONLY export even when its
+        ! derived-type call ABI is not yet supported by the direct backend.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod584_export'
+        character(len=*), parameter :: log_path = dir//'/log'
+        integer :: status
+
+        ok = .false.
+        status = run_separate_compilation(dir, &
+            'module fmod584_export'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: token'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
+            '  end type token'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(value)'//new_line('a')// &
+            '    type(token), intent(in) :: value'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end module fmod584_export', &
+            'program main'//new_line('a')// &
+            '  use fmod584_export, only: inspect'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main', log_path)
+        if (status /= 100) then
+            print *, 'FAIL: unsupported public procedure export, status ', status
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_preserves_unsupported_public_procedure
 
     subroutine write_rename_matrix_fmod(dir, error_msg)
         ! A module exporting two distinct integer constants, so a rename

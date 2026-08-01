@@ -201,8 +201,10 @@
             do p = 1, size(procs)
                 if (.not. allocated(procs(p)%name)) cycle
                 if (same_name(procs(p)%name, name)) then
-                    found = .true.
-                    exit
+                    if (procs(p)%callable) then
+                        found = .true.
+                        exit
+                    end if
                 end if
             end do
         end if
@@ -350,12 +352,39 @@
         integer, intent(inout) :: count
         character(len=:), allocatable :: kind_text, arg_tokens
         character(len=:), allocatable :: rank_tokens, extent_tokens
+        character(len=:), allocatable :: proc_name
         integer :: nargs
 
         call fmod_procedure_signature(arena, context, node_index, mod_node, &
                                       kind_text, nargs, arg_tokens, &
                                       rank_tokens, extent_tokens)
-        if (len_trim(kind_text) == 0) return
+        if (len_trim(kind_text) == 0) then
+            ! The procedure is still a public module export even when its call
+            ! ABI is not supported by the direct session backend. Preserve its
+            ! name in the .fmod so USE ONLY validates against the real module
+            ! interface; the reader will not register a callable external for
+            ! this record (#584).
+            proc_name = procedure_fortran_name(arena, node_index)
+            if (len_trim(proc_name) == 0) return
+            if (module_symbol_is_private(arena, mod_node, proc_name)) return
+            count = count + 1
+            call grow_fmod_procs(procs, count)
+            procs(count)%name = proc_name
+            procs(count)%kind = 'unsupported'
+            procs(count)%arg_kinds = ''
+            procs(count)%arg_names = ''
+            procs(count)%arg_intents = ''
+            procs(count)%arg_optionals = ''
+            procs(count)%arg_values = ''
+            procs(count)%result_name = ''
+            procs(count)%result_kind = ''
+            procs(count)%arg_ranks = ''
+            procs(count)%arg_extents = ''
+            procs(count)%callable = .false.
+            procs(count)%deferred_body = deferred_body
+            procs(count)%nargs = 0
+            return
+        end if
         count = count + 1
         call grow_fmod_procs(procs, count)
         procs(count)%name = procedure_fortran_name(arena, node_index)
@@ -364,6 +393,7 @@
         procs(count)%arg_kinds = arg_tokens
         procs(count)%arg_ranks = rank_tokens
         procs(count)%arg_extents = extent_tokens
+        procs(count)%callable = .true.
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
         procs(count)%deferred_body = deferred_body
         call fmod_procedure_dummy_attributes(arena, node_index, &
