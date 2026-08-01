@@ -1,23 +1,16 @@
     subroutine alloc_runtime_extent_i32(context, sym, extent_i32, error_msg)
-        ! Runtime extent of a rank-1 allocatable read from its descriptor:
-        ! (upper@16 - lower@8 + 1), truncated to i32. Used when the preceding
+        ! Runtime extent of a rank-1 allocatable read straight out of its
+        ! canonical descriptor, truncated to i32. Used when the preceding
         ! allocate sized the array from a non-constant expression.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sym
         type(lr_operand_desc_t), intent(out) :: extent_i32
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: descriptor, lower1, upper1, span, ext64
+        type(lr_operand_desc_t) :: descriptor, ext64
 
         descriptor = context%symbols(sym)%allocatable_descriptor_address
-        if (.not. emit_i64_load_at(context%session, descriptor, 8_c_int64_t, &
-                lower1, error_msg)) return
-        if (.not. emit_i64_load_at(context%session, descriptor, 16_c_int64_t, &
-                upper1, error_msg)) return
-        if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper1, lower1, &
-                span, error_msg)) return
-        if (.not. emit_i64_binary(context%session, LR_OP_ADD, span, &
-                i64_immediate(context%session, 1_c_int64_t), ext64, error_msg)) &
-            return
+        call emit_alloc_desc_load_extent(context, descriptor, 1, ext64, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i64_to_i32(context%session, ext64, extent_i32, &
                 error_msg)) return
         call set_empty(error_msg)

@@ -57,7 +57,8 @@
         end if
 
         if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, 40_c_int64_t), temp_desc, &
+                i64_immediate(context%session, &
+                    int(ALLOC_DESCRIPTOR_BYTES, c_int64_t)), temp_desc, &
                 error_msg)) return
         zero = i64_immediate(context%session, 0_c_int64_t)
         do i = 0, 4

@@ -334,7 +334,8 @@ module session_program_lowering
         ARRAY_DESCRIPTOR_DIM_OFFSET, ARRAY_DIMENSION_BYTES, &
         ARRAY_DIMENSION_LOWER_OFFSET, ARRAY_DIMENSION_EXTENT_OFFSET, &
         ARRAY_DIMENSION_STRIDE_OFFSET, ARRAY_FLAG_ALLOCATED, &
-        ARRAY_FLAG_ASSOCIATED, ARRAY_FLAG_CONTIGUOUS, ARRAY_ELEMENT_INTEGER, &
+        ARRAY_FLAG_ASSOCIATED, ARRAY_FLAG_CONTIGUOUS, ARRAY_FLAG_OWNS_DATA, &
+        ARRAY_ELEMENT_INTEGER, &
         ARRAY_ELEMENT_REAL, ARRAY_ELEMENT_LOGICAL, ARRAY_ELEMENT_COMPLEX, &
         ARRAY_ELEMENT_CHARACTER, ARRAY_ELEMENT_DERIVED
     use ffc_character_descriptor, only: CHARACTER_STORAGE_STATIC, &
@@ -1724,6 +1725,7 @@ contains
     include 'session_program_lowering_arguments.inc'
     include 'session_program_lowering_assumed_shape_extent.inc'
     include 'session_program_lowering_assumed_shape_descriptor.inc'
+    include 'session_program_lowering_alloc_descriptor.inc'
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'
     subroutine lower_function_return(node, context, error_msg)

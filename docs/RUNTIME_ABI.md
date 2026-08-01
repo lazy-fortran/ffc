@@ -50,39 +50,56 @@ is closed with ABI documentation and executable tests.
 
 ### Allocatable array descriptor
 
-The canonical array descriptor for new runtime interfaces is specified in
-`ARRAY_DESCRIPTOR_ABI.md`. Current lowering paths use the following
-representation until their descriptor migration issues land.
+An `integer/real/logical, allocatable :: a(:)` or `a(:,:)` declaration lowers to
+one canonical array descriptor, specified in full by `ARRAY_DESCRIPTOR_ABI.md`
+(#336). The slot is a 200-byte, 8-byte-aligned record on the stack (or in
+static storage for a module variable), zero-initialised at declaration. The
+bespoke 40-byte `{data, lower1, upper1, lower2, upper2}` record it replaces is
+gone; nothing reads or writes those offsets any more.
 
-An `integer/real/logical, allocatable :: a(:)` declaration lowers to a 40-byte,
-8-byte-aligned descriptor on the stack, zero-initialised at declaration. The
-descriptor is element-kind-agnostic; the element kind lives on the symbol and
-drives the per-element byte stride:
+The descriptor records the element size and type code, so it is no longer
+element-kind-agnostic. Element byte size is 4 for `integer`/`real(4)`/`logical`
+and 8 for `real(8)`/`integer(8)`; logical occupies a 4-byte slot, matching the
+fixed-array representation.
 
-```
-struct ffc_alloc_1d {
-    ptr   data;    // offset 0; 0 means unallocated
-    i64   lower1;  // offset 8;  lower bound (1 once allocated)
-    i64   upper1;  // offset 16; upper bound (0 when unallocated)
-    i64   lower2;  // offset 24; rank-2 only (0 for rank-1)
-    i64   upper2;  // offset 32; rank-2 only (0 for rank-1)
-};
-```
+Field access happens only through the helpers in
+`session_program_lowering_alloc_descriptor.inc`, so the byte offsets appear in
+exactly one place.
 
-The element byte stride is 4 for `integer`/`real(4)`/`logical` and 8 for
-`real(8)`/`integer(8)`. Logical occupies a 4-byte slot, matching the fixed-array
-representation.
+The base pointer stays at offset 0, so `base == 0` still marks the array
+unallocated. What changed is that each dimension records
+`(lower_bound, extent, stride_bytes)` rather than `(lower, upper)`. The upper
+bound is not stored: it is recomputed as `lower + extent - 1`, so the shape has
+a single representation.
 
-`data == 0` marks the array unallocated. `allocate(a(N))` (N a literal or
-runtime integer) calls `malloc(N*stride)`, stores the pointer in `data`, sets
-`lower1 = 1` and `upper1 = N`. `deallocate(a)` calls `free(data)` then zeroes
-`data` and `upper1`. `free(NULL)` is a no-op, so deallocating an unallocated
-variable exits cleanly rather than erroring (a deliberate divergence from the
-standard, which makes it a runtime error).
+`allocate(a(N))` (N a literal or runtime integer) calls `malloc(N*element_size)`,
+stores the pointer at offset 0, and writes unit lower bounds, the requested
+extents, and contiguous column-major byte strides
+(`stride(1) = element_size`, `stride(d) = stride(d-1) * extent(d-1)`). It sets
+the allocated, associated, owning, and contiguous flags.
+
+`deallocate(a)` calls `free(base)` then returns the descriptor to the
+unallocated state: null base, cleared flags, zero extents. The element size,
+type, and rank survive, so a deallocated entity still describes what it can
+hold. `free(NULL)` is a no-op, so deallocating an unallocated variable exits
+cleanly rather than erroring (a deliberate divergence from the standard, which
+makes it a runtime error), and a second `deallocate` frees nothing rather than
+handing the same block to the deallocator twice.
+
+`move_alloc(from, to)` copies the whole descriptor record and then clears
+`from`. Ownership travels with the base pointer, so clearing frees nothing.
+
+Because allocatable arrays and assumed-shape dummies now share this one layout,
+an allocatable actual and the dummy it binds to agree on extents, on
+column-major order, and on element addresses by construction rather than by
+two representations happening to match.
+
+Allocatable **components** of a derived type still use their own inline
+`{data, extent}` record and are not part of this migration.
 
 Element access on an allocated 1-D allocatable is supported as an rvalue and an
-assignment target. `a(i)` loads `data` from offset 0 and `lower1` from offset 8
-at runtime, computes the element address as `data + (i - lower1) * stride`, and
+assignment target. `a(i)` loads the base pointer and dimension 1's lower bound
+at runtime, computes the element address as `base + (i - lower1) * stride`, and
 emits a kind-typed load or store. No alloc/free happens inside element loops:
 `allocate` once and index many. Bounds are not checked.
 

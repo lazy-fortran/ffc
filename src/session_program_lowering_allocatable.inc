@@ -945,6 +945,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: m_i32, n_i32, m_i64, n_i64
         type(lr_operand_desc_t) :: total_i64, bytes_i64, data_ptr, descriptor
+        type(lr_operand_desc_t) :: extents_i64(2)
 
         call lower_i32_expression(arena, size_index1, context, m_i32, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -968,21 +969,11 @@
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
                 error_msg)) return
-        ! lower1 = 1 at offset 8
-        if (.not. emit_i64_store_at(context%session, &
-                i64_immediate(context%session, 1_c_int64_t), descriptor, &
-                8_c_int64_t, error_msg)) return
-        ! upper1 = M at offset 16
-        if (.not. emit_i64_store_at(context%session, m_i64, descriptor, &
-                16_c_int64_t, error_msg)) return
-        ! lower2 = 1 at offset 24
-        if (.not. emit_i64_store_at(context%session, &
-                i64_immediate(context%session, 1_c_int64_t), descriptor, &
-                24_c_int64_t, error_msg)) return
-        ! upper2 = N at offset 32
-        if (.not. emit_i64_store_at(context%session, n_i64, descriptor, &
-                32_c_int64_t, error_msg)) return
-        call set_empty(error_msg)
+        ! Unit lower bounds with extents M and N, plus column-major strides.
+        extents_i64(1) = m_i64
+        extents_i64(2) = n_i64
+        call emit_alloc_desc_allocate_shape(context, descriptor, &
+            context%symbols(symbol_index)%value_kind, 2, extents_i64, error_msg)
     end subroutine lower_allocate_i32_2d
 
     subroutine lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
@@ -994,6 +985,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: bytes_i32, bytes_i64, n_i64, data_ptr
         type(lr_operand_desc_t) :: descriptor
+        type(lr_operand_desc_t) :: extents_i64(2)
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, n_i32, &
@@ -1009,12 +1001,9 @@
 
         if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
                 error_msg)) return
-        if (.not. emit_i64_store_at(context%session, &
-                i64_immediate(context%session, 1_c_int64_t), descriptor, &
-                8_c_int64_t, error_msg)) return
-        if (.not. emit_i64_store_at(context%session, n_i64, descriptor, &
-                16_c_int64_t, error_msg)) return
-        call set_empty(error_msg)
+        extents_i64(1) = n_i64
+        call emit_alloc_desc_allocate_shape(context, descriptor, &
+            context%symbols(symbol_index)%value_kind, 1, extents_i64, error_msg)
     end subroutine lower_allocate_i32_1d_operand
 
     subroutine lower_allocatable_constructor_assignment(arena, ctor, symbol_index, &
@@ -1449,18 +1438,13 @@
                 error_msg)) return
         if (.not. emit_free(context%session, data_ptr, error_msg)) return
 
-        zero = i64_immediate(context%session, 0_c_int64_t)
-        if (.not. emit_i64_store_at(context%session, zero, descriptor, &
-                0_c_int64_t, error_msg)) return
-        if (.not. emit_i64_store_at(context%session, zero, descriptor, &
-                16_c_int64_t, error_msg)) return
-        call set_empty(error_msg)
+        call emit_alloc_desc_clear(context, descriptor, error_msg)
     end subroutine lower_deallocate_i32
 
     subroutine lower_move_alloc(arena, arg_indices, context, error_msg)
-        ! move_alloc(from, to): copy descriptor from -> to, null from.
-        ! Copies all five i64 slots (40 bytes); the rank-1 tail is zero and
-        ! stays zero, so this works for both ranks.
+        ! move_alloc(from, to): copy the canonical descriptor from -> to, then
+        ! return from to the unallocated state. The whole record is copied, so
+        ! this works for every rank the descriptor supports.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -1517,20 +1501,19 @@
         to_desc   = context%symbols(to_sym)%allocatable_descriptor_address
         zero = i64_immediate(context%session, 0_c_int64_t)
 
-        ! Copy ptr + four i64 bounds fields from -> to.
-        do k = 0, 4
+        ! Hand the whole descriptor over: base, element metadata, flags, and
+        ! every dimension's lower bound, extent, and stride. Copying only a
+        ! fixed prefix would silently drop the shape.
+        do k = 0, ALLOC_DESCRIPTOR_BYTES/8 - 1
             if (.not. emit_i64_load_at(context%session, from_desc, &
-                    int(k * 8, c_int64_t), val, error_msg)) return
+                    int(k*8, c_int64_t), val, error_msg)) return
             if (.not. emit_i64_store_at(context%session, val, to_desc, &
-                    int(k * 8, c_int64_t), error_msg)) return
+                    int(k*8, c_int64_t), error_msg)) return
         end do
 
-        ! Null the from descriptor.
-        do k = 0, 4
-            if (.not. emit_i64_store_at(context%session, zero, from_desc, &
-                    int(k * 8, c_int64_t), error_msg)) return
-        end do
-        call set_empty(error_msg)
+        ! The source becomes unallocated. Ownership moved with the base
+        ! pointer, so clearing must not free anything.
+        call emit_alloc_desc_clear(context, from_desc, error_msg)
     end subroutine lower_move_alloc
 
     logical function is_allocatable_element_ref(node, context) result(is_ref)
@@ -1633,8 +1616,8 @@
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
             return
-        if (.not. emit_i64_load_at(context%session, descriptor, 8_c_int64_t, &
-                lower1, error_msg)) return
+        call emit_alloc_desc_load_lower(context, descriptor, 1, lower1, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, idx1_i32, idx1_i64, &
                 error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_SUB, idx1_i64, lower1, &
@@ -1644,17 +1627,14 @@
             linear_i64 = offset1_i64
         else
             ! rank == 2: linear = offset1 + extent1 * (j - lower2)
-            if (.not. emit_i64_load_at(context%session, descriptor, 16_c_int64_t, &
-                    upper1, error_msg)) return
-            if (.not. emit_i64_load_at(context%session, descriptor, 24_c_int64_t, &
-                    lower2, error_msg)) return
-            ! extent1 = upper1 - lower1 + 1
-            ! Use tmp to avoid aliasing (extent1 as both lhs and result is UB).
-            if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper1, lower1, &
-                    tmp, error_msg)) return
-            if (.not. emit_i64_binary(context%session, LR_OP_ADD, tmp, &
-                    i64_immediate(context%session, 1_c_int64_t), extent1, &
-                    error_msg)) return
+            ! The descriptor stores the extent directly, so the old
+            ! upper - lower + 1 reconstruction is gone.
+            call emit_alloc_desc_load_extent(context, descriptor, 1, extent1, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_alloc_desc_load_lower(context, descriptor, 2, lower2, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
             call validate_i32_array_subscript(arena, node%arg_indices(2), context, &
                                               error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1929,13 +1909,22 @@
         call grow_symbols(context)
 
         if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, 40_c_int64_t), descriptor, &
+                i64_immediate(context%session, &
+                    int(ALLOC_DESCRIPTOR_BYTES, c_int64_t)), descriptor, &
                 error_msg)) return
+        ! Zero the whole descriptor before installing the header: an
+        ! unallocated allocatable must read as null base, no flags, and zero
+        ! extents, never as whatever the stack slot happened to hold.
         zero = i64_immediate(context%session, 0_c_int64_t)
-        do k = 0, 4
+        do k = 0, ALLOC_DESCRIPTOR_BYTES/8 - 1
             if (.not. emit_i64_store_at(context%session, zero, descriptor, &
-                    int(k * 8, c_int64_t), error_msg)) return
+                    int(k*8, c_int64_t), error_msg)) return
         end do
+        if (rank >= 1) then
+            call emit_alloc_desc_header(context, descriptor, value_kind, rank, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)

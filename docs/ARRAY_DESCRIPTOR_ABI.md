@@ -117,9 +117,12 @@ so the pointer reaches the runtime deallocator exactly once. For a borrowed
 descriptor it returns a null pointer and still resets the descriptor, so
 dropping a view never frees storage.
 
-- An allocatable array's descriptor owns its allocation. `deallocate`
-  releases the descriptor and frees the returned pointer. Finalization order
-  is unchanged: elements are finalized before the base pointer is released.
+- An allocatable array's descriptor owns its allocation and is the entity's
+  only representation (#336): `allocate` installs the shape and the owning
+  flag, `deallocate` frees the base pointer and returns the descriptor to the
+  unallocated state, and `move_alloc` copies the whole record and clears the
+  source. Finalization order is unchanged: elements are finalized before the
+  base pointer is released.
 - A pointer array's descriptor never owns storage acquired by pointer
   assignment. Ownership stays with the target's own descriptor. A pointer
   that acquired storage through `allocate` does own it and is the descriptor
@@ -158,6 +161,11 @@ associated, and every subscript is out of bounds.
 
 ## Scope
 
-Defining this contract changes no lowering. Automatic, assumed-shape,
-allocatable, pointer, and section paths migrate in their own issues.
-Coarray codimensions are outside this descriptor.
+Migrated onto this contract so far: assumed-shape dummy arguments (#334),
+runtime-sized automatic arrays (#335), and allocatable arrays (#336). Pointer
+arrays and section views migrate in their own issues, as does retiring the
+last of the legacy runtime-shape metadata.
+
+Allocatable **components** of a derived type keep their own inline
+`{data, extent}` record for now; that representation is not part of this
+contract yet. Coarray codimensions are outside this descriptor.
