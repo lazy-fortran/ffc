@@ -59,6 +59,7 @@ module liric_session_real_print_bindings
     public :: emit_sscanf
     public :: emit_scanf
     public :: emit_fscanf
+    public :: emit_fscanf_count
     public :: emit_fprintf
     public :: emit_dprintf
     public :: emit_getchar

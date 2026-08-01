@@ -286,6 +286,23 @@
                                 c_true, vreg, error_msg)
     end function emit_fscanf
 
+    logical function emit_fscanf_count(session, args, result, error_msg)
+        ! Variadic fscanf(fp, fmt, ...) that also yields the conversion count.
+        ! A caller uses the count to distinguish a successful conversion from a
+        ! matching failure when it must report a READ status.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_fscanf_count = emit_call(session, 'fscanf', args, &
+                                      lr_type_i32_s(session%handle), &
+                                      2_c_int32_t, c_true, vreg, error_msg)
+        if (.not. emit_fscanf_count) return
+        result = i32_vreg(session, vreg)
+    end function emit_fscanf_count
+
     logical function emit_fprintf(session, args, error_msg)
         ! Variadic fprintf(fp, fmt, ...) call (#247 B5c file I/O).
         ! args(1) is the FILE* pointer, args(2) the format-string pointer;
