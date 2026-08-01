@@ -144,7 +144,7 @@ module session_program_lowering
         synthesize_get_arg_helper, &
         emit_get_arg_call, emit_snprintf, &
         emit_sscanf, emit_scanf, &
-        emit_fscanf, &
+        emit_fscanf, emit_fscanf_count, &
         emit_fprintf, emit_dprintf, &
         emit_getchar, emit_exit
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &

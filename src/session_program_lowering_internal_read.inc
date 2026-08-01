@@ -135,13 +135,19 @@
             return
         end if
 
+        if (context%symbols(target_index)%value_kind == VALUE_LOGICAL) then
+            call lower_list_directed_internal_read_logical(context, buf_index, &
+                                                           target_index, error_msg)
+            return
+        end if
+
         call file_read_slot_for_kind(context, target_index, scanf_fmt, slot, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
         if (len_trim(scanf_fmt) == 0) then
             call unsupported_feature_error('internal read', line, col, &
-                'list-directed internal read supports integer, real, and '// &
-                'character scalars only', error_msg)
+                'list-directed internal read supports integer, real, '// &
+                'logical, and character scalars only', error_msg)
             return
         end if
 
@@ -230,3 +236,35 @@
         context%symbols(target_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_list_directed_internal_read_char
+
+    subroutine lower_list_directed_internal_read_logical(context, buf_index, &
+                                                          target_index, error_msg)
+        ! read (buf, *) flag: scan the logical field out of the character
+        ! buffer and convert it exactly like the file-unit path does.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: buf_index, target_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), parameter :: token_fmt = ' %15s'
+        type(lr_operand_desc_t) :: token, fmt_ptr, args(3)
+        integer(c_int32_t) :: fmt_id
+        character(len=64) :: fmt_name
+
+        call set_empty(error_msg)
+        call emit_logical_token_buffer(context, token, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%string_literal_count = context%string_literal_count + 1
+        fmt_name = ffc_unit_global_name( &
+            context, 'ilrfl.', context%string_literal_count)
+        call create_printf_format_global(context%session, trim(fmt_name), &
+                                         token_fmt, fmt_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        fmt_ptr = printf_format_ptr(context%session, fmt_id)
+
+        args(1) = context%symbols(buf_index)%value
+        args(2) = fmt_ptr
+        args(3) = token
+        if (.not. emit_sscanf(context%session, args, error_msg)) return
+
+        call assign_logical_from_token(context, token, target_index, error_msg)
+    end subroutine lower_list_directed_internal_read_logical

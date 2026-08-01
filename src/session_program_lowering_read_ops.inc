@@ -36,7 +36,8 @@
         type(read_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: fp
+        type(lr_operand_desc_t) :: fp, conv_ok, item_ok, merged_ok
+        type(lr_operand_desc_t) :: bad, status
         integer :: i
 
         call set_empty(error_msg)
@@ -68,12 +69,25 @@
             call store_read_iostat_success(node, context, error_msg)
             return
         end if
+        conv_ok = i32_immediate(context%session, 1_c_int64_t)
         do i = 1, size(node%var_indices)
             call lower_read_file_item(arena, node%var_indices(i), fp, node%line, &
-                                      node%column, context, error_msg)
+                                      node%column, context, item_ok, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_AND, conv_ok, &
+                                      item_ok, merged_ok, error_msg)) return
+            conv_ok = merged_ok
         end do
-        call store_read_iostat_from_eof(node, fp, context, error_msg)
+        ! A field that failed to convert before end-of-file reports gfortran's
+        ! malformed-field status; end-of-file still wins inside the helper.
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, conv_ok, &
+                i32_immediate(context%session, 0_c_int64_t), bad, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, bad, &
+                i32_immediate(context%session, 5010_c_int64_t), status, &
+                error_msg)) return
+        call store_read_iostat_from_eof(node, fp, context, error_msg, &
+                                        ok_value=status)
         if (len_trim(error_msg) > 0) return
         call branch_on_eof_to_end_label(node, fp, context, error_msg)
     end subroutine lower_read_file
@@ -324,8 +338,10 @@
     end subroutine check_read_format_supported
 
     subroutine lower_read_file_item(arena, node_index, fp, stmt_line, stmt_col, &
-                                    context, error_msg)
+                                    context, item_ok, error_msg)
         ! Emit fscanf(fp, fmt, &slot) for one scalar target, then reload it.
+        ! item_ok is 1 when fscanf converted this item and 0 otherwise, so the
+        ! caller can report a nonzero status without touching the destination.
         use liric_session_memory_bindings, only: emit_i32_alloca, emit_i64_alloca, &
                                                   emit_i32_load, emit_i64_load
         type(ast_arena_t), intent(in) :: arena
@@ -333,14 +349,16 @@
         type(lr_operand_desc_t), intent(in) :: fp
         integer, intent(in) :: stmt_line, stmt_col
         type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: item_ok
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: var_name, scanf_fmt
         integer :: sym
         integer(c_int32_t) :: fmt_id
-        type(lr_operand_desc_t) :: fmt_ptr, slot, args(3)
+        type(lr_operand_desc_t) :: fmt_ptr, slot, args(3), converted
         character(len=64) :: fmt_name
 
         call set_empty(error_msg)
+        item_ok = i32_immediate(context%session, 0_c_int64_t)
         call identifier_name(arena, node_index, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, var_name)
@@ -351,7 +369,12 @@
 
         if (context%symbols(sym)%value_kind == VALUE_CHARACTER) then
             call lower_read_file_char_item(context, fp, sym, stmt_line, &
-                                           stmt_col, error_msg)
+                                           stmt_col, item_ok, error_msg)
+            return
+        end if
+        if (context%symbols(sym)%value_kind == VALUE_LOGICAL) then
+            call lower_read_file_logical_item(context, fp, sym, item_ok, &
+                                              error_msg)
             return
         end if
 
@@ -359,8 +382,8 @@
         if (len_trim(error_msg) > 0) return
         if (len_trim(scanf_fmt) == 0) then
             call unsupported_feature_error('read from file unit', stmt_line, &
-                stmt_col, 'list-directed file-unit read supports integer and '// &
-                'real scalars only (#247)', error_msg)
+                stmt_col, 'list-directed file-unit read supports integer, '// &
+                'real, logical, and character scalars only (#247)', error_msg)
             return
         end if
 
@@ -375,7 +398,11 @@
         args(1) = fp
         args(2) = fmt_ptr
         args(3) = slot
-        if (.not. emit_fscanf(context%session, args, error_msg)) return
+        if (.not. emit_fscanf_count(context%session, args, converted, &
+                                    error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, converted, &
+                i32_immediate(context%session, 1_c_int64_t), item_ok, &
+                error_msg)) return
 
         select case (context%symbols(sym)%value_kind)
         case (VALUE_I32)
@@ -396,22 +423,24 @@
     end subroutine lower_read_file_item
 
     subroutine lower_read_file_char_item(context, fp, sym, stmt_line, &
-                                         stmt_col, error_msg)
+                                         stmt_col, item_ok, error_msg)
         ! List-directed READ of a fixed-length character scalar from an
         ! opened file unit: fscanf a whitespace-delimited token, then
         ! blank-pad and truncate it to the target's declared length.
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(in) :: fp
         integer, intent(in) :: sym, stmt_line, stmt_col
+        type(lr_operand_desc_t), intent(out) :: item_ok
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: buflen
-        type(lr_operand_desc_t) :: tmp, dest, fmt_ptr, args(3)
+        type(lr_operand_desc_t) :: tmp, dest, fmt_ptr, args(3), converted
         integer(c_int32_t) :: fmt_id
         character(len=64) :: fmt_name
         character(len=16) :: width_text
         character(len=:), allocatable :: scanf_fmt
 
         call set_empty(error_msg)
+        item_ok = i32_immediate(context%session, 0_c_int64_t)
         if (context%symbols(sym)%is_deferred_character) then
             call unsupported_feature_error('read from file unit', stmt_line, &
                 stmt_col, 'file-unit read target must be a fixed-length '// &
@@ -437,10 +466,18 @@
         if (len_trim(error_msg) > 0) return
         fmt_ptr = printf_format_ptr(context%session, fmt_id)
 
+        ! Clear the token buffer so a failed conversion leaves a defined empty
+        ! string rather than stack garbage.
+        call emit_empty_token(context, tmp, buflen + 1, error_msg)
+        if (len_trim(error_msg) > 0) return
         args(1) = fp
         args(2) = fmt_ptr
         args(3) = tmp
-        if (.not. emit_fscanf(context%session, args, error_msg)) return
+        if (.not. emit_fscanf_count(context%session, args, converted, &
+                                    error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, converted, &
+                i32_immediate(context%session, 1_c_int64_t), item_ok, &
+                error_msg)) return
 
         call emit_blank_pad_string(context, buflen, tmp, dest, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -459,9 +496,13 @@
         character(len=:), allocatable, intent(out) :: scanf_fmt
         type(lr_operand_desc_t), intent(out) :: slot
         character(len=:), allocatable, intent(out) :: error_msg
+        logical :: fresh
+        type(lr_operand_desc_t) :: previous
 
         call set_empty(error_msg)
         scanf_fmt = ''
+        fresh = .not. context%symbols(sym)%has_address
+        previous = context%symbols(sym)%value
         select case (context%symbols(sym)%value_kind)
         case (VALUE_I32)
             scanf_fmt = ' %d'
@@ -498,7 +539,39 @@
                 slot = context%symbols(sym)%address
             end if
         end select
+        if (len_trim(scanf_fmt) == 0) return
+        if (.not. fresh) return
+        ! A fresh slot starts as stack garbage. Seed it with the destination's
+        ! current value so a failed conversion leaves that value in place
+        ! instead of publishing an undefined one.
+        call seed_read_slot(context, sym, previous, slot, error_msg)
     end subroutine file_read_slot_for_kind
+
+    subroutine seed_read_slot(context, sym, previous, slot, error_msg)
+        ! Store the destination's pre-read value into its scanf slot.
+        use liric_session_memory_bindings, only: emit_i32_store, emit_i64_store
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        type(lr_operand_desc_t), intent(in) :: previous, slot
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32)
+            if (.not. emit_i32_store(context%session, previous, slot, &
+                                     error_msg)) return
+        case (VALUE_I64)
+            if (.not. emit_i64_store(context%session, previous, slot, &
+                                     error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_store(context%session, previous, slot, &
+                                           error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_store(context%session, previous, slot, &
+                                           error_msg)) return
+        end select
+        call set_empty(error_msg)
+    end subroutine seed_read_slot
 
     subroutine set_read_slot(context, sym, slot)
         type(lowering_context_t), intent(inout) :: context
@@ -532,3 +605,108 @@
         if (.not. emit_void_call(context%session, 'rewind', fa, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_rewind
+
+    subroutine emit_empty_token(context, buf, nbytes, error_msg)
+        ! Clear a scanf token buffer so a failed conversion leaves a defined
+        ! empty string instead of stack garbage.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: buf
+        integer, intent(in) :: nbytes
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(3), unused
+
+        call set_empty(error_msg)
+        args(1) = buf
+        args(2) = i32_immediate(context%session, 0_c_int64_t)
+        args(3) = i64_immediate(context%session, int(nbytes, c_int64_t))
+        if (.not. emit_ptr_call(context%session, 'memset', args, unused, &
+                                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_empty_token
+
+    subroutine lower_read_file_logical_item(context, fp, sym, item_ok, error_msg)
+        ! READ of a default logical scalar from an opened file unit: scan the
+        ! whitespace-delimited field as a token, then convert it the way
+        ! gfortran does (T/.TRUE./true are true, everything else false).
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: fp
+        integer, intent(in) :: sym
+        type(lr_operand_desc_t), intent(out) :: item_ok
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), parameter :: token_fmt = ' %15s'
+        type(lr_operand_desc_t) :: buf, fmt_ptr, args(3), converted
+        integer(c_int32_t) :: fmt_id
+        character(len=64) :: fmt_name
+
+        call set_empty(error_msg)
+        item_ok = i32_immediate(context%session, 0_c_int64_t)
+        call emit_logical_token_buffer(context, buf, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        context%string_literal_count = context%string_literal_count + 1
+        fmt_name = ffc_unit_global_name( &
+            context, 'fscanfl.', context%string_literal_count)
+        call create_printf_format_global(context%session, trim(fmt_name), &
+                                         token_fmt, fmt_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        fmt_ptr = printf_format_ptr(context%session, fmt_id)
+
+        args(1) = fp
+        args(2) = fmt_ptr
+        args(3) = buf
+        if (.not. emit_fscanf_count(context%session, args, converted, &
+                                    error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, converted, &
+                i32_immediate(context%session, 1_c_int64_t), item_ok, &
+                error_msg)) return
+
+        call assign_logical_from_token(context, buf, sym, error_msg)
+    end subroutine lower_read_file_logical_item
+
+    subroutine emit_logical_token_buffer(context, buf, error_msg)
+        ! Allocate and clear the fixed-size scratch buffer a logical field is
+        ! scanned into.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: buf
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, parameter :: token_bytes = 16
+
+        call set_empty(error_msg)
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(token_bytes, c_int64_t)), &
+                buf, error_msg)) return
+        call emit_empty_token(context, buf, token_bytes, error_msg)
+    end subroutine emit_logical_token_buffer
+
+    subroutine assign_logical_from_token(context, buf, sym, error_msg)
+        ! Convert a scanned logical field to the symbol's 0/1 value. Only the
+        ! first two bytes matter: a leading '.' is optional, and the first
+        ! letter selects true (T/t) or false. An empty buffer yields false.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: buf
+        integer, intent(in) :: sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: c0, c1, m0, m1, t0, t1, value
+
+        call set_empty(error_msg)
+        if (.not. emit_liric_char_byte_zext(context%session, buf, &
+                i32_immediate(context%session, 0_c_int64_t), c0, error_msg)) return
+        if (.not. emit_liric_char_byte_zext(context%session, buf, &
+                i32_immediate(context%session, 1_c_int64_t), c1, error_msg)) return
+        ! Clearing bit 0x20 folds a lowercase letter onto its uppercase code.
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, c0, &
+                i32_immediate(context%session, 223_c_int64_t), m0, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, c1, &
+                i32_immediate(context%session, 223_c_int64_t), m1, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, m0, &
+                i32_immediate(context%session, 84_c_int64_t), t0, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, m1, &
+                i32_immediate(context%session, 84_c_int64_t), t1, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, t0, t1, value, &
+                                  error_msg)) return
+        call assign_i32_to_symbol(context, sym, value, error_msg)
+    end subroutine assign_logical_from_token
