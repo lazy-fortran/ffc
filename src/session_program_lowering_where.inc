@@ -676,8 +676,38 @@
                 i32_immediate(context%session, &
                               int(linear_index, c_int64_t)*int(slots, c_int64_t)), &
                 address, error_msg)) return
+        call wrap_elemental_class_element(arena, callee_name, context, &
+            context%symbols(symbol_index)%derived_type_index, address, error_msg)
+        if (len_trim(error_msg) > 0) return
         handled = .true.
     end subroutine elementwise_derived_actual_address
+
+    subroutine wrap_elemental_class_element(arena, callee_name, context, &
+                                            actual_type_index, address, error_msg)
+        ! An elemental procedure with a class(t) scalar dummy takes the same
+        ! borrowed class descriptor a non-elemental class dummy takes, one per
+        ! element. The array is monomorphic, so every element's dynamic type is
+        ! the array's declared type. A type(t) dummy keeps the bare address.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: actual_type_index
+        type(lr_operand_desc_t), intent(inout) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor
+        integer :: declared_index
+
+        call set_empty(error_msg)
+        call class_dummy_declared_type_index(context, arena, callee_name, 1, &
+                                             declared_index)
+        if (declared_index <= 0) return
+        call emit_class_scalar_descriptor(context, address, declared_index, &
+            i64_immediate(context%session, &
+                int(actual_type_index, c_int64_t)), descriptor, error_msg)
+        if (len_trim(error_msg) > 0) return
+        address = descriptor
+    end subroutine wrap_elemental_class_element
 
     ! Reject a derived actual whose declared type is neither the elemental
     ! dummy's declared type nor an extension of it (#369). Silence when the

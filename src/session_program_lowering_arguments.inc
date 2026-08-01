@@ -146,10 +146,12 @@
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_derived(arena, arg_indices(i), context)) then
-                ! A derived actual is passed by reference: the base address of
-                ! its component storage.
-                call derived_actual_address(arena, arg_indices(i), context, &
-                                             args(i), error_msg)
+                ! A derived actual reaching a class(t) dummy is passed as the
+                ! scalar class descriptor so the dummy carries the actual's
+                ! dynamic type; a type(t) dummy takes the bare base address of
+                ! the component storage.
+                call class_or_derived_actual(arena, arg_indices(i), context, &
+                                             callee_name, i, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (callee_dummy_is_class_star(arena, callee_name, i)) then
                 ! Box the actual into a {data, type_id} descriptor for a
@@ -1172,6 +1174,59 @@
         address = context%symbols(symbol_index)%allocatable_descriptor_address
         call set_empty(error_msg)
     end subroutine allocatable_array_actual_descriptor_address
+
+    subroutine class_or_derived_actual(arena, node_index, context, callee_name, &
+                                       param_pos, address, error_msg)
+        ! Route a derived actual by the dummy's spelling. class(t) takes the
+        ! canonical scalar class descriptor (#400) so declared and dynamic type
+        ! identity both reach the callee; type(t) keeps the existing bare
+        ! by-reference ABI unchanged.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        integer :: actual_index, declared_index, symbol_index
+
+        call class_dummy_declared_type_index(context, arena, callee_name, &
+                                             param_pos, declared_index)
+        if (declared_index <= 0) then
+            call derived_actual_address(arena, node_index, context, address, &
+                                        error_msg)
+            return
+        end if
+
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0) then
+            error_msg = 'derived argument was not declared: '//trim(id_name)
+            return
+        end if
+        ! Fortran 2018 7.3.2.3: the actual must be type compatible with the
+        ! class(t) dummy, i.e. its declared type is t or an extension of t.
+        actual_index = context%symbols(symbol_index)%derived_type_index
+        if (actual_index <= 0) then
+            error_msg = 'Type mismatch in argument to '//trim(callee_name)// &
+                ': actual '//trim(id_name)//' has no resolvable declared type'// &
+                ' for class('//trim(context%derived_types(declared_index)%name)// &
+                ') dummy'
+            return
+        end if
+        if (.not. derived_type_extends(context, actual_index, declared_index)) then
+            error_msg = 'Type mismatch in argument to '//trim(callee_name)// &
+                ': actual of type '// &
+                trim(context%derived_types(actual_index)%name)// &
+                ' is not type compatible with class('// &
+                trim(context%derived_types(declared_index)%name)//') dummy'
+            return
+        end if
+        call build_class_scalar_descriptor(context, symbol_index, &
+                                           declared_index, address, error_msg)
+    end subroutine class_or_derived_actual
 
     subroutine derived_actual_address(arena, node_index, context, address, &
                                       error_msg)

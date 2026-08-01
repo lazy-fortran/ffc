@@ -841,6 +841,15 @@
                 context%symbols(index)%derived_type_index = derived_type_index
                 context%symbols(index)%array_size = &
                     total_component_slots(context, derived_type_index)
+                if (declaration_is_class_polymorphic(node)) then
+                    ! class(t) dummy: the parameter pointer is the caller's
+                    ! borrowed scalar class descriptor, not the storage. Take
+                    ! the storage from its data field and keep the address of
+                    ! its dynamic type field so the identity travels onwards.
+                    call bind_class_dummy_descriptor(context, index, &
+                                                     derived_type_index, error_msg)
+                    return
+                end if
                 context%symbols(index)%element_address = &
                     context%symbols(index)%address
                 call set_empty(error_msg)
@@ -1398,7 +1407,9 @@
         n = size(method_args)
         allocate (all_args(n + 1))
         if (position < 1 .or. position > n + 1) position = 1
-        all_args(position) = context%symbols(symbol_index)%element_address
+        call class_receiver_argument(context, arena, impl_name, position, &
+                                     symbol_index, all_args(position), error_msg)
+        if (len_trim(error_msg) > 0) return
         k = 0
         do i = 1, n + 1
             if (i == position) cycle

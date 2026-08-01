@@ -8,6 +8,207 @@
     ! pointer class object (a runtime vtable / type-id) stays out of scope and
     ! declines gracefully.
 
+    ! Runtime type identity for class scalars (#417). A class(t) scalar dummy is
+    ! passed as the canonical scalar class descriptor of docs/RUNTIME_ABI.md
+    ! (data, declared_type, dynamic_type, ownership), built by the caller and
+    ! borrowed by the callee. The declared type is fixed by the dummy's
+    ! declaration; the dynamic type travels with the value, so re-passing a
+    ! class dummy onwards preserves the identity of the original actual instead
+    ! of collapsing it to the declared type.
+
+    recursive logical function derived_type_extends(context, type_index, &
+                                                    ancestor_index) result(yes)
+        ! True when type_index is ancestor_index or extends it, transitively.
+        ! This is the type-compatibility test of Fortran 2018 7.3.2.3: an actual
+        ! is valid for a class(t) dummy exactly when its declared type is t or
+        ! an extension of t.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: ancestor_index
+
+        yes = .false.
+        if (type_index <= 0) return
+        if (ancestor_index <= 0) return
+        if (type_index == ancestor_index) then
+            yes = .true.
+            return
+        end if
+        if (type_index > context%derived_type_count) return
+        if (len_trim(context%derived_types(type_index)%parent_name) == 0) return
+        yes = derived_type_extends(context, &
+            find_derived_type(context, &
+                trim(context%derived_types(type_index)%parent_name)), &
+            ancestor_index)
+    end function derived_type_extends
+
+    subroutine class_dummy_declared_type_index(context, arena, callee_name, &
+                                               param_pos, type_index)
+        ! Registered index of the declared type of the callee's param_pos-th
+        ! dummy when that dummy is class(t); 0 when it is not.
+        type(lowering_context_t), intent(in) :: context
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer, intent(out) :: type_index
+        character(len=:), allocatable :: type_name
+
+        type_index = 0
+        call callee_dummy_class_declared_type(arena, callee_name, param_pos, &
+                                              type_name)
+        if (len_trim(type_name) == 0) return
+        type_index = find_derived_type(context, type_name)
+    end subroutine class_dummy_declared_type_index
+
+    subroutine class_actual_dynamic_type(context, symbol_index, dynamic_id, &
+                                         error_msg)
+        ! The dynamic type identity of a derived actual. A monomorphic actual's
+        ! dynamic type is its declared type, known at compile time. A class
+        ! dummy being re-passed already carries a runtime identity, which is
+        ! loaded and forwarded so the original value's identity is preserved
+        ! across any number of hand-offs.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(out) :: dynamic_id
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%is_polymorphic .and. &
+            context%symbols(symbol_index)%has_dynamic_type_address) then
+            if (.not. emit_i64_load(context%session, &
+                    context%symbols(symbol_index)%dynamic_type_address, &
+                    dynamic_id, error_msg)) return
+            return
+        end if
+        dynamic_id = i64_immediate(context%session, &
+            int(context%symbols(symbol_index)%derived_type_index, c_int64_t))
+    end subroutine class_actual_dynamic_type
+
+    subroutine build_class_scalar_descriptor(context, symbol_index, &
+                                             declared_type_index, descriptor, &
+                                             error_msg)
+        ! Borrowed class descriptor for a whole derived actual named by a symbol.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: declared_type_index
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: dynamic_id
+
+        call class_actual_dynamic_type(context, symbol_index, dynamic_id, &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_class_scalar_descriptor(context, &
+            context%symbols(symbol_index)%element_address, declared_type_index, &
+            dynamic_id, descriptor, error_msg)
+    end subroutine build_class_scalar_descriptor
+
+    subroutine emit_class_scalar_descriptor(context, data_address, &
+                                            declared_type_index, dynamic_id, &
+                                            descriptor, error_msg)
+        ! Materialise the borrowed scalar class descriptor a class(t) dummy
+        ! receives. The descriptor is a caller-frame temporary that points at
+        ! storage the caller owns: ownership is BORROWED, so the callee never
+        ! frees the data and the data outlives the call.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_address
+        integer, intent(in) :: declared_type_index
+        type(lr_operand_desc_t), intent(in) :: dynamic_id
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: field_addr
+
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                    int(POLYMORPHIC_DESCRIPTOR_SIZE, c_int64_t)), descriptor, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), field_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_address, field_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, &
+                    int(declared_type_index, c_int64_t)), field_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, dynamic_id, field_addr, &
+                                 error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, &
+                    int(POLYMORPHIC_OWNERSHIP_BORROWED, c_int64_t)), field_addr, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_class_scalar_descriptor
+
+    subroutine bind_class_dummy_descriptor(context, symbol_index, declared_index, &
+                                           error_msg)
+        ! Bind a class(t) dummy to the descriptor the caller passed. The
+        ! parameter pointer is the descriptor; the value's storage is the data
+        ! field, so every component access keeps using element_address and reads
+        ! the declared-type prefix of whatever dynamic type arrived.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: declared_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_addr, data_value, dynamic_addr
+
+        if (.not. emit_ptr_offset(context%session, &
+                context%symbols(symbol_index)%address, &
+                int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), data_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_load(context%session, data_addr, data_value, &
+                                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+                context%symbols(symbol_index)%address, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                dynamic_addr, error_msg)) return
+        context%symbols(symbol_index)%class_descriptor_address = &
+            context%symbols(symbol_index)%address
+        context%symbols(symbol_index)%element_address = data_value
+        context%symbols(symbol_index)%dynamic_type_address = dynamic_addr
+        context%symbols(symbol_index)%has_dynamic_type_address = .true.
+        context%symbols(symbol_index)%is_polymorphic = .true.
+        context%symbols(symbol_index)%derived_type_index = declared_index
+        call set_empty(error_msg)
+    end subroutine bind_class_dummy_descriptor
+
+    subroutine class_receiver_argument(context, arena, impl_name, position, &
+                                       symbol_index, argument, error_msg)
+        ! Argument the receiver of a type-bound call occupies. The passed-object
+        ! dummy is conventionally class(t), so it takes the same scalar class
+        ! descriptor an explicit class actual takes; a type(t) passed-object
+        ! dummy keeps the bare address.
+        type(lowering_context_t), intent(inout) :: context
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: impl_name
+        integer, intent(in) :: position
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(out) :: argument
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: declared_index
+
+        call class_dummy_declared_type_index(context, arena, impl_name, position, &
+                                             declared_index)
+        if (declared_index <= 0) then
+            argument = context%symbols(symbol_index)%element_address
+            call set_empty(error_msg)
+            return
+        end if
+        call build_class_scalar_descriptor(context, symbol_index, declared_index, &
+                                           argument, error_msg)
+    end subroutine class_receiver_argument
+
     logical function select_type_selector_is_monomorphic(context, sel_index)
         ! True when the selector names a plain declared-type derived object (a
         ! class(t) dummy or local lowered as type(t)): non-allocatable,
