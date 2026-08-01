@@ -1,5 +1,5 @@
 program test_session_select_type_derived_compiler
-    use ffc_test_support, only: expect_exit_status, expect_error_contains
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -11,7 +11,7 @@ program test_session_select_type_derived_compiler
     if (.not. test_select_type_assoc_name()) all_passed = .false.
     if (.not. test_select_type_class_is()) all_passed = .false.
     if (.not. test_select_type_default_over_other_type()) all_passed = .false.
-    if (.not. test_select_type_discriminates_declines()) all_passed = .false.
+    if (.not. test_select_type_discriminates_subtypes()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: monomorphic select type dispatches to the declared type'
@@ -149,10 +149,11 @@ contains
             source, 3, '/tmp/ffc_session_st_derived_default')
     end function test_select_type_default_over_other_type
 
-    logical function test_select_type_discriminates_declines()
-        ! A construct that discriminates a runtime subtype needs a vtable; the
-        ! monomorphic path must decline gracefully rather than statically
-        ! mispick, so ffc emits the unsupported diagnostic.
+    logical function test_select_type_discriminates_subtypes()
+        ! A construct that discriminates a runtime subtype is now dispatched
+        ! from the selector's dynamic type identity (#419). It must not be
+        ! statically mispicked: the same compiled construct takes the base arm
+        ! for a base actual and the child arm for a child actual.
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
             '  type :: base'//new_line('a')// &
@@ -175,13 +176,17 @@ contains
             'program main'//new_line('a')// &
             '  use m'//new_line('a')// &
             '  type(base) :: x'//new_line('a')// &
+            '  type(child) :: c'//new_line('a')// &
             '  x%i = 1'//new_line('a')// &
+            '  c%i = 4'//new_line('a')// &
+            '  c%j = 7'//new_line('a')// &
             '  call show(x)'//new_line('a')// &
+            '  call show(c)'//new_line('a')// &
             'end program main'
 
-        test_select_type_discriminates_declines = expect_error_contains( &
-            source, 'monomorphic select type', &
-            '/tmp/ffc_session_st_derived_decline')
-    end function test_select_type_discriminates_declines
+        test_select_type_discriminates_subtypes = expect_output(source, &
+            '           1'//new_line('a')//'           7'//new_line('a'), &
+            '/tmp/ffc_session_st_derived_discriminate')
+    end function test_select_type_discriminates_subtypes
 
 end program test_session_select_type_derived_compiler
