@@ -778,6 +778,94 @@
         call set_empty(error_msg)
     end subroutine emit_allocatable_print_items
 
+    subroutine build_array_expression(context, target_symbol_index, expr_index, &
+                                      plan, error_msg)
+        !! Derive the rank, shape, and element type of one array-valued
+        !! expression once, before any element is emitted. The shape and the
+        !! element type of a whole-array assignment are those of its target:
+        !! array-array operands must conform to it and a scalar operand
+        !! broadcasts, both of which are checked as operands are reached by
+        !! `ensure_array_shapes_match`.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: target_symbol_index
+        integer, intent(in) :: expr_index
+        type(array_expr_plan_t), intent(out) :: plan
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: d
+
+        plan%target_symbol = target_symbol_index
+        plan%expr_index = expr_index
+        plan%element_kind = context%symbols(target_symbol_index)%value_kind
+        plan%rank = context%symbols(target_symbol_index)%array_rank
+        if (plan%rank < 1 .or. plan%rank > ARRAY_EXPR_MAX_RANK) then
+            error_msg = 'array expression requires a rank between 1 and 7'
+            return
+        end if
+        if (context%symbols(target_symbol_index)%is_allocatable) then
+            ! An allocatable carries a single flattened extent, so its plan is
+            ! the rank-1 view of that extent.
+            plan%rank = 1
+            plan%extents(1) = &
+                context%symbols(target_symbol_index)%allocatable_static_size
+        else
+            do d = 1, plan%rank
+                plan%extents(d) = &
+                    context%symbols(target_symbol_index)%array_dim_sizes(d)
+            end do
+        end if
+        call validate_conformability(plan, error_msg)
+    end subroutine build_array_expression
+
+    subroutine validate_conformability(plan, error_msg)
+        !! Reject a plan that cannot be iterated. An expression whose shape is
+        !! not known to be positive fails here rather than emitting an
+        !! iteration over an unknown extent.
+        type(array_expr_plan_t), intent(in) :: plan
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        if (plan%element_count() <= 0) then
+            error_msg = 'array expression requires a positive element count'
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine validate_conformability
+
+    subroutine emit_array_expression_assignment(arena, plan, context, error_msg)
+        !! Iterate the plan's elements, produce every right-hand-side element
+        !! value, and only then store them into the target.
+        !!
+        !! Producing all values before the first store is what makes the
+        !! assignment behave as if the right-hand side were fully computed
+        !! first (Fortran 2018 clause 10.2.1.3), so a right-hand side that
+        !! overlaps the target -- `a = a(n:1:-1)` -- reads pre-assignment
+        !! values regardless of traversal order.
+        !!
+        !! The linear index runs over the plan's extents in column-major
+        !! order, so dimension 1 varies fastest.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_expr_plan_t), intent(in) :: plan
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: values(:)
+        integer :: i, n
+
+        n = plan%element_count()
+        allocate (values(n))
+        do i = 1, n
+            call lower_array_elementwise_value(arena, plan%expr_index, &
+                                               plan%target_symbol, i - 1, &
+                                               context, values(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        do i = 1, n
+            call store_array_linear_element(context, plan%target_symbol, &
+                                            int(i - 1, c_int64_t), values(i), &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine emit_array_expression_assignment
+
     recursive subroutine lower_array_elementwise_value(arena, node_index, &
                                                        target_symbol_index, &
                                                        linear_index, context, &
