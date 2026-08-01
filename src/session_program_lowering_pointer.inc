@@ -69,6 +69,31 @@
         end if
     end subroutine define_deferred_character_pointer
 
+    subroutine scalar_character_cstring_symbol(arena, node_index, context, &
+                                               symbol_index)
+        ! Index of the symbol named by a C_F_STRPOINTER CSTRING actual when that
+        ! actual is a scalar fixed-length character variable whose bytes are
+        ! already materialised; zero otherwise (#361).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable :: name, name_error
+        integer :: index
+
+        symbol_index = 0
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, name_error)
+        if (len_trim(name_error) > 0) return
+        index = find_symbol_compat(context, name)
+        if (index <= 0) return
+        if (context%symbols(index)%value_kind /= VALUE_CHARACTER) return
+        if (context%symbols(index)%is_array) return
+        if (.not. context%symbols(index)%has_character_value) return
+        if (context%symbols(index)%character_length <= 0) return
+        symbol_index = index
+    end subroutine scalar_character_cstring_symbol
+
     subroutine lower_c_f_strpointer(arena, arg_indices, context, error_msg)
         ! c_f_strpointer(cstring, fstrptr [, nchars]): associate a
         ! deferred-length character pointer with borrowed C character storage.
@@ -80,7 +105,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: data_ptr, max_chars, length
         character(len=:), allocatable :: name
-        integer :: symbol_index
+        integer :: symbol_index, cstring_index
 
         call set_empty(error_msg)
         if (.not. allocated(arg_indices)) then
@@ -91,18 +116,28 @@
             error_msg = 'c_f_strpointer requires two or three arguments'
             return
         end if
-        if (size(arg_indices) < 3) then
+
+        ! A scalar character cstring carries its own declared length, so NCHARS
+        ! is optional there; a c_ptr cstring has no length metadata at all.
+        call scalar_character_cstring_symbol(arena, arg_indices(1), context, &
+                                             cstring_index)
+        if (cstring_index <= 0 .and. size(arg_indices) < 3) then
             error_msg = 'c_f_strpointer with a c_ptr cstring requires the '// &
                         'nchars argument'
             return
         end if
 
-        call lower_c_ptr_expression(arena, arg_indices(1), context, data_ptr, &
-                                    error_msg)
-        if (len_trim(error_msg) > 0) then
-            error_msg = 'c_f_strpointer cstring must be a c_ptr expression; '// &
-                        'character array cstrings are not yet supported'
-            return
+        if (cstring_index > 0) then
+            data_ptr = context%symbols(cstring_index)%value
+        else
+            call lower_c_ptr_expression(arena, arg_indices(1), context, data_ptr, &
+                                        error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'c_f_strpointer cstring must be a c_ptr expression '// &
+                            'or a scalar character variable; character array '// &
+                            'cstrings are not yet supported'
+                return
+            end if
         end if
 
         if (.not. is_identifier(arena, arg_indices(2))) then
@@ -122,9 +157,14 @@
             return
         end if
 
-        call lower_i64_expression(arena, arg_indices(3), context, max_chars, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (size(arg_indices) >= 3) then
+            call lower_i64_expression(arena, arg_indices(3), context, max_chars, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            max_chars = i64_immediate(context%session, &
+                int(context%symbols(cstring_index)%character_length, c_int64_t))
+        end if
 
         if (.not. emit_strnlen(context%session, data_ptr, max_chars, length, &
                                error_msg)) return

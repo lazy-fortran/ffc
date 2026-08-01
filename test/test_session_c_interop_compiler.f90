@@ -82,6 +82,39 @@ program test_session_c_interop
         '           7'//new_line('a'), &
         '/tmp/ffc_session_c_strpointer_output_test')) stop 4
 
+    ! A scalar character cstring carries its own declared length, so nchars is
+    ! optional; an explicit nchars still caps the view (F2018 18.2.3.5, #361).
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'use, intrinsic :: iso_c_binding, only: c_f_strpointer, c_char'// &
+        new_line('a')// &
+        'character(len=12, kind=c_char), target :: s'//new_line('a')// &
+        'character(len=:), pointer :: fp, fp5'//new_line('a')// &
+        's = "hello world!"'//new_line('a')// &
+        'call c_f_strpointer(s, fp)'//new_line('a')// &
+        'call c_f_strpointer(s, fp5, 5)'//new_line('a')// &
+        'if (len(fp) /= 12) stop 100'//new_line('a')// &
+        'if (len(fp5) /= 5) stop 101'//new_line('a')// &
+        'if (fp /= "hello world!") stop 102'//new_line('a')// &
+        'if (fp5 /= "hello") stop 103'//new_line('a')// &
+        'stop 21'//new_line('a')// &
+        'end program main', 21, &
+        '/tmp/ffc_session_c_strpointer_char_status_test')) stop 6
+
+    ! The implied length of a scalar character cstring is a runtime value.
+    if (.not. expect_output( &
+        'program main'//new_line('a')// &
+        'use, intrinsic :: iso_c_binding, only: c_f_strpointer, c_char'// &
+        new_line('a')// &
+        'character(len=6, kind=c_char), target :: s'//new_line('a')// &
+        'character(len=:), pointer :: fp'//new_line('a')// &
+        's = "abcdef"'//new_line('a')// &
+        'call c_f_strpointer(s, fp)'//new_line('a')// &
+        'print *, len(fp)'//new_line('a')// &
+        'end program main', &
+        '           6'//new_line('a'), &
+        '/tmp/ffc_session_c_strpointer_char_output_test')) stop 7
+
     ! A c_ptr cstring carries no length metadata, so omitting nchars must
     ! produce a diagnostic instead of an unbounded view (#361).
     if (.not. expect_error_contains( &
