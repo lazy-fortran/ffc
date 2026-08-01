@@ -65,8 +65,12 @@
         character(len=:), allocatable :: node_type, body_name
 
         call set_empty(error_msg)
-        call grow_generics(context)
-        next = context%generic_count + 1
+        next = find_generic(context, node%name)
+        if (next == 0) then
+            call grow_generics(context)
+            next = context%generic_count + 1
+            context%generic_count = next
+        end if
         context%generics(next)%generic_name = trim(node%name)
         context%generics(next)%specific_count = 0
 
@@ -98,7 +102,6 @@
                 if (len_trim(error_msg) > 0) return
             end if
         end do
-        context%generic_count = next
         call check_generic_ambiguity(arena, context, next, error_msg)
         if (len_trim(error_msg) > 0) return
     end subroutine register_generic_interface
@@ -429,6 +432,39 @@
         end do
         if (allow_fallback) specific_slot = fallback
     end function find_operator
+
+    integer function find_unary_operator(context, op_token, operand_kind) &
+                                           result(specific_slot)
+        ! Defined unary operators are represented by a binary_op_node whose
+        ! left index is zero. Match the one-argument specific against the
+        ! actual operand kind; the unused second-kind slot is not meaningful
+        ! for a unary procedure.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: op_token
+        integer, intent(in) :: operand_kind
+        integer :: i, j, fn_index, fallback
+        character(len=:), allocatable :: token
+
+        specific_slot = 0
+        fallback = 0
+        token = lowercase_text(trim(op_token))
+        do i = 1, context%operator_count
+            if (context%operators(i)%is_assignment) cycle
+            if (.not. same_name(context%operators(i)%operator_name, token)) cycle
+            do j = 1, context%operators(i)%specific_count
+                fn_index = find_function_index(context, &
+                    trim(context%operators(i)%specific_names(j)))
+                if (fn_index <= 0) cycle
+                if (context%function_param_counts(fn_index) /= 1) cycle
+                if (context%operators(i)%first_arg_kinds(j) == operand_kind) then
+                    specific_slot = i * 256 + j
+                    return
+                end if
+                if (fallback == 0) fallback = i * 256 + j
+            end do
+        end do
+        if (is_named_operator_token(token)) specific_slot = fallback
+    end function find_unary_operator
 
     logical function is_named_operator_token(token)
         ! A named operator like .dot. lexes as .word. and cannot collide with a

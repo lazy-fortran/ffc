@@ -1496,6 +1496,15 @@
             module_exports_name = .true.
             return
         end if
+        ! Operator interfaces are kept in the operator table rather than the
+        ! named-generic table. Resolve the export against the defining module
+        ! so `use m, only: operator(/)` is validated by the same ownership rule
+        ! as a named generic.
+        if (module_exports_operator(arena, &
+                context%module_exports(export_idx)%module_name, name)) then
+            module_exports_name = .true.
+            return
+        end if
         ! Module procedures are not recorded in module_exports_t (only data
         ! symbols are), so resolve a procedure name against the module body
         ! itself (#263). A USE-only of a contained function or subroutine is a
@@ -1506,6 +1515,54 @@
             return
         end if
     end function module_exports_name
+
+    logical function module_exports_operator(arena, module_name, name)
+        ! Whether a module declares the operator interface named by a USE
+        ! ONLY item such as `operator(/)`. Operator interfaces do not have a
+        ! named-generic entry, so inspect the module declaration list directly
+        ! instead of treating any globally registered operator as exported.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: module_name
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: requested, op_token
+        integer :: n, d, open_pos
+
+        module_exports_operator = .false.
+        requested = trim(lowercase_text(name))
+        if (len_trim(requested) < 11) return
+        if (requested(1:9) /= 'operator(') return
+        if (requested(len_trim(requested):len_trim(requested)) /= ')') return
+        open_pos = 9
+        op_token = requested(open_pos + 1:len_trim(requested) - 1)
+        if (len_trim(op_token) == 0) return
+
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (mod_node => arena%entries(n)%node)
+            type is (module_node)
+                if (.not. allocated(mod_node%name)) cycle
+                if (.not. same_name(mod_node%name, module_name)) cycle
+                if (module_symbol_is_private(arena, mod_node, requested)) return
+                if (.not. allocated(mod_node%declaration_indices)) return
+                do d = 1, size(mod_node%declaration_indices)
+                    if (.not. node_exists(arena, &
+                            mod_node%declaration_indices(d))) cycle
+                    select type (block => &
+                            arena%entries(mod_node%declaration_indices(d))%node)
+                    type is (interface_block_node)
+                        if (.not. allocated(block%kind)) cycle
+                        if (trim(lowercase_text(block%kind)) /= 'operator') cycle
+                        if (.not. allocated(block%operator)) cycle
+                        if (same_name(block%operator, op_token)) then
+                            module_exports_operator = .true.
+                            return
+                        end if
+                    end select
+                end do
+                return
+            end select
+        end do
+    end function module_exports_operator
 
     logical function module_exports_procedure(arena, module_name, name)
         ! Whether the named module contains a public function or subroutine

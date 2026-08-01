@@ -735,19 +735,18 @@
         end select
     end function conjg_call_arg
 
-    ! True when node is real(z)/aimag(z) on a complex symbol of want_kind
-    ! (VALUE_C4 or VALUE_C8). Used to route the extraction through the matching
-    ! f32/f64 expression path so the result prints in the component's precision.
-    logical function is_complex_component_extract(arena, node, context, &
-                                                  want_kind) result(matches)
+    ! Return the component kind of real(z)/aimag(z), or SCALAR_REAL_NONE when
+    ! the argument is not a supported complex scalar or array element. The
+    ! result is independent of REAL's optional KIND selector: a selector may
+    ! require a conversion after the complex component is extracted.
+    integer function complex_component_kind(arena, node, context) result(kind)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
-        integer, intent(in) :: want_kind
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable :: name, arg_name, err
         integer :: sym
 
-        matches = .false.
+        kind = SCALAR_REAL_NONE
         if (.not. allocated(node%name)) return
         if (node%is_array_access) return
         name = lowercase_text(trim(node%name))
@@ -763,11 +762,32 @@
             sym = find_symbol_compat(context, arg_name)
             if (sym <= 0) return
             if (context%symbols(sym)%is_array) return
-            matches = context%symbols(sym)%value_kind == want_kind
+            if (context%symbols(sym)%value_kind == VALUE_C4 .or. &
+                context%symbols(sym)%value_kind == VALUE_C8) then
+                kind = context%symbols(sym)%value_kind
+            end if
             return
         end if
-        matches = is_complex_array_element_arg(arena, node%arg_indices(1), &
-                                               context, want_kind)
+        if (is_complex_array_element_arg(arena, node%arg_indices(1), &
+                                        context, VALUE_C4)) then
+            kind = VALUE_C4
+        else if (is_complex_array_element_arg(arena, node%arg_indices(1), &
+                                             context, VALUE_C8)) then
+            kind = VALUE_C8
+        end if
+    end function complex_component_kind
+
+    ! True when node is real(z)/aimag(z) on a complex symbol of want_kind
+    ! (VALUE_C4 or VALUE_C8). Used by the scalar-kind engine and retained as a
+    ! narrow predicate for callers that only need a yes/no answer.
+    logical function is_complex_component_extract(arena, node, context, &
+                                                  want_kind) result(matches)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: want_kind
+        type(lowering_context_t), intent(in) :: context
+
+        matches = complex_component_kind(arena, node, context) == want_kind
     end function is_complex_component_extract
 
     ! True when node_index is a complex(want_kind) array element access x(i).
@@ -831,6 +851,46 @@
                                           error_msg)) return
         end if
     end subroutine lower_complex_component_extract
+
+    ! Extract a REAL/AIMAG complex component and convert it to the declared
+    ! scalar result kind. REAL(z, KIND=k) selects the result kind, not the
+    ! width of z's stored component, so this path must handle both widening and
+    ! narrowing instead of routing solely by the source complex kind.
+    subroutine lower_complex_component_conversion(arena, node, context, &
+                                                  want_kind, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: want_kind
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: raw
+        integer :: source_kind
+
+        source_kind = complex_component_kind(arena, node, context)
+        if (source_kind == SCALAR_REAL_NONE) then
+            error_msg = 'complex component conversion requires a complex value'
+            return
+        end if
+        call lower_complex_component_extract(arena, node, context, &
+                                             source_kind == VALUE_C4, raw, &
+                                             error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (source_kind == VALUE_C4 .and. want_kind == VALUE_F32) then
+            value = raw
+        else if (source_kind == VALUE_C4 .and. want_kind == VALUE_F64) then
+            if (.not. emit_liric_f32_to_f64(context%session, raw, value, &
+                                            error_msg)) return
+        else if (source_kind == VALUE_C8 .and. want_kind == VALUE_F64) then
+            value = raw
+        else if (source_kind == VALUE_C8 .and. want_kind == VALUE_F32) then
+            if (.not. emit_liric_f64_to_f32(context%session, raw, value, &
+                                            error_msg)) return
+        else
+            error_msg = 'unsupported complex component result kind'
+        end if
+    end subroutine lower_complex_component_conversion
 
     ! Lower real(x(i))/aimag(x(i)) for a complex array element by loading the
     ! wanted component of the element's re/im GEP addresses.

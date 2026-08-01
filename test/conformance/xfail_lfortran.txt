@@ -128,7 +128,6 @@ array_op_06.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and
 array_op_07.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 array_op_08.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 array_op_09.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-array_op_10.f90 # owner=lazy-fortran/ffc#418; reason=lower vector-subscript assignment as alias-safe scatter
 array_op_12.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 array_op_13.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 array_reshape_pad_01.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
@@ -359,7 +358,6 @@ associate_09.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar ex
 associate_10.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 associate_12.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer association
 associate_13.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-associate_14.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
 associate_15.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 associate_16.f90 # owner=lazy-fortran/ffc#401; reason=lower scalar pointer components
 associate_17.f90 # owner=lazy-fortran/ffc#401; reason=lower scalar pointer components
@@ -2376,7 +2374,6 @@ no_explicit_return_type_01.f90 # owner=lazy-fortran/ffc#448; reason=lower same-u
 nullify_03.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 nullify_04.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 nullify_05.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-nullify_06.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer association
 nullify_07.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
 openmp_02.f90 # scope=OpenMP; reason=excluded OpenMP syntax or runtime dependency
 openmp_04.f90 # scope=OpenMP; reason=excluded OpenMP syntax or runtime dependency
@@ -2906,7 +2903,6 @@ separate_compilation_09.f90 # owner=lazy-fortran/ffc#328; reason=map USE binding
 separate_compilation_10a.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 separate_compilation_10.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 separate_compilation_11.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
-separate_compilation_12a.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 separate_compilation_12.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 separate_compilation_13a.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 separate_compilation_13.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports

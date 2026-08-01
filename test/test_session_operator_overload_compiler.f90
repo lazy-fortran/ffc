@@ -9,6 +9,8 @@ program test_session_operator_overload_compiler
     all_passed = .true.
     if (.not. test_named_integer_operator()) all_passed = .false.
     if (.not. test_named_real_operator()) all_passed = .false.
+    if (.not. test_unary_operator()) all_passed = .false.
+    if (.not. test_logical_operator()) all_passed = .false.
     if (.not. test_overloaded_assignment()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -72,6 +74,58 @@ contains
             source, '   8.0000000000000000     '//new_line('a'), &
             '/tmp/ffc_session_op_named_real')
     end function test_named_real_operator
+
+    logical function test_unary_operator()
+        ! A defined unary operator carries only its right operand in the AST;
+        ! the result must agree with the procedure's one-argument semantics.
+        character(len=*), parameter :: source = &
+            'module um'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface operator(.none.)'//new_line('a')// &
+            '    module procedure none_of'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  logical function none_of(a) result(c)'//new_line('a')// &
+            '    logical, intent(in) :: a'//new_line('a')// &
+            '    c = .not. a'//new_line('a')// &
+            '  end function none_of'//new_line('a')// &
+            'end module um'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use um, only: operator(.none.)'//new_line('a')// &
+            '  print *, .none. .true.'//new_line('a')// &
+            'end program main'
+
+        test_unary_operator = expect_output( &
+            source, ' F'//new_line('a'), '/tmp/ffc_session_op_unary')
+    end function test_unary_operator
+
+    logical function test_logical_operator()
+        ! A symbolic operator may return LOGICAL and be used both as a value
+        ! and as an IF condition. The expected output is from gfortran.
+        character(len=*), parameter :: source = &
+            'module lm'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface operator(/)'//new_line('a')// &
+            '    module procedure divide_flags'//new_line('a')// &
+            '  end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  logical function divide_flags(a, b) result(c)'//new_line('a')// &
+            '    logical, intent(in) :: a, b'//new_line('a')// &
+            '    c = a .and. .not. b'//new_line('a')// &
+            '  end function divide_flags'//new_line('a')// &
+            'end module lm'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use lm, only: operator(/)'//new_line('a')// &
+            '  if (.true. / .false.) then'//new_line('a')// &
+            '    print *, .true. / .false.'//new_line('a')// &
+            '  else'//new_line('a')// &
+            '    print *, .false.'//new_line('a')// &
+            '  end if'//new_line('a')// &
+            'end program main'
+
+        test_logical_operator = expect_output( &
+            source, ' T'//new_line('a'), '/tmp/ffc_session_op_logical')
+    end function test_logical_operator
 
     logical function test_overloaded_assignment()
         ! interface assignment(=) routes `x = rhs` to assign_doubled(x, rhs).

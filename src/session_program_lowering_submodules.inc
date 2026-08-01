@@ -115,7 +115,42 @@
         end do
         call register_submodule_generic_interfaces(arena, decl_indices, context, &
                                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call refresh_parent_module_generics(arena, parent_module, context, &
+                                            error_msg)
     end subroutine register_one_submodule_procedures
+
+    subroutine refresh_parent_module_generics(arena, parent_module, context, &
+                                              error_msg)
+        ! A parent module's named generic can list a module procedure whose
+        ! body is supplied later by a submodule. Refresh those specific
+        ! signatures after the submodule procedure table is populated so the
+        ! generic return kind and argument count are not left at their
+        ! interface-only defaults.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: parent_module
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: node_type, module_name, ff_error
+        integer, allocatable :: declaration_indices(:), procedure_indices(:)
+        integer, allocatable :: no_procedures(:)
+        integer :: n
+
+        call set_empty(error_msg)
+        allocate(no_procedures(0))
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type /= 'module_node' .and. node_type /= 'module') cycle
+            call get_module_body_info(arena, n, module_name, declaration_indices, &
+                                      procedure_indices, ff_error)
+            if (len_trim(ff_error) > 0) cycle
+            if (.not. same_name(module_name, parent_module)) cycle
+            call register_procedures_from_indices(arena, declaration_indices, &
+                                                  no_procedures, context, error_msg)
+            return
+        end do
+    end subroutine refresh_parent_module_generics
 
     subroutine register_one_submodule_procedure(arena, proc_index, parent_module, &
                                                 context, error_msg)

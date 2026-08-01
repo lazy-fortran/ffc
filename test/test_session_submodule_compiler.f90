@@ -44,6 +44,7 @@ program test_session_submodule_compiler
     if (.not. test_separate_module_subroutine()) all_passed = .false.
     if (.not. test_separate_module_function()) all_passed = .false.
     if (.not. test_generic_interface_body_specific()) all_passed = .false.
+    if (.not. test_submodule_generic_real()) all_passed = .false.
     if (.not. test_parent_module_not_found()) all_passed = .false.
     if (.not. test_caller_links_deferred_module_procedure()) all_passed = .false.
     if (.not. test_plain_interface_is_not_exported()) all_passed = .false.
@@ -168,6 +169,36 @@ contains
         test_generic_interface_body_specific = expect_exit_status( &
             source, 3, '/tmp/ffc_session_submod_generic_body_test')
     end function test_generic_interface_body_specific
+
+    logical function test_submodule_generic_real()
+        ! A parent generic whose real module function body is supplied by a
+        ! submodule must retain the specific's real return kind at the caller.
+        character(len=*), parameter :: source = &
+            'module mreal'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  interface h'//new_line('a')// &
+            '    real module function realg2(a, b)'//new_line('a')// &
+            '      real, intent(in) :: a, b'//new_line('a')// &
+            '    end function realg2'//new_line('a')// &
+            '  end interface h'//new_line('a')// &
+            'end module mreal'//new_line('a')// &
+            'submodule (mreal) sreal'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  real module function realg2(a, b)'//new_line('a')// &
+            '    real, intent(in) :: a, b'//new_line('a')// &
+            '    realg2 = 2.0*a + b'//new_line('a')// &
+            '  end function realg2'//new_line('a')// &
+            'end submodule sreal'//new_line('a')// &
+            'program preal'//new_line('a')// &
+            '  use mreal, only: h'//new_line('a')// &
+            '  real :: r'//new_line('a')// &
+            '  r = h(1.0, 1.0)'//new_line('a')// &
+            '  stop int(r)'//new_line('a')// &
+            'end program preal'
+
+        test_submodule_generic_real = expect_exit_status( &
+            source, 3, '/tmp/ffc_session_submod_generic_real_test')
+    end function test_submodule_generic_real
 
     logical function test_parent_module_not_found()
         ! #292: a submodule whose parent module is absent from the compilation

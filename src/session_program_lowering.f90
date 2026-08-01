@@ -2351,6 +2351,23 @@ contains
                 call set_empty(error_msg)
                 return
             end if
+            block
+                integer :: op_slot
+                if (overloaded_operator_slot(arena, node_index, context, &
+                                              op_slot)) then
+                    if (operator_return_kind(context, op_slot) == &
+                        VALUE_LOGICAL) then
+                        call lower_overloaded_operator(arena, node_index, &
+                                                       op_slot, context, lhs, &
+                                                       error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        rhs = i32_immediate(context%session, 0_c_int64_t)
+                        if (.not. emit_liric_i32_icmp(context%session, &
+                            LR_CMP_NE, lhs, rhs, value, error_msg)) return
+                        return
+                    end if
+                end if
+            end block
             if (is_logical_connective(bin_op)) then
                 ! .and./.or./.eqv./.neqv. combine two i1 sub-conditions. Both
                 ! operands are lowered (Fortran does not short-circuit), then

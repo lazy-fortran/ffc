@@ -181,6 +181,7 @@ contains
             '  integer :: i'//new_line('a')// &
             '  do i = 1, 3, 0'//new_line('a')// &
             '    print *, i'//new_line('a')// &
+            '  end do'//new_line('a')// &
             'end program main'
 
         test_do_zero_step_diagnostic = expect_error_contains( &

@@ -1600,7 +1600,6 @@ pr95338.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedur
 pr95342.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
 pr95500.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 pr95611.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces
-pr95614_1.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 pr95614_2.f90 # owner=lazy-fortran/ffc#392; reason=enforce COMMON EQUIVALENCE SAVE and BLOCK DATA restrictions
 pr95614_4.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 pr95829.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1634,7 +1633,6 @@ proc_decl_17.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length 
 proc_decl_18.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_decl_19.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 proc_decl_2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-proc_decl_20.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_decl_22.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_decl_23.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 proc_decl_24.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering

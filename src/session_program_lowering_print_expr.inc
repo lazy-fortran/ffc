@@ -63,14 +63,14 @@
             ! An integer literal falls through to the integer print below.
         end if
 
-        if (is_binary_op(arena, node_index)) then
-            ! Character // concatenation prints as a runtime string buffer; only
-            ! the // operands case is handled here (intrinsic agent, bug 2).
-            if (is_character_concat(arena, node_index, context)) then
-                call lower_print_char_expr(arena, node_index, context, error_msg)
-                return
-            end if
-            if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
+            if (is_binary_op(arena, node_index)) then
+                ! Character // concatenation prints as a runtime string buffer; only
+                ! the // operands case is handled here (intrinsic agent, bug 2).
+                if (is_character_concat(arena, node_index, context)) then
+                    call lower_print_char_expr(arena, node_index, context, error_msg)
+                    return
+                end if
+                if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
                 call eval_c8_rhs(arena, node_index, context, re_val, im_val, &
                                  error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -392,6 +392,21 @@
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return
             end if
+            block
+                integer :: op_slot
+                if (overloaded_operator_slot(arena, node_index, context, &
+                                              op_slot)) then
+                    if (operator_return_kind(context, op_slot) == &
+                        VALUE_LOGICAL) then
+                        call lower_overloaded_operator(arena, node_index, &
+                                                       op_slot, context, value, &
+                                                       error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call lower_print_logical_value(context, value, error_msg)
+                        return
+                    end if
+                end if
+            end block
             if (is_complex_valued(arena, node_index, context, VALUE_C8)) then
                 call eval_c8_rhs(arena, node_index, context, re_val, im_val, &
                                  error_msg)

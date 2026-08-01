@@ -546,9 +546,9 @@
             error_msg = 'direct LIRIC session real(4) function call requires a name'
             return
         end if
-        if (is_complex_component_extract(arena, node, context, VALUE_C4)) then
-            call lower_complex_component_extract(arena, node, context, &
-                                                 .true., value, error_msg)
+        if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
+            call lower_complex_component_conversion(arena, node, context, &
+                                                    VALUE_F32, value, error_msg)
             return
         end if
 
@@ -777,9 +777,9 @@
             error_msg = 'direct LIRIC session real function call requires a name'
             return
         end if
-        if (is_complex_component_extract(arena, node, context, VALUE_C8)) then
-            call lower_complex_component_extract(arena, node, context, &
-                                                 .false., value, error_msg)
+        if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
+            call lower_complex_component_conversion(arena, node, context, &
+                                                    VALUE_F64, value, error_msg)
             return
         end if
         ! Indirect call through a procedure dummy or procedure pointer (#467).
@@ -918,9 +918,14 @@
                                 bin_right, bin_line, bin_col, bin_err)
         if (len_trim(bin_err) > 0) return
         if (.not. allocated(bin_op)) return
-        left_kind = operand_overload_kind(arena, bin_left, context)
-        right_kind = operand_overload_kind(arena, bin_right, context)
-        slot = find_operator(context, bin_op, left_kind, right_kind, .false.)
+        if (bin_left == 0) then
+            right_kind = operand_overload_kind(arena, bin_right, context)
+            slot = find_unary_operator(context, bin_op, right_kind)
+        else
+            left_kind = operand_overload_kind(arena, bin_left, context)
+            right_kind = operand_overload_kind(arena, bin_right, context)
+            slot = find_operator(context, bin_op, left_kind, right_kind, .false.)
+        end if
         overloaded_operator_slot = slot > 0
     end function overloaded_operator_slot
 
@@ -942,10 +947,9 @@
 
     subroutine lower_overloaded_operator(arena, node_index, slot, context, &
                                          value, error_msg)
-        ! Lower a user-defined binary operator as a call to its specific:
-        ! a .op. b -> specific(a, b). Operand ABI reuses prepare_reference_args
-        ! (so derived operands pass by reference like any 2-arg call), and the
-        ! result is emitted with the specific's return kind.
+        ! Lower a user-defined operator as a call to its specific. A unary
+        ! operator has a zero left index in the AST and passes only its right
+        ! operand; binary operands pass by reference like any 2-arg call.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index, slot
         type(lowering_context_t), intent(inout) :: context
@@ -961,9 +965,15 @@
         if (len_trim(error_msg) > 0) return
         specific = operator_specific_name(context, slot)
         ret_kind = operator_return_kind(context, slot)
-        call prepare_reference_args(arena, [bin_left, bin_right], context, &
-                                    VALUE_I32, specific, args, copyback_indices, &
-                                    error_msg)
+        if (bin_left == 0) then
+            call prepare_reference_args(arena, [bin_right], context, VALUE_I32, &
+                                        specific, args, copyback_indices, &
+                                        error_msg)
+        else
+            call prepare_reference_args(arena, [bin_left, bin_right], context, &
+                                        VALUE_I32, specific, args, &
+                                        copyback_indices, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         if (ret_kind == VALUE_F64) then
             if (.not. emit_liric_f64_call(context%session, &
