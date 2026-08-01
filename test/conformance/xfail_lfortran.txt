@@ -1226,7 +1226,6 @@ fma_03.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic call
 fma.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 forall_04.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 format_01.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
-format_02.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 format_04.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 format_05.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 format_06.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
@@ -2234,7 +2233,6 @@ modules_28.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module e
 modules_28_module1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_28_module2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_29.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
-modules_29_module1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_29_module2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_29_module3.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_30.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -2354,7 +2352,6 @@ nested_array_intrinsics_01.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK U
 nested_callback_arrays.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 nested_callback_interface_01.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_call_filter_01.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
-nested_external_dedup_01.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 nested_namelist_01.f90 # owner=lazy-fortran/ffc#460; reason=write scalar NAMELIST groups
 nested_struct_proc_01.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 nested_vars_01.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
@@ -3383,5 +3380,4 @@ write_42.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expres
 write_43.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 write_fortran_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 write_fortran_02.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
-write_implied_do_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 write_substr_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations

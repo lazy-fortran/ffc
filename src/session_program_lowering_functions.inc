@@ -1562,11 +1562,28 @@
                 binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
             declaration_index = find_declaration_record(context, binding)
             if (declaration_index > 0 .and. &
-                context%declaration_records(declaration_index)%is_array) then
+                    context%declaration_records(declaration_index)%is_array) then
                 call register_host_array_global_symbol(context, binding, name, &
                     context%declaration_records(declaration_index), error_msg)
                 if (len_trim(error_msg) > 0) return
                 cycle
+            end if
+            if (binding%declaration_node_index > 0 .and. &
+                    node_exists(arena, binding%declaration_node_index)) then
+                select type (decl => &
+                        arena%entries(binding%declaration_node_index)%node)
+                type is (declaration_node)
+                    if (.not. decl%is_array .and. decl%is_allocatable .and. &
+                            allocated(decl%type_name) .and. &
+                            is_class_derived_type_spec(decl%type_name)) then
+                        call register_host_class_allocatable_global(context, &
+                            binding, name, decl, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        cycle
+                    end if
+                class default
+                    continue
+                end select
             end if
             if (find_symbol_for_binding(context, binding) > 0) cycle
             value_kind = 0
@@ -1735,6 +1752,80 @@
             binding%declaration_node_index, binding%declaration_entity_index, &
             binding%scope_node_index, index)
     end subroutine register_host_global_symbol
+
+    subroutine register_host_class_allocatable_global(context, binding, name, &
+                                                       decl, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+            c_int64_t, c_loc, c_ptr, c_size_t
+        ! A host-associated CLASS(t), ALLOCATABLE scalar owns the same 32-byte
+        ! descriptor as a local class allocatable. Materialize that descriptor
+        ! as a global before contained procedures are emitted; the host body's
+        ! ALLOCATE then publishes its data pointer and dynamic type into it.
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        type(declaration_node), intent(in) :: decl
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int64_t), target :: init_words(POLYMORPHIC_DESCRIPTOR_SIZE / 8)
+        type(c_ptr) :: global_type
+        type(lr_operand_desc_t) :: descriptor
+        integer(c_int32_t) :: global_id
+        integer :: declared_index, index
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        if (find_symbol_for_binding(context, binding) > 0) return
+        declared_index = declaration_derived_type_index(context, decl)
+        if (declared_index <= 0) return
+
+        init_words = 0_c_int64_t
+        init_words(2) = int(declared_index, c_int64_t)
+        global_name = host_global_name(binding, name)
+        call to_c_chars(global_name, c_name)
+        global_type = lr_type_array_s(context%session%handle, &
+            lr_type_i8_s(context%session%handle), &
+            int(POLYMORPHIC_DESCRIPTOR_SIZE, c_int64_t))
+        c_false_local = .false.
+        global_id = lr_session_global(context%session%handle, c_name, global_type, &
+            c_false_local, c_loc(init_words), &
+            int(POLYMORPHIC_DESCRIPTOR_SIZE, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create host-associated class descriptor: '// &
+                trim(name)
+            return
+        end if
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern host-associated class descriptor: '// &
+                trim(name)
+            return
+        end if
+
+        descriptor = lr_operand_desc_t()
+        descriptor%kind = LR_OP_KIND_GLOBAL
+        descriptor%payload = int(global_id, c_int64_t)
+        descriptor%typ = lr_type_ptr_s(context%session%handle)
+        descriptor%global_offset = 0_c_int64_t
+
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index) = symbol_t()
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_DERIVED
+        context%symbols(index)%is_derived = .true.
+        context%symbols(index)%derived_type_index = declared_index
+        context%symbols(index)%is_allocatable = .true.
+        context%symbols(index)%is_polymorphic = .true.
+        context%symbols(index)%class_descriptor_address = descriptor
+        context%symbols(index)%dynamic_type_address = descriptor
+        context%symbols(index)%dynamic_type_address%global_offset = &
+            int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t)
+        context%symbols(index)%has_dynamic_type_address = .true.
+        context%symbol_count = index
+        call attach_symbol_binding(context, index, binding)
+    end subroutine register_host_class_allocatable_global
 
     subroutine register_host_array_global_symbol(context, binding, name, record, &
                                                  error_msg)
@@ -2029,7 +2120,8 @@
         symbol_has_global_storage = &
             symbol%address%kind == LR_OP_KIND_GLOBAL .or. &
             symbol%element_address%kind == LR_OP_KIND_GLOBAL .or. &
-            symbol%allocatable_descriptor_address%kind == LR_OP_KIND_GLOBAL
+            symbol%allocatable_descriptor_address%kind == LR_OP_KIND_GLOBAL .or. &
+            symbol%class_descriptor_address%kind == LR_OP_KIND_GLOBAL
     end function symbol_has_global_storage
 
     logical function is_contained_i32_function(context, name)

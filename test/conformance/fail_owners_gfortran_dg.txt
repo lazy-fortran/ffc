@@ -19,7 +19,6 @@ binding_label_tests_17.f90 # owner=lazy-fortran/fortfront#2884; reason=reject du
 binding_label_tests_18.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
 binding_label_tests_25.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
 binding_label_tests_28.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
-binding_label_tests_29.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
 binding_label_tests_30.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
 binding_label_tests_37.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
 binding_label_tests_38.f90 # owner=lazy-fortran/ffc#360; reason=lay out interoperable character components
