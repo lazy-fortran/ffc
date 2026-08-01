@@ -1021,6 +1021,17 @@
         if (present(current_context)) then
             nested_node_index = visible_nested_procedure_node(current_context, &
                                                                fortran_name)
+            ! An interface block in a procedure's specification part declares
+            ! an external procedure unless the name is also a dummy argument of
+            ! that procedure; the external one keeps its plain link name rather
+            ! than the nested-procedure mangling (#582).
+            if (nested_node_index > 0) then
+                if (procedure_node_is_interface_signature(arena, &
+                                                          nested_node_index)) then
+                    if (.not. enclosing_dummy_argument_name(arena, &
+                            current_context, fortran_name)) nested_node_index = 0
+                end if
+            end if
             if (nested_node_index > 0) then
                 emit_name = trim(fortran_name)
                 if (node_exists(arena, nested_node_index)) then
