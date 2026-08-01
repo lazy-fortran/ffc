@@ -610,8 +610,13 @@
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, bin_err)
+            ! Mixed-kind arithmetic takes the widest operand kind (F2018
+            ! 10.1.5.2.1), so a binary op is f32 only when an operand is f32
+            ! and no operand is f64: "2.0*x" with x real(8) is an f64
+            ! expression, not an f32 one.
             is_f32 = is_f32_expression(arena, bin_left, context) .or. &
                      is_f32_expression(arena, bin_right, context)
+            if (is_f32) is_f32 = .not. is_f64_expression(arena, node_index, context)
             return
         end if
 
