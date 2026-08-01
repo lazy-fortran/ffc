@@ -701,9 +701,9 @@
                 unit_name = ''
             end do
             if (len_trim(unit_name) == 0) cycle
-            if (use_renames_name(text, unit_name)) cycle
             if (.not. owned_name_present(names, owner, nname, unit_name, midx)) &
                 cycle
+            if (.not. use_makes_name_accessible(text, unit_name)) cycle
             write (location, '(" at line ",I0)') i
             error_msg = trim(unit_name)//' from module '//trim(mods(midx))// &
                 ' is also the name of the current program unit'//trim(location)
@@ -711,25 +711,52 @@
         end do
     end subroutine check_use_shadows_program_unit
 
-    ! True when the USE statement renames the module entity called name, so
-    ! that name is not made accessible under its own spelling.
-    logical function use_renames_name(text, name) result(yes)
+    ! Whether a USE statement makes name accessible under that same name. A
+    ! rename moves the module entity to a different local name, and an ONLY
+    ! clause admits nothing that it does not list, so in both cases the name
+    ! itself never enters the local scope (F2018 14.2.2).
+    logical function use_makes_name_accessible(text, name) result(yes)
         character(len=*), intent(in) :: text
         character(len=*), intent(in) :: name
-        integer :: p, base
+        character(len=:), allocatable :: tail, item, use_name
+        logical :: only_form
+        integer :: comma, p, start, i
 
-        yes = .false.
-        base = 0
-        do
-            p = index(text(base + 1:), '=>')
-            if (p == 0) return
-            base = base + p + 1
-            if (identifier_after(text, base) == trim(name)) then
-                yes = .true.
-                return
+        yes = .true.
+        comma = index(text, ',')
+        if (comma == 0) return
+        tail = text(comma + 1:)
+        only_form = .false.
+        p = index(tail, 'only')
+        if (p > 0) then
+            p = index(tail, ':')
+            if (p > 0) then
+                only_form = .true.
+                tail = tail(p + 1:)
             end if
+        end if
+        if (only_form) yes = .false.
+        start = 1
+        do i = 1, len(tail) + 1
+            if (i <= len(tail)) then
+                if (tail(i:i) /= ',') cycle
+            end if
+            item = trim(adjustl(tail(start:i - 1)))
+            start = i + 1
+            if (len_trim(item) == 0) cycle
+            p = index(item, '=>')
+            if (p > 0) then
+                use_name = trim(adjustl(item(p + 2:)))
+                if (use_name == trim(name)) then
+                    yes = .false.
+                    return
+                end if
+                cycle
+            end if
+            if (.not. only_form) cycle
+            if (item == trim(name)) yes = .true.
         end do
-    end function use_renames_name
+    end function use_makes_name_accessible
 
     ! True when name occurs as a whole word on the line.
     logical function line_references_name(line, name) result(yes)
@@ -750,6 +777,10 @@
                 ! object, never the use associated entity of that name.
                 if (line(p - 1:p - 1) == '%') cycle
             end if
+            ! A component or type-bound name after % resolves through the
+            ! declared type, not through use association, so it never makes
+            ! an ambiguous use-associated name referenced.
+            if (preceded_by_component_selector(line, p)) cycle
             if (p + len_trim(name) <= len(line)) then
                 if (is_fortran_identifier_char(line(p + len_trim(name): &
                                                     p + len_trim(name)))) cycle
@@ -758,6 +789,20 @@
             return
         end do
     end function line_references_name
+
+    ! Whether the identifier starting at pos is preceded by a % selector.
+    logical function preceded_by_component_selector(line, pos) result(yes)
+        character(len=*), intent(in) :: line
+        integer, intent(in) :: pos
+        integer :: i
+
+        yes = .false.
+        do i = pos - 1, 1, -1
+            if (line(i:i) == ' ') cycle
+            yes = line(i:i) == '%'
+            return
+        end do
+    end function preceded_by_component_selector
 
     ! Two modules that make the same name accessible to one scoping unit leave
     ! that name ambiguous; referencing it is an error (F2018 19.5.1.4).
@@ -1186,7 +1231,7 @@
         character(len=64) :: specs(MAXN), actuals(MAXN)
         character(len=:), allocatable :: text, callee
         character(len=64) :: location
-        integer :: i, j, nspec, nactual, header
+        integer :: i, nspec, nactual
         logical :: matched, resolvable
 
         call set_empty(error_msg)
@@ -1195,11 +1240,9 @@
             if (.not. stmt_starts(text, 'call')) cycle
             callee = identifier_after(text, 5)
             if (len_trim(callee) == 0) cycle
-            call generic_header_line(lines, count, callee, header)
-            if (header == 0) cycle
             call literal_actual_types(text, actuals, nactual)
             if (nactual <= 0) cycle
-            call generic_block_specifics(lines, count, header, specs, nspec)
+            call generic_union_specifics(lines, count, callee, specs, nspec)
             if (nspec == 0) cycle
             call generic_call_matches(arena, specs, nspec, actuals, nactual, &
                                       matched, resolvable)
@@ -1212,23 +1255,43 @@
         end do
     end subroutine check_generic_call_resolves
 
-    subroutine generic_header_line(lines, count, name, header)
+    ! The union of the specific procedures of every generic interface block
+    ! that declares name. One reference may see several of them at once: a
+    ! generic can be extended by host association and by USE association in
+    ! the same scope (F2018 15.4.3.4.1), so judging a call against a single
+    ! block would reject valid references.
+    subroutine generic_union_specifics(lines, count, name, specs, nspec)
         character(len=512), intent(in) :: lines(:)
         integer, intent(in) :: count
         character(len=*), intent(in) :: name
-        integer, intent(out) :: header
+        character(len=64), intent(inout) :: specs(:)
+        integer, intent(out) :: nspec
+        character(len=64) :: block_specs(64)
         character(len=:), allocatable :: text
-        integer :: i
+        integer :: i, j, k, nblock
 
-        header = 0
+        nspec = 0
         do i = 1, count
             text = trim(lines(i))
             if (.not. stmt_starts(text, 'interface')) cycle
             if (identifier_after(text, 10) /= trim(name)) cycle
-            header = i
-            return
+            call generic_block_specifics(lines, count, i, block_specs, nblock)
+            do k = 1, nblock
+                if (nspec >= size(specs)) exit
+                ! One specific name declared by two blocks names two distinct
+                ! procedures, which a name lookup cannot tell apart. Judge
+                ! nothing rather than judge the wrong signature.
+                do j = 1, nspec
+                    if (trim(specs(j)) == trim(block_specs(k))) then
+                        nspec = 0
+                        return
+                    end if
+                end do
+                nspec = nspec + 1
+                specs(nspec) = block_specs(k)
+            end do
         end do
-    end subroutine generic_header_line
+    end subroutine generic_union_specifics
 
     ! Base types of a call's actual arguments when every one is a literal
     ! constant; nactual is -1 otherwise.

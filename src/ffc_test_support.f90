@@ -26,6 +26,7 @@ module ffc_test_support
     public :: expect_stderr_and_exit
     public :: expect_eof_stderr_and_exit
     public :: expect_no_leaks
+    public :: expect_error_lacks
     ! Lets a test keep the emitted executable and inspect it (#565).
     public :: compile_to_exe
 
@@ -367,6 +368,27 @@ contains
         end if
         ok = .true.
     end function expect_error_contains
+
+    ! Compiles source and checks that no diagnostic containing fragment is
+    ! emitted. Used where a rejection rule must stop firing but the program
+    ! still exercises unrelated unimplemented lowering (#620).
+    logical function expect_error_lacks(source, fragment, exe_path) result(ok)
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: fragment
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call compile_to_exe(source, exe_path, error_msg)
+        call execute_command_line('rm -f '//exe_path)
+        if (len_trim(error_msg) > 0) then
+            if (index(error_msg, fragment) > 0) then
+                print *, 'FAIL: unexpected diagnostic: ', trim(error_msg)
+                return
+            end if
+        end if
+        ok = .true.
+    end function expect_error_lacks
 
     logical function expect_cli_error_contains(source, fragment, stem) result(ok)
         ! Tests the CLI binary (ffc) directly for unsupported-source diagnostics.
