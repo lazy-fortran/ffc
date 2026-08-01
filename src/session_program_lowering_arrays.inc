@@ -4349,10 +4349,31 @@
         call set_empty(error_msg)
     end subroutine check_shift_shapes
 
+    ! True when merge's mask argument is a scalar logical rather than a logical
+    ! array variable. Anything that is not a declared array identifier is
+    ! treated as a scalar expression and lowered as such.
+    logical function merge_mask_is_scalar(arena, mask_index, context) &
+        result(is_scalar)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: mask_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, err
+        integer :: sym
+
+        is_scalar = .true.
+        if (.not. is_identifier(arena, mask_index)) return
+        call get_identifier_name(arena, mask_index, name, err)
+        if (len_trim(err) > 0) return
+        sym = find_symbol_compat(context, name)
+        if (sym <= 0) return
+        if (context%symbols(sym)%is_array) is_scalar = .false.
+    end function merge_mask_is_scalar
+
     ! merge(tsource, fsource, mask) for rank-1 arrays: per element pick from
-    ! tsource where mask is .true., else from fsource. All three arrays must
-    ! share the result shape; mask is a logical array stored as i32 (nonzero
-    ! means .true.).
+    ! tsource where mask is .true., else from fsource. tsource and fsource must
+    ! share the result shape. The mask is either a conforming logical array
+    ! stored as i32 (nonzero means .true.) or a scalar logical broadcast over
+    ! every element.
     subroutine lower_merge_assignment(arena, node, symbol_index, context, &
                                       error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -4364,6 +4385,7 @@
         type(lr_operand_desc_t) :: zero
         integer :: t_index, f_index, m_index
         integer :: i, n
+        logical :: mask_is_scalar
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -4377,31 +4399,55 @@
             call resolve_i32_array_argument(arena, rhs, 2, context, 'merge', &
                                             'fsource', f_index, error_msg)
             if (len_trim(error_msg) > 0) return
-            call resolve_logical_mask_argument(arena, rhs, 3, context, 'merge', &
-                                               m_index, error_msg)
-            if (len_trim(error_msg) > 0) return
+            m_index = 0
+            mask_is_scalar = merge_mask_is_scalar(arena, rhs%arg_indices(3), &
+                                                  context)
+            if (.not. mask_is_scalar) then
+                call resolve_logical_mask_argument(arena, rhs, 3, context, &
+                                                   'merge', m_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (context%symbols(symbol_index)%array_rank /= 1 .or. &
                 context%symbols(t_index)%array_rank /= 1 .or. &
-                context%symbols(f_index)%array_rank /= 1 .or. &
-                context%symbols(m_index)%array_rank /= 1) then
+                context%symbols(f_index)%array_rank /= 1) then
                 error_msg = 'merge supports only rank-1 arrays'
                 return
             end if
+            if (m_index > 0) then
+                if (context%symbols(m_index)%array_rank /= 1) then
+                    error_msg = 'merge supports only rank-1 arrays'
+                    return
+                end if
+            end if
             n = context%symbols(symbol_index)%array_size
             if (context%symbols(t_index)%array_size /= n .or. &
-                context%symbols(f_index)%array_size /= n .or. &
-                context%symbols(m_index)%array_size /= n) then
+                context%symbols(f_index)%array_size /= n) then
                 error_msg = 'merge operands must share the result shape'
                 return
             end if
+            if (m_index > 0) then
+                if (context%symbols(m_index)%array_size /= n) then
+                    error_msg = 'merge operands must share the result shape'
+                    return
+                end if
+            end if
             zero = i32_immediate(context%session, 0_c_int64_t)
-            do i = 0, n - 1
-                call load_array_linear_element(context, m_index, &
-                                               int(i, c_int64_t), mask_val, &
-                                               error_msg)
+            if (mask_is_scalar) then
+                call lower_logical_expression(arena, rhs%arg_indices(3), &
+                                              context, mask_val, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
                         mask_val, zero, cond, error_msg)) return
+            end if
+            do i = 0, n - 1
+                if (.not. mask_is_scalar) then
+                    call load_array_linear_element(context, m_index, &
+                                                   int(i, c_int64_t), mask_val, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                            mask_val, zero, cond, error_msg)) return
+                end if
                 call load_array_linear_element(context, t_index, &
                                                int(i, c_int64_t), t_val, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -4465,6 +4511,10 @@
             if (len_trim(error_msg) > 0) return
             if (dim_val /= 1_c_int64_t .and. dim_val /= 2_c_int64_t) then
                 error_msg = 'spread dim must be 1 or 2 for a rank-1 source'
+                return
+            end if
+            if (ncopies < 0_c_int64_t) then
+                error_msg = 'spread ncopies must be nonnegative'
                 return
             end if
             m = context%symbols(source_index)%array_size
