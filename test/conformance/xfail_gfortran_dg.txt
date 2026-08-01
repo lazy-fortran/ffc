@@ -159,7 +159,6 @@ array_constructor_17.f90 # owner=lazy-fortran/ffc#347; reason=migrate character 
 array_constructor_19.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 array_constructor_21.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 array_constructor_3.f90 # owner=lazy-fortran/ffc#388; reason=reject incompatible array constructor types
-array_constructor_31.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 array_constructor_32.f90 # owner=lazy-fortran/ffc#463; reason=lower nested constructors in DATA initialization
 array_constructor_33.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 array_constructor_34.f90 # owner=lazy-fortran/ffc#459; reason=lower typed array constructors
@@ -1120,7 +1119,6 @@ module_equivalence_5.f90 # owner=lazy-fortran/ffc#457; reason=register resolved 
 module_interface_1.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 module_interface_2.f90 # owner=lazy-fortran/ffc#328; reason=resolve same-unit USE export identity
 module_private_array_refs_1.f90 # owner=lazy-fortran/ffc#358; reason=lower multi-object ALLOCATE
-module_proc_external_dummy.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 module_procedure_1.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 module_procedure_3.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 module_procedure_5.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
@@ -2161,3 +2159,10 @@ public_private_module.f90 # owner=lazy-fortran/fortfront#2895; reason=reject dup
 select_5.f90 # owner=lazy-fortran/ffc#447; reason=own declared integer kinds and kind-preserving comparisons
 structure_constructor_16.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 used_dummy_types_3.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
+c_f_pointer_tests_5.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
+interface_48.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
+non_module_public.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
+pr125391.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
+pr52608.f90 # owner=lazy-fortran/ffc#391; reason=reject malformed FORMAT descriptors
+pr96087.f90 # owner=lazy-fortran/ffc#373; reason=reallocate allocatables from runtime expressions
+proc_decl_26.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
