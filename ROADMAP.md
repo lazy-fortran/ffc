@@ -25,10 +25,38 @@ The retired MLIR/HLFIR experiment lives only in git history. Reference it
 by commit hash if you need to look back, but do not revive it without an
 explicit decision.
 
+## Current status (2026-08-01)
+
+- Main: `77a42d9`. FortFront `bef13511`. LIRIC `5436e5c`.
+- `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
+- Repeated deterministic random subsets reached 900 files per suite with no
+  unexpected `FAIL` or `XPASS` after manifest classification. The next 900-file
+  attempt, seed 1037, is not clean: `fortfront-lf` has one `FAIL`, `lfortran`
+  has two `FAIL` and two `XPASS`, and `gfortran.dg` has six `FAIL` and three
+  `XPASS`.
+- No whole-corpus run has been performed under the bounded-sampling policy.
+  `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
+
+## Architecture-first blocker order
+
+1. Binding identity and scope ownership: ffc #584. FortFront #2883, #2924,
+   and #2951.
+2. Canonical descriptor and storage representation: ffc #337, #338, #339,
+   #348, and #643.
+3. Typed dispatch and runtime identity: ffc #419, #422, #437, #461, and #467.
+4. Shared control, constructor, assignment, and I/O engines: ffc #345, #449,
+   #455, #459, #460, and #462.
+5. Performance and corpus safety: ffc #478, #531, #576, and #663.
+
+Every issue must preserve its stated invariant, use the shared representation,
+include positive and negative behavioral cases, and run its focused `fo test`
+plus `fo`. A manifest classification may record a known gap. It cannot replace
+the implementation or turn wrong code into `XFAIL`.
+
 ## Path to standard Fortran conformance
 
 The target is the Fortran standard through F2023, minus the parallel and vendor
-features excluded below. The standard defines what must work; the corpora only
+features excluded below. The standard defines what must work. The corpora only
 measure how far along we are. A corpus file is evidence, never the goal, so a
 case that tests another compiler's extension surface is excluded rather than
 chased.
@@ -42,11 +70,12 @@ Excluded, and never counted in any denominator:
 - features deleted from the standard
 - compiler-option and DejaGNU-harness behavior the runner does not model
 
-Current pass rates, from the checked-in snapshot in
-`test/conformance/parity_dashboard.tsv`: `fortfront-f90` 341/441,
-`fortfront-lf` 205/264, `lfortran` integration 848/4280, `gfortran.dg`
-1175/5938. Read the snapshot rather than this paragraph; regenerate it with
-`scripts/generate_parity_dashboard.sh` whenever corpus state changes.
+The checked-in parity snapshot in `test/conformance/parity_dashboard.tsv` is a
+historical, provenance-verified full-run artifact. Its raw file ratios are not
+an implementation percentage. Current progress is measured with stratified
+random subsets. A sampled report is an estimate and must not replace the
+snapshot. Regenerate the snapshot only with a provenance-verified full-corpus
+run after the bounded work is complete.
 
 Those denominators are raw file counts, not the conformance denominator. 241
 cases are still `NOREF`, meaning undefined output, missing linkage, or a
@@ -56,7 +85,7 @@ before quoting a conformance percentage.
 
 The `E1` through `E10` epics (#262 through #271), the `#272` compliance
 umbrella, and the LIRIC coordination issue `krystophny/liric#520` are all
-closed. They were split into the atomic issues that now carry the work; do not
+closed. They were split into the atomic issues that now carry the work. Do not
 cite them as the live plan.
 
 The live work order is the chunk sequence in the workspace plan: freeze the
@@ -66,7 +95,7 @@ arrays and I/O through shared engines, then close corpus breadth. Each chunk
 names its own atomic issues.
 
 Neither external corpus is a 100% target as a whole. `gfortran.dg` contains
-error-detection, deprecated, and vendor-extension tests; the `lfortran`
+error-detection, deprecated, and vendor-extension tests. The `lfortran`
 integration suite exercises that compiler's own extension surface. Gate only
 the runnable, standard-conforming subset of each and document the exclusions in
 `docs/CONFORMANCE.md`. The two FortFront corpora are maintained in-tree and are
@@ -75,7 +104,7 @@ the runnable, standard-conforming subset of each and document the exclusions in
 F2023 is part of the target, and the delta it adds over F2018 is unscoped. The
 `[ffc-f2023-*]` trackers (#243 through #255) were closed after being split into
 the current issue set, but that split covered F95-through-F2018 language
-coverage; the syntax and intrinsics F2023 itself introduced were never
+coverage. The syntax and intrinsics F2023 itself introduced were never
 enumerated. #473 owns auditing that delta so "newest standard" does not quietly
 mean F2018.
 
@@ -95,7 +124,7 @@ Covered features and the public claim live in
 - fixed-size 1-D integer arrays and rank-2 integer arrays with scalar
   element access, array sections with compile-time integer bounds as
   rvalues, whole-array copy, elemental `+`/`-`/`*`, and the array
-  intrinsics `size`, `shape`, `sum`, `product`, `maxval`, and `minval`; simple
+  intrinsics `size`, `shape`, `sum`, `product`, `maxval`, and `minval`, plus simple
   derived types with scalar integer components;
 - minimal `print *, expr`, compound formatted `print fmt, items` with literal
   `I`, `X`, and `F` descriptors, `stop <expr>`, `abs` / `min` / `max` / `mod`
@@ -114,7 +143,7 @@ update both documents and add executable tests in the same change.
 The Fortran I/O and intrinsics runtime lives in `ffc/runtime/` (the local
 `libgfortran` equivalent), linked through LIRIC's `lr_session_set_runtime_archive`.
 It carries a stable C ABI so it can split into its own repo once it stabilizes.
-LIRIC stays a backend-neutral codegen layer; no Fortran-language semantics land
+LIRIC stays a backend-neutral codegen layer. No Fortran-language semantics land
 there. This work is E7 (#268) and E8 (#269).
 
 ## FortFront boundary
@@ -129,8 +158,11 @@ filed as a FortFront issue, not an ffc workaround.
 ```bash
 export LIBRARY_PATH=<liric-build>   # so the LIRIC static library is linkable
 fo                                  # static analysis, build, tests, lint, fmt
+bash scripts/conformance_check.sh --no-build --sample 900 --seed <seed>
 ```
 
-Use `fo` for every build and test loop; call `fpm` directly only to isolate one
+Use `fo` for every build and test loop. Call `fpm` directly only to isolate one
 named test or to diagnose a `fo` failure. CI runs the same workflow on every
-push and pull request. Run `fo` before pushing.
+push and pull request. Increase the sample count only after repeated clean
+subsets, and do not run the whole corpus for routine progress checks. Run `fo`
+before pushing.
