@@ -20,6 +20,7 @@ module ffc_test_support
     public :: expect_cli_no_error
     public :: expect_object_exists
     public :: expect_no_error
+    public :: expect_error_absent
     public :: expect_exe_has_symbol
     public :: expect_output_with_stdin
     public :: expect_stderr_and_exit
@@ -655,6 +656,25 @@ contains
         end if
         ok = .true.
     end function expect_no_error
+
+    logical function expect_error_absent(source, fragment, exe_path) result(ok)
+        ! Compiles source and checks that no diagnostic mentions fragment.
+        ! Unrelated diagnostics are tolerated, so the check stays a targeted
+        ! oracle for one rejection rule.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: fragment
+        character(len=*), intent(in) :: exe_path
+        character(len=:), allocatable :: error_msg
+
+        ok = .true.
+        call compile_to_exe(source, exe_path, error_msg)
+        call execute_command_line('rm -f '//exe_path)
+        if (len_trim(error_msg) == 0) return
+        if (index(error_msg, fragment) == 0) return
+        print *, 'FAIL: diagnostic wrongly reported "', fragment, '"'
+        print *, '  actual: ', trim(error_msg)
+        ok = .false.
+    end function expect_error_absent
 
     logical function write_source_file(path, source)
         character(len=*), intent(in) :: path

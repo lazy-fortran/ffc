@@ -584,16 +584,33 @@
         integer, intent(out) :: nname
         integer, allocatable :: depth(:)
         character(len=64), allocatable :: iface_name(:)
-        character(len=:), allocatable :: text, name, signature
+        character(len=:), allocatable :: text, name, signature, word
         integer :: i, current
-        logical :: ok
+        logical :: ok, in_proc
 
         call interface_regions(lines, count, depth, iface_name)
         nmod = 0
         nname = 0
         current = 0
+        in_proc = .false.
         do i = 1, count
             text = trim(lines(i))
+            ! Everything inside a module procedure body, an interface block of
+            ! its own included, is local to that procedure and exports nothing.
+            if (in_proc) then
+                if (depth(i) == 0) then
+                    if (stmt_starts(text, 'end')) then
+                        word = identifier_after(text, 4)
+                        if (len_trim(word) == 0 .or. word == 'subroutine' .or. &
+                            word == 'function') in_proc = .false.
+                        if (word == 'module') then
+                            in_proc = .false.
+                            current = 0
+                        end if
+                    end if
+                end if
+                cycle
+            end if
             if (stmt_starts(text, 'end')) then
                 if (identifier_after(text, 4) == 'module') current = 0
                 cycle
@@ -619,7 +636,10 @@
                 cycle
             end if
             call interface_body_header(text, name, signature, ok)
-            if (ok) call append_owned_name(names, owner, nname, name, current)
+            if (ok) then
+                call append_owned_name(names, owner, nname, name, current)
+                if (depth(i) == 0) in_proc = .true.
+            end if
         end do
     end subroutine module_export_table
 
@@ -681,6 +701,7 @@
                 unit_name = ''
             end do
             if (len_trim(unit_name) == 0) cycle
+            if (use_renames_name(text, unit_name)) cycle
             if (.not. owned_name_present(names, owner, nname, unit_name, midx)) &
                 cycle
             write (location, '(" at line ",I0)') i
@@ -689,6 +710,26 @@
             return
         end do
     end subroutine check_use_shadows_program_unit
+
+    ! True when the USE statement renames the module entity called name, so
+    ! that name is not made accessible under its own spelling.
+    logical function use_renames_name(text, name) result(yes)
+        character(len=*), intent(in) :: text
+        character(len=*), intent(in) :: name
+        integer :: p, base
+
+        yes = .false.
+        base = 0
+        do
+            p = index(text(base + 1:), '=>')
+            if (p == 0) return
+            base = base + p + 1
+            if (identifier_after(text, base) == trim(name)) then
+                yes = .true.
+                return
+            end if
+        end do
+    end function use_renames_name
 
     ! True when name occurs as a whole word on the line.
     logical function line_references_name(line, name) result(yes)
@@ -705,6 +746,9 @@
             base = p
             if (p > 1) then
                 if (is_fortran_identifier_char(line(p - 1:p - 1))) cycle
+                ! A component or type-bound reference names a part of an
+                ! object, never the use associated entity of that name.
+                if (line(p - 1:p - 1) == '%') cycle
             end if
             if (p + len_trim(name) <= len(line)) then
                 if (is_fortran_identifier_char(line(p + len_trim(name): &
@@ -764,6 +808,10 @@
                         if (trim(names(k)) /= trim(names(j))) cycle
                         if (owner(k) == owner(j)) cycle
                         if (.not. any(used(1:nused) == owner(k))) cycle
+                        if (generic_extends_own_name(lines, count, mods, &
+                                                     owner(j), names(j))) cycle
+                        if (generic_extends_own_name(lines, count, mods, &
+                                                     owner(k), names(k))) cycle
                         call ambiguous_reference_line(lines, first, last, &
                                                       names(j), i)
                         if (i == 0) cycle
@@ -778,6 +826,48 @@
             first = last + 1
         end do
     end subroutine check_ambiguous_use_association
+
+    ! True when the module makes name generic through an interface block that
+    ! lists name itself as a specific. The generic then extends the very entity
+    ! of that name it inherits, so USE of both modules names one generic
+    ! (F2018 15.4.3.4.1) rather than two conflicting entities.
+    logical function generic_extends_own_name(lines, count, mods, midx, name) &
+        result(yes)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=64), intent(in) :: mods(:)
+        integer, intent(in) :: midx
+        character(len=*), intent(in) :: name
+        character(len=64) :: specs(128)
+        character(len=:), allocatable :: text, word
+        integer :: i, k, nspec
+        logical :: inside
+
+        yes = .false.
+        inside = .false.
+        do i = 1, count
+            text = trim(lines(i))
+            if (stmt_starts(text, 'end')) then
+                if (identifier_after(text, 4) == 'module') inside = .false.
+                cycle
+            end if
+            if (stmt_starts(text, 'module')) then
+                word = identifier_after(text, 7)
+                inside = word == trim(mods(midx))
+                cycle
+            end if
+            if (.not. inside) cycle
+            if (.not. stmt_starts(text, 'interface')) cycle
+            if (identifier_after(text, 10) /= trim(name)) cycle
+            call generic_block_specifics(lines, count, i, specs, nspec)
+            do k = 1, nspec
+                if (trim(specs(k)) == trim(name)) then
+                    yes = .true.
+                    return
+                end if
+            end do
+        end do
+    end function generic_extends_own_name
 
     ! The first line of the region that references name outside a USE
     ! statement, or 0.
