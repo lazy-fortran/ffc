@@ -5047,14 +5047,15 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
 
-        integer :: source_index, shape_index, pad_index
+        integer :: source_index, shape_index, pad_index, order_index
+        integer, allocatable :: order_perm(:)
 
         if (.not. allocated(rhs%name) .or. .not. same_name(rhs%name, 'reshape')) then
             error_msg = 'reshape requires a reshape intrinsic'
             return
         end if
         call resolve_reshape_args(arena, rhs, source_index, shape_index, &
-                                  pad_index, error_msg)
+                                  pad_index, order_index, error_msg)
         if (len_trim(error_msg) > 0) return
         if (context%symbols(symbol_index)%array_rank < 1 .or. &
             context%symbols(symbol_index)%array_rank > 2) then
@@ -5064,27 +5065,127 @@
         call check_reshape_shape(arena, shape_index, symbol_index, &
                                  context, error_msg)
         if (len_trim(error_msg) > 0) return
-        call lower_reshape_source(arena, source_index, pad_index, symbol_index, &
-                                  context, error_msg)
+        call resolve_reshape_order(arena, order_index, symbol_index, context, &
+                                   order_perm, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_reshape_source(arena, source_index, pad_index, order_perm, &
+                                  symbol_index, context, error_msg)
     end subroutine lower_reshape_call
 
-    ! Resolve reshape's source and shape actuals, accepting positional and
-    ! keyword (source=, shape=, pad=) forms. An order= keyword is out of scope.
+    ! Resolve the order= actual into a compile-time permutation of the target
+    ! dimensions. An absent order yields a zero-sized permutation, meaning the
+    ! identity fill order.
+    subroutine resolve_reshape_order(arena, order_index, symbol_index, context, &
+                                     order_perm, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: order_index
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, allocatable, intent(out) :: order_perm(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j, rank
+        integer(c_int64_t) :: order_value
+        logical :: seen
+
+        call set_empty(error_msg)
+        allocate (order_perm(0))
+        if (order_index <= 0) return
+        rank = context%symbols(symbol_index)%array_rank
+        select type (order_node => arena%entries(order_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(order_node%element_indices)) then
+                error_msg = 'reshape order must be a permutation of the '// &
+                            'target dimensions'
+                return
+            end if
+            if (size(order_node%element_indices) /= rank) then
+                error_msg = 'reshape order must be a permutation of the '// &
+                            'target dimensions'
+                return
+            end if
+            deallocate (order_perm)
+            allocate (order_perm(rank))
+            do i = 1, rank
+                call eval_i32_constant(arena, order_node%element_indices(i), &
+                                       context, order_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (order_value < 1_c_int64_t .or. &
+                    order_value > int(rank, c_int64_t)) then
+                    error_msg = 'reshape order must be a permutation of the '// &
+                                'target dimensions'
+                    return
+                end if
+                order_perm(i) = int(order_value)
+            end do
+        class default
+            error_msg = 'reshape order must be a constant integer array'
+            return
+        end select
+        do i = 1, rank
+            seen = .false.
+            do j = 1, rank
+                if (order_perm(j) == i) seen = .true.
+            end do
+            if (.not. seen) then
+                error_msg = 'reshape order must be a permutation of the '// &
+                            'target dimensions'
+                return
+            end if
+        end do
+    end subroutine resolve_reshape_order
+
+    ! Map the fill position `slot` (0-based, in the order the source elements
+    ! are consumed) onto the target's linear element index. Without order= the
+    ! two coincide; with order= the fill runs over the permuted extents and the
+    ! resulting subscripts are placed back on the target's own dimensions.
+    integer(c_int64_t) function reshape_target_slot(order_perm, symbol_index, &
+                                                    context, slot) result(target_slot)
+        integer, intent(in) :: order_perm(:)
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(in) :: slot
+        integer :: i, rank
+        integer(c_int64_t) :: rest, extent, stride
+        integer(c_int64_t) :: subs(size(order_perm))
+
+        target_slot = slot
+        if (size(order_perm) == 0) return
+        rank = context%symbols(symbol_index)%array_rank
+        rest = slot
+        do i = 1, rank
+            extent = int(context%symbols(symbol_index)% &
+                         array_dim_sizes(order_perm(i)), c_int64_t)
+            subs(order_perm(i)) = mod(rest, extent)
+            rest = rest/extent
+        end do
+        target_slot = 0_c_int64_t
+        stride = 1_c_int64_t
+        do i = 1, rank
+            target_slot = target_slot + subs(i)*stride
+            stride = stride*int(context%symbols(symbol_index)% &
+                                array_dim_sizes(i), c_int64_t)
+        end do
+    end function reshape_target_slot
+
+    ! Resolve reshape's actuals, accepting positional and keyword (source=,
+    ! shape=, pad=, order=) forms.
     subroutine resolve_reshape_args(arena, rhs, source_index, shape_index, &
-                                    pad_index, error_msg)
+                                    pad_index, order_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: rhs
         integer, intent(out) :: source_index
         integer, intent(out) :: shape_index
         integer, intent(out) :: pad_index
+        integer, intent(out) :: order_index
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: kw_name
         integer :: i, npos, kw_value
-        integer :: pos_args(3)
+        integer :: pos_args(4)
 
         source_index = 0
         shape_index = 0
         pad_index = 0
+        order_index = 0
         npos = 0
         call set_empty(error_msg)
         if (.not. allocated(rhs%arg_indices)) then
@@ -5100,31 +5201,34 @@
                     shape_index = kw_value
                 else if (kw_name == 'pad') then
                     pad_index = kw_value
+                else if (kw_name == 'order') then
+                    order_index = kw_value
                 else
-                    error_msg = 'reshape only supports source=, shape=, and '// &
-                                'pad= keyword arguments'
+                    error_msg = 'reshape only supports source=, shape=, pad=, '// &
+                                'and order= keyword arguments'
                     return
                 end if
             else
                 npos = npos + 1
-                if (npos > 3) then
-                    error_msg = 'reshape only supports source, shape, and pad '// &
-                                'arguments'
+                if (npos > 4) then
+                    error_msg = 'reshape only supports source, shape, pad, and '// &
+                                'order arguments'
                     return
                 end if
                 pos_args(npos) = rhs%arg_indices(i)
             end if
         end do
-        if (source_index == 0 .and. npos >= 1) then
-            source_index = pos_args(1)
-            if (shape_index == 0 .and. npos >= 2) shape_index = pos_args(2)
-            if (pad_index == 0 .and. npos >= 3) pad_index = pos_args(3)
-        else if (shape_index == 0 .and. npos >= 1) then
-            shape_index = pos_args(1)
-            if (pad_index == 0 .and. npos >= 2) pad_index = pos_args(2)
-        else if (pad_index == 0 .and. npos >= 1) then
-            pad_index = pos_args(1)
-        end if
+        do i = 1, npos
+            if (source_index == 0) then
+                source_index = pos_args(i)
+            else if (shape_index == 0) then
+                shape_index = pos_args(i)
+            else if (pad_index == 0) then
+                pad_index = pos_args(i)
+            else if (order_index == 0) then
+                order_index = pos_args(i)
+            end if
+        end do
         if (source_index == 0 .or. shape_index == 0) then
             error_msg = 'reshape requires a source array and a shape array'
         end if
@@ -5159,6 +5263,10 @@
                 call eval_i32_constant(arena, shape_node%element_indices(i), &
                                        context, shape_value, error_msg)
                 if (len_trim(error_msg) > 0) return
+                if (shape_value < 0_c_int64_t) then
+                    error_msg = 'reshape shape extents must not be negative'
+                    return
+                end if
                 if (shape_value /= &
                     int(context%symbols(symbol_index)%array_dim_sizes(i), c_int64_t)) then
                     error_msg = 'reshape shape does not match the target array'
@@ -5293,7 +5401,7 @@
     end subroutine resolve_shape_of_symbol
 
     subroutine lower_reshape_source(arena, source_index_in, pad_index, &
-                                    symbol_index, context, error_msg)
+                                    order_perm, symbol_index, context, error_msg)
         !! Copy the source elements into the target's linear storage. The source
         !! is a declared rank-1 array, an inline array literal, or a rank-one
         !! array expression such as shape(x); all are already laid out in
@@ -5303,6 +5411,7 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: source_index_in
         integer, intent(in) :: pad_index
+        integer, intent(in) :: order_perm(:)
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
@@ -5351,7 +5460,10 @@
                                                   error_msg)
             end if
             if (len_trim(error_msg) > 0) return
-            call store_array_linear_element(context, symbol_index, linear_index, &
+            call store_array_linear_element(context, symbol_index, &
+                                            reshape_target_slot(order_perm, &
+                                                        symbol_index, context, &
+                                                        linear_index), &
                                             value, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
