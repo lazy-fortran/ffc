@@ -12,6 +12,8 @@
 #   --suite S    run only one suite instead of all available suites
 #   --file PATH  forward one suite-relative file (repeatable)
 #   --files-from PATH  forward a named-file list (repeatable)
+#   --repeat N   run each suite N times and fail on any case whose status is
+#                not identical in every attempt (recorded FLAKY)
 #
 # This script is the documented routine contributors run before pushing
 # and after dependency (fortfront, liric) updates.
@@ -30,6 +32,7 @@ GAUNTLET="$SCRIPT_DIR/conformance_gauntlet.sh"
 NO_BUILD=0
 SINGLE_SUITE=""
 TIMEOUT=5
+REPEAT=1
 NAMED_ARGS=()
 
 # Argument parsing
@@ -53,6 +56,11 @@ while [ $# -gt 0 ]; do
             NAMED_ARGS+=("--files-from" "$list_path"); shift 2 ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
+        --repeat)
+            if [ $# -lt 2 ]; then
+                echo "ERROR: --repeat requires a count" >&2; exit 1
+            fi
+            REPEAT="$2"; shift 2 ;;
         *)
             echo "ERROR: unknown option $1" >&2; exit 1 ;;
     esac
@@ -128,6 +136,7 @@ for SUITE in $SUITES; do
 
     gauntlet_args=(--suite "$SUITE" --ffc "$FFC_BIN" \
         --report "$REPORT" --timeout "$TIMEOUT")
+    gauntlet_args+=(--repeat "$REPEAT")
     gauntlet_args+=("${NAMED_ARGS[@]}")
     if bash "$GAUNTLET" "${gauntlet_args[@]}" > "$LOG" 2>&1; then
         suite_exit=0
@@ -151,8 +160,16 @@ for SUITE in $SUITES; do
 
             echo "  $SUITE: PASS=$pass_count XFAIL=$xfail_count XPASS=$xpass_count FAIL=$fail_count TOTAL=$total_count"
 
+            # The flaky field is present only when the count is nonzero.
+            flaky_count=$(echo "$summary" | grep -o '"flaky":[0-9]*' | \
+                grep -o '[0-9]*' || true)
             if [ "${fail_count:-0}" -gt 0 ]; then
                 HAS_FAIL=1
+            fi
+            if [ "${flaky_count:-0}" -gt 0 ]; then
+                HAS_FAIL=1
+                echo "  $SUITE: FLAKY=$flaky_count (unstable across attempts)"
+                grep '"status":"FLAKY"' "$REPORT" || true
             fi
             if [ "${xpass_count:-0}" -gt 0 ]; then
                 HAS_XPASS=1

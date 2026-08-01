@@ -139,6 +139,34 @@ scripts/conformance_check.sh --no-build --suite fortfront-f90 \
 Named selection requires `--suite`; the check forwards all `--file` and
 `--files-from` options to that suite.
 
+## Repeated runs and FLAKY records
+
+A single run cannot distinguish a stable result from a case that flips
+between runs, so promoting an XPASS on one run can convert a flake into a
+manifest entry that the next run breaks (#599). `--repeat N` runs the
+selection N times as independent child runs through the same classification
+path and merges them:
+
+```bash
+scripts/conformance_gauntlet.sh --suite lfortran --repeat 5 \
+    --files-from suspect_cases.txt --report /tmp/repeat.jsonl
+scripts/conformance_check.sh --no-build --suite lfortran --repeat 5
+```
+
+A file whose status is identical in every attempt keeps its record. A file
+whose status differs is recorded as
+
+```json
+{"suite":"lfortran","file":"kwargs_01.f90","status":"FLAKY",
+ "note":"unstable across 5 attempts","attempts":5,"observed":"PASS|FAIL"}
+```
+
+and counted in the SUMMARY `flaky` field, which is present only when the
+count is nonzero. FLAKY is a failure: both the gauntlet and the conformance
+check exit nonzero, and a FLAKY case is never reported as promotable XPASS.
+Never stabilise such a case by raising a timeout; reduce it and fix the
+underlying nondeterminism.
+
 The script auto-detects available suites by checking the suite root
 directories. If a suite root does not exist, it prints a SKIP message and
 continues with the remaining suites. Only `fortfront-f90` and `fortfront-lf`
