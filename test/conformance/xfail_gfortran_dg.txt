@@ -2147,3 +2147,10 @@ dup_save_1.f90 # owner=lazy-fortran/ffc#466; reason=preserve saved local storage
 entry_17.f90 # owner=lazy-fortran/ffc#456; reason=own valid function ENTRY points and their declared results
 parent_result_ref_2.f90 # owner=lazy-fortran/ffc#330; reason=own function result bindings referenced by contained procedures
 whole_file_24.f90 # owner=lazy-fortran/ffc#365; reason=own allocatable derived components and function-result assignment
+constructor_5.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
+duplicate_type_3.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
+move_alloc_18.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
+public_private_module.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
+select_5.f90 # owner=lazy-fortran/ffc#447; reason=own declared integer kinds and kind-preserving comparisons
+structure_constructor_16.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
+used_dummy_types_3.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
