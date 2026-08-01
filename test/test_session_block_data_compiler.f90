@@ -15,6 +15,7 @@ program test_session_block_data_compiler
     if (.not. test_zero_size_common_array()) all_passed = .false.
     if (.not. test_do_loop_over_common_variable()) all_passed = .false.
     if (.not. test_whole_array_data_statement()) all_passed = .false.
+    if (.not. test_array_section_data_statement()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: block data initializes shared common storage'
@@ -214,5 +215,35 @@ contains
         test_whole_array_data_statement = expect_output( &
             source, expected, '/tmp/ffc_session_block_data_whole_array')
     end function test_whole_array_data_statement
+
+    logical function test_array_section_data_statement()
+        ! A BLOCK DATA array-section object initialises exactly its selected
+        ! COMMON elements, including a repeated value, and a real member
+        ! section keeps its declared kind.
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: v(4)'//new_line('a')// &
+            '  real :: w(2)'//new_line('a')// &
+            '  common /blk/ v, w'//new_line('a')// &
+            '  print *, v(1), v(2), v(3), v(4)'//new_line('a')// &
+            '  print *, w(1), w(2)'//new_line('a')// &
+            'end program p'//new_line('a')// &
+            'block data bd'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: v(4)'//new_line('a')// &
+            '  real :: w(2)'//new_line('a')// &
+            '  common /blk/ v, w'//new_line('a')// &
+            '  data v(1:2) /5, 6/'//new_line('a')// &
+            '  data v(3:4) /2*9/'//new_line('a')// &
+            '  data w(1:2) /1.5, 2.5/'//new_line('a')// &
+            'end block data bd'
+        character(len=*), parameter :: expected = &
+            '           5           6           9           9'//new_line('a')// &
+            '   1.50000000       2.50000000    '//new_line('a')
+
+        test_array_section_data_statement = expect_output( &
+            source, expected, '/tmp/ffc_session_block_data_section')
+    end function test_array_section_data_statement
 
 end program test_session_block_data_compiler

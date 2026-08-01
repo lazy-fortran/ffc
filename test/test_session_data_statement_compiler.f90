@@ -17,6 +17,10 @@ program test_session_data_statement
     if (.not. test_assignment_overrides_data()) all_passed = .false.
     if (.not. test_real_array_implied_do()) all_passed = .false.
     if (.not. test_boz_constant()) all_passed = .false.
+    if (.not. test_strided_section_init()) all_passed = .false.
+    if (.not. test_rank_two_section_and_repeat()) all_passed = .false.
+    if (.not. test_repeated_value_init()) all_passed = .false.
+    if (.not. test_nested_derived_constructor()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: DATA statements lower through direct LIRIC session'
@@ -99,5 +103,80 @@ contains
             source, '          16'//new_line('a'), &
             '/tmp/ffc_data_boz')
     end function test_boz_constant
+
+    logical function test_strided_section_init()
+        ! Array-section objects with a stride consume one value per selected
+        ! element in element order; two sections interleave in one array.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: arr(6)'//new_line('a')// &
+            '  data arr(1:5:2) /1, 2, 3/'//new_line('a')// &
+            '  data arr(2:4:2) /7, 8/'//new_line('a')// &
+            '  print *, arr(1), arr(2), arr(3), arr(4), arr(5)'//new_line('a')// &
+            'end program main'
+
+        test_strided_section_init = expect_output( &
+            source, &
+            '           1           7           2           8           3'// &
+            new_line('a'), &
+            '/tmp/ffc_data_section_stride')
+    end function test_strided_section_init
+
+    logical function test_rank_two_section_and_repeat()
+        ! A section of a rank-2 array walks the declared column-major layout,
+        ! and a repeated value expands over a real section.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: m(2,3)'//new_line('a')// &
+            '  real :: r(4)'//new_line('a')// &
+            '  data m(1,1:3) /10, 20, 30/'//new_line('a')// &
+            '  data r(2:3) /2*1.5/'//new_line('a')// &
+            '  print *, m(1,1), m(1,2), m(1,3)'//new_line('a')// &
+            '  print *, r(2), r(3)'//new_line('a')// &
+            'end program main'
+
+        test_rank_two_section_and_repeat = expect_output( &
+            source, &
+            '          10          20          30'//new_line('a')// &
+            '   1.50000000       1.50000000    '//new_line('a'), &
+            '/tmp/ffc_data_section_rank2')
+    end function test_rank_two_section_and_repeat
+
+    logical function test_repeated_value_init()
+        ! A repeat count supplies the same value to every element once.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4)'//new_line('a')// &
+            '  data a /4*3/'//new_line('a')// &
+            '  print *, a(1), a(2), a(3), a(4)'//new_line('a')// &
+            'end program main'
+
+        test_repeated_value_init = expect_output( &
+            source, &
+            '           3           3           3           3'//new_line('a'), &
+            '/tmp/ffc_data_repeat')
+    end function test_repeated_value_init
+
+    logical function test_nested_derived_constructor()
+        ! A nested structure constructor initialises the derived object's
+        ! component layout instead of reaching the scalar store path.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: inner_t'//new_line('a')// &
+            '    integer :: k'//new_line('a')// &
+            '  end type inner_t'//new_line('a')// &
+            '  type :: outer_t'//new_line('a')// &
+            '    type(inner_t) :: i'//new_line('a')// &
+            '    integer :: j'//new_line('a')// &
+            '  end type outer_t'//new_line('a')// &
+            '  type(outer_t) :: o'//new_line('a')// &
+            '  data o /outer_t(inner_t(3), 4)/'//new_line('a')// &
+            '  print *, o%i%k, o%j'//new_line('a')// &
+            'end program main'
+
+        test_nested_derived_constructor = expect_output( &
+            source, '           3           4'//new_line('a'), &
+            '/tmp/ffc_data_derived_ctor')
+    end function test_nested_derived_constructor
 
 end program test_session_data_statement

@@ -120,6 +120,11 @@
                                                  context, error_msg)
             return
         end if
+        if (is_data_section_object(arena, obj_index)) then
+            call lower_data_section_object(arena, node, obj_index, cursor, &
+                                           context, error_msg)
+            return
+        end if
         call identifier_name(arena, obj_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, name)
@@ -134,7 +139,10 @@
                                          error_msg)
             return
         end if
-        if (context%symbols(sym)%is_array) then
+        if (context%symbols(sym)%is_derived) then
+            call store_next_data_value_to_derived(arena, node, cursor, sym, &
+                                                  name, context, error_msg)
+        else if (context%symbols(sym)%is_array) then
             asz = context%symbols(sym)%array_size
             do k = 0, asz - 1
                 call store_next_data_value_to_element(arena, node, cursor, sym, &
@@ -147,6 +155,200 @@
                                                   context, error_msg)
         end if
     end subroutine lower_data_object
+
+    logical function is_data_section_object(arena, idx)
+        !! A DATA object written as an array section, arr(lo:hi[:step]) or
+        !! arr(:,j). FortFront represents it as an array_slice_node.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+
+        is_data_section_object = .false.
+        if (.not. node_exists(arena, idx)) return
+        select type (n => arena%entries(idx)%node)
+        type is (array_slice_node)
+            is_data_section_object = .true.
+        end select
+    end function is_data_section_object
+
+    subroutine lower_data_section_object(arena, node, obj_index, cursor, &
+                                         context, error_msg)
+        !! Expand an array-section DATA object into its elements in Fortran
+        !! array element order (leftmost subscript varies fastest) and consume
+        !! one value per element. Every subscript must fold to a compile-time
+        !! constant, matching the constant-expression rule for DATA.
+        type(ast_arena_t), intent(in) :: arena
+        type(data_statement_node), intent(in) :: node
+        integer, intent(in) :: obj_index
+        type(data_value_cursor_t), intent(inout) :: cursor
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, parameter :: max_rank = 7
+        integer(c_int64_t) :: lowers(max_rank), extents(max_rank)
+        integer(c_int64_t) :: first(max_rank), step(max_rank), count(max_rank)
+        integer(c_int64_t) :: cur(max_rank), linear, stride
+        character(len=:), allocatable :: name
+        integer :: sym, rank, d
+        integer(c_int64_t) :: total, k
+        logical :: ok
+
+        call set_empty(error_msg)
+        select type (slice => arena%entries(obj_index)%node)
+        type is (array_slice_node)
+            call identifier_name(arena, slice%array_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym <= 0) then
+                error_msg = 'data statement target was not declared: '//trim(name)
+                return
+            end if
+            if (.not. context%symbols(sym)%is_array) then
+                error_msg = 'data statement section target is not an array: '// &
+                            trim(name)
+                return
+            end if
+            call base_array_decl_shape(context, name, max_rank, rank, lowers, &
+                                       extents, ok)
+            if (.not. ok) then
+                error_msg = 'data statement section target has no '// &
+                            'compile-time shape: '//trim(name)
+                return
+            end if
+            call data_section_ranges(arena, context, slice, rank, lowers, &
+                                     extents, first, step, count, error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'data statement object form not supported'
+            return
+        end select
+
+        total = 1_c_int64_t
+        do d = 1, rank
+            total = total*count(d)
+            cur(d) = first(d)
+        end do
+        do k = 1, total
+            linear = 0_c_int64_t
+            stride = 1_c_int64_t
+            do d = 1, rank
+                linear = linear + (cur(d) - lowers(d))*stride
+                stride = stride*extents(d)
+            end do
+            call store_next_data_value_to_element(arena, node, cursor, sym, &
+                                                  linear, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            do d = 1, rank
+                cur(d) = cur(d) + step(d)
+                if ((cur(d) - first(d))/step(d) < count(d)) exit
+                cur(d) = first(d)
+            end do
+        end do
+    end subroutine lower_data_section_object
+
+    subroutine data_section_ranges(arena, context, slice, rank, lowers, extents, &
+                                   first, step, count, error_msg)
+        !! Per-dimension first index, stride, and element count of a section.
+        !! An omitted dimension or a bare colon spans the declared bounds; a
+        !! scalar subscript selects one element.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        type(array_slice_node), intent(in) :: slice
+        integer, intent(in) :: rank
+        integer(c_int64_t), intent(in) :: lowers(:), extents(:)
+        integer(c_int64_t), intent(out) :: first(:), step(:), count(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, st, scalar_value
+        integer :: d, bounds_index
+        logical :: ok
+
+        call set_empty(error_msg)
+        if (slice%num_dimensions > rank) then
+            error_msg = 'data statement section has too many subscripts'
+            return
+        end if
+        do d = 1, rank
+            bounds_index = 0
+            if (d <= slice%num_dimensions) bounds_index = slice%bounds_indices(d)
+            first(d) = lowers(d)
+            step(d) = 1_c_int64_t
+            count(d) = extents(d)
+            if (bounds_index <= 0) cycle
+            if (.not. node_exists(arena, bounds_index)) then
+                error_msg = 'data statement section subscript is missing'
+                return
+            end if
+            select type (bnode => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                call section_bound_const(arena, context, bnode%start_index, &
+                                         lowers(d), lo, ok)
+                if (ok) then
+                    call section_bound_const(arena, context, bnode%end_index, &
+                                        lowers(d) + extents(d) - 1_c_int64_t, &
+                                        hi, ok)
+                end if
+                if (ok) then
+                    call section_bound_const(arena, context, bnode%stride_index, &
+                                             1_c_int64_t, st, ok)
+                end if
+                if (.not. ok) then
+                    error_msg = 'data statement section bound is not a constant'
+                    return
+                end if
+                if (st == 0_c_int64_t) then
+                    error_msg = 'data statement section stride is zero'
+                    return
+                end if
+                first(d) = lo
+                step(d) = st
+                count(d) = (hi - lo)/st + 1_c_int64_t
+                if (count(d) < 0_c_int64_t) count(d) = 0_c_int64_t
+            class default
+                call eval_i32_constant(arena, bounds_index, context, &
+                                       scalar_value, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    error_msg = 'data statement section subscript is not a '// &
+                                'constant'
+                    return
+                end if
+                first(d) = scalar_value
+                step(d) = 1_c_int64_t
+                count(d) = 1_c_int64_t
+            end select
+        end do
+    end subroutine data_section_ranges
+
+    subroutine store_next_data_value_to_derived(arena, node, cursor, sym, name, &
+                                                context, error_msg)
+        !! A derived-type DATA object takes one structure-constructor value,
+        !! stored component-by-component through the same slot layout the
+        !! constructor assignment path uses, so nested constructors keep the
+        !! declared component layout.
+        type(ast_arena_t), intent(in) :: arena
+        type(data_statement_node), intent(in) :: node
+        type(data_value_cursor_t), intent(inout) :: cursor
+        integer, intent(in) :: sym
+        character(len=*), intent(in) :: name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: vidx, type_index
+        logical :: handled
+
+        call next_data_value(arena, node, cursor, context, vidx, error_msg)
+        if (len_trim(error_msg) > 0) return
+        type_index = context%symbols(sym)%derived_type_index
+        handled = .false.
+        if (type_index > 0 .and. .not. context%symbols(sym)%is_array) then
+            if (is_derived_constructor_call(arena, vidx, context, type_index)) then
+                call lower_derived_constructor_assignment(arena, vidx, context, &
+                                                          sym, type_index, &
+                                                          handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end if
+        if (.not. handled) then
+            error_msg = 'unsupported DATA initializer for derived-type '// &
+                        'object '''//trim(name)//''''
+        end if
+    end subroutine store_next_data_value_to_derived
 
     subroutine skip_static_data_values(arena, node, cursor, sym, context, &
                                        error_msg)

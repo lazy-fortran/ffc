@@ -800,8 +800,10 @@
         type(common_slot_t), intent(inout) :: slots(:)
         integer, intent(in) :: slot_count
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name, value_text
+        character(len=:), allocatable :: name, value_text, base_name
         integer :: i, s, k, value_cursor
+        integer :: lo, hi, st, e
+        logical :: is_section
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, idx)) return
@@ -811,6 +813,42 @@
                 .not. allocated(data%value_indices)) return
             value_cursor = 0
             do i = 1, size(data%object_indices)
+                call block_data_section_range(arena, data%object_indices(i), &
+                                              base_name, lo, hi, st, is_section, &
+                                              error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (is_section) then
+                    s = find_common_slot(slots, slot_count, base_name)
+                    if (s <= 0) then
+                        error_msg = 'BLOCK DATA section target is not in a '// &
+                                    'COMMON block: '//trim(base_name)
+                        return
+                    end if
+                    if (.not. slots(s)%is_array) then
+                        error_msg = 'BLOCK DATA section target is not an '// &
+                                    'array: '//trim(base_name)
+                        return
+                    end if
+                    if (hi <= 0) hi = slots(s)%array_size
+                    e = lo
+                    do while ((st > 0 .and. e <= hi) .or. (st < 0 .and. e >= hi))
+                        value_cursor = value_cursor + 1
+                        if (value_cursor > size(data%value_indices)) then
+                            error_msg = 'BLOCK DATA value count does not '// &
+                                        'match variable count'
+                            return
+                        end if
+                        call data_value_literal_text(arena, &
+                            data%value_indices(value_cursor), value_text, &
+                            error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call add_array_element_init(slots(s), e, value_text, &
+                                                    error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        e = e + st
+                    end do
+                    cycle
+                end if
                 call data_object_name_and_index(arena, data%object_indices(i), &
                                                 name, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -857,6 +895,103 @@
             end if
         end select
     end subroutine apply_block_data_statement
+
+    subroutine block_data_section_range(arena, idx, base_name, lo, hi, st, &
+                                        is_section, error_msg)
+        !! Bounds of a rank-1 array-section DATA object in a BLOCK DATA unit,
+        !! arr(lo:hi[:st]). is_section stays false for any other object form.
+        !! COMMON array slots are rank-1 and one-based, so an omitted bound
+        !! spans 1..array_size, resolved by the caller through slot bounds
+        !! checking on each element index.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: base_name
+        integer, intent(out) :: lo, hi, st
+        logical, intent(out) :: is_section
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: bounds_index
+
+        is_section = .false.
+        base_name = ''
+        lo = 0
+        hi = 0
+        st = 1
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, idx)) return
+        select type (obj => arena%entries(idx)%node)
+        type is (array_slice_node)
+            is_section = .true.
+            if (obj%num_dimensions /= 1) then
+                error_msg = 'BLOCK DATA section must be rank one'
+                return
+            end if
+            call common_identifier_text(arena, obj%array_index, base_name)
+            if (len_trim(base_name) == 0) then
+                error_msg = 'BLOCK DATA section target is not a name'
+                return
+            end if
+            bounds_index = obj%bounds_indices(1)
+            if (.not. node_exists(arena, bounds_index)) then
+                error_msg = 'BLOCK DATA section subscript is missing'
+                return
+            end if
+            select type (bnode => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                call block_data_bound_const(arena, bnode%start_index, 1, lo, &
+                                            error_msg)
+                if (len_trim(error_msg) > 0) return
+                call block_data_bound_const(arena, bnode%end_index, 0, hi, &
+                                            error_msg)
+                if (len_trim(error_msg) > 0) return
+                call block_data_bound_const(arena, bnode%stride_index, 1, st, &
+                                            error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (st == 0) error_msg = 'BLOCK DATA section stride is zero'
+            class default
+                error_msg = 'BLOCK DATA section bound is not a constant'
+            end select
+        end select
+    end subroutine block_data_section_range
+
+    subroutine block_data_bound_const(arena, node_index, default_value, value, &
+                                      error_msg)
+        !! Fold one section bound to an integer literal, or take the default
+        !! when the bound is omitted.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: default_value
+        integer, intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: io_stat
+
+        call set_empty(error_msg)
+        value = default_value
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        select type (bn => arena%entries(node_index)%node)
+        type is (literal_node)
+            read (bn%value, *, iostat=io_stat) value
+            if (io_stat /= 0) then
+                error_msg = 'BLOCK DATA section bound is not a constant'
+            end if
+        class default
+            error_msg = 'BLOCK DATA section bound is not a constant'
+        end select
+    end subroutine block_data_bound_const
+
+    subroutine common_identifier_text(arena, idx, name)
+        !! The identifier name at idx, or an empty string.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        character(len=:), allocatable, intent(out) :: name
+
+        name = ''
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (identifier_node)
+            if (allocated(nd%name)) name = trim(nd%name)
+        end select
+    end subroutine common_identifier_text
 
     subroutine data_object_name_and_index(arena, idx, name, error_msg)
         ! Extract the name and index from a DATA object. Handles both scalar
