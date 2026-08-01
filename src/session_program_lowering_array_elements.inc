@@ -1316,6 +1316,7 @@
 
         type(array_section_info_t) :: tinfo, sinfo
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t), allocatable :: rhs_values(:)
         integer :: k, k2, n
         integer(c_int64_t) :: tgt_lin, src_lin
 
@@ -1337,18 +1338,13 @@
                     error_msg = 'array section length does not match constructor'
                     return
                 end if
+                allocate (rhs_values(n))
                 do k = 0, n - 1
                     call lower_i32_expression(arena, rhs%element_indices(k + 1), &
-                                              context, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    tgt_lin = tinfo%section_lowers(1) + &
-                              int(k, c_int64_t) * tinfo%section_strides(1) - &
-                              tinfo%source_lowers(1)
-                    call store_array_linear_element(context, tinfo%source_index, &
-                                                    tgt_lin, value, error_msg)
+                                              context, rhs_values(k + 1), error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
-                call set_empty(error_msg)
+                call store_section_elements(context, tinfo, rhs_values, error_msg)
                 return
             type is (array_slice_node)
                 call describe_array_section(arena, rhs, context, sinfo, error_msg)
@@ -1359,21 +1355,17 @@
                                 'rank-1 shapes'
                     return
                 end if
+                allocate (rhs_values(n))
                 do k = 0, n - 1
                     src_lin = sinfo%section_lowers(1) + &
                               int(k, c_int64_t) * sinfo%section_strides(1) - &
                               sinfo%source_lowers(1)
                     call load_array_linear_element(context, sinfo%source_index, &
-                                                   src_lin, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    tgt_lin = tinfo%section_lowers(1) + &
-                              int(k, c_int64_t) * tinfo%section_strides(1) - &
-                              tinfo%source_lowers(1)
-                    call store_array_linear_element(context, tinfo%source_index, &
-                                                    tgt_lin, value, error_msg)
+                                                   src_lin, rhs_values(k + 1), &
+                                                   error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
-                call set_empty(error_msg)
+                call store_section_elements(context, tinfo, rhs_values, error_msg)
                 return
             end select
         end if
@@ -1425,6 +1417,30 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_array_section_assignment
+
+    subroutine store_section_elements(context, tinfo, values, error_msg)
+        !! Store an already-evaluated rank-1 right-hand side into a rank-1
+        !! section. Every value in `values` was produced before the first store,
+        !! so the assignment behaves as if the right-hand side were fully
+        !! computed first (Fortran 2018 clause 10.2.1.3) even when target and
+        !! source overlap in storage.
+        type(lowering_context_t), intent(inout) :: context
+        type(array_section_info_t), intent(in) :: tinfo
+        type(lr_operand_desc_t), intent(in) :: values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k
+        integer(c_int64_t) :: tgt_lin
+
+        do k = 0, size(values) - 1
+            tgt_lin = tinfo%section_lowers(1) + &
+                      int(k, c_int64_t) * tinfo%section_strides(1) - &
+                      tinfo%source_lowers(1)
+            call store_array_linear_element(context, tinfo%source_index, &
+                                            tgt_lin, values(k + 1), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine store_section_elements
 
     subroutine store_array_linear_element(context, symbol_index, linear_index, &
                                           value, error_msg)
