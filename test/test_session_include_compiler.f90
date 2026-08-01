@@ -15,6 +15,11 @@ program test_session_include_compiler
     if (.not. check_nested_include()) ok = .false.
     if (.not. check_missing_include()) ok = .false.
     if (.not. check_include_cycle()) ok = .false.
+    if (.not. check_bom_in_included_file()) ok = .false.
+    if (.not. check_bom_in_including_file()) ok = .false.
+    if (.not. check_bom_in_both_files()) ok = .false.
+    if (.not. check_interior_bom_still_rejected()) ok = .false.
+    if (.not. check_utf16le_included_file()) ok = .false.
     if (.not. ok) stop 1
 
     print *, 'PASS: include lines expand and report missing files and cycles'
@@ -179,6 +184,151 @@ contains
     subroutine reset_work()
         call execute_command_line('rm -rf '//WORK//' && mkdir -p '//WORK)
     end subroutine reset_work
+
+    logical function check_bom_in_included_file() result(ok)
+        ! A byte order mark is only meaningful at the start of a file. An
+        ! included file's BOM must not be spliced into the middle of the
+        ! expanded source, where it would be an invalid source character
+        ! (gfortran.dg/bom_include.f90).
+        character(len=:), allocatable :: output
+
+        ok = .false.
+        call reset_work()
+        call write_file(WORK//'/value.inc', &
+                        utf8_bom()//'integer, parameter :: v = 42')
+        call write_file(WORK//'/main.f90', &
+                        'program main'//new_line('a')// &
+                        'implicit none'//new_line('a')// &
+                        "include 'value.inc'"//new_line('a')// &
+                        "print '(I0)', v"//new_line('a')// &
+                        'end program main')
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: BOM-prefixed include output was ', &
+                first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_bom_in_included_file
+
+    logical function check_bom_in_including_file() result(ok)
+        ! The outermost file keeps its own BOM: it is at the start of the
+        ! source the frontend decodes, so it stays valid.
+        character(len=:), allocatable :: output
+
+        ok = .false.
+        call reset_work()
+        call write_file(WORK//'/value.inc', 'integer, parameter :: v = 42')
+        call write_file(WORK//'/main.f90', &
+                        utf8_bom()//'program main'//new_line('a')// &
+                        'implicit none'//new_line('a')// &
+                        "include 'value.inc'"//new_line('a')// &
+                        "print '(I0)', v"//new_line('a')// &
+                        'end program main')
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: BOM-prefixed includer output was ', &
+                first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_bom_in_including_file
+
+    logical function check_bom_in_both_files() result(ok)
+        ! Both ends carrying a BOM is the combination of the two cases above.
+        character(len=:), allocatable :: output
+
+        ok = .false.
+        call reset_work()
+        call write_file(WORK//'/value.inc', &
+                        utf8_bom()//'integer, parameter :: v = 42')
+        call write_file(WORK//'/main.f90', &
+                        utf8_bom()//'program main'//new_line('a')// &
+                        'implicit none'//new_line('a')// &
+                        "include 'value.inc'"//new_line('a')// &
+                        "print '(I0)', v"//new_line('a')// &
+                        'end program main')
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: BOM at both ends produced ', first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_bom_in_both_files
+
+    logical function check_interior_bom_still_rejected() result(ok)
+        ! Only a BOM at a file boundary is removed. One sitting in the middle
+        ! of a file is not a byte order mark at all, and stays an invalid
+        ! source character (gfortran.dg/bom_error.f90).
+        ok = .false.
+        call reset_work()
+        call write_file(WORK//'/value.inc', 'integer, parameter :: v = 42')
+        call write_file(WORK//'/main.f90', &
+                        'program main'//new_line('a')// &
+                        'implicit none'//new_line('a')// &
+                        "include 'value.inc'"//new_line('a')// &
+                        utf8_bom()//"print '(I0)', v"//new_line('a')// &
+                        'end program main')
+        ok = compile_fails_with(WORK//'/main.f90', '', 'Invalid character')
+    end function check_interior_bom_still_rejected
+
+    function utf8_bom() result(bom)
+        character(len=3) :: bom
+
+        bom = achar(239)//achar(187)//achar(191)
+    end function utf8_bom
+
+    logical function check_utf16le_included_file() result(ok)
+        ! A UTF-16 BOM selects a wide encoding of the payload, so the included
+        ! file needs decoding and not merely stripping. The frontend's decoder
+        ! does both, which is why expansion calls it rather than matching bytes
+        ! itself.
+        character(len=:), allocatable :: output
+        character(len=*), parameter :: decl = 'integer, parameter :: v = 42'
+        character(len=:), allocatable :: wide
+        integer :: i
+
+        ok = .false.
+        call reset_work()
+        wide = achar(255)//achar(254)
+        do i = 1, len(decl)
+            wide = wide//decl(i:i)//achar(0)
+        end do
+        call write_bytes(WORK//'/value.inc', wide)
+        call write_file(WORK//'/main.f90', &
+                        'program main'//new_line('a')// &
+                        'implicit none'//new_line('a')// &
+                        "include 'value.inc'"//new_line('a')// &
+                        "print '(I0)', v"//new_line('a')// &
+                        'end program main')
+        if (.not. compile_ok(WORK//'/main.f90', '')) return
+        call run_exe(output)
+        if (first_line(output) /= '42') then
+            print *, 'FAIL: UTF-16LE include output was ', first_line(output)
+            return
+        end if
+        ok = .true.
+    end function check_utf16le_included_file
+
+    subroutine write_bytes(path, contents)
+        ! Writes exactly the given bytes, with no record terminator, so a
+        ! wide-encoded file keeps the byte count its decoder requires.
+        character(len=*), intent(in) :: path
+        character(len=*), intent(in) :: contents
+        integer :: unit, io_stat
+
+        open (newunit=unit, file=path, status='replace', action='write', &
+              access='stream', form='unformatted', iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: cannot write ', path
+            return
+        end if
+        write (unit) contents
+        close (unit)
+    end subroutine write_bytes
 
     subroutine write_file(path, contents)
         character(len=*), intent(in) :: path

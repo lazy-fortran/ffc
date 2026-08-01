@@ -7,6 +7,15 @@ module ffc_include_expansion
     ! place. The including file's own directory is searched first, then the
     ! user's -I directories. Include cycles and missing files are reported with
     ! the include site so the diagnostic still points at real source.
+    !
+    ! A byte order mark is only meaningful at the very start of a file, so an
+    ! included file's leading BOM is decoded away as its contents are spliced
+    ! in; leaving it would place a BOM mid-source, where it is not a BOM at all
+    ! but an invalid source character. The outermost file's own BOM is left
+    ! alone: it still starts the text the frontend decodes. Decoding reuses the
+    ! frontend's decoder, so ffc and the frontend recognize exactly the same
+    ! set of marks.
+    use source_bom, only: decode_source_bom
     implicit none
     private
 
@@ -45,6 +54,7 @@ contains
         character(len=:), allocatable, intent(out) :: source
         character(len=:), allocatable, intent(inout) :: error_msg
         character(len=:), allocatable :: text
+        character(len=:), allocatable :: decoded
         character(len=:), allocatable :: line
         character(len=:), allocatable :: name
         character(len=:), allocatable :: resolved
@@ -53,6 +63,13 @@ contains
 
         call read_whole_file(path, text)
         if (.not. allocated(text)) return
+        ! depth 0 is the file being compiled, whose leading BOM belongs to the
+        ! source the frontend decodes. Any deeper file is being spliced into
+        ! the middle of that source, so its own mark is decoded away here.
+        if (depth > 0) then
+            call decode_source_bom(text, decoded)
+            call move_alloc(decoded, text)
+        end if
         if (depth >= MAX_INCLUDE_DEPTH) then
             error_msg = 'include nesting too deep at '//trim(path)
             return
