@@ -30,6 +30,10 @@
             context%unit_symbol_prefix = parent_context%unit_symbol_prefix
         context%arena = arena
         context%root_index = parent_context%root_index
+        ! The dialect is a property of the translation unit, not of one
+        ! procedure: a contained procedure lowers under the same Lazy
+        ! Fortran defaults as its host (#571).
+        context%lazy_mode = parent_context%lazy_mode
         allocate(context%symbols(16))
         allocate(context%derived_types(8))
         allocate(context%module_exports(4))
@@ -653,8 +657,8 @@
         is_char = dummy_is_character(arena, body_indices, name)
     end function param_at_is_character
 
-    integer function callee_dummy_value_kind(arena, callee_name, param_pos) &
-            result(value_kind)
+    integer function callee_dummy_value_kind(arena, callee_name, param_pos, &
+                                             context) result(value_kind)
         ! The scalar value kind of the param_pos-th (1-based) dummy of the
         ! contained procedure callee_name, read from its body declaration.
         ! Returns 0 when the procedure or its dummy declaration is not found, so
@@ -664,6 +668,7 @@
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
+        type(lowering_context_t), intent(in), optional :: context
         integer :: n
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
@@ -680,7 +685,7 @@
                 if (.not. allocated(sb_node%name)) cycle
                 if (.not. same_name(sb_node%name, callee_name)) cycle
                 value_kind = param_at_value_kind(arena, sb_node%param_indices, &
-                    sb_node%body_indices, param_pos)
+                    sb_node%body_indices, param_pos, context)
                 return
             else if (node_type == 'function_def_node' .or. &
                      node_type == 'function_def') then
@@ -689,7 +694,7 @@
                 if (.not. allocated(fn_node%name)) cycle
                 if (.not. same_name(fn_node%name, callee_name)) cycle
                 value_kind = param_at_value_kind(arena, fn_node%param_indices, &
-                    fn_node%body_indices, param_pos)
+                    fn_node%body_indices, param_pos, context)
                 if (value_kind == 0 .and. fn_return_type_is_i64(fn_node)) then
                     value_kind = VALUE_I64
                 end if
@@ -729,11 +734,14 @@
     end function fn_return_type_is_i64
 
     integer function param_at_value_kind(arena, param_indices, body_indices, &
-                                         param_pos) result(value_kind)
+                                         param_pos, context) result(value_kind)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         integer, allocatable, intent(in) :: body_indices(:)
         integer, intent(in) :: param_pos
+        ! The dialect decides what a kind-less `real` dummy means, so the
+        ! caller passes its context whenever one is in scope (#571).
+        type(lowering_context_t), intent(in), optional :: context
         character(len=:), allocatable :: name, name_err, kind_err
         integer :: i, k
 
@@ -750,7 +758,8 @@
                 if (decl%is_array) cycle
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == trim(name)) then
-                        call declaration_value_kind(decl, value_kind, kind_err)
+                        call declaration_value_kind(decl, value_kind, kind_err, &
+                                                    context)
                         if (len_trim(kind_err) > 0) value_kind = 0
                         return
                     end if
@@ -758,7 +767,8 @@
                 if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == trim(name)) then
-                            call declaration_value_kind(decl, value_kind, kind_err)
+                            call declaration_value_kind(decl, value_kind, kind_err, &
+                                                    context)
                             if (len_trim(kind_err) > 0) value_kind = 0
                             return
                         end if
@@ -1164,7 +1174,7 @@
             value_kind = VALUE_I32
             if (present(body_indices)) then
                 value_kind = param_at_value_kind(arena, param_indices, &
-                    body_indices, i)
+                    body_indices, i, context)
                 if (value_kind == 0) then
                     ! Body declaration lacks kind spec; fall back to the
                     ! function's return type when it indicates i64.

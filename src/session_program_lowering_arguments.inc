@@ -311,7 +311,8 @@
         if (callee_dummy_is_array(arena, callee_name, param_pos)) return
         if (callee_dummy_is_class_star(arena, callee_name, param_pos)) return
         if (callee_dummy_is_inferred(arena, callee_name, param_pos)) return
-        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos)
+        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos, &
+                                             context)
         if (dummy_kind == 0) dummy_kind = external_dummy_value_kind(context, &
             callee_name, param_pos)
         if (dummy_kind == 0) return
@@ -1277,7 +1278,8 @@
         integer :: dummy_kind
 
         kind = fallback_kind
-        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos)
+        dummy_kind = callee_dummy_value_kind(arena, callee_name, param_pos, &
+                                             context)
         if (dummy_kind == 0) then
             dummy_kind = external_dummy_value_kind(context, callee_name, &
                                                    param_pos)
