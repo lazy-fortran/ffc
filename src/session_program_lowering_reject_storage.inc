@@ -53,7 +53,8 @@
         if (len_trim(error_msg) > 0) return
         call check_equivalence_bind_c_conflict(arena, lines, line_count, error_msg)
         if (len_trim(error_msg) > 0) return
-        call check_block_data_objects_in_common(arena, error_msg)
+        call check_block_data_objects_in_common(arena, lines, line_count, &
+                                                error_msg)
     end subroutine check_storage_association_restrictions
 
     subroutine storage_source_lines(arena, lines, line_count, found)
@@ -406,11 +407,14 @@
         end do
     end subroutine collect_equivalence_names
 
-    subroutine check_block_data_objects_in_common(arena, error_msg)
+    subroutine check_block_data_objects_in_common(arena, lines, line_count, &
+                                                  error_msg)
         ! F2018 C8105: a BLOCK DATA unit initialises COMMON storage only, so
         ! every object it names in a DATA statement must be in a COMMON block
-        ! of that unit.
+        ! of that unit, directly or through EQUIVALENCE association.
         type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: lines(:)
+        integer, intent(in) :: line_count
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: n
 
@@ -421,15 +425,18 @@
             type is (block_data_node)
                 if (.not. allocated(unit%statement_indices)) cycle
                 call check_one_block_data_unit(arena, unit%statement_indices, &
-                                               error_msg)
+                                               lines, line_count, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
         end do
     end subroutine check_block_data_objects_in_common
 
-    subroutine check_one_block_data_unit(arena, statement_indices, error_msg)
+    subroutine check_one_block_data_unit(arena, statement_indices, lines, &
+                                         line_count, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: statement_indices(:)
+        character(len=*), intent(in) :: lines(:)
+        integer, intent(in) :: line_count
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=64) :: members(256)
         character(len=:), allocatable :: obj_name
@@ -448,6 +455,8 @@
                 end do
             end select
         end do
+        call add_equivalenced_common_names(lines, line_count, members, &
+                                           member_count)
         do s = 1, size(statement_indices)
             if (.not. node_exists(arena, statement_indices(s))) cycle
             select type (node => arena%entries(statement_indices(s))%node)
@@ -465,6 +474,90 @@
             end select
         end do
     end subroutine check_one_block_data_unit
+
+    ! An object EQUIVALENCEd to a COMMON member is itself in COMMON storage,
+    ! so a BLOCK DATA unit may initialise it (lazy-fortran/ffc#581). Association
+    ! chains through several groups are followed to a fixed point.
+    subroutine add_equivalenced_common_names(lines, line_count, members, &
+                                             member_count)
+        character(len=*), intent(in) :: lines(:)
+        integer, intent(in) :: line_count
+        character(len=*), intent(inout) :: members(:)
+        integer, intent(inout) :: member_count
+        character(len=64) :: group(64)
+        character(len=:), allocatable :: line
+        integer :: pass, i, j, group_count, pos
+        logical :: changed, in_common
+
+        do pass = 1, 16
+            changed = .false.
+            do i = 1, line_count
+                line = trim(lines(i))
+                if (.not. starts_with_word(line, 'equivalence')) cycle
+                pos = 1
+                do
+                    call next_equivalence_group(line, pos, group, group_count)
+                    if (group_count == 0) exit
+                    in_common = .false.
+                    do j = 1, group_count
+                        if (storage_name_listed(members, member_count, &
+                                                trim(group(j)))) in_common = .true.
+                    end do
+                    if (.not. in_common) cycle
+                    do j = 1, group_count
+                        if (storage_name_listed(members, member_count, &
+                                                trim(group(j)))) cycle
+                        call append_storage_name(members, member_count, &
+                                                 trim(group(j)))
+                        changed = .true.
+                    end do
+                end do
+            end do
+            if (.not. changed) exit
+        end do
+    end subroutine add_equivalenced_common_names
+
+    subroutine next_equivalence_group(text, pos, names, count)
+        !! Collect the object names of the next parenthesised EQUIVALENCE
+        !! group starting at pos; subscripts nested inside a designator are
+        !! skipped. Returns count == 0 when no further group is present.
+        character(len=*), intent(in) :: text
+        integer, intent(inout) :: pos
+        character(len=*), intent(out) :: names(:)
+        integer, intent(out) :: count
+        character(len=:), allocatable :: name
+        integer :: depth
+
+        count = 0
+        depth = 0
+        do while (pos <= len(text))
+            if (text(pos:pos) == '(') then
+                depth = depth + 1
+                pos = pos + 1
+                cycle
+            end if
+            if (text(pos:pos) == ')') then
+                depth = depth - 1
+                pos = pos + 1
+                if (depth <= 0) return
+                cycle
+            end if
+            if (depth /= 1) then
+                pos = pos + 1
+                cycle
+            end if
+            if (.not. is_fortran_identifier_char(text(pos:pos))) then
+                pos = pos + 1
+                cycle
+            end if
+            name = leading_identifier(text(pos:))
+            if (count < size(names)) then
+                count = count + 1
+                names(count) = lowercase_text(trim(name))
+            end if
+            pos = pos + len_trim(name)
+        end do
+    end subroutine next_equivalence_group
 
     subroutine data_object_base_name(arena, node_index, name)
         type(ast_arena_t), intent(in) :: arena

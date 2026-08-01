@@ -2188,16 +2188,18 @@
     ! format string").
     subroutine check_concatenated_format_source(arena, error_msg)
         type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable :: source, line
+        character(len=:), allocatable :: source, line, logical_line
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: found
-        integer :: pos, line_no, next_nl
+        integer :: pos, line_no, next_nl, first_line_no
 
         call set_empty(error_msg)
         call get_source_text(arena, source, found)
         if (.not. found) return
         pos = 1
         line_no = 1
+        logical_line = ''
+        first_line_no = 1
         do while (pos <= len(source))
             next_nl = index(source(pos:), new_line('a'))
             if (next_nl == 0) then
@@ -2207,11 +2209,52 @@
                 line = source(pos:pos + next_nl - 2)
                 pos = pos + next_nl
             end if
-            call check_transfer_line_format(line, line_no, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len(logical_line) == 0) first_line_no = line_no
+            call append_continuation_line(logical_line, line)
             line_no = line_no + 1
+            if (ends_with_continuation(logical_line)) cycle
+            call check_transfer_line_format(logical_line, first_line_no, &
+                                            error_msg)
+            logical_line = ''
+            if (len_trim(error_msg) > 0) return
         end do
+        if (len(logical_line) > 0) then
+            call check_transfer_line_format(logical_line, first_line_no, &
+                                            error_msg)
+        end if
     end subroutine check_concatenated_format_source
+
+    ! Free-form continuation: a trailing '&' joins the next line, whose own
+    ! leading '&' (if any) is not part of the statement text. The check runs on
+    ! the joined logical line so a continued format specification is seen whole.
+    logical function ends_with_continuation(text)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: code
+
+        ends_with_continuation = .false.
+        call strip_line_comment(text, code)
+        code = trim(code)
+        if (len(code) == 0) return
+        ends_with_continuation = code(len(code):len(code)) == '&'
+    end function ends_with_continuation
+
+    subroutine append_continuation_line(logical_line, line)
+        character(len=:), allocatable, intent(inout) :: logical_line
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: piece
+
+        if (len(logical_line) == 0) then
+            logical_line = line
+            return
+        end if
+        logical_line = trim(logical_line)
+        logical_line = logical_line(1:len(logical_line) - 1)
+        piece = adjustl(line)
+        if (len_trim(piece) > 0) then
+            if (piece(1:1) == '&') piece = piece(2:)
+        end if
+        logical_line = logical_line//piece
+    end subroutine append_continuation_line
 
     subroutine check_transfer_line_format(line, line_no, error_msg)
         character(len=*), intent(in) :: line
