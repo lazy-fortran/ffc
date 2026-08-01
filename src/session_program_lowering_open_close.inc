@@ -8,25 +8,27 @@
     ! --- spec-text helpers ---------------------------------------------------
 
     subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                status_str, sign_str, error_msg)
+                                file_quoted, status_str, sign_str, error_msg)
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
         character(len=*), intent(in) :: spec
         character(len=:), allocatable, intent(out) :: unit_str
         character(len=:), allocatable, intent(out) :: newunit_var
         character(len=:), allocatable, intent(out) :: file_path
+        logical, intent(out) :: file_quoted
         character(len=:), allocatable, intent(out) :: status_str
         character(len=:), allocatable, intent(out) :: sign_str
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: text, kw, val
         integer :: p, eq_pos, cp, qend, arg_end
-        logical :: first_arg
+        logical :: first_arg, val_quoted
         character :: qc
 
         call set_empty(error_msg)
         unit_str = ''
         newunit_var = ''
         file_path = ''
+        file_quoted = .false.
         status_str = ''
         sign_str = ''
         text = trim(adjustl(spec))
@@ -65,7 +67,9 @@
                 p = p + 1
             end do
             if (p > len(text)) exit
+            val_quoted = .false.
             if (text(p:p) == "'" .or. text(p:p) == '"') then
+                val_quoted = .true.
                 qc = text(p:p)
                 qend = index(text(p + 1:), qc)
                 if (qend <= 0) then
@@ -92,6 +96,7 @@
                 newunit_var = trim(val)
             case ('file')
                 file_path = trim(val)
+                file_quoted = val_quoted
             case ('status')
                 status_str = spec_lower(trim(val))
             case ('sign')
@@ -128,8 +133,9 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ustr, nuvar, fpath, sstr, signstr
-        type(lr_operand_desc_t) :: unit_op, args(3), unused
+        type(lr_operand_desc_t) :: unit_op, args(4), unused
         integer :: sym, ios, unit_number
+        logical :: file_quoted
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -138,8 +144,8 @@
             return
         end if
 
-        call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, sstr, signstr, &
-                              error_msg)
+        call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, file_quoted, &
+                              sstr, signstr, error_msg)
         if (len_trim(error_msg) > 0) return
 
         ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
@@ -193,15 +199,52 @@
         end if
 
         args(1) = unit_op
-        call unit_string_operand(context, 'open.file.', fpath, args(2), error_msg)
+        call open_file_operands(context, fpath, file_quoted, args(2), args(3), &
+                                error_msg)
         if (len_trim(error_msg) > 0) return
-        call unit_string_operand(context, 'open.status.', trim(sstr), args(3), &
+        call unit_string_operand(context, 'open.status.', trim(sstr), args(4), &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_call(context%session, '_ffc_unit_open', args, &
                                 unused, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_open
+
+    subroutine open_file_operands(context, fpath, file_quoted, data_op, len_op, &
+                                  error_msg)
+        ! FILE= yields a data pointer and a byte count. A quoted literal
+        ! contributes its own text; anything else names a character variable,
+        ! whose declared width is passed so the runtime can trim the padding.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: fpath
+        logical, intent(in) :: file_quoted
+        type(lr_operand_desc_t), intent(out) :: data_op
+        type(lr_operand_desc_t), intent(out) :: len_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+
+        call set_empty(error_msg)
+        if (file_quoted .or. len_trim(fpath) == 0) then
+            call unit_string_operand(context, 'open.file.', fpath, data_op, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) return
+            len_op = i32_immediate(context%session, int(len(fpath), c_int64_t))
+            return
+        end if
+
+        sym = find_symbol_compat(context, trim(fpath))
+        if (sym <= 0) then
+            error_msg = 'open file= variable not declared: '//trim(fpath)
+            return
+        end if
+        if (context%symbols(sym)%character_length <= 0 .and. &
+            .not. context%symbols(sym)%is_deferred_character) then
+            error_msg = 'open file= requires a character value: '//trim(fpath)
+            return
+        end if
+        call char_length_operands(context, sym, data_op, len_op, error_msg)
+    end subroutine open_file_operands
 
     subroutine unit_string_operand(context, tag, text, ptr_op, error_msg)
         ! Materialise a NUL-terminated literal and yield a pointer to it.

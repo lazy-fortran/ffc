@@ -118,7 +118,11 @@ contains
             '#include <stdio.h>'//NL
         text = text// &
             '#include <stdlib.h>'//NL
+        text = text// &
+            '#include <string.h>'//NL
         text = text//NL
+        text = text// &
+            '#define FFC_PATH_MAX 4096'//NL
         text = text// &
             '#define FFC_UNIT_MIN 0'//NL
         text = text// &
@@ -305,9 +309,13 @@ contains
         text = text// &
             'int _ffc_unit_open(int unit, const char *path,'//NL
         text = text// &
-            '                   const char *status) {'//NL
+            '                   int path_len, const char *status) {'//NL
         text = text// &
             '    FILE *fp;'//NL
+        text = text// &
+            '    char name[FFC_PATH_MAX];'//NL
+        text = text// &
+            '    int n;'//NL
         text = text// &
             '    if (!ffc_unit_valid(unit)) {'//NL
         text = text// &
@@ -321,15 +329,49 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
+            '    /* FILE= carries the whole declared width of a Fortran'//NL
+        text = text// &
+            '     * character value, so trailing blanks are padding and never'//NL
+        text = text// &
+            '     * part of the file name. */'//NL
+        text = text// &
+            '    n = path == NULL ? 0 : path_len;'//NL
+        text = text// &
+            '    if (n < 0) {'//NL
+        text = text// &
+            '        n = 0;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (n > (int)sizeof(name) - 1) {'//NL
+        text = text// &
+            '        n = (int)sizeof(name) - 1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    while (n > 0 &&'//NL
+        text = text// &
+            '           (path[n - 1] == '' '' || path[n - 1] == ''\0'')) {'//NL
+        text = text// &
+            '        n--;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (n > 0) {'//NL
+        text = text// &
+            '        memcpy(name, path, (size_t)n);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    name[n] = ''\0'';'//NL
+        text = text// &
             '    /* OPEN on a preconnected unit without FILE= reconfigures'//NL
         text = text// &
             '     * that connection rather than replacing it, so unit 6 keeps'//NL
         text = text// &
             '     * writing to standard output. */'//NL
         text = text// &
-            '    if ((path == NULL || path[0] == ''\0'') &&'//NL
-        text = text// &
-            '        ffc_unit_standard(unit)) {'//NL
+            '    if (n == 0 && ffc_unit_standard(unit)) {'//NL
         text = text// &
             '        ffc_unit_last_status = 0;'//NL
         text = text// &
@@ -337,15 +379,13 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
-            '    if (path == NULL || path[0] == ''\0'' ||'//NL
-        text = text// &
-            '        ffc_streq(status, "scratch")) {'//NL
+            '    if (n == 0 || ffc_streq(status, "scratch")) {'//NL
         text = text// &
             '        fp = tmpfile();'//NL
         text = text// &
             '    } else {'//NL
         text = text// &
-            '        fp = ffc_unit_fopen(path, status);'//NL
+            '        fp = ffc_unit_fopen(name, status);'//NL
         text = text// &
             '    }'//NL
         text = text// &
