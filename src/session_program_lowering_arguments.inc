@@ -226,10 +226,12 @@
     logical function registered_procedure_body_missing(arena, context, name) &
             result(missing)
         ! A signature declared by an interface inside a contained scope names a
-        ! dummy procedure of that scope; it is callable only when its body is
-        ! present in the lowering unit.  A host-level interface block instead
-        ! declares an external procedure, which a procedure-only object supplies
-        ! at link time (#416), so it is never reported as missing.  A real
+        ! dummy procedure of that scope only when the interfaced name also
+        ! appears in that scope's dummy-argument list; such a call is lowerable
+        ! only when the body is present in the lowering unit.  An interface for
+        ! any other name declares an external procedure the linker resolves
+        ! (#582), exactly like a host-level interface block, which a
+        ! procedure-only object supplies at link time (#416).  A real
         ! procedure with an empty body is still available; external procedures
         ! are deliberately left unknown so the separate-compilation and bind(C)
         ! paths can handle them.
@@ -242,11 +244,65 @@
         nested_index = visible_nested_procedure_node(context, name)
         if (nested_index > 0) then
             missing = procedure_node_is_interface_signature(arena, nested_index)
+            if (missing) then
+                if (.not. enclosing_dummy_argument_name(arena, context, name)) &
+                    missing = .false.
+            end if
             if (missing .and. procedure_body_node_present(arena, context, name)) &
                 missing = .false.
             return
         end if
     end function registered_procedure_body_missing
+
+    logical function enclosing_dummy_argument_name(arena, context, name) &
+            result(is_dummy)
+        ! Whether name is a dummy argument of the procedure currently being
+        ! lowered.  An interface block in a procedure's specification part
+        ! declares a dummy procedure only for such a name; every other name it
+        ! declares is an external procedure resolved at link time (#582).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: param, name_err
+        integer, allocatable :: params(:)
+        integer :: i
+
+        is_dummy = .false.
+        call procedure_node_param_indices(arena, context%current_proc_node_index, &
+                                          params)
+        if (.not. allocated(params)) return
+        do i = 1, size(params)
+            call parameter_name(arena, params(i), param, name_err)
+            if (len_trim(name_err) > 0) cycle
+            if (same_name(param, name)) then
+                is_dummy = .true.
+                return
+            end if
+        end do
+    end function enclosing_dummy_argument_name
+
+    subroutine procedure_node_param_indices(arena, node_index, params)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, allocatable, intent(out) :: params(:)
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        if (node_index <= 0) return
+        if (.not. node_exists(arena, node_index)) return
+        node_type = get_node_type_at(arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (allocated(fn_node%param_indices)) params = fn_node%param_indices
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%param_indices)) params = sb_node%param_indices
+        end if
+    end subroutine procedure_node_param_indices
 
     logical function procedure_node_is_interface_signature(arena, node_index) &
             result(is_signature)
