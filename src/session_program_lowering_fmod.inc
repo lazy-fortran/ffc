@@ -12,8 +12,8 @@
         call set_empty(error_msg)
         dir = path_dirname(output_path)
         do m = 1, context%module_export_count
-            call build_module_info(arena, context%module_exports(m), info, &
-                                    error_msg)
+            call build_module_info(arena, context, context%module_exports(m), &
+                                   info, error_msg)
             if (len_trim(error_msg) > 0) return
             path = dir//trim(context%module_exports(m)%module_name)//'.fmod'
             call write_fmod(path, info, error_msg)
@@ -34,8 +34,9 @@
         end if
     end function path_dirname
 
-    subroutine build_module_info(arena, export, info, error_msg)
+    subroutine build_module_info(arena, context, export, info, error_msg)
         type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
         type(module_exports_t), intent(in) :: export
         type(module_info_t), intent(out) :: info
         character(len=:), allocatable, intent(out) :: error_msg
@@ -51,7 +52,8 @@
         end do
         allocate (info%derived_types(export%derived_type_count))
         do i = 1, export%derived_type_count
-            call build_fmod_derived_type(arena, export%derived_type_indices(i), &
+            call build_fmod_derived_type(arena, context, &
+                                         export%derived_type_indices(i), &
                                          info%derived_types(i), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
@@ -711,17 +713,24 @@
         end if
     end subroutine build_fmod_parameter
 
-    subroutine build_fmod_derived_type(arena, node_index, dtype, error_msg)
+    subroutine build_fmod_derived_type(arena, context, node_index, dtype, &
+                                       error_msg)
+        ! Serialise the layout the lowering context already computed for this
+        ! type, not a second description re-derived from the AST. The context
+        ! record is the canonical derived layout every same-unit access uses, so
+        ! a using unit that reconstructs it addresses components exactly as the
+        ! defining unit did (#414).
         type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: node_index
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: n, k
-        character(len=:), allocatable :: type_name, comp_name, comp_type
-        integer, allocatable :: component_indices(:)
+        character(len=:), allocatable :: type_name
+        integer :: type_index, k, offset, nested
 
         call set_empty(error_msg)
         dtype%name = ''
+        dtype%parent_name = ''
         if (.not. is_derived_type_node(arena, node_index)) then
             error_msg = 'module derived-type export is not a derived type'
             return
@@ -729,23 +738,87 @@
         call get_derived_type_name(arena, node_index, type_name, error_msg)
         if (len_trim(error_msg) > 0) return
         dtype%name = trim(type_name)
-        call get_derived_type_components(arena, node_index, component_indices)
-        n = size(component_indices)
-        allocate (dtype%components(n))
-        do k = 1, n
-            dtype%components(k)%name = ''
-            dtype%components(k)%kind = ''
-            if (.not. is_declaration_node(arena, component_indices(k))) cycle
-            call get_declaration_var_name(arena, component_indices(k), &
-                                          comp_name, error_msg)
-            if (len_trim(error_msg) > 0) return
-            dtype%components(k)%name = trim(comp_name)
-            call get_declaration_type_name(arena, component_indices(k), &
-                                           comp_type, error_msg)
-            if (len_trim(error_msg) > 0) return
-            dtype%components(k)%kind = fmod_kind_string(comp_type)
+        type_index = find_derived_type(context, trim(type_name))
+        if (type_index <= 0) then
+            ! The type never reached the lowering context, so this unit has no
+            ! layout for it and must not publish a guess.
+            allocate (dtype%components(0))
+            return
+        end if
+        dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
+        allocate (dtype%components( &
+            context%derived_types(type_index)%component_count))
+        offset = 0
+        do k = 1, context%derived_types(type_index)%component_count
+            associate (comp => dtype%components(k))
+                comp%name = trim(context%derived_types(type_index)% &
+                                 component_names(k))
+                comp%kind = fmod_component_kind_token(context, type_index, k)
+                comp%type_name = ''
+                nested = context%derived_types(type_index)% &
+                         component_type_index(k)
+                if (nested > 0) comp%type_name = &
+                    trim(context%derived_types(nested)%name)
+                comp%slot_width = component_slot_width(context, type_index, k)
+                comp%elem_count = context%derived_types(type_index)% &
+                                  component_array_size(k)
+                comp%slot_count = comp%elem_count * comp%slot_width
+                comp%slot_offset = offset
+                comp%char_length = context%derived_types(type_index)% &
+                                   component_char_length(k)
+                comp%dim1 = context%derived_types(type_index)%component_dim1(k)
+                comp%is_allocatable = context%derived_types(type_index)% &
+                                      component_is_allocatable(k)
+                comp%is_pointer = context%derived_types(type_index)% &
+                                  component_is_pointer(k)
+                comp%is_alloc_array = context%derived_types(type_index)% &
+                                      component_is_alloc_array(k)
+                offset = offset + comp%slot_count
+            end associate
         end do
     end subroutine build_fmod_derived_type
+
+    function fmod_component_kind_token(context, type_index, comp_index) &
+            result(token)
+        ! The canonical .fmod token for a component's value kind. A nested
+        ! derived component reports 'derived'; its type travels in type_name.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+        character(len=:), allocatable :: token
+        integer :: value_kind
+
+        value_kind = context%derived_types(type_index)% &
+                     component_value_kind(comp_index)
+        select case (value_kind)
+        case (VALUE_DERIVED)
+            token = 'derived'
+        case (VALUE_CHARACTER)
+            token = 'character'
+        case (VALUE_C_PTR)
+            token = 'c_ptr'
+        case default
+            token = scalar_kind_token(value_kind)
+            if (len_trim(token) == 0) token = 'unsupported'
+        end select
+    end function fmod_component_kind_token
+
+    integer function fmod_component_value_kind(token) result(value_kind)
+        ! Inverse of fmod_component_kind_token; 0 when the token names no kind
+        ! this ffc can lay out.
+        character(len=*), intent(in) :: token
+
+        select case (trim(token))
+        case ('derived')
+            value_kind = VALUE_DERIVED
+        case ('character')
+            value_kind = VALUE_CHARACTER
+        case ('c_ptr')
+            value_kind = VALUE_C_PTR
+        case default
+            value_kind = value_kind_of_token(token)
+        end select
+    end function fmod_component_value_kind
 
     function fmod_kind_string(type_name) result(kind_text)
         ! Normalise a declaration type name to the .fmod kind token.

@@ -239,6 +239,10 @@
         call validate_fmod_use_names(use_node, info, error_msg)
         if (len_trim(error_msg) > 0) return
 
+        ! Derived types come first: a later component or variable may name one,
+        ! and a nested component must find its inner type already registered.
+        call import_fmod_derived_types(use_node, info, context, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
                 call import_fmod_parameter(use_node, info%parameters(i), &
@@ -268,6 +272,121 @@
             end do
         end if
     end subroutine import_module_from_fmod
+
+    subroutine import_fmod_derived_types(use_node, info, context, error_msg)
+        ! Register every derived type the artefact describes, in the order it
+        ! records them, so a nested component's inner type is already present
+        ! when the outer type refers to it. The layout comes entirely from the
+        ! artefact: component kinds, slot spans, character lengths, and fixed
+        ! array shapes are read back, never re-derived from the module source
+        ! (#414).
+        type(use_statement_node), intent(in) :: use_node
+        type(module_info_t), intent(in) :: info
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(info%derived_types)) return
+        do i = 1, size(info%derived_types)
+            call import_fmod_derived_type(use_node, info%derived_types(i), &
+                                          context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine import_fmod_derived_types
+
+    subroutine import_fmod_derived_type(use_node, dtype, context, error_msg)
+        ! Reconstruct one derived type's layout from its artefact record.
+        type(use_statement_node), intent(in) :: use_node
+        type(fmod_derived_type_t), intent(in) :: dtype
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: type_index_new, k, offset, nested, value_kind
+        integer(c_int64_t) :: no_default
+
+        call set_empty(error_msg)
+        if (.not. allocated(dtype%name)) return
+        if (len_trim(dtype%name) == 0) return
+        if (find_derived_type(context, trim(dtype%name)) > 0) return
+        if (.not. allocated(dtype%components)) return
+
+        call grow_derived_types(context)
+        type_index_new = context%derived_type_count + 1
+        context%derived_types(type_index_new)%name = trim(dtype%name)
+        context%derived_types(type_index_new)%component_count = 0
+        context%derived_types(type_index_new)%parent_name = ''
+        if (allocated(dtype%parent_name)) &
+            context%derived_types(type_index_new)%parent_name = &
+                trim(dtype%parent_name)
+        context%derived_type_count = type_index_new
+
+        no_default = 0_c_int64_t
+        offset = 0
+        do k = 1, size(dtype%components)
+            associate (comp => dtype%components(k))
+                if (comp%slot_offset /= offset) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' records slot offset '//integer_text(comp%slot_offset)// &
+                        ' where its own component slot counts give '// &
+                        integer_text(offset)
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (comp%slot_count < 1 .or. comp%elem_count < 1) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' occupies no storage'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                value_kind = fmod_component_value_kind(comp%kind)
+                if (value_kind == 0) then
+                    error_msg = 'unsupported .fmod component kind "'// &
+                        trim(comp%kind)//'" for '//trim(comp%name)//' of '// &
+                        trim(dtype%name)
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                nested = 0
+                if (value_kind == VALUE_DERIVED) then
+                    nested = find_derived_type(context, trim(comp%type_name))
+                    if (nested <= 0) then
+                        error_msg = 'unknown derived type "'// &
+                            trim(comp%type_name)//'" for component '// &
+                            trim(comp%name)//' of '//trim(dtype%name)// &
+                            ': the .fmod does not define it'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                end if
+                call add_derived_component(context, type_index_new, &
+                    trim(comp%name), use_node%line, use_node%column, .false., &
+                    no_default, comp%elem_count, value_kind, error_msg, &
+                    comp_type_index=nested, &
+                    is_allocatable=comp%is_allocatable, &
+                    comp_char_length=comp%char_length, &
+                    is_alloc_array=comp%is_alloc_array, &
+                    is_pointer=comp%is_pointer)
+                if (len_trim(error_msg) > 0) then
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                context%derived_types(type_index_new)%component_dim1(k) = &
+                    comp%dim1
+                offset = offset + comp%slot_count
+            end associate
+        end do
+    end subroutine import_fmod_derived_type
+
+    function integer_text(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=32) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function integer_text
 
     subroutine import_fmod_generic(use_node, module_name, gen, info, context, &
                                    error_msg)
