@@ -37,6 +37,7 @@ module liric_session_format_bindings
     public :: create_printf_format_global
     public :: printf_format_ptr
     public :: create_type_info_global
+    public :: create_pointer_table_global
     public :: create_i8_format_global_no_newline
     public :: create_i16_format_global_no_newline
     public :: emit_e_en_format_call
@@ -92,6 +93,14 @@ module liric_session_format_bindings
             integer(c_size_t), value :: init_size
             integer(c_int32_t) :: global_id
         end function lr_session_global
+
+        subroutine lr_session_global_reloc(handle, global_id, offset, sym) bind(c)
+            import :: c_char, c_int32_t, c_ptr, c_size_t
+            type(c_ptr), value :: handle
+            integer(c_int32_t), value :: global_id
+            integer(c_size_t), value :: offset
+            character(kind=c_char), intent(in) :: sym(*)
+        end subroutine lr_session_global_reloc
 
         function lr_session_intern(handle, name) result(symbol_id) bind(c)
             import :: c_char, c_int32_t, c_ptr
@@ -345,6 +354,52 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine create_type_info_global
+
+    subroutine create_pointer_table_global(session, name, symbols, error_msg)
+        ! Emit a const global holding size(symbols) 8-byte pointer slots. Each
+        ! slot whose symbol name is non-blank carries a data relocation to that
+        ! symbol; a blank name leaves the slot a null pointer. This backs the
+        ! per-type vtables and the link-unit vtable table of
+        ! docs/RUNTIME_ABI.md, both of which are arrays of code or data
+        ! addresses that only the linker (or the JIT's global materialiser) can
+        ! fill in.
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        character(len=*), intent(in) :: symbols(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(kind=c_char), allocatable :: c_name(:), c_sym(:)
+        character(kind=c_char), allocatable, target :: bytes(:)
+        type(c_ptr) :: array_type
+        integer :: slot
+        integer(c_size_t) :: nbytes
+        integer(c_int32_t) :: global_id
+
+        call set_empty(error_msg)
+        if (size(symbols) <= 0) return
+        nbytes = int(size(symbols), c_size_t) * 8_c_size_t
+        allocate (bytes(nbytes))
+        bytes = char(0, kind=c_char)
+
+        call to_c_chars(name, c_name)
+        array_type = lr_type_array_s(session%handle, lr_type_i8_s(session%handle), &
+            int(nbytes, c_int64_t))
+        if (.not. c_associated(array_type)) then
+            error_msg = 'LIRIC did not return a pointer-table array type'
+            return
+        end if
+        global_id = lr_session_global(session%handle, c_name, array_type, &
+            c_true, c_loc(bytes), nbytes)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create pointer table global '//trim(name)
+            return
+        end if
+        do slot = 1, size(symbols)
+            if (len_trim(symbols(slot)) == 0) cycle
+            call to_c_chars(trim(symbols(slot)), c_sym)
+            call lr_session_global_reloc(session%handle, global_id, &
+                int(slot - 1, c_size_t) * 8_c_size_t, c_sym)
+        end do
+    end subroutine create_pointer_table_global
 
     include 'liric_session_format_e_en.inc'
 

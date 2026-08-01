@@ -112,6 +112,7 @@
         do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
             context%derived_types(i)%component_count = 0
+            context%derived_types(i)%duplicate_binding_name = ''
             if (allocated(context%derived_types(i)%component_names)) then
                 deallocate(context%derived_types(i)%component_names)
             end if
@@ -753,6 +754,19 @@
                     end if
                 end do
                 if (.not. overrides) then
+                    ! A name declared twice in the same type has no single
+                    ! vtable slot occupant, so dispatch through it would be
+                    ! ambiguous: reject it instead of silently keeping one
+                    ! (#420).
+                    do b = inherited + 1, &
+                        context%derived_types(type_index)%binding_count
+                        if (trim(context%derived_types(type_index)% &
+                                 binding_method_names(b)) /= &
+                            trim(method_name_buf)) cycle
+                        context%derived_types(type_index)% &
+                            duplicate_binding_name = method_name_buf
+                        exit
+                    end do
                     slot = context%derived_types(type_index)%binding_count + 1
                     context%derived_types(type_index)%binding_method_names(slot) = &
                         method_name_buf

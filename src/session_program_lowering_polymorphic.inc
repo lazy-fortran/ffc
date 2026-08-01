@@ -183,6 +183,164 @@
         call set_empty(error_msg)
     end subroutine bind_class_dummy_descriptor
 
+    ! Type-bound dispatch through vtables (#420). Every derived type that has
+    ! type-bound bindings gets one const vtable global, `__ffc_vtable_<type>`,
+    ! holding one code address per binding slot. Slot numbering is the binding
+    ! numbering of the derived-type table: a child inherits its parent's slots
+    ! in order and an override replaces the target in place, so slot k names
+    ! the same binding in a type and in every extension of it. One link-unit
+    ! table, `__ffc_vtable_table`, maps a dynamic type id to that type's
+    ! vtable: the id is the dense index the class descriptor already carries,
+    ! so entry i of the table is the vtable of type id i and entry 0 is the
+    ! reserved "no type" null. Keeping the mapping in a link-unit table rather
+    ! than in a fifth descriptor field leaves the 32-byte scalar class
+    ! descriptor of #400 unchanged, so every existing descriptor producer and
+    ! consumer keeps working unmodified.
+
+    subroutine type_vtable_symbol_name(context, type_index, name)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: name
+
+        name = '__ffc_vtable_'//trim(context%derived_types(type_index)%name)
+    end subroutine type_vtable_symbol_name
+
+    subroutine emit_type_vtables(arena, context, error_msg)
+        ! Emit every per-type vtable and the link-unit lookup table. Called
+        ! once, before any procedure body is compiled, because a global created
+        ! mid-compile loses its data-section initializer and relocations.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=128), allocatable :: slots(:), table(:)
+        character(len=:), allocatable :: vtable_name
+        integer :: t, b, n
+
+        call set_empty(error_msg)
+        if (context%derived_type_count <= 0) return
+        allocate (table(context%derived_type_count + 1))
+        table = ''
+        do t = 1, context%derived_type_count
+            if (len_trim(context%derived_types(t)%duplicate_binding_name) > 0) then
+                error_msg = 'type "'//trim(context%derived_types(t)%name)// &
+                    '" declares the type-bound procedure "'// &
+                    trim(context%derived_types(t)%duplicate_binding_name)// &
+                    '" more than once'
+                return
+            end if
+            n = context%derived_types(t)%binding_count
+            if (n <= 0) cycle
+            if (.not. allocated(context%derived_types(t)%binding_target_names)) cycle
+            allocate (slots(n))
+            slots = ''
+            do b = 1, n
+                ! A binding whose implementation is not defined in this
+                ! compilation unit gets a null slot instead of a relocation, so
+                ! emitting a vtable never introduces an undefined symbol for a
+                ! binding the program never calls.
+                if (arena_proc_param_count(arena, &
+                        trim(context%derived_types(t)%binding_target_names(b))) &
+                    < 0) cycle
+                slots(b) = call_emit_name(arena, &
+                    trim(context%derived_types(t)%binding_target_names(b)))
+            end do
+            call type_vtable_symbol_name(context, t, vtable_name)
+            call create_pointer_table_global(context%session, vtable_name, &
+                                             slots, error_msg)
+            deallocate (slots)
+            if (len_trim(error_msg) > 0) return
+            table(t + 1) = vtable_name
+        end do
+        call create_pointer_table_global(context%session, '__ffc_vtable_table', &
+                                         table, error_msg)
+    end subroutine emit_type_vtables
+
+    integer function type_binding_slot(context, type_index, method_name) &
+            result(slot)
+        ! Binding slot of method_name in type_index, or 0 when it has none.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        character(len=*), intent(in) :: method_name
+        integer :: b
+
+        slot = 0
+        if (type_index <= 0) return
+        if (type_index > context%derived_type_count) return
+        if (.not. allocated(context%derived_types(type_index)%binding_method_names)) &
+            return
+        do b = 1, context%derived_types(type_index)%binding_count
+            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
+                trim(method_name)) then
+                slot = b
+                return
+            end if
+        end do
+    end function type_binding_slot
+
+    logical function class_receiver_dispatches_dynamically(context, symbol_index)
+        ! True when the receiver carries a runtime type identity, i.e. it is a
+        ! class entity whose dynamic type is not fixed at compile time. A
+        ! type(t) receiver keeps direct dispatch: its dynamic type is its
+        ! declared type by definition.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+
+        class_receiver_dispatches_dynamically = .false.
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_polymorphic) return
+        class_receiver_dispatches_dynamically = &
+            context%symbols(symbol_index)%has_dynamic_type_address
+    end function class_receiver_dispatches_dynamically
+
+    subroutine class_dispatch_callee(context, symbol_index, slot, callee_ptr, &
+                                     error_msg)
+        ! Load the implementation address for binding slot `slot` from the
+        ! receiver's dynamic type:
+        !   vtable = __ffc_vtable_table[dynamic_type];
+        !   callee = vtable[slot - 1];
+        ! Both loads read const data the linker filled in, so the sequence
+        ! neither writes memory nor aliases the receiver's storage.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: slot
+        type(lr_operand_desc_t), intent(out) :: callee_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: dynamic_id, byte_offset, table_base
+        type(lr_operand_desc_t) :: entry_addr, vtable, slot_addr
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: symbol_id
+
+        call set_empty(error_msg)
+        if (.not. emit_i64_load(context%session, &
+                context%symbols(symbol_index)%dynamic_type_address, dynamic_id, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, dynamic_id, &
+                i64_immediate(context%session, 8_c_int64_t), byte_offset, &
+                error_msg)) return
+
+        call to_c_chars('__ffc_vtable_table', c_name)
+        symbol_id = lr_session_intern(context%session%handle, c_name)
+        if (symbol_id < 0_c_int32_t) then
+            error_msg = 'could not intern the vtable lookup table symbol'
+            return
+        end if
+        table_base%kind = LR_OP_KIND_GLOBAL
+        table_base%payload = int(symbol_id, c_int64_t)
+        table_base%typ = lr_type_ptr_s(context%session%handle)
+        table_base%global_offset = 0_c_int64_t
+
+        if (.not. emit_ptr_offset_dyn(context%session, table_base, byte_offset, &
+                entry_addr, error_msg)) return
+        if (.not. emit_ptr_load(context%session, entry_addr, vtable, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, vtable, &
+                int(slot - 1, c_int64_t) * 8_c_int64_t, slot_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_load(context%session, slot_addr, callee_ptr, &
+                error_msg)) return
+    end subroutine class_dispatch_callee
+
     subroutine class_receiver_argument(context, arena, impl_name, position, &
                                        symbol_index, argument, error_msg)
         ! Argument the receiver of a type-bound call occupies. The passed-object
