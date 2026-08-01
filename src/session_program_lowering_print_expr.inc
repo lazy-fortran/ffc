@@ -86,7 +86,7 @@
                                                    im_val, error_msg)) return
                 return
             end if
-            if (is_f32_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -94,7 +94,7 @@
                                                value, error_msg)) return
                 return
             end if
-            if (is_f64_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -281,7 +281,7 @@
                     return
                 end if
             end if
-            if (is_f32_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -289,7 +289,7 @@
                                                value, error_msg)) return
                 return
             end if
-            if (is_f64_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -408,7 +408,7 @@
                                                    im_val, error_msg)) return
                 return
             end if
-            if (is_f32_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -416,7 +416,7 @@
                                                      value, error_msg)) return
                 return
             end if
-            if (is_f64_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -599,7 +599,7 @@
                     return
                 end if
             end if
-            if (is_f32_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -607,7 +607,7 @@
                                                      value, error_msg)) return
                 return
             end if
-            if (is_f64_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
                 call lower_f64_expression(arena, node_index, context, value, &
                                           error_msg)
                 if (len_trim(error_msg) > 0) return

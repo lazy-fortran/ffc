@@ -651,7 +651,7 @@
             end if
         end if
 
-        if (is_f32_expression(arena, node_index, context)) then
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
             call lower_f32_expression(arena, node_index, context, value, &
                                       error_msg)
             return
@@ -659,7 +659,7 @@
 
         ! An f64 argument to a single-precision conversion (real(d), real(d, 4))
         ! narrows to f32.
-        if (is_f64_expression(arena, node_index, context)) then
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
             block
                 type(lr_operand_desc_t) :: wide_value
                 call lower_f64_expression(arena, node_index, context, &
@@ -1284,14 +1284,14 @@
         type(lr_operand_desc_t) :: integer_value
         type(lr_operand_desc_t) :: f32_value
 
-        if (is_f64_expression(arena, node_index, context)) then
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
             call lower_f64_expression(arena, node_index, context, value, &
                                       error_msg)
             return
         end if
 
         ! f32 argument: promote to f64 via FPEXT.
-        if (is_f32_expression(arena, node_index, context)) then
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
             call lower_f32_expression(arena, node_index, context, f32_value, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return

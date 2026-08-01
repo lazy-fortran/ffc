@@ -267,7 +267,8 @@ module session_program_lowering
         MAX_NAMELIST_MEMBERS, &
         NAMELIST_NAME_BUFFER, NAMELIST_VALUE_BUFFER, &
         NAMELIST_IOSTAT_END, NAMELIST_IOSTAT_BAD, &
-        VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
+        SCALAR_REAL_NONE, VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, &
+        VALUE_F32, VALUE_F64, &
         VALUE_C4, VALUE_C8, &
         VALUE_LOGICAL, VALUE_CHARACTER, &
         VALUE_DERIVED, &
@@ -1632,14 +1633,15 @@ contains
             call lower_c8_assignment(arena, node%value_index, symbol_index, &
                 context, error_msg)
             return
-        else if (is_f64_expression(arena, node%value_index, context) .or. &
-                is_f32_expression(arena, node%value_index, context)) then
+        else if (scalar_real_expr_kind(arena, node%value_index, context) /= &
+                 SCALAR_REAL_NONE) then
             ! Integer target with a real rhs: assignment converts by
             ! truncation toward zero (F2018 10.2.1.3), unlike subscript or
             ! bound positions where a real is rejected.
             block
                 type(lr_operand_desc_t) :: real_value, wide_value
-                if (is_f64_expression(arena, node%value_index, context)) then
+                if (scalar_real_expr_kind(arena, node%value_index, context) &
+                    == VALUE_F64) then
                     call lower_f64_expression(arena, node%value_index, context, &
                         wide_value, error_msg)
                 else
@@ -1911,6 +1913,7 @@ contains
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_complex.inc'
     include 'session_program_lowering_complex_arrays.inc'
+    include 'session_program_lowering_scalar_kind.inc'
     include 'session_program_lowering_literal_utils.inc'
     include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
@@ -2325,6 +2328,7 @@ contains
         integer(c_int) :: pred
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
+        integer :: compare_kind
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'condition index does not reference an AST node'
             return
@@ -2368,10 +2372,13 @@ contains
             end if
             ! A comparison whose operands are real (including libm intrinsic
             ! calls such as sin(x) > cos(y)) lowers through the float compare
-            ! path; f32 takes priority so a single-precision operand widens
-            ! consistently with the rest of the lowerer.
-            if (is_f32_expression(arena, bin_left, context) .or. &
-                is_f32_expression(arena, bin_right, context)) then
+            ! path at the widest operand kind (F2018 10.1.5.2.1), so comparing
+            ! a real(8) against a default real literal compares in f64 rather
+            ! than narrowing the wide operand.
+            compare_kind = wider_real_kind( &
+                scalar_real_expr_kind(arena, bin_left, context), &
+                scalar_real_expr_kind(arena, bin_right, context))
+            if (compare_kind == VALUE_F32) then
                 call lower_f32_expression(arena, bin_left, context, lhs, error_msg)
                 if (len_trim(error_msg) > 0) return
                 call lower_f32_expression(arena, bin_right, context, rhs, error_msg)
@@ -2382,11 +2389,12 @@ contains
                     value, error_msg)) return
                 return
             end if
-            if (is_f64_expression(arena, bin_left, context) .or. &
-                is_f64_expression(arena, bin_right, context)) then
-                call lower_f64_expression(arena, bin_left, context, lhs, error_msg)
+            if (compare_kind == VALUE_F64) then
+                ! lower_f64_operand promotes an integer or f32 operand into the
+                ! f64 comparison rather than narrowing the wide side.
+                call lower_f64_operand(arena, bin_left, context, lhs, error_msg)
                 if (len_trim(error_msg) > 0) return
-                call lower_f64_expression(arena, bin_right, context, rhs, error_msg)
+                call lower_f64_operand(arena, bin_right, context, rhs, error_msg)
                 if (len_trim(error_msg) > 0) return
                 call real_compare_predicate(bin_op, pred, error_msg)
                 if (len_trim(error_msg) > 0) return

@@ -3002,7 +3002,8 @@
                 call lower_i16_expression(arena, node%value_index, context, &
                                           value, error_msg)
             case default
-                if (is_f64_expression(arena, node%value_index, context)) then
+                if (scalar_real_expr_kind(arena, node%value_index, context) &
+                    == VALUE_F64) then
                     ! Integer array with a real scalar rhs: assignment
                     ! converts each element by truncation toward zero.
                     call lower_f64_expression(arena, node%value_index, &
@@ -3010,7 +3011,8 @@
                     if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_f64_to_i32(context%session, &
                         wide_value, value, error_msg)) return
-                else if (is_f32_expression(arena, node%value_index, context)) then
+                else if (scalar_real_expr_kind(arena, node%value_index, context) &
+                         == VALUE_F32) then
                     call lower_f32_expression(arena, node%value_index, &
                                               context, narrow_value, error_msg)
                     if (len_trim(error_msg) > 0) return

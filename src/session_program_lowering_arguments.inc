@@ -1672,9 +1672,10 @@ integer function expression_value_kind(arena, node_index, context, &
         if (.not. node_exists(arena, node_index)) return
 
         if (is_binary_op(arena, node_index)) then
-            if (is_f32_expression(arena, node_index, context)) then
+            if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 value_kind = VALUE_F32
-            else if (is_f64_expression(arena, node_index, context)) then
+            else if (scalar_real_expr_kind(arena, node_index, context) &
+                     == VALUE_F64) then
                 value_kind = VALUE_F64
             end if
             return
@@ -1759,7 +1760,8 @@ integer function expression_value_kind(arena, node_index, context, &
             ! Generic matching uses a real literal's source kind before the
             ! selected procedure applies any contextual conversion.
             if (is_real_literal(arena, node%arg_indices(i))) then
-                if (is_f32_expression(arena, node%arg_indices(i), context)) then
+                if (scalar_real_expr_kind(arena, node%arg_indices(i), context) &
+                    == VALUE_F32) then
                     arg_kinds(i) = VALUE_F32
                 else
                     arg_kinds(i) = VALUE_F64

@@ -27,58 +27,6 @@
         is_f64 = is_complex_valued(arena, node%arg_indices(1), context, VALUE_C8)
     end function real_intrinsic_is_f64
 
-    logical function is_f64_intrinsic_expression(arena, node, context) &
-        result(is_f64)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer :: i
-        integer :: intrinsic_id
-
-        is_f64 = .false.
-        if (.not. allocated(node%name)) return
-
-        intrinsic_id = f64_intrinsic_id(node%name)
-        if (intrinsic_id == F64_INTRINSIC_REAL) then
-            is_f64 = real_intrinsic_is_f64(arena, node, context)
-            return
-        end if
-        ! aint(a, kind) and anint(a, kind) take their result kind from the
-        ! selector, independent of the argument kind.
-        if (real_conversion_intrinsic(node%name)) then
-            if (allocated(node%arg_indices)) then
-                if (size(node%arg_indices) >= 2) then
-                    is_f64 = real_conversion_kind_is_f64(arena, &
-                                                         node%arg_indices(2))
-                    return
-                end if
-            end if
-        end if
-        ! dble() always returns real(8), regardless of argument kind.
-        if (same_name(node%name, 'dble')) then
-            is_f64 = .true.
-            return
-        end if
-        if (intrinsic_id == F64_INTRINSIC_NONE) return
-        if (.not. allocated(node%arg_indices)) return
-
-        ! abs() of a complex(8) yields a real(8) magnitude.
-        if (same_name(node%name, 'abs') .and. size(node%arg_indices) >= 1) then
-            if (is_complex_valued(arena, node%arg_indices(1), context, &
-                                  VALUE_C8)) then
-                is_f64 = .true.
-                return
-            end if
-        end if
-
-        do i = 1, size(node%arg_indices)
-            if (is_f64_expression(arena, node%arg_indices(i), context)) then
-                is_f64 = .true.
-                return
-            end if
-        end do
-    end function is_f64_intrinsic_expression
-
     logical function real_conversion_intrinsic(name) result(is_conversion)
         !! True for the AINT/ANINT real conversions, which accept an optional
         !! KIND selector that fixes the result width.

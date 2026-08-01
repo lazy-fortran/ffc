@@ -297,7 +297,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, value_f64, field, strcat_result
 
-        if (is_f32_expression(arena, node_index, context)) then
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
             call lower_f32_expression(arena, node_index, context, value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f32_to_f64(context%session, value, value_f64, &
