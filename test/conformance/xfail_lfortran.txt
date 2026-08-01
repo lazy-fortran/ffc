@@ -2285,8 +2285,6 @@ modules_61.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module e
 modules_62.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 modules_62_parser.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_62_terminal.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-modules_63.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
-modules_63_module.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 modules_64.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 modules_65.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 modules_65_worker.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
@@ -3099,13 +3097,11 @@ string_90.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length cha
 string_91.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_92.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_93.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
-string_94.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_95.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 string_96.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_97.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_99.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_array_concat_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-string_concat_deferred_len.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 str_to_char.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 struct_allocate.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 struct_type_01.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports

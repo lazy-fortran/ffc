@@ -355,6 +355,10 @@ module session_program_lowering
     integer(c_int64_t), parameter :: LOWERING_CHARACTER_STORAGE_OWNED = &
         int(CHARACTER_STORAGE_OWNED, c_int64_t)
 
+    ! Passed as emit_concat_copies' dest_len when the destination has no
+    ! declared width to clamp to, which is every deferred-length destination.
+    integer, parameter :: CONCAT_NO_CLAMP = -1
+
     ! Reduction kinds for dim-wise whole-array reductions (sum/product/count/
     ! any/all along one dimension). See lower_dim_reduction_assignment.
     ! An argument-less call still goes through prepare_reference_args so that
