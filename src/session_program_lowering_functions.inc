@@ -2074,6 +2074,91 @@
             contained_function_kind(context, name) == VALUE_ARRAY_RESULT
     end function is_contained_array_function
 
+    ! Signature facts a contained procedure must satisfy before an elemental
+    ! call over array actuals may be expanded element-by-element (#405):
+    ! how many dummies it takes, whether its prefix says ELEMENTAL, and
+    ! whether every dummy is declared INTENT(IN) as F2018 15.8.1 requires of
+    ! an elemental function. found stays .false. when the procedure is not a
+    ! contained function visible in the arena.
+    subroutine contained_elemental_signature(arena, name, found, param_count, &
+                                             is_elemental, all_intent_in, &
+                                             bad_dummy)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        logical, intent(out) :: found
+        integer, intent(out) :: param_count
+        logical, intent(out) :: is_elemental
+        logical, intent(out) :: all_intent_in
+        character(len=:), allocatable, intent(out) :: bad_dummy
+        character(len=:), allocatable :: dummy_name, err
+        integer :: i, p
+
+        found = .false.
+        param_count = 0
+        is_elemental = .false.
+        all_intent_in = .true.
+        bad_dummy = ''
+        do i = 1, arena%size
+            if (.not. allocated(arena%entries(i)%node)) cycle
+            select type (fn => arena%entries(i)%node)
+            type is (function_def_node)
+                if (.not. allocated(fn%name)) cycle
+                if (.not. same_name(fn%name, name)) cycle
+                found = .true.
+                if (allocated(fn%param_indices)) param_count = size(fn%param_indices)
+                if (allocated(fn%prefix_keywords)) then
+                    do p = 1, size(fn%prefix_keywords)
+                        if (same_name(trim(fn%prefix_keywords(p)), 'elemental')) &
+                            is_elemental = .true.
+                    end do
+                end if
+                if (.not. allocated(fn%param_indices)) return
+                if (.not. allocated(fn%body_indices)) return
+                do p = 1, size(fn%param_indices)
+                    call parameter_name(arena, fn%param_indices(p), dummy_name, err)
+                    if (len_trim(err) > 0) cycle
+                    if (dummy_is_intent_in(arena, fn%body_indices, dummy_name)) cycle
+                    all_intent_in = .false.
+                    if (len_trim(bad_dummy) == 0) bad_dummy = trim(dummy_name)
+                end do
+                return
+            end select
+        end do
+    end subroutine contained_elemental_signature
+
+    ! True when dummy_name is declared INTENT(IN) among the body declarations.
+    logical function dummy_is_intent_in(arena, body_indices, dummy_name) &
+        result(is_in)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: dummy_name
+        integer :: i, k
+        logical :: matches
+
+        is_in = .false.
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                matches = .false.
+                if (allocated(decl%var_name)) then
+                    if (same_name(trim(decl%var_name), dummy_name)) matches = .true.
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (same_name(trim(decl%var_names(k)), dummy_name)) &
+                            matches = .true.
+                    end do
+                end if
+                if (.not. matches) cycle
+                if (.not. decl%has_intent) return
+                if (.not. allocated(decl%intent)) return
+                is_in = trim(lowercase_text(decl%intent)) == 'in'
+                return
+            end select
+        end do
+    end function dummy_is_intent_in
+
     subroutine contained_array_result_info(arena, context, name, element_kind, &
                                            array_size, error_msg)
         ! Element scalar kind and total element count of a rank-1 array function
