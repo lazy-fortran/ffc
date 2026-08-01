@@ -142,6 +142,13 @@
             call destroy(context%session)
             return
         end if
+        ! Parameterized derived types (#411): every declaration naming a PDT
+        ! with constant actual parameters gets a concrete cached layout.
+        call instantiate_pdt_declarations(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call collect_module_exports(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)
@@ -1244,6 +1251,7 @@
     include 'session_program_lowering_do_while.inc'
     include 'session_program_lowering_interface.inc'
     include 'session_program_lowering_derived_types.inc'
+    include 'session_program_lowering_pdt.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_derived_ctor.inc'

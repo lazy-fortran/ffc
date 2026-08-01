@@ -71,6 +71,18 @@
         call extracted_derived_type_name(node%type_name, type_name)
         if (len_trim(type_name) == 0) return
         type_index = find_derived_type(context, type_name)
+        if (type_index > 0) return
+        ! A parameterized type resolves to the concrete layout instantiated
+        ! for its actual type parameters (#411).
+        block
+            character(len=:), allocatable :: instance_name, pdt_error
+            logical :: is_pdt
+
+            call pdt_declaration_instance(context%arena, context, node, &
+                                          instance_name, is_pdt, pdt_error)
+            if (is_pdt .and. len_trim(pdt_error) == 0) &
+                type_index = find_derived_type(context, instance_name)
+        end block
     end function declaration_derived_type_index
 
     subroutine extracted_derived_type_name(type_spec, type_name)
@@ -217,6 +229,9 @@
             if (len_trim(error_msg) > 0) return
             if (len_trim(type_name) == 0) cycle
             if (.not. use_only_wants(use_node, trim(type_name))) cycle
+            ! A parameterized type has no layout of its own (#411): its
+            ! instances are registered per actual-parameter tuple instead.
+            if (find_pdt_template(context, type_name) > 0) cycle
             type_idx_in_context = find_derived_type(context, type_name)
             if (type_idx_in_context > 0) then
                 cycle

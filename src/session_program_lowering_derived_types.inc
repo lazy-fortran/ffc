@@ -564,23 +564,24 @@
     end subroutine emit_scope_exit_finalizers
 
     subroutine lower_derived_type_definition(node, context, error_msg)
+        ! Register a derived type definition. A parameterized type (#411)
+        ! carries no layout of its own: it registers as a template, and each
+        ! declaration that supplies constant actual parameters instantiates a
+        ! concrete layout under a mangled instance name.
         type(derived_type_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: type_index
 
+        call set_empty(error_msg)
         if (.not. allocated(node%name)) then
             error_msg = 'derived type definition did not expose a name'
             return
         end if
-
-        type_index = find_derived_type(context, node%name)
-        if (type_index > 0) then
-            call set_empty(error_msg)
+        if (derived_type_is_parameterized(node)) then
+            call record_pdt_template(context, trim(node%name))
             return
         end if
-
-        if (node%has_parameters .or. allocated(node%param_indices)) then
+        if (allocated(node%param_indices)) then
             call unsupported_feature_error('derived type parameters', &
                                            node%line, node%column, &
                                            'direct LIRIC session only supports '// &
@@ -588,10 +589,30 @@
                                            error_msg)
             return
         end if
+        call register_derived_type_layout(node, context, trim(node%name), &
+                                          error_msg)
+    end subroutine lower_derived_type_definition
+
+    subroutine register_derived_type_layout(node, context, layout_name, error_msg)
+        ! Record the concrete component layout of a derived type definition
+        ! under layout_name. For a plain type that is the type name; for a PDT
+        ! instance it is the mangled name carrying the actual parameters.
+        type(derived_type_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: layout_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: type_index
+
+        type_index = find_derived_type(context, layout_name)
+        if (type_index > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+
         call grow_derived_types(context)
 
         type_index = context%derived_type_count + 1
-        context%derived_types(type_index)%name = trim(node%name)
+        context%derived_types(type_index)%name = trim(layout_name)
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then
             context%derived_types(type_index)%parent_name = trim(node%extends_parent)
@@ -620,7 +641,7 @@
 
         context%derived_type_count = type_index
         call set_empty(error_msg)
-    end subroutine lower_derived_type_definition
+    end subroutine register_derived_type_layout
 
     subroutine collect_type_bindings(node, context, type_index, error_msg)
         ! Record type-bound procedure bindings (procedure :: m => fn) as
