@@ -615,6 +615,12 @@ module session_program_lowering_types
         integer :: current_declaration_index = 0
         type(derived_type_info_t), allocatable :: derived_types(:)
         integer :: derived_type_count = 0
+        ! Parameterized derived types (#411). A PDT definition registers its
+        ! name here as a template instead of a concrete layout; every distinct
+        ! tuple of constant actual type parameters instantiates one concrete
+        ! derived type in derived_types, named base(v1,v2,...).
+        character(len=64), allocatable :: pdt_template_names(:)
+        integer :: pdt_template_count = 0
         type(module_exports_t), allocatable :: module_exports(:)
         integer :: module_export_count = 0
         integer(c_int32_t) :: current_block_id = 0_c_int32_t
