@@ -443,7 +443,6 @@ class_75.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 class_79.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 class_allocate_12.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 class_allocate_13.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
-class_allocate_20.f90 # owner=lazy-fortran/ffc#403; reason=invoke the scalar finalization path
 class_allocate_21.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 class_allocate_22.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 class_allocate_5.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
@@ -845,7 +844,6 @@ generic_24.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expr
 generic_25.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 generic_27.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 generic_28.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-generic_3.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 generic_30.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 generic_31.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 generic_33.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
@@ -1502,7 +1500,6 @@ pr69514_2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expre
 pr69739.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 pr70040.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 pr70409.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-pr70673.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 pr71085.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 pr71764.f90 # owner=lazy-fortran/ffc#454; reason=lower ISO C pointer round-trips
 pr77420_4.f90 # scope=harness; reason=requires a companion module outside this suite invocation
@@ -2142,6 +2139,14 @@ implicit_15.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved sy
 pr66575.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 pr67496.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
+array_constructor_39.f90 # owner=lazy-fortran/ffc#459; reason=owns typed constructors and implied-DO elements
+attr_deprecated.f90 # owner=lazy-fortran/ffc#328; reason=owns same-unit USE export storage, the current blocker; directive warnings are unchecked
+binding_label_tests_30.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
+do_while_1.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
+elemental_subroutine_6.f90 # owner=lazy-fortran/ffc#405; reason=lower ELEMENTAL scalar procedure semantics
+goto_2.f90 # owner=lazy-fortran/ffc#455; reason=owns resolved GOTO labels and structured block targets
+unf_io_convert_2.f90 # scope=vendor; reason=GNU CONVERT unformatted I/O extension
+use_iso_c_binding.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
 alloc_comp_constructor_2.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
 generic_37.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived components
 interface_14.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports

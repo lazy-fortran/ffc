@@ -177,7 +177,6 @@ arrays_20.f90 # owner=lazy-fortran/ffc#459; reason=lower typed array constructor
 arrays_21.f90 # owner=lazy-fortran/ffc#343; reason=lower reductions through descriptor iteration
 arrays_23.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 arrays_25.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-arrays_26.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 arrays_28.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 arrays_29.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 arrays_30.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
@@ -539,7 +538,6 @@ class_101.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity f
 class_102.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 class_103.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
 class_104.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived array declaration collection
-class_105.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 class_106a.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 class_106b.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 class_106.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
@@ -1128,7 +1126,6 @@ file_20.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG 
 file_21.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 file_22.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 file_23.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
-file_24.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 file_25.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 file_26.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 file_27.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
@@ -1463,7 +1460,6 @@ gpu_metal_35.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_36.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_37.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_38.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_40.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_43.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_44.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_46.f90 # scope=GPU; reason=excluded GPU or device-backend case
@@ -1533,7 +1529,6 @@ implicit_interface_15.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime a
 implicit_interface_16.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 implicit_interface_17.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 implicit_interface_19.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-implicit_interface_22.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 implicit_interface_23.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 implicit_interface_25.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 implicit_interface_26.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
