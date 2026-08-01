@@ -161,6 +161,18 @@ is_lazy_suite() {
     [ "$SUITE" = "fortfront-lf" ]
 }
 
+# lazy_negative_test <suite_relative_path>
+# A FortFront lazy-mode example named error_* is a deliberately invalid source
+# kept as a parser-rejection fixture. Its oracle is that ffc rejects it, so a
+# nonzero compiler exit is the expected result and acceptance is the failure
+# (#576). Without this the harness scored a correct rejection as FAIL.
+lazy_negative_test() {
+    case "$1" in
+        error_*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 dg_skip_reason() {
     local source="$1"
     if grep -Eq 'dg-additional-sources' "$source"; then
@@ -643,6 +655,25 @@ while IFS= read -r full_path <&3; do
         ffc_exit=0
     else
         ffc_exit=1
+    fi
+
+    # A lazy-mode rejection fixture is judged on the compiler exit alone: it
+    # has no runnable form and no reference to compare against.
+    if is_lazy_suite && lazy_negative_test "$rel_path"; then
+        if [ "$ffc_exit" -ne 0 ]; then
+            status="PASS"
+            note="invalid source rejected as expected"
+            PASS_COUNT=$((PASS_COUNT + 1))
+        else
+            status="FAIL"
+            note="invalid source was accepted"
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            HAS_FAIL=1
+            echo "  FAIL: $rel_path (invalid source accepted)"
+        fi
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
+        continue
     fi
 
     # Step 2: if ffc failed, classify immediately

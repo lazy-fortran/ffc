@@ -203,7 +203,7 @@ module session_program_lowering
         emit_liric_f64_load, &
         emit_liric_f64_store
     use liric_session_timing_bindings, only: emit_cpu_time_value, &
-        emit_system_clock_value
+        emit_system_clock_value, emit_random_number_value
     use session_lowering_ops, only: integer_compare_predicate, &
         integer_opcode, parse_i32_literal
     use ffc_strings, only: set_empty
@@ -348,6 +348,11 @@ module session_program_lowering
 
     ! Reduction kinds for dim-wise whole-array reductions (sum/product/count/
     ! any/all along one dimension). See lower_dim_reduction_assignment.
+    ! An argument-less call still goes through prepare_reference_args so that
+    ! callee diagnostics (a dummy procedure with no body in this unit) apply
+    ! whether or not actual arguments are present (#576).
+    integer, parameter :: NO_ACTUAL_ARGS(0) = [integer ::]
+
     integer, parameter :: DIM_REDUCE_SUM = 1
     integer, parameter :: DIM_REDUCE_PROD = 2
     integer, parameter :: DIM_REDUCE_COUNT = 3
@@ -1956,6 +1961,10 @@ contains
             call lower_system_clock(arena, arg_indices, context, error_msg)
             return
         end if
+        if (same_name(call_name, 'random_number')) then
+            call lower_random_number(arena, arg_indices, context, error_msg)
+            return
+        end if
         if (is_method_subroutine_call(call_name)) then
             call lower_method_subroutine_call(arena, call_name, arg_indices, &
                 context, error_msg)
@@ -2048,6 +2057,24 @@ contains
         if (.not. emit_system_clock_value(context%session, value, error_msg)) return
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
     end subroutine lower_system_clock
+
+    subroutine lower_random_number(arena, arg_indices, context, error_msg)
+        ! random_number(harvest): harvest = a pseudo-random real in [0,1).
+        ! Only a default-real scalar argument is supported; an array harvest
+        ! or a real(8) harvest is diagnosed by intrinsic_out_scalar.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer :: symbol_index
+
+        call intrinsic_out_scalar(arena, arg_indices, context, 'random_number', &
+            VALUE_F32, symbol_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_random_number_value(context%session, value, error_msg)) return
+        call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
+    end subroutine lower_random_number
 
     subroutine intrinsic_out_scalar(arena, arg_indices, context, name, kind, &
             symbol_index, error_msg)

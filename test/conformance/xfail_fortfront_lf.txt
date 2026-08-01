@@ -12,7 +12,6 @@ boolean_assign_bare_false.lf # owner=lazy-fortran/ffc#447; reason=centralize typ
 boolean_assign_bare_true.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 debug_mixed_constructs.lf # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 docs_unsigned_integers.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-error_missing_then.lf # scope=harness; reason=FortFront Lazy parser rejection fixture
 implicit_do_print.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 intrinsic_functions.lf # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 issue_1330_missing_declarations.lf # owner=lazy-fortran/ffc#438; reason=apply Lazy Fortran default type and intent policy
