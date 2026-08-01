@@ -725,8 +725,61 @@ They are never opened as `fort.<N>` and never closed, and `OPEN` on one of
 them without `FILE=` reconfigures the existing connection rather than
 replacing it, so `open(6, sign='plus')` keeps writing to standard output.
 
-Runtime entry points for IOSTAT/IOMSG and descriptor allocation are added by
-their own issues (#427, #428).
+### IOSTAT= and IOMSG= (#427)
+
+Fortran reports I/O outcome through `IOSTAT=` and `IOMSG=`. The classes are
+fixed by the standard and by what programs test for:
+
+| IOSTAT | Meaning |
+|---|---|
+| 0 | success |
+| -1 | end of file (gfortran's `IOSTAT_END`) |
+| -2 | end of record (gfortran's `IOSTAT_EOR`) |
+| > 0 | an error; the unit status codes above |
+
+| Symbol | Signature | Contract |
+|---|---|---|
+| `_ffc_iostat` | `int _ffc_iostat(void)` | Fortran status of the most recent I/O operation. |
+| `_ffc_iostat_set_end` | `void _ffc_iostat_set_end(void)` | Record an end-of-file condition. |
+| `_ffc_iostat_clear` | `void _ffc_iostat_clear(void)` | Record success. |
+| `_ffc_iomsg` | `void _ffc_iomsg(char *dest, int len)` | Message for the recorded status. |
+
+`_ffc_iomsg` writes with Fortran character assignment semantics: the text is
+truncated to `len` and the remainder blank filled. It writes exactly `len`
+characters plus a terminating NUL, so `dest` must have room for `len + 1` —
+the compiler's character values are NUL-terminated buffers of the declared
+length. After a successful operation the destination is left all blanks rather
+than untouched, so it is always defined; the standard defines `IOMSG=` only
+when an error or end-of-file condition occurs.
+
+`OPEN`'s own return value is its `IOSTAT=`. A file `WRITE` and a `READ` report
+the runtime's record of the operation. A `READ` that reaches end of file
+records it in the runtime as well, so `IOSTAT=` and `IOMSG=` describe the same
+condition rather than being derived independently.
+
+`IOSTAT=` targets must be default integers and `IOMSG=` targets character
+variables with a declared length; both are rejected with a named diagnostic
+otherwise.
+
+Runtime entry points for descriptor allocation are added by their own issue
+(#428).
+
+## Building the runtime
+
+`runtime/ffc_runtime.c` is compiled by whichever C driver links an emitted
+executable, and by clang in `runtime/CMakeLists.txt`. It states its own
+language level and feature set — `#define _XOPEN_SOURCE 700` before any
+include — instead of inheriting the invoking driver's defaults, because
+`random`/`srandom` are POSIX rather than ISO C and a strict driver would
+otherwise reach them only through an implicit declaration: a warning on a
+lenient toolchain, a hard error elsewhere.
+
+It is C, and only C flags apply to it. It lives in `runtime/`, never under
+`src/`, where fpm would compile it with the Fortran flag set (`-J`,
+`-ffree-form`, `-fimplicit-none`). `runtime/CMakeLists.txt` spells its clang
+flags out rather than inheriting them. `test_runtime_link_compiler` enforces
+both: it fails if any C source appears under `src/`, and it fails unless the
+runtime builds under `cc -std=c11 -Wall -Wextra -Werror -pedantic`.
 
 ### Dependencies
 
