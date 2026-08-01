@@ -1017,7 +1017,6 @@ elemental_07.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived
 elemental_08.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 elemental_09.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 elemental_10.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-elemental_11.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 elemental_12.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 elemental_13.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 elemental_14.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
@@ -2310,7 +2309,6 @@ namelist_30.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted outpu
 namelist_31.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 nbody.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 nested_03.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-nested_04.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_05.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_06.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_07.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
@@ -2738,7 +2736,6 @@ real128_arith_10.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scala
 real128_intrinsic_inquiry_01.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 real128_int_to_real_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 real128_literal_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-realloc_lhs_16.f90 # owner=lazy-fortran/ffc#373; reason=reallocate allocatables from runtime expressions
 realloc_lhs_18.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 realloc_lhs_19.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 realloc_lhs_20.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers

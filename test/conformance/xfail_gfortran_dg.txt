@@ -67,7 +67,6 @@ alloc_comp_auto_array_2.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime
 alloc_comp_auto_array_4.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 alloc_comp_basics_2.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 alloc_comp_basics_3.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
-alloc_comp_basics_4.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 alloc_comp_basics_5.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 alloc_comp_basics_7.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 alloc_comp_bounds_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1230,7 +1229,6 @@ nested_modules_2.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification 
 nested_modules_3.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 nested_modules_6.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_reshape.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
-nesting_1.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 new_line.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 newunit_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 newunit_3.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
@@ -1326,7 +1324,6 @@ pointer_assign_9.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate poly
 pointer_comp_init_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 pointer_function_actual_2.f90 # owner=lazy-fortran/ffc#330; reason=map procedure and host bindings to storage
 pointer_function_result_1.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-pointer_init_1.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 pointer_init_12.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
 pointer_init_3.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 pointer_init_4.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1759,7 +1756,6 @@ realloc_on_assign_17.f90 # owner=lazy-fortran/ffc#457; reason=register resolved 
 realloc_on_assign_23.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 realloc_on_assign_24.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 realloc_on_assign_25.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-realloc_on_assign_26.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 realloc_on_assign_28.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 realloc_on_assign_29.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 realloc_on_assign_30.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
@@ -2133,3 +2129,4 @@ elemental_args_check_2.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce P
 host_assoc_types_1.f90 # owner=lazy-fortran/fortfront#2888; reason=reject local and host-associated name collisions
 implicit_3.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved symbols under IMPLICIT NONE
 newunit_4.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
+assumed_charlen_function_3.f90 # owner=lazy-fortran/ffc#348; reason=lower assumed-length CHARACTER procedure results and dummies
