@@ -25,6 +25,8 @@ module ffc_test_support
     public :: expect_stderr_and_exit
     public :: expect_eof_stderr_and_exit
     public :: expect_no_leaks
+    ! Lets a test keep the emitted executable and inspect it (#565).
+    public :: compile_to_exe
 
 contains
 

@@ -481,7 +481,6 @@ block_08.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations
 block_10.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 block_11.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 block_12.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
-block_13.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 block_14.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 block_15.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 block_17.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards

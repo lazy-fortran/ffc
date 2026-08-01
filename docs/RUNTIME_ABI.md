@@ -493,15 +493,57 @@ components = [
   `use, only:` names and rename targets are validated against the records; a
   local rename keeps the recorded remote name for storage and linkage.
 
-## Runtime archives
+## Runtime delivery
 
-`ffc` packages its runtime support code into LIRIC runtime archives, one per
-target/backend pair. The archives are data artifacts: nothing links against
-them, and this slice does not load them into an ffc session.
+`runtime/ffc_runtime.c` is the single source of truth for the ffc runtime.
+Every entry point defined there is listed in `ffc_runtime_link`'s
+`FFC_RUNTIME_SYMBOLS` and documented under [Runtime entry points](#runtime-entry-points)
+below. Two independent consumers read that file.
 
-The standalone CMake project in `runtime/` builds them. `runtime/ffc_runtime.c`
-is compiled to LLVM bitcode with `clang -emit-llvm -c`, and
-`liric_runtime_archive` packages that bitcode once per backend.
+### Linked into every emitted executable
+
+This is how a compiled program gets its runtime, and the only mechanism the
+lowerer may rely on.
+
+`src/ffc_runtime_source.f90` embeds `runtime/ffc_runtime.c` verbatim in the
+compiler binary; regenerate it with `scripts/generate_runtime_source.sh` after
+every edit to the C file. At link time `ffc_runtime_link` materialises the
+embedded source into a content-addressed file under `TMPDIR` and passes it to
+`lr_session_emit_exe_objects`, which hands it to the same system C compiler
+that already performs the link. Every executable `ffc` emits therefore carries
+a definition of every runtime entry point.
+
+The contract this fixes (issue #565):
+
+- **Unconditional.** There is no environment variable, no artifact to install,
+  and no discovery step. An executable is never emitted without its runtime.
+- **No inline fallback.** The lowerer emits calls to runtime symbols and
+  nothing else. The parallel path that synthesised the same entry points
+  inline is retired; ROADMAP Chunk 3 forbids reintroducing it.
+- **Mismatch is impossible by construction.** The runtime that gets linked is
+  the one compiled into the running compiler, so a compiler and its runtime
+  cannot drift apart, and there is no stale installed copy to pick up.
+- **Failure is loud.** When the runtime cannot be materialised, lowering fails
+  with a named error and emits nothing. It never silently produces a binary
+  that dies with `undefined symbol` at run time.
+- **Object output is unaffected.** `ffc -c` leaves runtime symbols undefined
+  in the object, to be resolved by the link that consumes it.
+
+`test_runtime_link_compiler` is the oracle: it checks that a normally compiled
+program's symbol table defines the runtime entry points, that the linked
+runtime is callable, that every declared symbol is really defined by the
+embedded source, and that the embedded source is byte-identical to
+`runtime/ffc_runtime.c`.
+
+### Packaged into LIRIC runtime archives
+
+The standalone CMake project in `runtime/` also packages the same file for
+sessions that resolve runtime calls without a system linker.
+`runtime/ffc_runtime.c` is compiled to LLVM bitcode with `clang -emit-llvm -c`,
+and `liric_runtime_archive` packages that bitcode once per backend.
+`install_runtime_archive` reads and installs one; the artifact directory is an
+explicit argument, and a missing, unreadable, or backend-mismatched archive is
+an error. It is not on the executable-emission path.
 
 ### Artifact names
 
@@ -539,14 +581,21 @@ byte-identical.
 
 ### Payload
 
-The archive carries the runtime's LIRIC IR text plus a compiled blob package.
-This slice defines exactly one entry point:
+The archive carries the runtime's LIRIC IR text plus a compiled blob package,
+built from the same `runtime/ffc_runtime.c` that is linked into executables.
 
-- `int _ffc_runtime_probe(void)` returns 42. It exists so a consumer can
-  confirm end to end that the archive it selected actually resolves.
+### Runtime entry points
+
+The complete runtime ABI. Adding an entry point means editing
+`runtime/ffc_runtime.c`, regenerating the embedding, adding the symbol to
+`FFC_RUNTIME_SYMBOLS`, and adding it here in the same change.
+
+| Symbol | Signature | Contract |
+|---|---|---|
+| `_ffc_runtime_probe` | `int _ffc_runtime_probe(void)` | Returns 42. Lets a consumer confirm end to end that the runtime it linked or loaded really resolves. |
 
 Runtime entry points for file units, formatted output, IOSTAT/IOMSG, and
-descriptor allocation are added by their own issues.
+descriptor allocation are added by their own issues (#396, #423, #427, #428).
 
 ### Dependencies
 

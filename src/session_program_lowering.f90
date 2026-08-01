@@ -53,7 +53,7 @@ module session_program_lowering
         BINDING_ASSOCIATE_NAME, &
         get_alternate_return_label, get_return_selector, &
         is_alternate_return_dummy
-    use liric_session_runtime_bindings, only: install_runtime_archive
+    use ffc_runtime_link, only: ffc_runtime_link_input
     use ffc_polymorphic_descriptor, only: &
         POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, &
         POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, &
