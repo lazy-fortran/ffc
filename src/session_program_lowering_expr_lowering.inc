@@ -239,8 +239,10 @@
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
-            allocate (args(0))
-            allocate (copyback_indices(0))
+            call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+                                        VALUE_LOGICAL, call_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
 
         if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name, &
@@ -566,8 +568,10 @@
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
-            allocate (args(0))
-            allocate (copyback_indices(0))
+            call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+                                        VALUE_F32, call_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
 
         if (.not. emit_liric_f32_call(context%session, &
@@ -952,8 +956,10 @@
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
-            allocate (args(0))
-            allocate (copyback_indices(0))
+            call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+                                        VALUE_F64, call_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
 
         if (.not. emit_liric_f64_call(context%session, &
@@ -1337,8 +1343,10 @@
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
-            allocate (args(0))
-            allocate (copyback_indices(0))
+            call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+                                        VALUE_I64, node%name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
 
         if (.not. emit_i64_call(context%session, &

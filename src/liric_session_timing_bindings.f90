@@ -29,6 +29,12 @@ module liric_session_timing_bindings
 
     public :: emit_cpu_time_value
     public :: emit_system_clock_value
+    public :: emit_random_number_value
+
+    ! Scale from random()'s [0, 2^31-1] range into [0,1). 2**(-31) itself would
+    ! round 2^31-1 up to exactly 1.0 in f32; the next representable value below
+    ! it keeps every draw strictly less than one, as F2018 16.9.154 requires.
+    real(c_float), parameter :: RANDOM_SCALE_F32 = 4.6566126e-10_c_float
 
     interface
         function lr_session_declare(handle, name, ret, params, n, vararg, &
@@ -91,6 +97,31 @@ contains
         call set_empty(error_msg)
         emit_system_clock_value = .true.
     end function emit_system_clock_value
+
+    logical function emit_random_number_value(session, result, error_msg)
+        ! result (f32) = (real) random() * RANDOM_SCALE_F32, a draw in [0,1).
+        ! glibc's random() returns a fresh value in [0, 2^31-1] on every call,
+        ! so successive draws differ within a run. The generator is left
+        ! unseeded, which F2018 permits: the seed is processor dependent and
+        ! may repeat the same sequence across runs.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: draw_i64, draw_f32, scale
+
+        emit_random_number_value = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (.not. declare_extern(session, 'random', &
+            lr_type_i64_s(session%handle), error_msg)) return
+        if (.not. call_extern_i64(session, 'random', draw_i64, error_msg)) return
+        if (.not. emit_cast(session, LR_OP_SITOFP, draw_i64, &
+            lr_type_f32_s(session%handle), draw_f32, error_msg)) return
+        scale = liric_f32_immediate(session, RANDOM_SCALE_F32)
+        if (.not. emit_liric_f32_binary(session, LR_OP_FMUL, draw_f32, scale, &
+            result, error_msg)) return
+        call set_empty(error_msg)
+        emit_random_number_value = .true.
+    end function emit_random_number_value
 
     function i64_null_ptr(session) result(operand)
         ! A null pointer immediate for the time(NULL) argument.
