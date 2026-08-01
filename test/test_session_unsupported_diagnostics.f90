@@ -69,13 +69,17 @@ program test_session_unsupported_diagnostics
 contains
 
     logical function test_character_expression_diagnostic()
-        ! A substring target keeps the unsupported diagnostic; // concatenation
-        ! into a fixed-length scalar is now lowered (see the fixed-concat test).
+        ! An integer right-hand side keeps the unsupported diagnostic. A
+        ! substring source no longer does: s(l:u) lowers to a character view
+        ! (see the substring tests in test_session_deferred_char_compiler),
+        ! and // concatenation into a fixed-length scalar lowers too (see the
+        ! fixed-concat test). What is under test here is the diagnostic
+        ! plumbing, not which construct happens to be unsupported.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
             '  name = "ab"'//new_line('a')// &
-            '  name = name(1:2)'//new_line('a')// &
+            '  name = 42'//new_line('a')// &
             'end program main'
 
         test_character_expression_diagnostic = expect_error_contains( &
@@ -356,13 +360,17 @@ contains
     end function test_include_statement_diagnostic
 
     logical function test_cli_character_expression_diagnostic()
-        ! A substring target keeps the unsupported diagnostic; // concatenation
-        ! into a fixed-length scalar is now lowered (see the fixed-concat test).
+        ! An integer right-hand side keeps the unsupported diagnostic. A
+        ! substring source no longer does: s(l:u) lowers to a character view
+        ! (see the substring tests in test_session_deferred_char_compiler),
+        ! and // concatenation into a fixed-length scalar lowers too (see the
+        ! fixed-concat test). What is under test here is the diagnostic
+        ! plumbing, not which construct happens to be unsupported.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
             '  name = "ab"'//new_line('a')// &
-            '  name = name(1:2)'//new_line('a')// &
+            '  name = 42'//new_line('a')// &
             'end program main'
 
         test_cli_character_expression_diagnostic = expect_cli_error_contains( &
@@ -375,7 +383,7 @@ contains
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
             '  name = "ab"'//new_line('a')// &
-            '  name = name(1:2)'//new_line('a')// &
+            '  name = 42'//new_line('a')// &
             'end program main'
 
         test_cli_diagnostic_uses_stderr = expect_cli_error_on_stderr( &
@@ -388,7 +396,7 @@ contains
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
             '  name = "ab"'//new_line('a')// &
-            '  name = name(1:2)'//new_line('a')// &
+            '  name = 42'//new_line('a')// &
             'end program main'
 
         test_cli_json_diagnostic = expect_cli_json_error_contains( &

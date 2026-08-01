@@ -33,13 +33,18 @@
         ! values, so they print concatenated.
         expr_count = size(node%expression_indices)
         if (expr_count == 1) then
-            select type (section_node => arena%entries( &
-                    node%expression_indices(1))%node)
-            type is (array_slice_node)
-                call lower_array_section_print(arena, section_node, context, &
-                                               error_msg)
-                return
-            end select
+            ! s(l:u) on a scalar character is a substring, not an array
+            ! section: it prints as one character value, not element by element.
+            if (.not. is_character_substring(arena, node%expression_indices(1), &
+                                             context)) then
+                select type (section_node => arena%entries( &
+                        node%expression_indices(1))%node)
+                type is (array_slice_node)
+                    call lower_array_section_print(arena, section_node, context, &
+                                                   error_msg)
+                    return
+                end select
+            end if
             block
                 logical :: handled
                 call emit_array_literal_print_items(arena, &
@@ -66,8 +71,11 @@
                 array_handled = .false.
                 select type (item => arena%entries(node%expression_indices(i))%node)
                 type is (array_slice_node)
-                    call emit_array_section_print_items(arena, item, context, &
-                                                        array_handled, error_msg)
+                    if (.not. is_character_substring(arena, &
+                            node%expression_indices(i), context)) then
+                        call emit_array_section_print_items(arena, item, context, &
+                                                            array_handled, error_msg)
+                    end if
                 type is (array_literal_node)
                     call emit_array_literal_print_items(arena, &
                         node%expression_indices(i), context, array_handled, &
@@ -1003,6 +1011,10 @@
             return
         end if
         if (is_character_concat(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_character_substring(arena, node_index, context)) then
             is_char = .true.
             return
         end if

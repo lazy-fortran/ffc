@@ -502,7 +502,6 @@ call_subroutine_without_type.f90 # owner=lazy-fortran/ffc#449; reason=lower plai
 case_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 case_05.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 case_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-case_08.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 c_f_proc_ptr_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 character_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 character_02.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
@@ -1205,7 +1204,6 @@ file_close_02.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and 
 file_open_01.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 file_open_05.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 file_open_07.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
-file_open_08.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 file_open_09.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 file_open_10.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 file_overwrite.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
@@ -3062,9 +3060,6 @@ string_32.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expre
 string_34.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 string_36.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 string_37.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
-string_38.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-string_39.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-string_40.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_42.f90 # owner=lazy-fortran/ffc#349; reason=migrate deferred scalar character storage
 string_43.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 string_45.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
@@ -3092,7 +3087,6 @@ string_68.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expre
 string_69.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_71.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 string_72.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-string_73.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_74.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 string_75.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
 string_76.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
