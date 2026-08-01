@@ -574,12 +574,63 @@
             if (n%is_array_access) return
             if (.not. allocated(n%name)) return
             if (.not. allocated(n%arg_indices)) return
-            if (size(n%arg_indices) /= 1) return
+            if (size(n%arg_indices) < 1) return
             is_call = is_contained_f32_function(context, n%name) .or. &
                       is_contained_f64_function(context, n%name) .or. &
                       is_contained_i32_function(context, n%name)
+            if (.not. is_call) return
+            ! One dummy keeps the historical path (a contained scalar function
+            ! applied element-wise). More than one dummy is only elementwise
+            ! when the callee really is ELEMENTAL (#405).
+            if (size(n%arg_indices) > 1) &
+                is_call = elemental_multi_arg_callee(arena, n%name, &
+                                                     size(n%arg_indices))
         end select
     end function is_elemental_user_call
+
+    ! True when callee_name is a contained ELEMENTAL function taking exactly
+    ! nargs dummies. Arity mismatches decline so the ordinary call path (and
+    ! its diagnostics) stays in charge.
+    logical function elemental_multi_arg_callee(arena, callee_name, nargs) &
+        result(ok)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: nargs
+        character(len=:), allocatable :: bad_dummy
+        integer :: param_count
+        logical :: found, is_elemental, all_intent_in
+
+        ok = .false.
+        call contained_elemental_signature(arena, callee_name, found, &
+                                           param_count, is_elemental, &
+                                           all_intent_in, bad_dummy)
+        if (.not. found) return
+        if (.not. is_elemental) return
+        ok = param_count == nargs
+    end function elemental_multi_arg_callee
+
+    ! Reject an elemental call whose dummies violate the elemental
+    ! restrictions: every dummy of an elemental function must be INTENT(IN)
+    ! (F2018 15.8.1).
+    subroutine check_elemental_dummy_attributes(arena, callee_name, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bad_dummy
+        integer :: param_count
+        logical :: found, is_elemental, all_intent_in
+
+        call set_empty(error_msg)
+        call contained_elemental_signature(arena, callee_name, found, &
+                                           param_count, is_elemental, &
+                                           all_intent_in, bad_dummy)
+        if (.not. found) return
+        if (.not. is_elemental) return
+        if (all_intent_in) return
+        error_msg = 'elemental procedure "'//trim(callee_name)// &
+                    '" requires INTENT(IN) for every dummy argument, but "'// &
+                    trim(bad_dummy)//'" is not INTENT(IN)'
+    end subroutine check_elemental_dummy_attributes
 
     ! Apply a user-defined elemental real function to one array element: load the
     ! argument's element, materialise it as a by-reference scalar (the contained
@@ -594,29 +645,37 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: elem, arg(1)
-        integer :: vk
+        type(lr_operand_desc_t) :: elem
+        type(lr_operand_desc_t), allocatable :: arg(:)
+        integer :: vk, i
         logical :: derived_actual
 
         call set_empty(error_msg)
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             vk = context%symbols(target_symbol_index)%value_kind
-            ! A derived or polymorphic actual is passed by reference at its own
-            ! element stride, not loaded as a target-kind scalar (#369).
-            call elementwise_derived_actual_address(arena, n%arg_indices(1), &
-                                                    n%name, linear_index, context, &
-                                                    arg(1), derived_actual, error_msg)
+            call check_elemental_dummy_attributes(arena, n%name, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. derived_actual) then
-                call lower_array_elementwise_value(arena, n%arg_indices(1), &
+            allocate (arg(size(n%arg_indices)))
+            do i = 1, size(n%arg_indices)
+                ! A derived or polymorphic actual is passed by reference at its
+                ! own element stride, not loaded as a target-kind scalar (#369).
+                call elementwise_derived_actual_address(arena, n%arg_indices(i), &
+                                                        n%name, linear_index, &
+                                                        context, arg(i), &
+                                                        derived_actual, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (derived_actual) cycle
+                ! Array actuals contribute their own element; scalar actuals
+                ! broadcast (both handled by the shared element iterator).
+                call lower_array_elementwise_value(arena, n%arg_indices(i), &
                                                    target_symbol_index, &
                                                    linear_index, context, elem, &
                                                    error_msg)
                 if (len_trim(error_msg) > 0) return
-                call make_reference_argument(context, vk, elem, arg(1), error_msg)
+                call make_reference_argument(context, vk, elem, arg(i), error_msg)
                 if (len_trim(error_msg) > 0) return
-            end if
+            end do
             select case (vk)
             case (VALUE_F32)
                 if (.not. emit_liric_f32_call(context%session, &
