@@ -320,7 +320,6 @@ binding_label_tests_26a.f90 # owner=lazy-fortran/ffc#447; reason=centralize type
 binding_label_tests_25.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
 binding_label_tests_32.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 binding_label_tests_33.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
-block_14.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 block_name_1.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 blockdata_7.f90 # owner=lazy-fortran/ffc#463; reason=lower structured DATA initialization
 bound_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
@@ -552,7 +551,6 @@ deferred_type_component_3.f90 # owner=lazy-fortran/ffc#417; reason=track runtime
 deferred_type_param_4.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 deferred_type_param_5.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
 deferred_type_param_6.f90 # owner=lazy-fortran/ffc#352; reason=register POINTER-statement entities
-deferred_type_param_8.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 deferred_type_proc_pointer_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 deferred_type_proc_pointer_2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 defined_assignment_1.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
@@ -1963,7 +1961,6 @@ use_27.f90 # owner=lazy-fortran/ffc#420; reason=dispatch overridden type-bound p
 use_28.f90 # owner=lazy-fortran/ffc#328; reason=resolve same-unit USE export identity
 use_5.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 use_8.f90 # owner=lazy-fortran/ffc#390; reason=enforce derived-type definition constraints
-use_allocated_1.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 use_only_2.f90 # owner=lazy-fortran/ffc#328; reason=resolve same-unit USE export identity
 use_only_3.f90 # scope=harness; reason=requires a companion module outside this suite invocation
 use_only_5.f90 # owner=lazy-fortran/ffc#401; reason=lower scalar pointer components
@@ -2006,7 +2003,6 @@ vector_subscript_8.f90 # owner=lazy-fortran/ffc#337; reason=represent array sect
 vector_subscript_9.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 verify_2.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 verify_3.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-warn_unused_dummy_argument_5.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 where_1.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 where_2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 where_4.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
@@ -2166,6 +2162,11 @@ pr125391.f90 # owner=lazy-fortran/ffc#365; reason=deep-copy allocatable derived 
 pr52608.f90 # owner=lazy-fortran/ffc#391; reason=reject malformed FORMAT descriptors
 pr96087.f90 # owner=lazy-fortran/ffc#373; reason=reallocate allocatables from runtime expressions
 proc_decl_26.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
+assignment_3.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
+interface_55.f90 # owner=lazy-fortran/ffc#467; reason=lower scalar procedure dummy arguments
+maxlocval_1.f90 # owner=lazy-fortran/ffc#343; reason=owns MINVAL/MAXVAL, MASK, DIM results, and empty-array identities
+open_access_append_2.f90 # scope=vendor; reason=GNU ACCESS=APPEND extension
+where_3.f90 # owner=lazy-fortran/fortfront#2893; reason=require matching construct terminators
 do_concurrent_15.f90 # owner=lazy-fortran/fortfront#2901; reason=validate DO CONCURRENT locality constraints
 hollerith4.f90 # scope=legacy; reason=deleted Hollerith storage and FORMAT extension
 pr59910.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE

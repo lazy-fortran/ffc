@@ -1614,7 +1614,6 @@ intent_out_finalize_04.f90 # owner=lazy-fortran/ffc#403; reason=invoke scalar fi
 intent_out_module_dealloc.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 intent_out_nested_allocatable_01.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 intent_out_struct_member_no_dealloc.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
-interface_03.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 interface_04.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 interface_07.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 interface_09.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
@@ -3303,6 +3302,7 @@ class_06.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity fo
 submodule_04.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 submodule_02.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 while_07.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
+intrinsics_399.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
 array_section_09.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
