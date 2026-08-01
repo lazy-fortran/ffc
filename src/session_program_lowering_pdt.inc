@@ -84,7 +84,7 @@
     end subroutine pdt_instance_name
 
     integer function pdt_template_node_index(arena, base) result(node_index)
-        ! Arena index of the PDT definition named base.
+        ! Arena index of the derived-type definition named base.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: base
         integer :: i
@@ -96,17 +96,87 @@
             type is (derived_type_node)
                 if (.not. allocated(node%name)) cycle
                 if (.not. same_name(node%name, base)) cycle
-                if (.not. derived_type_is_parameterized(node)) cycle
                 node_index = i
                 return
             end select
         end do
     end function pdt_template_node_index
 
+    recursive subroutine pdt_formal_chain(arena, template_index, names, &
+                                          defaults, inherited_count, error_msg)
+        ! Full formal type-parameter list of a PDT: the formals inherited from
+        ! its parameterized ancestors, outermost first, followed by its own
+        ! (F2008 4.5.3.1). A declaration lists actuals in that same order, so
+        ! one child instance pins exactly one parent instance.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: template_index
+        character(len=64), allocatable, intent(out) :: names(:)
+        integer, allocatable, intent(out) :: defaults(:)
+        integer, intent(out) :: inherited_count
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64), allocatable :: parent_names(:)
+        integer, allocatable :: parent_defaults(:)
+        integer :: parent_index, own_count, i, ignored
+
+        call set_empty(error_msg)
+        inherited_count = 0
+        allocate (names(0))
+        allocate (defaults(0))
+        select type (template => arena%entries(template_index)%node)
+        type is (derived_type_node)
+            if (allocated(template%extends_parent)) then
+                parent_index = pdt_template_node_index(arena, &
+                                                       template%extends_parent)
+                if (parent_index > 0) then
+                    call pdt_formal_chain(arena, parent_index, parent_names, &
+                                          parent_defaults, ignored, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    inherited_count = size(parent_names)
+                    deallocate (names, defaults)
+                    call move_alloc(parent_names, names)
+                    call move_alloc(parent_defaults, defaults)
+                end if
+            end if
+            if (.not. allocated(template%param_names)) return
+            own_count = size(template%param_names)
+            call grow_pdt_formals(names, defaults, own_count)
+            do i = 1, own_count
+                names(inherited_count + i) = trim(template%param_names(i)%s)
+                defaults(inherited_count + i) = 0
+                if (allocated(template%param_defaults)) then
+                    defaults(inherited_count + i) = template%param_defaults(i)
+                end if
+            end do
+        class default
+            error_msg = 'parameterized derived type template is not a type '// &
+                        'definition'
+        end select
+    end subroutine pdt_formal_chain
+
+    subroutine grow_pdt_formals(names, defaults, extra)
+        character(len=64), allocatable, intent(inout) :: names(:)
+        integer, allocatable, intent(inout) :: defaults(:)
+        integer, intent(in) :: extra
+        character(len=64), allocatable :: old_names(:)
+        integer, allocatable :: old_defaults(:)
+        integer :: old_count
+
+        old_count = size(names)
+        call move_alloc(names, old_names)
+        call move_alloc(defaults, old_defaults)
+        allocate (names(old_count + extra))
+        allocate (defaults(old_count + extra))
+        names = ''
+        defaults = 0
+        names(1:old_count) = old_names(1:old_count)
+        defaults(1:old_count) = old_defaults(1:old_count)
+    end subroutine grow_pdt_formals
+
     subroutine pdt_actual_values(arena, context, template_index, actuals, &
                                  line, column, values, error_msg)
         ! Fold the actual type parameters of one declaration to compile-time
         ! integers, filling any omitted trailing parameter from its default.
+        ! The formal list spans inherited formals as well as own ones.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: template_index
@@ -114,51 +184,60 @@
         integer, intent(in) :: line, column
         integer(c_int64_t), allocatable, intent(out) :: values(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: formal_count, i, source_index
-        character(len=:), allocatable :: fold_error
+        integer :: formal_count, i, source_index, inherited_count
+        character(len=:), allocatable :: fold_error, type_name
+        character(len=64), allocatable :: names(:)
+        integer, allocatable :: defaults(:)
 
-        call set_empty(error_msg)
-        select type (template => arena%entries(template_index)%node)
-        type is (derived_type_node)
-            formal_count = size(template%param_names)
-            if (size(actuals) > formal_count) then
+        call pdt_formal_chain(arena, template_index, names, defaults, &
+                              inherited_count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call pdt_template_name(arena, template_index, type_name)
+        formal_count = size(names)
+        if (size(actuals) > formal_count) then
+            call unsupported_feature_error('derived type parameters', &
+                line, column, 'too many actual type parameters for type "'// &
+                type_name//'"', error_msg)
+            return
+        end if
+        allocate (values(formal_count))
+        values = 0_c_int64_t
+        do i = 1, formal_count
+            if (i <= size(actuals)) then
+                source_index = actuals(i)
+            else
+                source_index = defaults(i)
+            end if
+            if (source_index <= 0) then
                 call unsupported_feature_error('derived type parameters', &
-                    line, column, 'too many actual type parameters for type "'// &
-                    trim(template%name)//'"', error_msg)
+                    line, column, 'type parameter "'//trim(names(i))// &
+                    '" of type "'//type_name//'" has no actual value and no '// &
+                    'default', error_msg)
                 return
             end if
-            allocate (values(formal_count))
-            values = 0_c_int64_t
-            do i = 1, formal_count
-                if (i <= size(actuals)) then
-                    source_index = actuals(i)
-                else
-                    source_index = template%param_defaults(i)
-                end if
-                if (source_index <= 0) then
-                    call unsupported_feature_error('derived type parameters', &
-                        line, column, 'type parameter "'// &
-                        trim(template%param_names(i)%s)//'" of type "'// &
-                        trim(template%name)//'" has no actual value and no '// &
-                        'default', error_msg)
-                    return
-                end if
-                call eval_i32_constant(arena, source_index, context, &
-                                       values(i), fold_error)
-                if (len_trim(fold_error) > 0) then
-                    call unsupported_feature_error('derived type parameters', &
-                        line, column, 'type parameter "'// &
-                        trim(template%param_names(i)%s)//'" of type "'// &
-                        trim(template%name)//'" must be a compile-time '// &
-                        'integer constant', error_msg)
-                    return
-                end if
-            end do
-        class default
-            error_msg = 'parameterized derived type template is not a type '// &
-                        'definition'
-        end select
+            call eval_i32_constant(arena, source_index, context, &
+                                   values(i), fold_error)
+            if (len_trim(fold_error) > 0) then
+                call unsupported_feature_error('derived type parameters', &
+                    line, column, 'type parameter "'//trim(names(i))// &
+                    '" of type "'//type_name//'" must be a compile-time '// &
+                    'integer constant', error_msg)
+                return
+            end if
+        end do
     end subroutine pdt_actual_values
+
+    subroutine pdt_template_name(arena, template_index, type_name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: template_index
+        character(len=:), allocatable, intent(out) :: type_name
+
+        type_name = ''
+        select type (template => arena%entries(template_index)%node)
+        type is (derived_type_node)
+            if (allocated(template%name)) type_name = trim(template%name)
+        end select
+    end subroutine pdt_template_name
 
     subroutine pdt_declaration_instance(arena, context, node, instance_name, &
                                         found, error_msg)
@@ -253,29 +332,44 @@
                                     instance_name, error_msg)
     end subroutine instantiate_pdt_for_declaration
 
-    subroutine instantiate_pdt_layout(arena, context, template_index, values, &
-                                      instance_name, error_msg)
-        ! Lay out one PDT instance: bind the formals to their actual constants
-        ! so component kinds, character lengths, and array bounds fold against
-        ! them, register the layout, then drop the bindings again.
+    recursive subroutine instantiate_pdt_layout(arena, context, template_index, &
+                                                values, instance_name, error_msg)
+        ! Lay out one PDT instance: instantiate the parent instance the leading
+        ! actuals select (when the parent is itself parameterized), bind every
+        ! formal to its actual constant so component kinds, character lengths,
+        ! and array bounds fold against them, register the layout, then drop the
+        ! bindings again.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: template_index
         integer(c_int64_t), intent(in) :: values(:)
         character(len=*), intent(in) :: instance_name
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: saved_symbol_count, i
+        character(len=:), allocatable :: parent_instance
+        character(len=64), allocatable :: names(:)
+        integer, allocatable :: defaults(:)
+        integer :: saved_symbol_count, i, inherited_count
 
-        call set_empty(error_msg)
+        call pdt_formal_chain(arena, template_index, names, defaults, &
+                              inherited_count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call instantiate_pdt_parent(arena, context, template_index, values, &
+                                    inherited_count, parent_instance, error_msg)
+        if (len_trim(error_msg) > 0) return
         saved_symbol_count = context%symbol_count
         select type (template => arena%entries(template_index)%node)
         type is (derived_type_node)
-            do i = 1, size(values)
-                call bind_pdt_parameter(context, trim(template%param_names(i)%s), &
-                                        values(i))
+            do i = 1, min(size(values), size(names))
+                call bind_pdt_parameter(context, trim(names(i)), values(i))
             end do
-            call register_derived_type_layout(template, context, instance_name, &
-                                              error_msg)
+            if (len_trim(parent_instance) > 0) then
+                call register_derived_type_layout(template, context, &
+                                                  instance_name, error_msg, &
+                                                  parent_instance)
+            else
+                call register_derived_type_layout(template, context, &
+                                                  instance_name, error_msg)
+            end if
         class default
             error_msg = 'parameterized derived type template is not a type '// &
                         'definition'
@@ -285,6 +379,43 @@
         call emit_type_info_constant(context, context%derived_type_count, &
                                      error_msg)
     end subroutine instantiate_pdt_layout
+
+    recursive subroutine instantiate_pdt_parent(arena, context, template_index, &
+                                                values, inherited_count, &
+                                                parent_instance, error_msg)
+        ! Register the parent instance a child instance inherits from, and
+        ! report its mangled layout name. Empty when the parent is not itself
+        ! parameterized (or there is no parent).
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: template_index
+        integer(c_int64_t), intent(in) :: values(:)
+        integer, intent(in) :: inherited_count
+        character(len=:), allocatable, intent(out) :: parent_instance
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: parent_index
+
+        call set_empty(error_msg)
+        parent_instance = ''
+        if (inherited_count <= 0) return
+        if (size(values) < inherited_count) return
+        select type (template => arena%entries(template_index)%node)
+        type is (derived_type_node)
+            if (.not. allocated(template%extends_parent)) return
+            parent_index = pdt_template_node_index(arena, template%extends_parent)
+            if (parent_index <= 0) return
+            call pdt_instance_name(trim(template%extends_parent), &
+                                   values(1:inherited_count), parent_instance)
+        class default
+            error_msg = 'parameterized derived type template is not a type '// &
+                        'definition'
+            return
+        end select
+        if (find_derived_type(context, parent_instance) > 0) return
+        call instantiate_pdt_layout(arena, context, parent_index, &
+                                    values(1:inherited_count), parent_instance, &
+                                    error_msg)
+    end subroutine instantiate_pdt_parent
 
     subroutine bind_pdt_parameter(context, name, value)
         ! Bind one type-parameter formal as a compile-time integer constant so
