@@ -818,6 +818,16 @@
                 stride = stride * context%symbols(symbol_index)%array_dim_sizes(i)
             end if
         end do
+        ! A polymorphic array dummy strides by the dynamic element type's size,
+        ! which is only known at run time; every other derived array strides by
+        ! its declared type's compile-time slot count (#422).
+        if (context%symbols(symbol_index)%has_runtime_element_slots) then
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, &
+                    context%symbols(symbol_index)%runtime_element_slots, offset, &
+                    error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, acc, &
                 i32_immediate(context%session, int(slots, c_int64_t)), offset, &
                 error_msg)) return

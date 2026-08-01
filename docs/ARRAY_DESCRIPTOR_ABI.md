@@ -93,6 +93,21 @@ size, and element type zero. Failed initialization also leaves this state.
 The code names the type only. The kind lives in `element_size`, so
 `real(real64)` is code 2 with element size 8.
 
+## Polymorphic array dummies
+
+A `class(t)` array dummy may be associated with an actual whose dynamic element
+type extends `t`, so its elements are wider than `t`'s own layout. No extra
+field is needed for this: `element_size` and the per-dimension `stride_bytes`
+already describe the actual's concrete elements, because the caller builds the
+descriptor from the actual, not from the dummy's declared type.
+
+The callee therefore must not stride by its declared type's size. At entry a
+`class(t)` array dummy reads `element_size` from the descriptor and uses it as
+its element stride for the whole call; a `type(t)` dummy is monomorphic and
+keeps its compile-time stride. The declared type still governs which components
+are nameable — a `class(t)` dummy sees only `t`'s prefix of each element — so
+the declared and dynamic types stay distinct exactly as for a scalar.
+
 ## Ownership and lifetime
 
 Exactly one descriptor owns any given allocation. `ARRAY_FLAG_OWNS_DATA`
