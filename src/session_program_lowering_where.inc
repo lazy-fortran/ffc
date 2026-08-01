@@ -161,31 +161,73 @@
 
     subroutine lower_where_masked_assignment(arena, assign_index, masks, &
                                              context, error_msg)
-        ! Lower one WHERE body assignment under the conjunction of masks. For
-        ! each element where every mask is true:
-        !   lhs(i) := rhs(i)   otherwise lhs(i) keeps its current value.
-        ! The kept branch reads the current element, so an earlier WHERE result
-        ! survives into a complementary ELSEWHERE pass over the same target.
+        ! WHERE body assignment: apply the right-hand side where every
+        ! enclosing mask is true and keep the current element elsewhere.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: assign_index
         integer, intent(in) :: masks(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: target_symbol, value_index, i, array_size
-        type(lr_operand_desc_t) :: cond, rhs_val, cur_val, selected
+
+        call lower_where_selected_assignment(arena, assign_index, masks, &
+                                             .false., context, error_msg)
+    end subroutine lower_where_masked_assignment
+
+    subroutine lower_where_complement_assignment(arena, assign_index, &
+                                                 mask_index, context, error_msg)
+        ! ELSEWHERE body: the complement of the WHERE mask. The kept branch
+        ! preserves the WHERE-true result computed in the prior pass.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: assign_index
+        integer, intent(in) :: mask_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_where_selected_assignment(arena, assign_index, &
+                                             [mask_index], .true., context, &
+                                             error_msg)
+    end subroutine lower_where_complement_assignment
+
+    subroutine lower_where_selected_assignment(arena, assign_index, masks, &
+                                               complement, context, error_msg)
+        ! The one masked array assignment WHERE and ELSEWHERE share:
+        !   lhs(i) := mask(i) ? rhs(i) : lhs(i)          (complement = .false.)
+        !   lhs(i) := mask(i) ? lhs(i) : rhs(i)          (complement = .true.)
+        !
+        ! Every mask value, right-hand-side element, and kept current element
+        ! is produced before the first store, so the assignment behaves as if
+        ! the mask and the right-hand side were fully evaluated before any
+        ! element of the target changed (Fortran 2018 clause 10.2.3.1). A mask
+        ! or a right-hand side that overlaps the target -- `where (m == 1)
+        ! a = a(n:1:-1)` -- therefore reads pre-assignment values regardless of
+        ! traversal order.
+        !
+        ! The iteration comes from the target's array-expression plan, so the
+        ! shape, the element type, and the column-major linear index are the
+        ! same ones every other array expression uses.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: assign_index
+        integer, intent(in) :: masks(:)
+        logical, intent(in) :: complement
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_expr_plan_t) :: plan
+        type(lr_operand_desc_t), allocatable :: selected(:)
+        type(lr_operand_desc_t) :: cond, rhs_val, cur_val
+        integer :: target_symbol, value_index, i, n
 
         call set_empty(error_msg)
         call where_assignment_target(arena, assign_index, context, &
                                      target_symbol, value_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        array_size = context%symbols(target_symbol)%array_size
-        if (array_size <= 0) then
-            error_msg = 'WHERE assignment requires a positive array size'
-            return
-        end if
+        call build_array_expression(context, target_symbol, value_index, plan, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        n = plan%element_count()
+        allocate (selected(n))
 
-        do i = 0, array_size - 1
+        do i = 0, n - 1
             call lower_where_mask_conjunction(arena, masks, i, context, cond, &
                                               error_msg)
             if (len_trim(error_msg) > 0) return
@@ -196,57 +238,24 @@
             call load_array_linear_element(context, target_symbol, &
                                            int(i, c_int64_t), cur_val, error_msg)
             if (len_trim(error_msg) > 0) return
-            call select_value(context, cond, rhs_val, cur_val, selected, &
-                              error_msg)
-            if (len_trim(error_msg) > 0) return
-            call store_array_linear_element(context, target_symbol, &
-                                            int(i, c_int64_t), selected, error_msg)
+            if (complement) then
+                call select_value(context, cond, cur_val, rhs_val, &
+                                  selected(i + 1), error_msg)
+            else
+                call select_value(context, cond, rhs_val, cur_val, &
+                                  selected(i + 1), error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine lower_where_masked_assignment
 
-    subroutine lower_where_complement_assignment(arena, assign_index, &
-                                                 mask_index, context, error_msg)
-        ! ELSEWHERE body: lhs(i) := mask(i) ? lhs(i) : rhs(i). The kept branch
-        ! preserves the WHERE-true result computed in the prior pass.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: assign_index
-        integer, intent(in) :: mask_index
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer :: target_symbol, value_index, i, array_size
-        type(lr_operand_desc_t) :: cond, rhs_val, cur_val, selected
-
+        do i = 0, n - 1
+            call store_array_linear_element(context, target_symbol, &
+                                            int(i, c_int64_t), selected(i + 1), &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
         call set_empty(error_msg)
-        call where_assignment_target(arena, assign_index, context, &
-                                     target_symbol, value_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        array_size = context%symbols(target_symbol)%array_size
-        if (array_size <= 0) then
-            error_msg = 'WHERE assignment requires a positive array size'
-            return
-        end if
-
-        do i = 0, array_size - 1
-            call lower_where_mask_element(arena, mask_index, i, context, cond, &
-                                          error_msg)
-            if (len_trim(error_msg) > 0) return
-            call lower_array_elementwise_value(arena, value_index, &
-                                               target_symbol, i, context, &
-                                               rhs_val, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call load_array_linear_element(context, target_symbol, &
-                                           int(i, c_int64_t), cur_val, error_msg)
-            if (len_trim(error_msg) > 0) return
-            call select_value(context, cond, cur_val, rhs_val, selected, &
-                              error_msg)
-            if (len_trim(error_msg) > 0) return
-            call store_array_linear_element(context, target_symbol, &
-                                            int(i, c_int64_t), selected, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
-    end subroutine lower_where_complement_assignment
+    end subroutine lower_where_selected_assignment
 
     subroutine lower_where_mask_conjunction(arena, masks, linear_index, &
                                             context, cond, error_msg)

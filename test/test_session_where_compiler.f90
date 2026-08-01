@@ -10,6 +10,7 @@ program test_session_where_compiler
     all_passed = .true.
     if (.not. test_where_masked_assignment()) all_passed = .false.
     if (.not. test_where_elsewhere()) all_passed = .false.
+    if (.not. test_where_overlapping_section()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: WHERE lowers through direct LIRIC'
@@ -69,5 +70,24 @@ contains
         ok = expect_output(source, i12([1, 2, 30, 40]), &
             '/tmp/ffc_where_elsewhere_test')
     end function test_where_elsewhere
+
+    logical function test_where_overlapping_section() result(ok)
+        ! WHERE whose right-hand side is a reversed section of the target
+        ! itself. Fortran 2018 clause 10.2.3.1 evaluates the mask and the
+        ! right-hand side before any element of the target is assigned, so
+        ! every element must be taken from the pre-assignment array. Expected
+        ! values are the gfortran output for this program.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4), m(4)'//new_line('a')// &
+            '  a = [1, 2, 3, 4]'//new_line('a')// &
+            '  m = [1, 0, 1, 1]'//new_line('a')// &
+            '  where (m == 1) a = a(4:1:-1)'//new_line('a')// &
+            '  print *, a'//new_line('a')// &
+            'end program main'
+
+        ok = expect_output(source, i12([4, 2, 2, 1]), &
+            '/tmp/ffc_where_overlapping_section_test')
+    end function test_where_overlapping_section
 
 end program test_session_where_compiler
