@@ -1289,7 +1289,8 @@
     end subroutine lower_derived_component_element_assignment
 
     subroutine method_call_info(arena, node, context, base_var_index, &
-                                impl_name, pass_name, found, error_msg)
+                                impl_name, pass_name, found, error_msg, &
+                                receiver_symbol, binding_slot)
         ! For obj%m(args): resolve m to its bound implementation via obj's
         ! derived type, returning the base variable's node index, the
         ! implementation name, and the pass(name) dummy (empty for default pass).
@@ -1301,11 +1302,15 @@
         character(len=:), allocatable, intent(out) :: pass_name
         logical, intent(out) :: found
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(out), optional :: receiver_symbol
+        integer, intent(out), optional :: binding_slot
         character(len=:), allocatable :: var_name, method_name
         integer :: symbol_index, type_index, b
 
         found = .false.
         base_var_index = 0
+        if (present(receiver_symbol)) receiver_symbol = 0
+        if (present(binding_slot)) binding_slot = 0
         call set_empty(error_msg)
         call set_empty(impl_name)
         call set_empty(pass_name)
@@ -1337,6 +1342,8 @@
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))
+                if (present(receiver_symbol)) receiver_symbol = symbol_index
+                if (present(binding_slot)) binding_slot = b
                 found = .true.
                 return
             end if
@@ -1446,8 +1453,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: var_name, method_name, impl_name
         character(len=:), allocatable :: pass_name
-        integer :: pct, symbol_index, type_index, b, n, position, i, k
+        integer :: pct, symbol_index, type_index, b, n, position, i, k, slot
         type(lr_operand_desc_t), allocatable :: method_args(:), all_args(:)
+        type(lr_operand_desc_t) :: callee_ptr
         integer, allocatable :: copyback_indices(:)
 
         call set_empty(error_msg)
@@ -1504,8 +1512,22 @@
             k = k + 1
             all_args(i) = method_args(k)
         end do
-        if (.not. emit_void_call(context%session, &
-                call_emit_name(arena, impl_name, context), all_args, error_msg)) return
+        ! A receiver that carries a runtime type identity dispatches through
+        ! its dynamic type's vtable, so an override of the most-derived type is
+        ! reached instead of the declared type's implementation (#420).
+        slot = type_binding_slot(context, type_index, method_name)
+        if (slot > 0 .and. &
+            class_receiver_dispatches_dynamically(context, symbol_index)) then
+            call class_dispatch_callee(context, symbol_index, slot, callee_ptr, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_void_indirect_call(context%session, callee_ptr, &
+                    all_args, error_msg)) return
+        else
+            if (.not. emit_void_call(context%session, &
+                    call_emit_name(arena, impl_name, context), all_args, &
+                    error_msg)) return
+        end if
         call copy_back_reference_args(context, method_args, copyback_indices, &
                                       error_msg)
     end subroutine lower_method_subroutine_call
@@ -1516,15 +1538,16 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: base_var_index, position
+        integer :: base_var_index, position, receiver_symbol, slot
         character(len=:), allocatable :: impl_name, pass_name
         logical :: found
         integer, allocatable :: combined(:)
         type(lr_operand_desc_t), allocatable :: args(:)
+        type(lr_operand_desc_t) :: callee_ptr
         integer, allocatable :: copyback_indices(:)
 
         call method_call_info(arena, node, context, base_var_index, impl_name, &
-                              pass_name, found, error_msg)
+                              pass_name, found, error_msg, receiver_symbol, slot)
         if (len_trim(error_msg) > 0) return
         if (.not. found) then
             error_msg = 'not a type-bound method call'
@@ -1535,9 +1558,18 @@
         call prepare_reference_args(arena, combined, context, VALUE_I32, &
                                     impl_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_call(context%session, call_emit_name(arena, impl_name, &
-                                                               context), &
-                                args, value, error_msg)) return
+        if (slot > 0 .and. &
+            class_receiver_dispatches_dynamically(context, receiver_symbol)) then
+            call class_dispatch_callee(context, receiver_symbol, slot, &
+                                       callee_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_indirect_call(context%session, callee_ptr, args, &
+                    value, error_msg)) return
+        else
+            if (.not. emit_i32_call(context%session, &
+                    call_emit_name(arena, impl_name, context), args, value, &
+                    error_msg)) return
+        end if
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_method_call_i32
 

@@ -149,6 +149,16 @@
             call destroy(context%session)
             return
         end if
+        ! Vtables are const globals with relocations: like every other global
+        ! with a data-section initializer they must exist before any procedure
+        ! body is compiled (#420). They come after PDT instantiation so an
+        ! instantiated layout is a registered type by the time its vtable is
+        ! emitted.
+        call emit_type_vtables(arena, context, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         call collect_module_exports(arena, root_index, context, error_msg)
         if (len_trim(error_msg) > 0) then
             call destroy(context%session)

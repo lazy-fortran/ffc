@@ -144,7 +144,7 @@ module session_program_lowering
         prepare_liric_print_runtime, &
         create_printf_format_global, &
         printf_format_ptr, &
-        create_type_info_global
+        create_type_info_global, create_pointer_table_global
     use liric_session_real_print_bindings, only: synthesize_real8_printer, &
         synthesize_real4_printer, &
         synthesize_get_arg_helper, &

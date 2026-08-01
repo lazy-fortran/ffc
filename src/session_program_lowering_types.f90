@@ -463,6 +463,12 @@ module session_program_lowering_types
         ! Empty unless the binding declared pass(name); names the dummy that
         ! receives the passed object.
         character(len=64), allocatable :: binding_pass_names(:)
+        ! Non-empty when the type declares the same binding name twice. Such a
+        ! type has no single occupant for that vtable slot, so it is reported
+        ! when the vtables are emitted rather than when it is collected: a
+        ! collection error would be swallowed by the "skip a type ffc cannot
+        ! lower" path and reappear as an unrelated diagnostic (#420).
+        character(len=64) :: duplicate_binding_name = ''
     end type derived_type_info_t
 
     type, public :: module_exports_t

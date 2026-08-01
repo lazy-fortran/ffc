@@ -451,6 +451,36 @@ struct ffc_polymorphic_descriptor_t {
 - The descriptor never aliases the value: `data` points at storage held
   elsewhere, and copying a descriptor copies a reference, never the value.
 
+## Type-bound dispatch vtables
+
+Each derived type with type-bound bindings emits one const global,
+`__ffc_vtable_<typename>`, holding one 8-byte code address per binding slot.
+Slot `k` is the `k`-th binding of the type in declaration order, counting
+inherited bindings first: an extension copies its parent's slots in order and
+an override replaces the target of the slot it overrides, so slot `k` names the
+same binding in a type and in every extension of it. A slot whose
+implementation is not defined in the current compilation unit stays null rather
+than emitting an undefined relocation.
+
+One link-unit table, `__ffc_vtable_table`, maps a type identity to its vtable:
+entry `i` is the address of the vtable of the type whose `ffc_type_info_t.id`
+is `i`, and entry `0` is null for the reserved "no type" id. A type without
+bindings has a null entry.
+
+Dispatch through a polymorphic receiver is therefore
+
+```
+vtable = __ffc_vtable_table[descriptor.dynamic_type];
+callee = vtable[slot - 1];
+```
+
+Both loads read const, linker-initialised data; neither writes memory nor
+aliases the receiver's storage. Keeping the identity-to-vtable mapping in this
+table rather than in a fifth descriptor field leaves the 32-byte scalar class
+descriptor above unchanged. A receiver whose dynamic type is fixed at compile
+time (a `type(t)` entity) keeps a direct call: its dynamic type is its declared
+type by definition, so the vtable would only re-derive a known answer.
+
 ## Module artefact format
 
 `ffc -c <source>.f90` writes one `<modulename>.fmod` next to the object file
