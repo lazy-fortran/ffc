@@ -863,7 +863,14 @@
             if (.not. node_exists(arena, body_indices(i))) cycle
             select type (decl => arena%entries(body_indices(i))%node)
             type is (declaration_node)
-                if (decl%is_array) cycle
+                ! An array declaration names a shape, not a scalar kind: the
+                ! caller reads the rank separately, and reporting a scalar kind
+                ! here would hide it. Say "no scalar kind" and stop looking, so
+                ! the parameter-entry fallback below cannot answer for it.
+                if (decl%is_array) then
+                    if (declaration_names_entity(decl, name)) return
+                    cycle
+                end if
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == trim(name)) then
                         call declaration_value_kind(decl, value_kind, kind_err, &
@@ -884,7 +891,69 @@
                 end if
             end select
         end do
+        ! No specification-part declaration names this dummy. A Lazy unit's
+        ! monomorphized specialization carries the dummy's resolved type on
+        ! the parameter-list entry itself and adds no declaration node, so
+        ! read the kind from there rather than defaulting to i32 (#651).
+        value_kind = parameter_entry_value_kind(arena, param_indices(param_pos), &
+                                                context)
     end function param_at_value_kind
+
+    logical function declaration_names_entity(decl, name) result(names_it)
+        ! Whether this declaration declares the named entity, single or multi.
+        type(declaration_node), intent(in) :: decl
+        character(len=*), intent(in) :: name
+        integer :: k
+
+        names_it = .false.
+        if (allocated(decl%var_name)) then
+            if (trim(decl%var_name) == trim(name)) then
+                names_it = .true.
+                return
+            end if
+        end if
+        if (.not. decl%is_multi_declaration) return
+        if (.not. allocated(decl%var_names)) return
+        do k = 1, size(decl%var_names)
+            if (trim(decl%var_names(k)) == trim(name)) then
+                names_it = .true.
+                return
+            end if
+        end do
+    end function declaration_names_entity
+
+    integer function parameter_entry_value_kind(arena, param_index, context) &
+        result(value_kind)
+        ! The value kind recorded on a parameter-list entry itself. The dialect
+        ! decides what a kind-less `real` dummy means, so a Lazy unit's
+        ! kind-less real dummy is 8 bytes like every other kind-less real
+        ! there (#438, #651).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: param_index
+        type(lowering_context_t), intent(in), optional :: context
+        integer :: kind_value
+        character(len=:), allocatable :: type_text
+
+        value_kind = 0
+        if (.not. node_exists(arena, param_index)) return
+        select type (entry => arena%entries(param_index)%node)
+        type is (parameter_declaration_node)
+            if (entry%is_array) return
+            if (entry%resolved_rank > 0) return
+            if (allocated(entry%dimension_indices)) then
+                if (size(entry%dimension_indices) > 0) return
+            end if
+            if (entry%resolved_type_kind <= 0) return
+            kind_value = entry%resolved_kind_value
+            if (present(context)) &
+                call apply_lazy_real_kind(context, entry%resolved_type_kind, &
+                                          entry%has_kind, kind_value)
+            type_text = ''
+            if (allocated(entry%type_name)) type_text = trim(entry%type_name)
+            value_kind = declaration_metadata_value_kind( &
+                entry%resolved_type_kind, kind_value, type_text)
+        end select
+    end function parameter_entry_value_kind
 
     function procedure_emit_name(fortran_name, bind_c_clause) result(emit_name)
         ! The LIRIC symbol a contained procedure is emitted under: its
