@@ -1518,7 +1518,6 @@ pr77420_4.f90 # scope=harness; reason=requires a companion module outside this s
 pr77632_1.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer association
 pr77942.f90 # owner=lazy-fortran/ffc#426; reason=lower CSHIFT and EOSHIFT
 pr78092.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
-pr78719_1.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 pr81509_1.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 pr81849.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 pr81978.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
@@ -2137,3 +2136,6 @@ hollerith6.f90 # scope=legacy; reason=deleted Hollerith storage and FORMAT exten
 illegal_char.f90 # owner=lazy-fortran/fortfront#2890; reason=reject invalid source and identifier characters
 proc_ptr_comp_24.f90 # owner=lazy-fortran/ffc#448; reason=lower typed procedure-pointer calls
 typebound_call_27.f90 # owner=lazy-fortran/ffc#420; reason=dispatch typed type-bound procedure calls
+allocate_error_2.f90 # owner=lazy-fortran/ffc#380; reason=reject invalid allocation and pointer definition targets
+binding_label_tests_28.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
+generic_19.f90 # owner=lazy-fortran/ffc#378; reason=reject malformed or ambiguous generic interfaces

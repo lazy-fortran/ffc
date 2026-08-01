@@ -3357,3 +3357,5 @@ write_fortran_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-len
 write_fortran_02.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 write_substr_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
+array_section_09.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
+cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
