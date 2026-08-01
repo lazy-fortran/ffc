@@ -52,7 +52,7 @@
         integer(c_int32_t) :: argc_vreg
         integer(c_int32_t) :: argv_vreg
         logical :: needs_main
-        call validate_program(arena, root_index, error_msg)
+        call validate_program(arena, root_index, error_msg, lazy_mode)
         if (len_trim(error_msg) > 0) return
         ! Linking an executable needs a main program unit. A procedure-only root
         ! supplies none, so say so instead of emitting a do-nothing main (#416).
@@ -581,10 +581,14 @@
         ok = finish_and_emit_exe_objects(session, output_path, inputs, &
                                          error_msg)
     end function emit_executable_output
-    subroutine validate_program(arena, root_index, error_msg)
+    subroutine validate_program(arena, root_index, error_msg, lazy_mode)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: lazy_mode
+        logical :: is_lazy
+        is_lazy = .false.
+        if (present(lazy_mode)) is_lazy = lazy_mode
         if (root_index <= 0) then
             error_msg = 'FortFront did not return a root program index'
             return
@@ -670,7 +674,7 @@
         if (len_trim(error_msg) > 0) return
         call check_format_specifications(arena, error_msg)
         if (len_trim(error_msg) > 0) return
-        call check_array_constructor_compatibility(arena, error_msg)
+        call check_array_constructor_compatibility(arena, error_msg, is_lazy)
         if (len_trim(error_msg) > 0) return
         call check_pointer_target_contracts(arena, error_msg)
         if (len_trim(error_msg) > 0) return
