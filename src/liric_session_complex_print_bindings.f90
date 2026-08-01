@@ -55,6 +55,7 @@ module liric_session_complex_print_bindings
     public :: emit_complex4_print_call
     public :: emit_complex8_print_call
     public :: emit_extern_i32_call
+    public :: emit_extern_i32_vararg_call
 
     interface
         function lr_session_func_begin(handle, name, ret, params, n, &
@@ -115,6 +116,26 @@ contains
         if (.not. emit_extern_i32_call) return
         result = i32_vreg(session, vreg)
     end function emit_extern_i32_call
+
+    logical function emit_extern_i32_vararg_call(session, name, args, &
+            fixed_args, result, error_msg)
+        ! Call a variadic external C function returning int (fscanf, sscanf)
+        ! and capture its result. The plain emit_fscanf/emit_sscanf helpers
+        ! discard the return value; a namelist parse loop needs it.
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        integer(c_int32_t), intent(in) :: fixed_args
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: vreg
+
+        emit_extern_i32_vararg_call = cx_emit_call(session, name, args, &
+            lr_type_i32_s(session%handle), fixed_args, c_true, &
+            vreg, error_msg)
+        if (.not. emit_extern_i32_vararg_call) return
+        result = i32_vreg(session, vreg)
+    end function emit_extern_i32_vararg_call
 
     logical function cx_emit_call(session, name, args, ret_typ, fixed_args, &
             vararg, vreg, error_msg)

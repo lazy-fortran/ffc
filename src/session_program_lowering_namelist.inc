@@ -50,7 +50,9 @@
 
         idx = 0
         do i = 1, context%namelist_group_count
-            if (trim(context%namelist_groups(i)%group_name) == trim(name)) then
+            ! Group names match without regard to case (#436).
+            if (upcase(trim(context%namelist_groups(i)%group_name)) == &
+                upcase(trim(name))) then
                 idx = i
                 return
             end if
@@ -354,17 +356,622 @@
         if (.not. emit_fprintf(context%session, fa, error_msg)) return
     end subroutine namelist_fprintf_value
 
+    ! NAMELIST input (#436).
+    !
+    ! READ(unit, nml=group) scans the unit for the `&GROUP` header, then reads
+    ! ` NAME = value` pairs until the closing `/` (or `&END`). Group and member
+    ! names match without regard to case, members may appear in any order,
+    ! members omitted from the file keep their current value, and an absent
+    ! group, an unknown member, or a value that does not convert to the
+    ! member's declared type reports IOSTAT.
+    !
+    ! The parse loop is emitted as LIRIC blocks over libc fscanf/sscanf. Every
+    ! member gets a stack slot holding its current value so the loop can assign
+    ! members in any order; each slot is reloaded once the loop exits.
     subroutine lower_namelist_read(node, context, error_msg)
-        ! NAMELIST input parsing is not implemented. Emit a clean diagnostic so
-        ! the construct is rejected rather than mis-compiled.
         type(read_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fp, name_buf, val_buf, status_slot
+        type(lr_operand_desc_t) :: slots(MAX_NAMELIST_MEMBERS)
+        type(lr_operand_desc_t) :: tmps(MAX_NAMELIST_MEMBERS)
+        integer :: syms(MAX_NAMELIST_MEMBERS)
+        integer :: gidx, i, nmem
+        integer(c_int32_t) :: scan_blk, body_blk, done_blk
 
-        call unsupported_feature_error('namelist read', node%line, node%column, &
-            'direct LIRIC session does not support namelist input yet', &
-            error_msg)
+        call set_empty(error_msg)
+        gidx = find_namelist_group(context, trim(node%namelist_group))
+        if (gidx <= 0) then
+            call unsupported_feature_error('namelist read', node%line, &
+                node%column, 'namelist group not declared in this scope', &
+                error_msg)
+            return
+        end if
+        if (.not. namelist_read_from_file_unit(node)) then
+            call unsupported_feature_error('namelist read', node%line, &
+                node%column, 'namelist input is only supported from a file '// &
+                'unit (#436)', error_msg)
+            return
+        end if
+        call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
+        if (len_trim(error_msg) > 0) then
+            error_msg = ''
+            call unsupported_feature_error('namelist read', node%line, &
+                node%column, 'unit not opened in same scope (#436)', error_msg)
+            return
+        end if
+
+        nmem = context%namelist_groups(gidx)%member_count
+        do i = 1, nmem
+            call namelist_read_member_slot(context, &
+                trim(context%namelist_groups(gidx)%member_names(i)), &
+                node%line, node%column, syms(i), slots(i), tmps(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+
+        call namelist_read_buffers(context, name_buf, val_buf, status_slot, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        scan_blk = create_liric_block(context%session)
+        body_blk = create_liric_block(context%session)
+        done_blk = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, scan_blk, error_msg)) return
+
+        call namelist_read_header(context, fp, name_buf, status_slot, &
+            upcase(trim(context%namelist_groups(gidx)%group_name)), &
+            scan_blk, body_blk, done_blk, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call namelist_read_body(context, fp, name_buf, val_buf, status_slot, &
+            syms, slots, tmps, nmem, gidx, body_blk, done_blk, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. set_liric_block(context%session, done_blk, error_msg)) return
+        context%current_block_id = done_blk
+        context%current_block_terminated = .false.
+        do i = 1, nmem
+            call namelist_read_reload(context, syms(i), slots(i), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call namelist_read_store_iostat(node, context, status_slot, error_msg)
     end subroutine lower_namelist_read
+
+    logical function namelist_read_from_file_unit(node) result(is_file)
+        ! Namelist input reads from an opened numbered unit; stdin namelist
+        ! input is not lowered.
+        type(read_statement_node), intent(in) :: node
+
+        is_file = .false.
+        if (.not. allocated(node%unit_spec)) return
+        if (trim(node%unit_spec) == '*') return
+        if (trim(node%unit_spec) == '5') return
+        is_file = .true.
+    end function namelist_read_from_file_unit
+
+    subroutine namelist_read_buffers(context, name_buf, val_buf, status_slot, &
+                                     error_msg)
+        ! Stack scratch for the parse loop: a name token buffer, a value text
+        ! buffer, and the IOSTAT accumulator initialised to success.
+        use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: name_buf, val_buf, status_slot
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                              int(NAMELIST_NAME_BUFFER + 1, c_int64_t)), &
+                name_buf, error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                              int(NAMELIST_VALUE_BUFFER + 1, c_int64_t)), &
+                val_buf, error_msg)) return
+        if (.not. emit_i32_alloca(context%session, status_slot, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), status_slot, &
+                error_msg)) return
+    end subroutine namelist_read_buffers
+
+    subroutine namelist_read_member_slot(context, name, line, col, sym, slot, &
+                                         tmp, error_msg)
+        ! Give one group member an addressable slot holding its current value.
+        ! A character member gets a padded destination buffer plus a scratch
+        ! buffer for the raw token; a logical member gets a small token buffer.
+        use liric_session_memory_bindings, only: emit_i32_alloca, emit_i64_alloca, &
+                                                 emit_i32_store, emit_i64_store
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: line, col
+        integer, intent(out) :: sym
+        type(lr_operand_desc_t), intent(out) :: slot, tmp
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: vk, buflen
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, name)
+        if (sym <= 0) then
+            call unsupported_feature_error('namelist read', line, col, &
+                'namelist member not declared: '//name, error_msg)
+            return
+        end if
+        if (context%symbols(sym)%is_array) then
+            call unsupported_feature_error('namelist read', line, col, &
+                'array namelist members are not supported yet', error_msg)
+            return
+        end if
+        vk = context%symbols(sym)%value_kind
+
+        if (vk == VALUE_CHARACTER) then
+            if (context%symbols(sym)%is_deferred_character) then
+                call unsupported_feature_error('namelist read', line, col, &
+                    'namelist character members must have a fixed length '// &
+                    '(#436)', error_msg)
+                return
+            end if
+            buflen = context%symbols(sym)%character_length
+            if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, int(buflen + 1, c_int64_t)), &
+                    slot, error_msg)) return
+            if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, int(buflen + 1, c_int64_t)), &
+                    tmp, error_msg)) return
+            if (context%symbols(sym)%has_character_value) then
+                call emit_blank_pad_string(context, buflen, &
+                    context%symbols(sym)%value, slot, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            return
+        end if
+
+        if (vk == VALUE_LOGICAL) then
+            if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, 8_c_int64_t), tmp, &
+                    error_msg)) return
+        end if
+
+        select case (vk)
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. context%symbols(sym)%has_address) then
+                if (.not. emit_i32_alloca(context%session, slot, error_msg)) return
+                if (.not. emit_i32_store(context%session, &
+                        context%symbols(sym)%value, slot, error_msg)) return
+                call set_read_slot(context, sym, slot)
+            else
+                slot = context%symbols(sym)%address
+            end if
+        case (VALUE_I64)
+            if (.not. context%symbols(sym)%has_address) then
+                if (.not. emit_i64_alloca(context%session, slot, error_msg)) return
+                if (.not. emit_i64_store(context%session, &
+                        context%symbols(sym)%value, slot, error_msg)) return
+                call set_read_slot(context, sym, slot)
+            else
+                slot = context%symbols(sym)%address
+            end if
+        case (VALUE_F32)
+            if (.not. context%symbols(sym)%has_address) then
+                if (.not. emit_liric_f32_alloca(context%session, slot, &
+                                                error_msg)) return
+                if (.not. emit_liric_f32_store(context%session, &
+                        context%symbols(sym)%value, slot, error_msg)) return
+                call set_read_slot(context, sym, slot)
+            else
+                slot = context%symbols(sym)%address
+            end if
+        case (VALUE_F64)
+            if (.not. context%symbols(sym)%has_address) then
+                if (.not. emit_liric_f64_alloca(context%session, slot, &
+                                                error_msg)) return
+                if (.not. emit_liric_f64_store(context%session, &
+                        context%symbols(sym)%value, slot, error_msg)) return
+                call set_read_slot(context, sym, slot)
+            else
+                slot = context%symbols(sym)%address
+            end if
+        case default
+            call unsupported_feature_error('namelist read', line, col, &
+                'only integer, real, logical, and character namelist '// &
+                'members are supported yet', error_msg)
+        end select
+    end subroutine namelist_read_member_slot
+
+    subroutine namelist_read_header(context, fp, name_buf, status_slot, group, &
+                                    scan_blk, body_blk, done_blk, error_msg)
+        ! Skip tokens until the `&GROUP` header is seen. End-of-file before the
+        ! header leaves IOSTAT at the end-of-file status.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: fp, name_buf, status_slot
+        character(len=*), intent(in) :: group
+        integer(c_int32_t), intent(in) :: scan_blk, body_blk, done_blk
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: count, cond
+        integer(c_int32_t) :: eof_blk, cmp_blk
+
+        call set_empty(error_msg)
+        if (.not. set_liric_block(context%session, scan_blk, error_msg)) return
+        context%current_block_id = scan_blk
+        context%current_block_terminated = .false.
+        call namelist_read_token(context, fp, ' %63s', name_buf, count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, count, &
+                i32_immediate(context%session, 1_c_int64_t), cond, &
+                error_msg)) return
+        eof_blk = create_liric_block(context%session)
+        cmp_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, cmp_blk, eof_blk, &
+                                    error_msg)) return
+
+        if (.not. set_liric_block(context%session, eof_blk, error_msg)) return
+        context%current_block_id = eof_blk
+        call namelist_read_fail(context, status_slot, NAMELIST_IOSTAT_END, &
+                                done_blk, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. set_liric_block(context%session, cmp_blk, error_msg)) return
+        context%current_block_id = cmp_blk
+        call namelist_read_name_matches(context, name_buf, '&'//group, cond, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_condbr(context%session, cond, body_blk, scan_blk, &
+                                    error_msg)) return
+    end subroutine namelist_read_header
+
+    subroutine namelist_read_body(context, fp, name_buf, val_buf, status_slot, &
+                                  syms, slots, tmps, nmem, gidx, body_blk, &
+                                  done_blk, error_msg)
+        ! One iteration reads a member name, its value text, then dispatches on
+        ! the name to the member's conversion. `/` or `&END` ends the group.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: fp, name_buf, val_buf, status_slot
+        integer, intent(in) :: syms(:), nmem, gidx
+        type(lr_operand_desc_t), intent(in) :: slots(:), tmps(:)
+        integer(c_int32_t), intent(in) :: body_blk, done_blk
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: count, cond
+        integer(c_int32_t) :: eof_blk, bad_blk, next_blk, term_blk, val_blk
+        integer(c_int32_t) :: parse_blk(MAX_NAMELIST_MEMBERS)
+        integer :: i
+
+        call set_empty(error_msg)
+        eof_blk = create_liric_block(context%session)
+        bad_blk = create_liric_block(context%session)
+        do i = 1, nmem
+            parse_blk(i) = create_liric_block(context%session)
+        end do
+
+        if (.not. set_liric_block(context%session, body_blk, error_msg)) return
+        context%current_block_id = body_blk
+        context%current_block_terminated = .false.
+        call namelist_read_token(context, fp, &
+            ' %63[^=, '//achar(9)//achar(10)//']', name_buf, count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, count, &
+                i32_immediate(context%session, 1_c_int64_t), cond, &
+                error_msg)) return
+        term_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, term_blk, eof_blk, &
+                                    error_msg)) return
+
+        if (.not. set_liric_block(context%session, eof_blk, error_msg)) return
+        context%current_block_id = eof_blk
+        call namelist_read_fail(context, status_slot, NAMELIST_IOSTAT_END, &
+                                done_blk, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! `/` and `&END` both close the group.
+        if (.not. set_liric_block(context%session, term_blk, error_msg)) return
+        context%current_block_id = term_blk
+        call namelist_read_name_matches(context, name_buf, '/', cond, error_msg)
+        if (len_trim(error_msg) > 0) return
+        next_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, done_blk, next_blk, &
+                                    error_msg)) return
+        if (.not. set_liric_block(context%session, next_blk, error_msg)) return
+        context%current_block_id = next_blk
+        call namelist_read_name_matches(context, name_buf, '&END', cond, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+        val_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, done_blk, val_blk, &
+                                    error_msg)) return
+
+        ! The value text runs to the next comma, slash, or end of line; a
+        ! trailing comma is consumed so the next name token starts clean.
+        if (.not. set_liric_block(context%session, val_blk, error_msg)) return
+        context%current_block_id = val_blk
+        call namelist_read_token(context, fp, &
+            ' = %255[^,/'//achar(10)//']%*[,]', val_buf, count, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, count, &
+                i32_immediate(context%session, 1_c_int64_t), cond, &
+                error_msg)) return
+        next_blk = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, cond, next_blk, bad_blk, &
+                                    error_msg)) return
+
+        do i = 1, nmem
+            if (.not. set_liric_block(context%session, next_blk, error_msg)) return
+            context%current_block_id = next_blk
+            call namelist_read_name_matches(context, name_buf, &
+                upcase(trim(context%namelist_groups(gidx)%member_names(i))), &
+                cond, error_msg)
+            if (len_trim(error_msg) > 0) return
+            next_blk = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, cond, parse_blk(i), &
+                                        next_blk, error_msg)) return
+        end do
+        ! A name that is not a member of the group is a namelist input error.
+        if (.not. set_liric_block(context%session, next_blk, error_msg)) return
+        context%current_block_id = next_blk
+        if (.not. emit_liric_br(context%session, bad_blk, error_msg)) return
+
+        if (.not. set_liric_block(context%session, bad_blk, error_msg)) return
+        context%current_block_id = bad_blk
+        call namelist_read_fail(context, status_slot, NAMELIST_IOSTAT_BAD, &
+                                done_blk, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        do i = 1, nmem
+            if (.not. set_liric_block(context%session, parse_blk(i), &
+                                      error_msg)) return
+            context%current_block_id = parse_blk(i)
+            context%current_block_terminated = .false.
+            call namelist_read_parse_member(context, syms(i), slots(i), &
+                tmps(i), val_buf, body_blk, bad_blk, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine namelist_read_body
+
+    subroutine namelist_read_parse_member(context, sym, slot, tmp, val_buf, &
+                                          body_blk, bad_blk, error_msg)
+        ! Convert the captured value text into one member's slot, then continue
+        ! the loop. A value that does not convert branches to the error block.
+        use liric_session_memory_bindings, only: emit_i32_store
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        type(lr_operand_desc_t), intent(in) :: slot, tmp, val_buf
+        integer(c_int32_t), intent(in) :: body_blk, bad_blk
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: fmts(3)
+        character(len=16) :: width
+        type(lr_operand_desc_t) :: cond
+        integer(c_int32_t) :: ok_blk, true_blk, false_blk
+        integer :: buflen
+
+        call set_empty(error_msg)
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32)
+            fmts(1) = ' %d'
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 1, slot, &
+                                            body_blk, bad_blk, error_msg)
+        case (VALUE_I64)
+            fmts(1) = ' %ld'
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 1, slot, &
+                                            body_blk, bad_blk, error_msg)
+        case (VALUE_F32)
+            fmts(1) = ' %f'
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 1, slot, &
+                                            body_blk, bad_blk, error_msg)
+        case (VALUE_F64)
+            fmts(1) = ' %lf'
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 1, slot, &
+                                            body_blk, bad_blk, error_msg)
+        case (VALUE_LOGICAL)
+            ! `.true.` / `.false.` and the bare `T` / `F` forms.
+            fmts(1) = ' .%1[tTfF]'
+            fmts(2) = ' %1[tTfF]'
+            ok_blk = create_liric_block(context%session)
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 2, tmp, &
+                                            ok_blk, bad_blk, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. set_liric_block(context%session, ok_blk, error_msg)) return
+            context%current_block_id = ok_blk
+            context%current_block_terminated = .false.
+            call namelist_read_name_matches(context, tmp, 'T', cond, error_msg)
+            if (len_trim(error_msg) > 0) return
+            true_blk = create_liric_block(context%session)
+            false_blk = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, cond, true_blk, &
+                                        false_blk, error_msg)) return
+            if (.not. set_liric_block(context%session, true_blk, error_msg)) return
+            context%current_block_id = true_blk
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, 1_c_int64_t), slot, &
+                    error_msg)) return
+            if (.not. emit_liric_br(context%session, body_blk, error_msg)) return
+            if (.not. set_liric_block(context%session, false_blk, error_msg)) return
+            context%current_block_id = false_blk
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, 0_c_int64_t), slot, &
+                    error_msg)) return
+            if (.not. emit_liric_br(context%session, body_blk, error_msg)) return
+        case (VALUE_CHARACTER)
+            ! Quoted (either delimiter) or bare token, then blank-padded to the
+            ! member's declared length.
+            buflen = context%symbols(sym)%character_length
+            write (width, '(I0)') buflen
+            fmts(1) = ' '''//'%'//trim(width)//'[^'''//']'''
+            fmts(2) = ' "%'//trim(width)//'[^"]"'
+            fmts(3) = ' %'//trim(width)//'s'
+            ok_blk = create_liric_block(context%session)
+            call namelist_read_sscanf_chain(context, val_buf, fmts, 3, tmp, &
+                                            ok_blk, bad_blk, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. set_liric_block(context%session, ok_blk, error_msg)) return
+            context%current_block_id = ok_blk
+            context%current_block_terminated = .false.
+            call emit_blank_pad_string(context, buflen, tmp, slot, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_br(context%session, body_blk, error_msg)) return
+        case default
+            error_msg = 'namelist read: unsupported member kind'
+        end select
+    end subroutine namelist_read_parse_member
+
+    subroutine namelist_read_sscanf_chain(context, src, fmts, nfmt, dest, &
+                                          ok_blk, fail_blk, error_msg)
+        ! Try each sscanf format in turn; the first that assigns one item wins
+        ! and control reaches ok_blk, otherwise fail_blk.
+        use liric_session_complex_print_bindings, only: emit_extern_i32_vararg_call
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: src, dest
+        character(len=*), intent(in) :: fmts(:)
+        integer, intent(in) :: nfmt
+        integer(c_int32_t), intent(in) :: ok_blk, fail_blk
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fmt_ptr, args(3), count, cond
+        integer(c_int32_t) :: next_blk
+        integer :: k
+
+        call set_empty(error_msg)
+        do k = 1, nfmt
+            call namelist_read_cstring(context, 'nml.sfmt.', trim(fmts(k)), &
+                                       fmt_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            args(1) = src
+            args(2) = fmt_ptr
+            args(3) = dest
+            if (.not. emit_extern_i32_vararg_call(context%session, 'sscanf', &
+                    args, 2_c_int32_t, count, error_msg)) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, count, &
+                    i32_immediate(context%session, 1_c_int64_t), cond, &
+                    error_msg)) return
+            if (k == nfmt) then
+                if (.not. emit_liric_condbr(context%session, cond, ok_blk, &
+                                            fail_blk, error_msg)) return
+            else
+                next_blk = create_liric_block(context%session)
+                if (.not. emit_liric_condbr(context%session, cond, ok_blk, &
+                                            next_blk, error_msg)) return
+                if (.not. set_liric_block(context%session, next_blk, &
+                                          error_msg)) return
+                context%current_block_id = next_blk
+                context%current_block_terminated = .false.
+            end if
+        end do
+    end subroutine namelist_read_sscanf_chain
+
+    subroutine namelist_read_token(context, fp, fmt, dest, count, error_msg)
+        ! fscanf(fp, fmt, dest), keeping the assignment count.
+        use liric_session_complex_print_bindings, only: emit_extern_i32_vararg_call
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: fp, dest
+        character(len=*), intent(in) :: fmt
+        type(lr_operand_desc_t), intent(out) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fmt_ptr, args(3)
+
+        call namelist_read_cstring(context, 'nml.rfmt.', fmt, fmt_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        args(1) = fp
+        args(2) = fmt_ptr
+        args(3) = dest
+        if (.not. emit_extern_i32_vararg_call(context%session, 'fscanf', args, &
+                2_c_int32_t, count, error_msg)) return
+    end subroutine namelist_read_token
+
+    subroutine namelist_read_name_matches(context, buf, name, cond, error_msg)
+        ! cond = strcasecmp(buf, name) == 0.
+        use liric_session_complex_print_bindings, only: emit_extern_i32_call
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: buf
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(out) :: cond
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: name_ptr, args(2), diff
+
+        call namelist_read_cstring(context, 'nml.name.', name, name_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        args(1) = buf
+        args(2) = name_ptr
+        if (.not. emit_extern_i32_call(context%session, 'strcasecmp', args, &
+                                       diff, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, diff, &
+                i32_immediate(context%session, 0_c_int64_t), cond, &
+                error_msg)) return
+    end subroutine namelist_read_name_matches
+
+    subroutine namelist_read_cstring(context, tag, text, ptr, error_msg)
+        ! Intern one NUL-terminated constant string and return a pointer to it.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: tag, text
+        type(lr_operand_desc_t), intent(out) :: ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: gid
+        character(len=64) :: gname
+
+        context%string_literal_count = context%string_literal_count + 1
+        gname = ffc_unit_global_name(context, tag, context%string_literal_count)
+        call create_printf_format_global(context%session, trim(gname), text, &
+                                         gid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ptr = printf_format_ptr(context%session, gid)
+    end subroutine namelist_read_cstring
+
+    subroutine namelist_read_fail(context, status_slot, status, done_blk, &
+                                  error_msg)
+        ! Record an IOSTAT status and leave the parse loop.
+        use liric_session_memory_bindings, only: emit_i32_store
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: status_slot
+        integer, intent(in) :: status
+        integer(c_int32_t), intent(in) :: done_blk
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, int(status, c_int64_t)), &
+                status_slot, error_msg)) return
+        if (.not. emit_liric_br(context%session, done_blk, error_msg)) return
+    end subroutine namelist_read_fail
+
+    subroutine namelist_read_reload(context, sym, slot, error_msg)
+        ! Refresh the member's cached value from the slot the loop wrote.
+        use liric_session_memory_bindings, only: emit_i32_load, emit_i64_load
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        type(lr_operand_desc_t), intent(in) :: slot
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        call set_empty(error_msg)
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. emit_i32_load(context%session, slot, &
+                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_I64)
+            if (.not. emit_i64_load(context%session, slot, &
+                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_load(context%session, slot, &
+                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_load(context%session, slot, &
+                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_CHARACTER)
+            context%symbols(sym)%value = slot
+            context%symbols(sym)%has_character_value = .true.
+        end select
+    end subroutine namelist_read_reload
+
+    subroutine namelist_read_store_iostat(node, context, status_slot, error_msg)
+        ! Publish the accumulated status through the statement's iostat= target.
+        use liric_session_memory_bindings, only: emit_i32_load
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: status_slot
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: status
+        integer :: sym
+
+        call set_empty(error_msg)
+        call read_iostat_symbol(node, context, sym, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (sym <= 0) return
+        if (.not. emit_i32_load(context%session, status_slot, status, &
+                                error_msg)) return
+        call assign_i32_to_symbol(context, sym, status, error_msg)
+    end subroutine namelist_read_store_iostat
 
     pure function upcase(text) result(out)
         character(len=*), intent(in) :: text

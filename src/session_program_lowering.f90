@@ -255,6 +255,8 @@ module session_program_lowering
         statement_function_t, &
         MAX_STMT_FN_ARGS, &
         MAX_NAMELIST_MEMBERS, &
+        NAMELIST_NAME_BUFFER, NAMELIST_VALUE_BUFFER, &
+        NAMELIST_IOSTAT_END, NAMELIST_IOSTAT_BAD, &
         VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64, VALUE_F32, VALUE_F64, &
         VALUE_C4, VALUE_C8, &
         VALUE_LOGICAL, VALUE_CHARACTER, &
