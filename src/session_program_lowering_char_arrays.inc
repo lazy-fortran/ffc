@@ -1,10 +1,17 @@
-    ! Fixed-length character element arrays (#W1). Storage is a [N x ptr] buffer
-    ! in element_address: each slot holds a pointer to a materialized, blank-padded
-    ! LIRIC string of the declared length. Element assignment materializes the
-    ! normalized literal and stores its pointer; element print loads the slot
-    ! pointer and reuses the scalar string print path. Scope: local rank-1 and
-    ! rank-2 arrays with a compile-time length and extent; allocatable,
-    ! deferred-length, dummy, and parameter character arrays stay unsupported.
+    ! Fixed-length character element arrays. Storage is one contiguous buffer of
+    ! array_size * character_length bytes in element_address, so element i sits
+    ! at base + i*character_length and the element stride is the declared length,
+    ! exactly as docs/ARRAY_DESCRIPTOR_ABI.md describes a contiguous array of
+    ! ARRAY_ELEMENT_CHARACTER with element_size = character_length.
+    !
+    ! An element is therefore a borrowed character view: character_length bytes
+    ! at its address, with no terminator of its own, since the next element
+    ! begins immediately after it. Reading one goes through the same view
+    ! machinery as a substring, and anything that needs a C string materialises
+    ! a terminated copy of exactly the element length.
+    !
+    ! Scope: local rank-1 and rank-2 arrays with a compile-time length and
+    ! extent; dummy and parameter character arrays stay unsupported.
 
     subroutine lower_character_array_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
@@ -230,7 +237,10 @@
         call character_array_fold_dims(context, node, index, dim_count, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_ptr_array_alloca(context%session, array_size, &
+        ! One contiguous block: array_size elements of character_length bytes.
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                    int(array_size, c_int64_t)*int(character_length, c_int64_t)), &
                 context%symbols(index)%element_address, error_msg)) then
             error_msg = 'decl_char_array['//trim(name)//']: '//error_msg
             return
@@ -275,11 +285,14 @@
                                           element_text, string_ptr, error_msg)
             if (len_trim(error_msg) > 0) return
             index_value = i32_immediate(context%session, int(i - 1, c_int64_t))
-            if (.not. emit_ptr_array_element_addr(context%session, array_size, &
-                    context%symbols(symbol_index)%element_address, index_value, &
-                    slot_addr, error_msg)) return
-            if (.not. emit_ptr_store(context%session, string_ptr, slot_addr, &
-                                     error_msg)) return
+            call character_array_element_address(context, symbol_index, &
+                                                 index_value, slot_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            ! normalize_character_literal already padded or truncated the text
+            ! to the declared length, so this fills the element exactly.
+            if (.not. emit_memcpy(context%session, slot_addr, string_ptr, &
+                    i64_immediate(context%session, &
+                        int(character_length, c_int64_t)), error_msg)) return
         end do
     end subroutine store_character_array_initials
 
@@ -322,36 +335,47 @@
 
     subroutine init_character_array_blanks(context, symbol_index, character_length, &
                                            array_size, error_msg)
+        ! Every element starts blank, which for a contiguous block is one fill
+        ! of the whole buffer rather than a store per element.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         integer, intent(in) :: character_length
         integer, intent(in) :: array_size
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=64) :: string_name
-        character(len=:), allocatable :: blanks
-        type(lr_operand_desc_t) :: blank_ptr
-        type(lr_operand_desc_t) :: index_value
-        type(lr_operand_desc_t) :: slot_addr
-        integer :: i
 
         call set_empty(error_msg)
-        allocate (character(len=character_length) :: blanks)
-        blanks = repeat(' ', character_length)
-        context%string_literal_count = context%string_literal_count + 1
-        string_name = ffc_unit_global_name( &
-            context, 'char.', context%string_literal_count)
-        call materialize_liric_string(context%session, trim(string_name), blanks, &
-                                      blank_ptr, error_msg)
-        if (len_trim(error_msg) > 0) return
-        do i = 0, array_size - 1
-            index_value = i32_immediate(context%session, int(i, c_int64_t))
-            if (.not. emit_ptr_array_element_addr(context%session, array_size, &
-                    context%symbols(symbol_index)%element_address, index_value, &
-                    slot_addr, error_msg)) return
-            if (.not. emit_ptr_store(context%session, blank_ptr, slot_addr, &
-                                     error_msg)) return
-        end do
+        if (array_size <= 0 .or. character_length <= 0) return
+        call fill_spaces(context, context%symbols(symbol_index)%element_address, &
+                         i32_immediate(context%session, &
+                             int(array_size, c_int64_t)* &
+                             int(character_length, c_int64_t)), error_msg)
     end subroutine init_character_array_blanks
+
+    subroutine character_array_element_address(context, symbol_index, &
+                                               linear_index, address, error_msg)
+        ! Address of element `linear_index` (0-based) in the contiguous block:
+        ! base + linear_index * character_length. This is the whole of the
+        ! layout contract, so every reader and writer of element storage goes
+        ! through here.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: index64, offset
+
+        if (.not. emit_liric_i32_to_i64(context%session, linear_index, index64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index64, &
+                i64_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, &
+                        c_int64_t)), offset, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                context%symbols(symbol_index)%element_address, offset, address, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine character_array_element_address
 
     subroutine lower_character_array_element_slot(arena, node, context, &
                                                   symbol_index, slot_addr, error_msg)
@@ -387,10 +411,9 @@
         call character_array_linear_index(arena, node, context, symbol_index, &
                                           linear_index, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_array_element_addr(context%session, &
-                context%symbols(symbol_index)%array_size, &
-                context%symbols(symbol_index)%element_address, linear_index, &
-                slot_addr, error_msg)) then
+        call character_array_element_address(context, symbol_index, linear_index, &
+                                             slot_addr, error_msg)
+        if (len_trim(error_msg) > 0) then
             error_msg = 'char_arr_slot_gep: '//error_msg
             return
         end if
@@ -490,8 +513,13 @@
         call materialize_liric_string(context%session, trim(string_name), &
                                       literal_text, string_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_store(context%session, string_ptr, slot_addr, &
-                                 error_msg)) then
+        ! The element owns character_length bytes inside the array's block and
+        ! has no terminator of its own, so the normalized text is copied in at
+        ! exactly that width.
+        if (.not. emit_memcpy(context%session, slot_addr, string_ptr, &
+                i64_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, &
+                        c_int64_t)), error_msg)) then
             error_msg = 'char_arr_assign_store: '//error_msg
             return
         end if
@@ -512,8 +540,13 @@
         call lower_character_array_element_slot(arena, node, context, &
                                                 symbol_index, slot_addr, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_load(context%session, slot_addr, string_ptr, &
-                                error_msg)) then
+        ! The element carries no terminator of its own, so print from a
+        ! terminated copy of exactly the declared length.
+        call materialize_character_view(context, slot_addr, &
+            i32_immediate(context%session, &
+                int(context%symbols(symbol_index)%character_length, c_int64_t)), &
+            string_ptr, error_msg)
+        if (len_trim(error_msg) > 0) then
             error_msg = 'char_arr_print_load: '//error_msg
             return
         end if
@@ -555,17 +588,69 @@
         end if
         do k = 0_c_int64_t, n - 1_c_int64_t
             index_value = i32_immediate(context%session, k)
-            if (.not. emit_ptr_array_element_addr(context%session, &
-                    context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, index_value, &
-                    slot_addr, error_msg)) return
-            if (.not. emit_ptr_load(context%session, slot_addr, string_ptr, &
-                                    error_msg)) return
+            call character_array_element_address(context, symbol_index, &
+                                                 index_value, slot_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call materialize_character_view(context, slot_addr, &
+                i32_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, &
+                        c_int64_t)), string_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_print_string_operand_value(context%session, &
                     context%str_print_format_id, string_ptr, error_msg)) return
         end do
-        call set_empty(error_msg)
     end subroutine emit_character_array_print_items
+
+    subroutine lower_character_array_whole_assignment(arena, node, symbol_index, &
+                                                      context, handled, error_msg)
+        ! c = d between two fixed character arrays. Both are contiguous blocks
+        ! of array_size * character_length bytes, so a conforming assignment is
+        ! a single copy of that many bytes. Declines (handled stays .false.)
+        ! for anything else, so the existing paths keep their behaviour.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_index
+        integer :: element_length
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%is_allocatable) return
+        if (context%symbols(symbol_index)%is_runtime_array) return
+        element_length = context%symbols(symbol_index)%character_length
+        if (element_length <= 0) return
+        if (.not. node_exists(arena, node%value_index)) return
+        if (.not. is_identifier(arena, node%value_index)) return
+
+        call get_identifier_name(arena, node%value_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol_compat(context, source_name)
+        if (source_index <= 0) return
+        if (.not. context%symbols(source_index)%is_array) return
+        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) return
+        if (context%symbols(source_index)%is_allocatable) return
+        if (context%symbols(source_index)%is_runtime_array) return
+        ! Differing element lengths would need per-element padding rather than
+        ! a block copy; leave that to the existing element paths.
+        if (context%symbols(source_index)%character_length /= element_length) return
+
+        call ensure_array_shapes_match(context, symbol_index, source_index, &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_memcpy(context%session, &
+                context%symbols(symbol_index)%element_address, &
+                context%symbols(source_index)%element_address, &
+                i64_immediate(context%session, &
+                    int(context%symbols(symbol_index)%array_size, c_int64_t)* &
+                    int(element_length, c_int64_t)), error_msg)) return
+        handled = .true.
+    end subroutine lower_character_array_whole_assignment
 
     subroutine declare_deferred_char_allocatable_array(node, context, error_msg)
         ! character(len=:), allocatable :: c(:) -- a deferred-length allocatable

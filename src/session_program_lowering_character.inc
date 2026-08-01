@@ -1760,8 +1760,8 @@
 
     subroutine char_array_element_operands(arena, node, context, data_ptr, &
                                            length, error_msg)
-        ! Load the materialised, blank-padded string pointer for a character
-        ! array element and return it with the array's declared element length.
+        ! Resolve a character array element to its data pointer and the array's
+        ! declared element length.
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -1790,11 +1790,12 @@
             end if
         end if
 
+        ! A fixed character array stores its elements contiguously, so the
+        ! element's address is its data pointer: the element is a borrowed view
+        ! of character_length bytes inside the array's own block.
         call lower_character_array_element_slot(arena, node, context, &
-                                                symbol_index, slot_addr, error_msg)
+                                                symbol_index, data_ptr, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_load(context%session, slot_addr, data_ptr, &
-                                error_msg)) return
         length = i32_immediate(context%session, &
             int(context%symbols(symbol_index)%character_length, c_int64_t))
         call set_empty(error_msg)
