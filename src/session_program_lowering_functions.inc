@@ -1551,6 +1551,12 @@
             call resolve_name_at_node(arena, i, name, binding, resolve_error)
             if (len_trim(resolve_error) > 0 .or. .not. binding%found) cycle
             if (binding%association /= ASSOCIATION_HOST) cycle
+            ! An entity declared by the internal procedure itself is local, not
+            ! host-associated, however the reference is labelled. Nested
+            ! ASSOCIATE constructs can report a local dummy as host-associated;
+            ! giving such a name host storage would shadow the genuine host
+            ! entity of the same spelling and reject its declaration (#584).
+            if (binding%scope_node_index == procedure_index) cycle
             if (binding_scope_is_module(arena, binding%scope_node_index)) cycle
             if (binding%binding_kind /= BINDING_DECLARATION .and. &
                 binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
