@@ -285,7 +285,8 @@
         integer, allocatable :: callee_params(:), callee_body(:)
         character(len=:), allocatable :: dummy_name
         logical :: found
-        logical :: dummy_alloc, dummy_ptr, dummy_definable
+        logical :: dummy_alloc, dummy_ptr, dummy_definable, dummy_ptr_intent_in
+        character(len=:), allocatable :: dummy_intent
         integer :: a, decl_index
 
         call set_empty(error_msg)
@@ -300,41 +301,45 @@
             dummy_alloc = .false.
             dummy_ptr = .false.
             dummy_definable = .false.
+            dummy_ptr_intent_in = .false.
+            dummy_intent = ''
             select type (decl => arena%entries(decl_index)%node)
             type is (declaration_node)
                 dummy_alloc = decl%is_allocatable
                 dummy_ptr = decl%is_pointer
                 if (decl%has_intent) then
                     if (allocated(decl%intent)) then
-                        dummy_definable = &
-                            trim(lowercase_text(decl%intent)) == 'out' .or. &
-                            trim(lowercase_text(decl%intent)) == 'inout'
+                        dummy_intent = trim(lowercase_text(decl%intent))
+                        dummy_definable = dummy_intent == 'out' .or. &
+                                          dummy_intent == 'inout'
                     end if
                 end if
             class default
                 cycle
             end select
+            if (dummy_ptr) dummy_ptr_intent_in = dummy_intent == 'in'
             call check_one_actual(arena, body_indices, arg_indices(a), &
-                dummy_name, dummy_alloc, dummy_ptr, dummy_definable, in_pure, &
-                error_msg)
+                dummy_name, dummy_alloc, dummy_ptr, dummy_definable, &
+                dummy_ptr_intent_in, in_pure, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine check_call_actual_attributes
 
     subroutine check_one_actual(arena, body_indices, actual_index, dummy_name, &
                                 dummy_alloc, dummy_ptr, dummy_definable, &
-                                in_pure, error_msg)
+                                dummy_ptr_intent_in, in_pure, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: body_indices(:)
         integer, intent(in) :: actual_index
         character(len=*), intent(in) :: dummy_name
         logical, intent(in) :: dummy_alloc, dummy_ptr, dummy_definable
+        logical, intent(in) :: dummy_ptr_intent_in
         logical, intent(in) :: in_pure
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         character(len=64) :: location
         integer :: decl_index
-        logical :: actual_alloc, actual_ptr, is_literal
+        logical :: actual_alloc, actual_ptr, actual_target, is_literal
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, actual_index)) return
@@ -369,10 +374,12 @@
         end if
         actual_alloc = .false.
         actual_ptr = .false.
+        actual_target = .false.
         select type (decl => arena%entries(decl_index)%node)
         type is (declaration_node)
             actual_alloc = decl%is_allocatable
             actual_ptr = decl%is_pointer
+            actual_target = decl%is_target
         class default
             return
         end select
@@ -384,6 +391,10 @@
             end if
         end if
         if (dummy_ptr) then
+            ! F2008 12.5.2.7: a POINTER dummy with INTENT(IN) also accepts a
+            ! non-pointer actual that has the TARGET attribute; the dummy is
+            ! then pointer-associated with that target.
+            if (dummy_ptr_intent_in .and. actual_target) return
             if (.not. actual_ptr) then
                 error_msg = 'actual argument for POINTER dummy '''// &
                     trim(dummy_name)//''' must be a pointer'//trim(location)
