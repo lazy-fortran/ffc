@@ -2100,7 +2100,6 @@ associate_82.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-e
 contiguous_17.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 do_concurrent_assoc_iter_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 fmt_t_10.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
-fmt_t_11.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 implied_do_alloc_comp_1.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 loc_3.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 namelist_103.f90 # owner=lazy-fortran/ffc#404; reason=fold typed component default initializers
@@ -2143,6 +2142,11 @@ pr66465.f90 # owner=lazy-fortran/ffc#372; reason=lower ASSOCIATED for procedure 
 pr78290.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 select_7.f90 # owner=lazy-fortran/ffc#447; reason=reject repeated logical CASE values
 use_26.f90 # owner=lazy-fortran/ffc#330; reason=map procedure and host bindings to storage
+alloc_comp_assign_9.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
+implicit_15.f90 # owner=lazy-fortran/fortfront#2892; reason=reject unresolved symbols under IMPLICIT NONE
+pr66575.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
+pr67496.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
+proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
 dup_save_1.f90 # owner=lazy-fortran/ffc#466; reason=preserve saved local storage across calls
 entry_17.f90 # owner=lazy-fortran/ffc#456; reason=own valid function ENTRY points and their declared results
 parent_result_ref_2.f90 # owner=lazy-fortran/ffc#330; reason=own function result bindings referenced by contained procedures
