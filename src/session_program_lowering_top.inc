@@ -356,6 +356,7 @@
 
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module' .or. &
+            is_submodule_unit(node_type) .or. &
             node_type == 'block_data_node' .or. node_type == 'block_data') then
             has_main = .false.
             return
@@ -594,6 +595,12 @@
             ! lower_program_return walks the body and emits targeted diagnostics
             ! for module-defined procedures, types, and constants.
             continue
+        else if (is_submodule_unit(get_node_type_at(arena, root_index))) then
+            ! A submodule compiled as its own unit contributes only its module
+            ! procedures, emitted under the parent module's mangling; the unit
+            ! itself has no main program, so it lowers to an empty main exactly
+            ! as a bare module unit does (#297).
+            continue
         else if (get_node_type_at(arena, root_index) == 'block_data_node' .or. &
                  get_node_type_at(arena, root_index) == 'block_data') then
             ! A standalone BLOCK DATA unit only initialises COMMON storage; with
@@ -774,6 +781,11 @@
             end if
             call lower_module_unit(arena, mod_name, mod_declaration_indices, &
                                    mod_procedure_indices, context, error_msg)
+        else if (is_submodule_unit(get_node_type_at(arena, root_index))) then
+            ! A submodule compiled as its own unit emits only its module
+            ! procedures, which lower_module_procedures already emitted under
+            ! the parent module's mangling; the unit itself has no body (#297).
+            call set_empty(error_msg)
         else if (get_node_type_at(arena, root_index) == 'block_data_node' .or. &
                  get_node_type_at(arena, root_index) == 'block_data') then
             ! A standalone BLOCK DATA unit emits no executable code; its COMMON

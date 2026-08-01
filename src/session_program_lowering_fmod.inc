@@ -591,7 +591,10 @@
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: node_index
-        type(module_node), intent(in) :: mod_node
+        ! Absent when the caller is checking a procedure against an imported
+        ! interface rather than exporting this module's own: there is then no
+        ! module node to read accessibility from (#297).
+        type(module_node), intent(in), optional :: mod_node
         character(len=:), allocatable, intent(out) :: kind_text
         integer, intent(out) :: nargs
         character(len=:), allocatable, intent(out) :: arg_tokens
@@ -609,7 +612,9 @@
         fn_node => get_node_as_function_def(arena, node_index)
         if (associated(fn_node)) then
             if (.not. allocated(fn_node%name)) return
-            if (module_symbol_is_private(arena, mod_node, fn_node%name)) return
+            if (present(mod_node)) then
+                if (module_symbol_is_private(arena, mod_node, fn_node%name)) return
+            end if
             if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
             if (.not. fmod_function_result_is_integer(arena, fn_node)) return
             if (.not. params_all_supported(arena, context, &
@@ -622,7 +627,9 @@
         sb_node => get_node_as_subroutine_def(arena, node_index)
         if (associated(sb_node)) then
             if (.not. allocated(sb_node%name)) return
-            if (module_symbol_is_private(arena, mod_node, sb_node%name)) return
+            if (present(mod_node)) then
+                if (module_symbol_is_private(arena, mod_node, sb_node%name)) return
+            end if
             if (procedure_has_nested_contains(arena, sb_node%body_indices)) return
             if (.not. params_all_supported(arena, context, &
                                     sb_node%param_indices, sb_node%body_indices, &

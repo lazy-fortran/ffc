@@ -3,6 +3,39 @@ program test_session_submodule_compiler
     implicit none
 
     logical :: all_passed
+    ! Parent, submodule, and caller for the three-file separate-compilation
+    ! fixtures (#297).
+    character(len=*), parameter :: parent_source = &
+        'module fmod297_parent'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    interface'//new_line('a')// &
+        '        module function twice(x) result(r)'//new_line('a')// &
+        '            integer, intent(in) :: x'//new_line('a')// &
+        '            integer :: r'//new_line('a')// &
+        '        end function twice'//new_line('a')// &
+        '    end interface'//new_line('a')// &
+        'end module fmod297_parent'
+    character(len=*), parameter :: submodule_source = &
+        'submodule (fmod297_parent) fmod297_impl'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '    module function twice(x) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: x'//new_line('a')// &
+        '        integer :: r'//new_line('a')// &
+        '        r = 2 * x'//new_line('a')// &
+        '    end function twice'//new_line('a')// &
+        'end submodule fmod297_impl'
+    character(len=*), parameter :: submodule_source_unrestated = &
+        'submodule (fmod297_parent) fmod297_impl'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '    module procedure twice'//new_line('a')// &
+        '        r = 2 * x'//new_line('a')// &
+        '    end procedure twice'//new_line('a')// &
+        'end submodule fmod297_impl'
+    character(len=*), parameter :: caller_source = &
+        'program main'//new_line('a')// &
+        '    use fmod297_parent, only: twice'//new_line('a')// &
+        '    stop twice(21)'//new_line('a')// &
+        'end program main'
 
     print *, '=== submodule compiler test ==='
 
@@ -14,6 +47,8 @@ program test_session_submodule_compiler
     if (.not. test_parent_module_not_found()) all_passed = .false.
     if (.not. test_caller_links_deferred_module_procedure()) all_passed = .false.
     if (.not. test_plain_interface_is_not_exported()) all_passed = .false.
+    if (.not. test_submodule_compiles_as_its_own_unit()) all_passed = .false.
+    if (.not. test_submodule_parent_diagnostics()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: single-file submodules lower against the parent module'
@@ -244,6 +279,131 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_plain_interface_is_not_exported
+
+    logical function test_submodule_compiles_as_its_own_unit() result(ok)
+        ! Parent, submodule, and caller compile as three independent ffc
+        ! invocations and link. The submodule unit never sees the parent's
+        ! source: it binds to the interface the parent's .fmod carries, and
+        ! emits its body under the parent's mangled symbol (#297).
+        character(len=:), allocatable :: dir
+        integer :: status
+        integer :: exit_stat, cmd_stat
+
+        ok = .false.
+        call make_scratch_dir('fmod297_threefile', dir)
+        if (.not. write_source(dir//'/par.f90', parent_source)) return
+        if (.not. write_source(dir//'/sub.f90', submodule_source)) return
+        if (.not. write_source(dir//'/main.f90', caller_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c par.f90 -o par.o >>log 2>&1 || exit 91; '// &
+            '"$exe" -c sub.f90 -o sub.o >>log 2>&1 || exit 92; '// &
+            '"$exe" main.f90 par.o sub.o -o main >>log 2>&1 || exit 93; '// &
+            "./main; exit $((100 + $?))'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        status = exit_stat
+        if (cmd_stat /= 0) status = 90
+        if (status /= 142) then
+            print *, 'FAIL: three-file submodule build status ', status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_submodule_compiles_as_its_own_unit
+
+    logical function test_submodule_parent_diagnostics() result(ok)
+        ! Every way a separately compiled submodule can fail to match the
+        ! parent interface it claims is diagnosed against the artefact, rather
+        ! than emitted under a symbol callers would then miscall.
+        character(len=:), allocatable :: dir
+
+        ok = .false.
+        call make_scratch_dir('fmod297_diag', dir)
+        if (.not. write_source(dir//'/par.f90', parent_source)) return
+        if (.not. compile_parent_object(dir)) then
+            print *, 'FAIL: parent object did not compile'
+            call show_log(dir)
+            return
+        end if
+        if (.not. expect_submodule_error(dir, &
+            'submodule (fmod297_absent_parent) s'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    module function twice(x) result(r)'//new_line('a')// &
+            '        integer, intent(in) :: x'//new_line('a')// &
+            '        integer :: r'//new_line('a')// &
+            '        r = 2 * x'//new_line('a')// &
+            '    end function twice'//new_line('a')// &
+            'end submodule s', 'parent module not found')) return
+        if (.not. expect_submodule_error(dir, &
+            'submodule (fmod297_parent) s'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    module function nosuch(x) result(r)'//new_line('a')// &
+            '        integer, intent(in) :: x'//new_line('a')// &
+            '        integer :: r'//new_line('a')// &
+            '        r = x'//new_line('a')// &
+            '    end function nosuch'//new_line('a')// &
+            'end submodule s', 'is not declared by module')) return
+        if (.not. expect_submodule_error(dir, &
+            'submodule (fmod297_parent) s'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    module function twice(x, y) result(r)'//new_line('a')// &
+            '        integer, intent(in) :: x'//new_line('a')// &
+            '        integer, intent(in) :: y'//new_line('a')// &
+            '        integer :: r'//new_line('a')// &
+            '        r = x + y'//new_line('a')// &
+            '    end function twice'//new_line('a')// &
+            'end submodule s', 'does not match the dummy argument count')) return
+        if (.not. expect_submodule_error(dir, submodule_source_unrestated, &
+            'must restate its interface')) return
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_submodule_parent_diagnostics
+
+    logical function compile_parent_object(dir) result(ok)
+        character(len=*), intent(in) :: dir
+        integer :: exit_stat, cmd_stat
+
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c par.f90 -o par.o >>log 2>&1'//"'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        ok = cmd_stat == 0 .and. exit_stat == 0
+    end function compile_parent_object
+
+    logical function expect_submodule_error(dir, source, fragment) result(ok)
+        ! Compiling this submodule alone must fail with a diagnostic naming the
+        ! given fragment.
+        character(len=*), intent(in) :: dir
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: fragment
+        integer :: exit_stat, cmd_stat, grep_stat
+
+        ok = .false.
+        if (.not. write_source(dir//'/bad.f90', source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c bad.f90 -o bad.o >bad.log 2>&1'//"'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat == 0) then
+            print *, 'FAIL: submodule was accepted, expected: ', fragment
+            return
+        end if
+        call execute_command_line('grep -q "'//fragment//'" '//dir//'/bad.log', &
+                                  exitstat=grep_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. grep_stat /= 0) then
+            print *, 'FAIL: diagnostic did not mention: ', fragment
+            call execute_command_line('cat '//dir//'/bad.log')
+            return
+        end if
+        ok = .true.
+    end function expect_submodule_error
 
     integer function run_separate_compilation(dir, mod_source, prog_source) &
             result(status)

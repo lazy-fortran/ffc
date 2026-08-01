@@ -38,6 +38,11 @@
             else
                 allocate(body_indices(0))
             end if
+        type is (submodule_node)
+            ! A submodule compiled as its own unit contributes no main-body
+            ! statement: its procedures are emitted separately against the
+            ! parent module's mangling (#297).
+            allocate(body_indices(0))
         class default
             call get_program_body_info(arena, root_index, prog_name, &
                                        body_indices, ff_error)
@@ -160,6 +165,13 @@
             ! sibling-call inside a module procedure resolves (e.g. a recursive
             ! module function referencing itself).
             call register_module_procedures(arena, root_index, context, error_msg)
+            return
+        end if
+        if (is_submodule_unit(node_type)) then
+            ! A submodule compiled as its own unit: its procedures register
+            ! against the parent module named in its header (#297).
+            call register_one_submodule_procedures(arena, root_index, context, &
+                                                   error_msg)
             return
         end if
         if (node_type == 'block_data_node' .or. node_type == 'block_data') return
@@ -2191,6 +2203,11 @@
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
         if (node_type == 'module_node' .or. node_type == 'module') return
+        if (is_submodule_unit(node_type)) then
+            call lower_one_submodule_procedures(arena, root_index, context, &
+                                                error_msg)
+            return
+        end if
         if (node_type == 'block_data_node' .or. node_type == 'block_data') return
         call get_unit_body_indices(arena, root_index, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
