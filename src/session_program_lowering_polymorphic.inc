@@ -253,7 +253,282 @@
         end do
         call create_pointer_table_global(context%session, '__ffc_vtable_table', &
                                          table, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_type_size_table(context, error_msg)
     end subroutine emit_type_vtables
+
+    subroutine emit_type_size_table(context, error_msg)
+        ! Link-unit table of exact storage sizes, indexed the same way as
+        ! __ffc_vtable_table: entry i is the byte size of the type whose id is
+        ! i, entry 0 is the reserved "no type" zero (#421). Allocating a class
+        ! value whose dynamic type is only known at run time reads its concrete
+        ! size from here, so the storage is the dynamic type's layout rather
+        ! than the declared type's prefix.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t), allocatable :: sizes(:)
+        integer :: t
+
+        call set_empty(error_msg)
+        if (context%derived_type_count <= 0) return
+        allocate (sizes(context%derived_type_count + 1))
+        sizes = 0_c_int64_t
+        do t = 1, context%derived_type_count
+            sizes(t + 1) = int(total_component_slots(context, t), c_int64_t) * &
+                4_c_int64_t
+        end do
+        call create_i64_table_global(context%session, '__ffc_type_size_table', &
+                                     sizes, error_msg)
+    end subroutine emit_type_size_table
+
+    ! Scalar class allocatables (#421). A `class(t), allocatable` scalar owns a
+    ! 32-byte class descriptor in its frame, the same canonical descriptor a
+    ! class dummy receives. Unallocated is the fully null descriptor. ALLOCATE
+    ! chooses the concrete dynamic type (from SOURCE=, from the type-spec, or
+    ! the declared type), allocates exactly that type's layout, records the
+    ! identity and OWNED ownership in the descriptor, and DEALLOCATE finalizes,
+    ! frees once, and resets the descriptor to null. Because the descriptor is
+    ! the same one #417 defined, SELECT TYPE (#419) and type-bound dispatch
+    ! (#420) work through it with no path of their own.
+
+    subroutine bind_class_allocatable_descriptor(context, symbol_index, &
+                                                 declared_index, error_msg)
+        ! Reserve and null the descriptor of a class allocatable at its
+        ! declaration, so an unallocated entity reads as the null descriptor.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: declared_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, field_addr
+
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, &
+                    int(POLYMORPHIC_DESCRIPTOR_SIZE, c_int64_t)), descriptor, &
+                error_msg)) return
+        if (.not. emit_ptr_store(context%session, &
+                null_ptr_operand(context), descriptor, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, int(declared_index, c_int64_t)), &
+                field_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, &
+                    int(POLYMORPHIC_TYPE_ID_NONE, c_int64_t)), field_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, &
+                    int(POLYMORPHIC_OWNERSHIP_NONE, c_int64_t)), field_addr, &
+                error_msg)) return
+
+        context%symbols(symbol_index)%class_descriptor_address = descriptor
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        context%symbols(symbol_index)%dynamic_type_address = field_addr
+        context%symbols(symbol_index)%has_dynamic_type_address = .true.
+        context%symbols(symbol_index)%is_polymorphic = .true.
+        call set_empty(error_msg)
+    end subroutine bind_class_allocatable_descriptor
+
+    subroutine record_class_allocation(context, symbol_index, data_ptr, &
+                                       dynamic_id, error_msg)
+        ! Publish an allocation into the entity's class descriptor: the data
+        ! address, the dynamic type just allocated, and OWNED ownership, so the
+        ! value is released exactly once by whoever holds the descriptor.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: data_ptr
+        type(lr_operand_desc_t), intent(in) :: dynamic_id
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: field_addr
+
+        call set_empty(error_msg)
+        if (.not. context%symbols(symbol_index)%has_dynamic_type_address) return
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+                context%symbols(symbol_index)%class_descriptor_address, &
+                error_msg)) return
+        if (.not. emit_i64_store(context%session, dynamic_id, &
+                context%symbols(symbol_index)%dynamic_type_address, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+                context%symbols(symbol_index)%class_descriptor_address, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, &
+                    int(POLYMORPHIC_OWNERSHIP_OWNED, c_int64_t)), field_addr, &
+                error_msg)) return
+    end subroutine record_class_allocation
+
+    subroutine release_class_allocation(context, symbol_index, error_msg)
+        ! Reset the descriptor after the storage is freed, so the entity reads
+        ! as unallocated and the released address can never be handed out or
+        ! freed a second time.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: field_addr
+
+        call set_empty(error_msg)
+        if (.not. context%symbols(symbol_index)%has_dynamic_type_address) return
+        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                context%symbols(symbol_index)%class_descriptor_address, &
+                error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, &
+                    int(POLYMORPHIC_TYPE_ID_NONE, c_int64_t)), &
+                context%symbols(symbol_index)%dynamic_type_address, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, &
+                context%symbols(symbol_index)%class_descriptor_address, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, &
+                    int(POLYMORPHIC_OWNERSHIP_NONE, c_int64_t)), field_addr, &
+                error_msg)) return
+    end subroutine release_class_allocation
+
+    subroutine dynamic_type_size_bytes(context, symbol_index, dynamic_id, &
+                                       static_type_index, size_bytes, error_msg)
+        ! Exact storage size of the type being allocated. A statically known
+        ! dynamic type folds to an immediate; a source whose dynamic type is
+        ! only known at run time reads its size from __ffc_type_size_table.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: dynamic_id
+        integer, intent(in) :: static_type_index
+        type(lr_operand_desc_t), intent(out) :: size_bytes
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: byte_offset, table_base, entry_addr
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: table_symbol
+        integer :: slots
+
+        call set_empty(error_msg)
+        if (symbol_index <= 0) then
+            slots = total_component_slots(context, static_type_index)
+            if (slots <= 0) slots = 1
+            size_bytes = i64_immediate(context%session, &
+                int(slots, c_int64_t) * 4_c_int64_t)
+            return
+        end if
+
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, dynamic_id, &
+                i64_immediate(context%session, 8_c_int64_t), byte_offset, &
+                error_msg)) return
+        call to_c_chars('__ffc_type_size_table', c_name)
+        table_symbol = lr_session_intern(context%session%handle, c_name)
+        if (table_symbol < 0_c_int32_t) then
+            error_msg = 'could not intern the type size table symbol'
+            return
+        end if
+        table_base%kind = LR_OP_KIND_GLOBAL
+        table_base%payload = int(table_symbol, c_int64_t)
+        table_base%typ = lr_type_ptr_s(context%session%handle)
+        table_base%global_offset = 0_c_int64_t
+        if (.not. emit_ptr_offset_dyn(context%session, table_base, byte_offset, &
+                entry_addr, error_msg)) return
+        if (.not. emit_i64_load(context%session, entry_addr, size_bytes, &
+                error_msg)) return
+    end subroutine dynamic_type_size_bytes
+
+    subroutine lower_derived_allocate_source(arena, node, target_sym, context, &
+                                             error_msg)
+        ! allocate(x, source=y) where x is a scalar allocatable of derived or
+        ! class type. The dynamic type is y's: for a monomorphic y it is y's
+        ! declared type, for a polymorphic y it is the identity y carries. The
+        ! allocation is that type's exact layout and the value is copied whole,
+        ! so an extension source keeps the components the declared type does
+        ! not name.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        integer, intent(in) :: target_sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_sym, declared_index, source_type_index, dyn_symbol
+        type(lr_operand_desc_t) :: dynamic_id, size_bytes, data_ptr
+
+        call set_empty(error_msg)
+        if (node%source_expr_index <= 0) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'direct LIRIC session supports SOURCE= but not '// &
+                'MOLD= for a scalar derived or class allocatable', error_msg)
+            return
+        end if
+        if (.not. is_identifier(arena, node%source_expr_index)) then
+            call unsupported_feature_error('allocate statement', node%line, &
+                node%column, 'SOURCE= for a scalar derived or class '// &
+                'allocatable must name a variable', error_msg)
+            return
+        end if
+        call get_identifier_name(arena, node%source_expr_index, source_name, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_sym = find_symbol_compat(context, source_name)
+        if (source_sym <= 0) then
+            error_msg = 'allocate SOURCE= references an undeclared variable: '// &
+                trim(source_name)
+            return
+        end if
+        if (.not. context%symbols(source_sym)%is_derived) then
+            error_msg = 'allocate SOURCE= for "'// &
+                trim(context%symbols(target_sym)%name)// &
+                '" must name a derived value, not '//trim(source_name)
+            return
+        end if
+
+        declared_index = context%symbols(target_sym)%derived_type_index
+        source_type_index = context%symbols(source_sym)%derived_type_index
+        ! F2018 C946: SOURCE= must be type compatible with the allocatable.
+        if (.not. derived_type_extends(context, source_type_index, &
+                                       declared_index)) then
+            error_msg = 'allocate SOURCE= type "'// &
+                trim(context%derived_types(source_type_index)%name)// &
+                '" is not type compatible with "'// &
+                trim(context%symbols(target_sym)%name)//'" of declared type "'// &
+                trim(context%derived_types(declared_index)%name)//'"'
+            return
+        end if
+
+        call class_actual_dynamic_type(context, source_sym, dynamic_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        dyn_symbol = 0
+        if (context%symbols(source_sym)%is_polymorphic .and. &
+            context%symbols(source_sym)%has_dynamic_type_address) dyn_symbol = &
+            source_sym
+        call dynamic_type_size_bytes(context, dyn_symbol, dynamic_id, &
+                                     source_type_index, size_bytes, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_malloc(context%session, size_bytes, data_ptr, &
+                              error_msg)) return
+        if (.not. emit_memcpy(context%session, data_ptr, &
+                context%symbols(source_sym)%element_address, size_bytes, &
+                error_msg)) return
+
+        context%symbols(target_sym)%element_address = data_ptr
+        context%symbols(target_sym)%array_size = &
+            max(total_component_slots(context, source_type_index), 1)
+        context%symbols(target_sym)%has_address = .true.
+        call record_class_allocation(context, target_sym, data_ptr, dynamic_id, &
+                                     error_msg)
+    end subroutine lower_derived_allocate_source
 
     integer function type_binding_slot(context, type_index, method_name) &
             result(slot)

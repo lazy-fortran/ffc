@@ -105,26 +105,37 @@
         integer, intent(in) :: derived_type_index
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        logical :: is_class
+
+        ! class(t), allocatable is polymorphic: it gets the canonical class
+        ! descriptor so ALLOCATE can record a dynamic type that differs from
+        ! the declared type (#421). type(t), allocatable keeps the plain
+        ! heap-pointer form.
+        is_class = .false.
+        if (allocated(node%type_name)) &
+            is_class = is_class_derived_type_spec(node%type_name)
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
                 call declare_one_scalar_allocatable_derived(context, &
-                    node%var_names(i), derived_type_index, error_msg)
+                    node%var_names(i), derived_type_index, is_class, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(node%var_name)) then
             call declare_one_scalar_allocatable_derived(context, node%var_name, &
-                derived_type_index, error_msg)
+                derived_type_index, is_class, error_msg)
         else
             error_msg = 'allocatable derived declaration did not expose a name'
         end if
     end subroutine declare_scalar_allocatable_derived
 
     subroutine declare_one_scalar_allocatable_derived(context, name, &
-                                                      derived_type_index, error_msg)
+                                                      derived_type_index, &
+                                                      is_class, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: derived_type_index
+        logical, intent(in) :: is_class
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
@@ -169,9 +180,13 @@
         context%symbols(index)%has_address = .false.
         context%symbol_count = index
         call set_empty(error_msg)
+        if (.not. is_class) return
+        call bind_class_allocatable_descriptor(context, index, &
+                                               derived_type_index, error_msg)
     end subroutine declare_one_scalar_allocatable_derived
 
-    subroutine lower_allocate_scalar_derived(symbol_index, context, error_msg)
+    subroutine lower_allocate_scalar_derived(symbol_index, context, error_msg, &
+                                             dynamic_type_index)
         ! allocate(x) for a scalar allocatable derived variable: malloc one
         ! instance (total_component_slots i32 slots), adopt the heap pointer as
         ! element_address, and run the type's default-init so component defaults
@@ -180,10 +195,17 @@
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: dynamic_type_index
         type(lr_operand_desc_t) :: data_ptr
         integer :: type_index, slots
 
+        ! Without a type-spec the dynamic type of a class allocatable is its
+        ! declared type; allocate(ext_t :: p) names an extension instead and
+        ! allocates that concrete layout (#421).
         type_index = context%symbols(symbol_index)%derived_type_index
+        if (present(dynamic_type_index)) then
+            if (dynamic_type_index > 0) type_index = dynamic_type_index
+        end if
         slots = total_component_slots(context, type_index)
         if (slots <= 0) slots = 1
         if (.not. emit_malloc(context%session, &
@@ -194,6 +216,9 @@
         context%symbols(symbol_index)%has_address = .true.
         call init_derived_component_defaults(context, symbol_index, type_index, &
                                              error_msg)
+        if (len_trim(error_msg) > 0) return
+        call record_class_allocation(context, symbol_index, data_ptr, &
+            i64_immediate(context%session, int(type_index, c_int64_t)), error_msg)
     end subroutine lower_allocate_scalar_derived
 
     subroutine lower_deallocate_scalar(symbol_index, context, error_msg)
@@ -215,7 +240,9 @@
             if (.not. emit_free(context%session, &
                     context%symbols(symbol_index)%element_address, error_msg)) return
             context%symbols(symbol_index)%has_address = .false.
-            call set_empty(error_msg)
+            ! The released address must not stay reachable through the class
+            ! descriptor, so ownership is given up exactly once (#421).
+            call release_class_allocation(context, symbol_index, error_msg)
             return
         end if
         if (.not. emit_free(context%session, &
@@ -239,6 +266,14 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
 
+        ! A derived or class allocatable takes the whole-value SOURCE= path:
+        ! its dynamic type, its exact storage size, and the copy all come from
+        ! the source value rather than from the target's element kind (#421).
+        if (context%symbols(target_sym)%is_derived) then
+            call lower_derived_allocate_source(arena, node, target_sym, context, &
+                                               error_msg)
+            return
+        end if
         call lower_allocate_scalar(target_sym, context, error_msg)
         if (len_trim(error_msg) > 0) return
         if (node%source_expr_index <= 0) then
