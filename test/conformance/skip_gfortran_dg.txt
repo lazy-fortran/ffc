@@ -2299,3 +2299,4 @@ warn_undefined_vars_4.f90 # scope=compiler-flags; reason=requires unmodeled gfor
 warn_unused_but_set_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_but_set_error_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_intent_out_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+coarray_data_2.f90 # scope=coarray; reason=excluded coarray or image-control semantics

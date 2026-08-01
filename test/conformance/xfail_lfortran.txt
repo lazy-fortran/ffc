@@ -1081,7 +1081,6 @@ equivalence_22.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COM
 equivalence_23.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 equivalence_24.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 equivalence_25.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
-equivalence_28.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 equivalence_29.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
 equivalence_30.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 equivalence_31.f90 # owner=lazy-fortran/ffc#451; reason=lower scalar formatted input
@@ -2305,7 +2304,6 @@ namelist_29.f90 # owner=lazy-fortran/ffc#436; reason=read scalar NAMELIST groups
 namelist_30.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 namelist_31.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 nbody.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-nested_03.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_05.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_06.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 nested_07.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
@@ -3356,3 +3354,4 @@ write_substr_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-leng
 proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar procedure-pointer lowering
 array_section_09.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
+gpu_metal_45.f90 # scope=GPU; reason=excluded GPU or device-backend case

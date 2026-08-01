@@ -530,7 +530,6 @@ deferred_character_16.f90 # owner=lazy-fortran/ffc#338; reason=migrate pointer a
 deferred_character_17.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 deferred_character_19.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 deferred_character_2.f90 # owner=lazy-fortran/ffc#434; reason=read A and L fixed-width fields
-deferred_character_20.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 deferred_character_22.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 deferred_character_23.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 deferred_character_24.f90 # owner=lazy-fortran/ffc#349; reason=migrate deferred scalar character storage
@@ -592,7 +591,6 @@ dependency_50.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length
 dependency_51.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 dependency_52.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 dependency_53.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
-dependency_55.f90 # owner=lazy-fortran/ffc#402; reason=lower allocatable character components
 dependency_56.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 dependency_57.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 dependency_58.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
@@ -1645,7 +1643,6 @@ proc_ptr_47.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE g
 proc_ptr_48.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 proc_ptr_49.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_ptr_5.f90 # owner=lazy-fortran/ffc#461; reason=complete scalar procedure-pointer state
-proc_ptr_50.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 proc_ptr_51.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_ptr_52.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 proc_ptr_53.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -2146,3 +2143,7 @@ pr66465.f90 # owner=lazy-fortran/ffc#372; reason=lower ASSOCIATED for procedure 
 pr78290.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 select_7.f90 # owner=lazy-fortran/ffc#447; reason=reject repeated logical CASE values
 use_26.f90 # owner=lazy-fortran/ffc#330; reason=map procedure and host bindings to storage
+dup_save_1.f90 # owner=lazy-fortran/ffc#466; reason=preserve saved local storage across calls
+entry_17.f90 # owner=lazy-fortran/ffc#456; reason=own valid function ENTRY points and their declared results
+parent_result_ref_2.f90 # owner=lazy-fortran/ffc#330; reason=own function result bindings referenced by contained procedures
+whole_file_24.f90 # owner=lazy-fortran/ffc#365; reason=own allocatable derived components and function-result assignment
