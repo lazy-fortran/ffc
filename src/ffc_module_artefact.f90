@@ -24,7 +24,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 2
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 3
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -32,13 +32,39 @@ module ffc_module_artefact
         character(len=:), allocatable :: value
     end type fmod_parameter_t
 
+    ! One component of an exported derived type, carrying the layout the
+    ! defining unit compiled rather than a description a reader would have to
+    ! re-derive: the canonical scalar-kind token, the nested type's name for a
+    ! derived component, the declared character length, the fixed array shape,
+    ! and the component's own slot span and starting slot. slot_offset is
+    ! redundant with the preceding slot_counts by construction, which is what
+    ! makes it checkable: a reader rejects an artefact whose offsets do not
+    ! follow from its own slot counts (#414).
     type :: fmod_component_t
         character(len=:), allocatable :: name
         character(len=:), allocatable :: kind
+        ! Name of the nested derived type of a 'derived' component; empty for
+        ! every other kind.
+        character(len=:), allocatable :: type_name
+        ! Elements the component declares (1 for a scalar), the i32 slots one
+        ! element occupies, and the total and starting slots of the component.
+        integer :: elem_count = 1
+        integer :: slot_width = 1
+        integer :: slot_count = 1
+        integer :: slot_offset = 0
+        ! Declared length of a character component; 0 for every other kind.
+        integer :: char_length = 0
+        ! First-dimension extent of a rank-2 fixed-size component; 0 otherwise.
+        integer :: dim1 = 0
+        logical :: is_allocatable = .false.
+        logical :: is_pointer = .false.
+        logical :: is_alloc_array = .false.
     end type fmod_component_t
 
     type :: fmod_derived_type_t
         character(len=:), allocatable :: name
+        ! Name of the type this one extends; empty when it extends nothing.
+        character(len=:), allocatable :: parent_name
         type(fmod_component_t), allocatable :: components(:)
     end type fmod_derived_type_t
 
@@ -131,13 +157,13 @@ contains
                 write (unit, '(A)') '[[derived_type]]'
                 write (unit, '(A)') 'name = "'// &
                     field(info%derived_types(i)%name)//'"'
+                write (unit, '(A)') 'parent_name = "'// &
+                    field(info%derived_types(i)%parent_name)//'"'
                 write (unit, '(A)') 'components = ['
                 if (allocated(info%derived_types(i)%components)) then
                     do j = 1, size(info%derived_types(i)%components)
-                        write (unit, '(A)') '    { name = "'// &
-                            field(info%derived_types(i)%components(j)%name)// &
-                            '", kind = "'// &
-                            field(info%derived_types(i)%components(j)%kind)//'" },'
+                        write (unit, '(A)') component_line( &
+                            info%derived_types(i)%components(j))
                     end do
                 end if
                 write (unit, '(A)') ']'
@@ -218,7 +244,6 @@ contains
         type(fmod_generic_t), allocatable :: gens(:)
         integer :: nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
         integer :: schema
-        character(len=:), allocatable :: cname, ckind
 
         allocate (character(len=0) :: error_msg)
         info%name = ''
@@ -305,11 +330,9 @@ contains
 
             if (index(line, '{') == 1) then
                 ! A derived-type component row.
-                call parse_component_line(line, cname, ckind)
                 ncomp = ncomp + 1
                 call grow_comps(comps, ncomp)
-                comps(ncomp)%name = cname
-                comps(ncomp)%kind = ckind
+                call parse_component_line(line, comps(ncomp))
                 cycle
             end if
 
@@ -328,6 +351,8 @@ contains
                 if (key == 'value') params(nparam)%value = unquote(val)
             case ('derived_type')
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
+                if (key == 'parent_name') &
+                    dtypes(ndtype)%parent_name = unquote(val)
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
@@ -414,19 +439,82 @@ contains
         ncomp = 0
     end subroutine flush_component
 
-    subroutine parse_component_line(line, name, kind)
+    function component_line(comp) result(line)
+        ! One component row of a [[derived_type]] table.
+        type(fmod_component_t), intent(in) :: comp
+        character(len=:), allocatable :: line
+
+        line = '    { name = "'//field(comp%name)//'", kind = "'// &
+            field(comp%kind)//'", type_name = "'//field(comp%type_name)// &
+            '", elem_count = '//int_text(comp%elem_count)// &
+            ', slot_width = '//int_text(comp%slot_width)// &
+            ', slot_count = '//int_text(comp%slot_count)// &
+            ', slot_offset = '//int_text(comp%slot_offset)// &
+            ', char_length = '//int_text(comp%char_length)// &
+            ', dim1 = '//int_text(comp%dim1)// &
+            ', allocatable = '//bool_text(comp%is_allocatable)// &
+            ', pointer = '//bool_text(comp%is_pointer)// &
+            ', alloc_array = '//bool_text(comp%is_alloc_array)//' },'
+    end function component_line
+
+    subroutine parse_component_line(line, comp)
+        ! Parse one component row back into its record.
         character(len=*), intent(in) :: line
-        character(len=:), allocatable, intent(out) :: name
-        character(len=:), allocatable, intent(out) :: kind
+        type(fmod_component_t), intent(out) :: comp
+
+        comp%name = quoted_field(line, 'name')
+        comp%kind = quoted_field(line, 'kind')
+        comp%type_name = quoted_field(line, 'type_name')
+        comp%elem_count = integer_field(line, 'elem_count', 1)
+        comp%slot_width = integer_field(line, 'slot_width', 1)
+        comp%slot_count = integer_field(line, 'slot_count', 1)
+        comp%slot_offset = integer_field(line, 'slot_offset', 0)
+        comp%char_length = integer_field(line, 'char_length', 0)
+        comp%dim1 = integer_field(line, 'dim1', 0)
+        comp%is_allocatable = integer_field(line, 'allocatable', 0) /= 0
+        comp%is_pointer = integer_field(line, 'pointer', 0) /= 0
+        comp%is_alloc_array = integer_field(line, 'alloc_array', 0) /= 0
+    end subroutine parse_component_line
+
+    function quoted_field(line, key) result(out)
+        ! The quoted value of `key = "..."` in a component row, or empty.
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: key
+        character(len=:), allocatable :: out
         integer :: p
 
-        name = ''
-        kind = ''
-        p = index(line, 'name = "')
-        if (p > 0) name = take_quoted(line(p + len('name = "'):))
-        p = index(line, 'kind = "')
-        if (p > 0) kind = take_quoted(line(p + len('kind = "'):))
-    end subroutine parse_component_line
+        out = ''
+        p = index(line, key//' = "')
+        if (p <= 0) return
+        out = take_quoted(line(p + len(key) + 4:))
+    end function quoted_field
+
+    integer function integer_field(line, key, default_value) result(value)
+        ! The integer value of `key = N` in a component row, or default_value
+        ! when the key is absent or unreadable.
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: key
+        integer, intent(in) :: default_value
+        integer :: p, io_stat
+
+        value = default_value
+        p = index(line, key//' = ')
+        if (p <= 0) return
+        read (line(p + len(key) + 3:), *, iostat=io_stat) value
+        if (io_stat /= 0) value = default_value
+    end function integer_field
+
+    function bool_text(flag) result(text)
+        logical, intent(in) :: flag
+        character(len=:), allocatable :: text
+
+        if (flag) then
+            text = '1'
+        else
+            text = '0'
+        end if
+    end function bool_text
+
 
     function take_quoted(text) result(out)
         character(len=*), intent(in) :: text
