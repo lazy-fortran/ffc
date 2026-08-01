@@ -130,7 +130,6 @@ array_op_08.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL thro
 array_op_09.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 array_op_12.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
 array_op_13.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-array_reshape_pad_01.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 arrays_01_complex.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_01_logical.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_01_multi_dim.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
@@ -3319,6 +3318,7 @@ where_17.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expre
 while_02.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 while_03.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 while_05.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
+while_01.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 write_01.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 write_02.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 write_03.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
