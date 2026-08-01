@@ -60,6 +60,7 @@ contains
         character(len=:), allocatable :: resolved
         character(len=:), allocatable :: nested
         integer :: pos, nl, line_no, i
+        logical :: terminated
 
         call read_whole_file(path, text)
         if (.not. allocated(text)) return
@@ -84,14 +85,24 @@ contains
             if (nl == 0) then
                 line = text(pos:)
                 pos = len(text) + 1
+                terminated = .false.
             else
                 line = text(pos:pos + nl - 2)
                 pos = pos + nl
+                terminated = .true.
             end if
             line_no = line_no + 1
 
             if (.not. include_name(line, name)) then
-                source = source//line//new_line('a')
+                ! A final fragment with no newline of its own must not gain
+                ! one: a wide-encoded file (UTF-16/UTF-32 BOM) ends in the
+                ! zero bytes that pad its last line terminator, and adding a
+                ! byte there breaks the byte count its decoder requires.
+                if (terminated) then
+                    source = source//line//new_line('a')
+                else
+                    source = source//line
+                end if
                 cycle
             end if
 
