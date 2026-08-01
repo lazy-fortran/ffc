@@ -1815,8 +1815,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
     ! form is therefore the earliest - and here the only - layer with enough
     ! information:
     !
-    !   * a BIND(C) derived type must have at least one component
-    !     (gfortran: "with BIND(C) attribute ... has no components");
+    !   * a component-less BIND(C) derived type is accepted: gfortran only
+    !     warns that it may be inaccessible by the C companion processor
+    !     (lazy-fortran/ffc#581);
     !   * an INTENT(OUT) dummy argument of a type with default initialization
     !     may not be an assumed-size array, because the default initializer
     !     would have to be applied to an unknown number of elements
@@ -1841,24 +1842,21 @@ subroutine collect_component_declaration(component_index, parent_line, &
     end subroutine check_derived_type_definition_forms
 
     subroutine scan_derived_type_bodies(source, init_types, error_msg)
-        !! Walk every derived-type definition in the source. Reports the empty
-        !! BIND(C) type and the mangled TYPEIS guard, and returns the
+        !! Walk every derived-type definition in the source. Reports the
+        !! mangled TYPEIS guard, and returns the
         !! '|'-delimited set of type names that have a default-initialized
         !! component.
         character(len=*), intent(in) :: source
         character(len=:), allocatable, intent(out) :: init_types
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: line, code, packed, name, type_name
-        logical :: in_body, is_bind_c, has_component, is_header
-        integer :: pos, line_no, header_line
+        logical :: in_body, is_header
+        integer :: pos, line_no
         character(len=64) :: location
 
         call set_empty(error_msg)
         init_types = '|'
         in_body = .false.
-        is_bind_c = .false.
-        has_component = .false.
-        header_line = 0
         type_name = ''
         pos = 1
         line_no = 0
@@ -1871,19 +1869,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
             if (in_body) then
                 if (len(packed) >= 7) then
                     if (packed(1:7) == 'endtype') then
-                        if (is_bind_c .and. .not. has_component) then
-                            write (location, '(" at line ",I0)') header_line
-                            error_msg = 'derived type '''//trim(type_name)// &
-                                ''' with BIND(C) attribute has no components'// &
-                                trim(location)
-                            return
-                        end if
                         in_body = .false.
                         cycle
                     end if
                 end if
                 if (is_type_body_keyword(packed)) cycle
-                has_component = .true.
                 if (has_default_initializer(code)) then
                     if (index(init_types, '|'//trim(type_name)//'|') == 0) then
                         init_types = init_types//trim(type_name)//'|'
@@ -1896,11 +1886,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 error_msg = 'mangled derived type definition'//trim(location)
                 return
             end if
-            call derived_type_header_info(code, name, is_bind_c, is_header)
+            call derived_type_header_info(code, name, is_header)
             if (.not. is_header) cycle
             in_body = .true.
-            has_component = .false.
-            header_line = line_no
             type_name = name
         end do
     end subroutine scan_derived_type_bodies
@@ -1939,24 +1927,22 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end do
     end subroutine check_assumed_size_dt_dummies
 
-    subroutine derived_type_header_info(code, name, is_bind_c, is_header)
+    subroutine derived_type_header_info(code, name, is_header)
         !! Decide whether a lowered statement opens a derived-type definition,
-        !! and if so return its name and whether it carries BIND(C).
+        !! and if so return its name.
         character(len=*), intent(in) :: code
         character(len=:), allocatable, intent(out) :: name
-        logical, intent(out) :: is_bind_c, is_header
+        logical, intent(out) :: is_header
         character(len=:), allocatable :: rest
         integer :: dc
 
         call set_empty(name)
-        is_bind_c = .false.
         is_header = .false.
         if (len(code) < 6) return
         if (code(1:4) /= 'type') return
         if (code(5:5) /= ' ' .and. code(5:5) /= ',' .and. code(5:5) /= ':') return
         rest = adjustl(code(5:))
         if (len_trim(rest) == 0) return
-        is_bind_c = index(remove_blanks(rest), 'bind(c)') > 0
         dc = index(rest, '::')
         if (dc > 0) then
             name = first_word_of(adjustl(rest(dc + 2:)))

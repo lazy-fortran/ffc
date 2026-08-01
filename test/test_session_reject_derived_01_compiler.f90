@@ -7,7 +7,7 @@ program test_session_reject_derived_01_compiler
     print *, '=== derived-type definition constraint rejection test ==='
 
     all_passed = .true.
-    if (.not. test_empty_bind_c_type_rejected()) all_passed = .false.
+    if (.not. test_empty_bind_c_type_accepted()) all_passed = .false.
     if (.not. test_bind_c_type_with_component_accepted()) all_passed = .false.
     if (.not. test_assumed_size_default_init_rejected()) all_passed = .false.
     if (.not. test_explicit_shape_default_init_accepted()) all_passed = .false.
@@ -25,16 +25,19 @@ program test_session_reject_derived_01_compiler
 
 contains
 
-    logical function test_empty_bind_c_type_rejected()
+    logical function test_empty_bind_c_type_accepted()
+        !! A component-less BIND(C) type is legal Fortran; gfortran only warns
+        !! that it may be inaccessible by the C companion (ffc#581).
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type, bind(C) :: t'//new_line('a')// &
             '  end type t'//new_line('a')// &
+            '  stop 3'//new_line('a')// &
             'end program main'
 
-        test_empty_bind_c_type_rejected = expect_error_contains( &
-            source, 'has no components', '/tmp/ffc_reject_derived_01_bindc')
-    end function test_empty_bind_c_type_rejected
+        test_empty_bind_c_type_accepted = expect_exit_status( &
+            source, 3, '/tmp/ffc_reject_derived_01_bindc')
+    end function test_empty_bind_c_type_accepted
 
     logical function test_bind_c_type_with_component_accepted()
         character(len=*), parameter :: source = &
