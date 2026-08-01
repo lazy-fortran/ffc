@@ -39,7 +39,6 @@ allocate_19.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed r
 allocate_20.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 allocate_21.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 allocate_22.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
-allocate_23.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 allocate_24.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 allocate_26.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 allocate_27.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
@@ -2208,7 +2207,6 @@ modules_25.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length ch
 modules_25_module1.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 modules_25_module.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 modules_26.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
-modules_27_module1.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 modules_27_module2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 modules_28.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 modules_28_module1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -2534,7 +2532,6 @@ present_03.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer as
 present_04.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 present_05.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 present_06.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
-present_07.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 present_08.f90 # owner=lazy-fortran/ffc#338; reason=migrate pointer arrays to descriptors
 print_02.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 print_04.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
