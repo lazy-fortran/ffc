@@ -170,7 +170,8 @@ function summary_field_allowed(key) {
         key == "ffc_binary_sha256" || key == "fortfront_revision" ||
         key == "fortfront_tree" || key == "liric_revision" ||
         key == "liric_tree" || key == "corpus_revision" ||
-        key == "corpus_tree" || key == "corpus_files_sha256"
+        key == "corpus_tree" || key == "corpus_files_sha256" ||
+        key == "worktree"
 }
 
 function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
@@ -212,6 +213,8 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
     corpus_revision = require_revision("corpus_revision")
     corpus_tree = require_revision("corpus_tree")
     corpus_files_digest = require_digest("corpus_files_sha256")
+    # ffc #642: a report must name the worktree that produced it.
+    require_string("worktree")
     if (row_count != total_count) report_error("SUMMARY total mismatch")
     if (counts["PASS"] != pass_count || counts["XFAIL"] != xfail_count ||
             counts["XPASS"] != xpass_count || counts["FAIL"] != fail_count ||

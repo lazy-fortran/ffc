@@ -212,7 +212,8 @@ contains
             '","liric_tree":"'//repeat('5', 40)// &
             '","corpus_revision":"'//corpus_revision// &
             '","corpus_tree":"'//corpus_tree_value// &
-            '","corpus_files_sha256":"'//corpus_files_value//'"}'
+            '","corpus_files_sha256":"'//corpus_files_value// &
+            '","worktree":"/fixture/ffc"}'
     end function summary_record
 
     function integer_text(value) result(text)
