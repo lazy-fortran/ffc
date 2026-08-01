@@ -689,8 +689,44 @@ Status codes are stable. They are the values `IOSTAT=` reports:
 | 5004 | the file could not be opened |
 | 5005 | no free unit left for `NEWUNIT=` |
 
-Runtime entry points for formatted output, IOSTAT/IOMSG, and descriptor
-allocation are added by their own issues (#423, #427, #428).
+### Scalar formatted output (#423)
+
+Scalar output goes through the runtime. The compiler decides the unit and the
+C conversion descriptor its edit descriptor implies; the runtime owns the
+stream lookup, the conversion, and the status. Output bytes are unchanged from
+the `printf` calls these replaced.
+
+There is one entry point per scalar type rather than one call carrying a type
+tag as data, so the type is resolved at compile time and **the calls are not
+variadic**: a fixed-arity ABI is the same on every target, a variadic one is
+not. `_ffc_write_text` carries record text with nothing to convert — the
+list-directed separating blank and the record terminator.
+
+Each returns 0, or the unit status when the unit is unusable, or 5006 when the
+conversion fails.
+
+| Symbol | Signature |
+|---|---|
+| `_ffc_write_i32` | `int _ffc_write_i32(int unit, const char *fmt, int value)` |
+| `_ffc_write_i64` | `int _ffc_write_i64(int unit, const char *fmt, long long value)` |
+| `_ffc_write_f64` | `int _ffc_write_f64(int unit, const char *fmt, double value)` |
+| `_ffc_write_str` | `int _ffc_write_str(int unit, const char *fmt, const char *value)` |
+| `_ffc_write_text` | `int _ffc_write_text(int unit, const char *text)` |
+
+`INTEGER(1)` and `INTEGER(2)` widen to `i32` before the call, as they did for
+`printf`. Logical and character scalars use `_ffc_write_i32` and
+`_ffc_write_str`. Complex output, list-directed input, NAMELIST, and internal
+I/O still use their established paths; they are named by their own issues.
+
+### Preconnected units
+
+Unit 5 is standard input, unit 6 standard output, and unit 0 standard error.
+They are never opened as `fort.<N>` and never closed, and `OPEN` on one of
+them without `FILE=` reconfigures the existing connection rather than
+replacing it, so `open(6, sign='plus')` keeps writing to standard output.
+
+Runtime entry points for IOSTAT/IOMSG and descriptor allocation are added by
+their own issues (#427, #428).
 
 ### Dependencies
 

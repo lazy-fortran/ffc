@@ -472,18 +472,30 @@ contains
     end function emit_exp_format
 
     logical function emit_print(session, fmt, str, error_msg)
+        ! _ffc_write_str(6, fmt, str): the pre-formatted real goes to the
+        ! runtime like every other scalar item (#423), not to a direct
+        ! variadic printf.
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: fmt, str
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: args(2)
+        type(lr_operand_desc_t) :: args(3)
         integer(c_int32_t) :: vreg
 
-        args(1) = fmt
-        args(2) = str
-        emit_print = emit_call(session, 'printf', args, &
-            lr_type_i32_s(session%handle), 1_c_int32_t, c_true, &
+        args(1) = stdout_unit(session)
+        args(2) = fmt
+        args(3) = str
+        emit_print = emit_call(session, '_ffc_write_str', args, &
+            lr_type_i32_s(session%handle), 3_c_int32_t, c_false, &
             vreg, error_msg)
     end function emit_print
+
+    function stdout_unit(session) result(operand)
+        ! The preconnected standard output unit.
+        type(liric_session_t), intent(in) :: session
+        type(lr_operand_desc_t) :: operand
+
+        operand = i32_immediate(session, 6_c_int64_t)
+    end function stdout_unit
 
     logical function emit_real8_print_call(session, value, error_msg)
         type(liric_session_t), intent(inout) :: session

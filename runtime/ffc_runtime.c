@@ -84,6 +84,12 @@ static int ffc_streq(const char *a, const char *b) {
     return *a == *b;
 }
 
+/* Units the process starts with: 5 is standard input, 6 standard
+ * output, and 0 standard error. */
+static int ffc_unit_standard(int unit) {
+    return unit == 0 || unit == 5 || unit == 6;
+}
+
 static int ffc_unit_fail(int status) {
     ffc_unit_last_status = status;
     return status;
@@ -149,6 +155,14 @@ int _ffc_unit_open(int unit, const char *path,
     if (ffc_units[unit].connected) {
         return ffc_unit_fail(FFC_IOSTAT_INUSE);
     }
+    /* OPEN on a preconnected unit without FILE= reconfigures
+     * that connection rather than replacing it, so unit 6 keeps
+     * writing to standard output. */
+    if ((path == NULL || path[0] == '\0') &&
+        ffc_unit_standard(unit)) {
+        ffc_unit_last_status = 0;
+        return 0;
+    }
     if (path == NULL || path[0] == '\0' ||
         ffc_streq(status, "scratch")) {
         fp = tmpfile();
@@ -185,6 +199,22 @@ FILE *_ffc_unit_file(int unit) {
     if (ffc_units[unit].connected) {
         ffc_unit_last_status = 0;
         return ffc_units[unit].fp;
+    }
+    /* Preconnected units. Fortran connects 5 to standard input
+     * and 6 to standard output; gfortran also connects 0 to
+     * standard error. They are never opened as fort.<N>, and
+     * never closed. */
+    if (unit == 5) {
+        ffc_unit_last_status = 0;
+        return stdin;
+    }
+    if (unit == 6) {
+        ffc_unit_last_status = 0;
+        return stdout;
+    }
+    if (unit == 0) {
+        ffc_unit_last_status = 0;
+        return stderr;
     }
     snprintf(name, sizeof name, "fort.%d", unit);
     fp = fopen(name, "w+");
@@ -265,4 +295,71 @@ void _ffc_random_seed_get(int *seed) {
 void _ffc_random_seed_default(void) {
     ffc_random_seed_state = 1;
     srandom(1u);
+}
+
+/* ---- Scalar formatted output (issue #423) ----------------- */
+
+/* One entry point per scalar type, so the type tag is resolved at
+ * compile time and the call is not variadic: a non-variadic ABI
+ * is the same on every target, while a variadic one is not.
+ *
+ * The compiler supplies the unit, the C conversion descriptor it
+ * derived from the Fortran edit descriptor, and the value. The
+ * runtime owns the stream lookup, the conversion, and the status.
+ * Output bytes are unchanged from the printf calls these replace.
+ *
+ * Each returns 0 on success, or the unit status when the unit is
+ * unusable, or FFC_IOSTAT_WRITE when the conversion fails. */
+
+#define FFC_IOSTAT_WRITE 5006
+
+static int ffc_write_failed(int written) {
+    if (written < 0) {
+        ffc_unit_last_status = FFC_IOSTAT_WRITE;
+        return FFC_IOSTAT_WRITE;
+    }
+    ffc_unit_last_status = 0;
+    return 0;
+}
+
+int _ffc_write_i32(int unit, const char *fmt, int value) {
+    FILE *fp = _ffc_unit_file(unit);
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    return ffc_write_failed(fprintf(fp, fmt, value));
+}
+
+int _ffc_write_i64(int unit, const char *fmt, long long value) {
+    FILE *fp = _ffc_unit_file(unit);
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    return ffc_write_failed(fprintf(fp, fmt, value));
+}
+
+int _ffc_write_f64(int unit, const char *fmt, double value) {
+    FILE *fp = _ffc_unit_file(unit);
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    return ffc_write_failed(fprintf(fp, fmt, value));
+}
+
+int _ffc_write_str(int unit, const char *fmt, const char *value) {
+    FILE *fp = _ffc_unit_file(unit);
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    return ffc_write_failed(fprintf(fp, fmt, value));
+}
+
+/* Literal record text: the separating blank and the record
+ * terminator carry no value to convert. */
+int _ffc_write_text(int unit, const char *text) {
+    FILE *fp = _ffc_unit_file(unit);
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    return ffc_write_failed(fputs(text, fp));
 }

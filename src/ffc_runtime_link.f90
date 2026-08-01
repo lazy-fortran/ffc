@@ -50,13 +50,15 @@ module ffc_runtime_link
     ! Every runtime entry point the lowerer is allowed to call. Each issue
     ! that moves compiler-emitted code behind the runtime ABI adds its symbols
     ! here and to docs/RUNTIME_ABI.md.
-    character(len=*), parameter :: FFC_RUNTIME_SYMBOLS(12) = &
+    character(len=*), parameter :: FFC_RUNTIME_SYMBOLS(17) = &
         [character(len=32) :: '_ffc_runtime_probe', &
          '_ffc_unit_status', '_ffc_unit_newunit', '_ffc_unit_open', &
          '_ffc_unit_is_open', '_ffc_unit_file', '_ffc_unit_rewind', &
-         '_ffc_unit_close', '_ffc_random_seed_size', &
-         '_ffc_random_seed_put', '_ffc_random_seed_get', &
-         '_ffc_random_seed_default']
+         '_ffc_unit_close', &
+         '_ffc_write_i32', '_ffc_write_i64', '_ffc_write_f64', &
+         '_ffc_write_str', '_ffc_write_text', &
+         '_ffc_random_seed_size', '_ffc_random_seed_put', &
+         '_ffc_random_seed_get', '_ffc_random_seed_default']
 
 contains
 

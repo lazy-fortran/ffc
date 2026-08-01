@@ -22,7 +22,7 @@ module liric_session_io_emission_bindings
         global_operand, &
         status_ok, clear_liric_error, &
         set_empty, require_open_session, &
-        to_c_chars, i32_vreg
+        to_c_chars, i32_vreg, i32_immediate
     use liric_session_memory_bindings, only: ptr_vreg, i64_vreg
     use liric_session_real_print_bindings, only: emit_real8_print_call, &
         emit_real4_print_call
@@ -159,15 +159,15 @@ contains
         emit_liric_print_i32_value = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_i32', callee, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
             error_msg)
         if (len_trim(error_msg) > 0) return
 
-        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
-            error)
+        unused_vreg = emit_call_i32(session%handle, callee, &
+            stdout_unit_operand(session), format_ptr, value, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -205,15 +205,15 @@ contains
         emit_liric_print_i64_value = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_i64', callee, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
             error_msg)
         if (len_trim(error_msg) > 0) return
 
-        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, value, &
-            error)
+        unused_vreg = emit_call_i32(session%handle, callee, &
+            stdout_unit_operand(session), format_ptr, value, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -292,15 +292,15 @@ contains
         emit_liric_print_string_operand_value = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_str', callee, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call materialize_global_pointer(session, format_global_id, format_ptr, &
             error_msg)
         if (len_trim(error_msg) > 0) return
 
-        unused_vreg = emit_call_ptr(session%handle, callee, format_ptr, &
-            string_ptr, error)
+        unused_vreg = emit_call_ptr(session%handle, callee, &
+            stdout_unit_operand(session), format_ptr, string_ptr, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -317,10 +317,11 @@ contains
         emit_liric_print_newline = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_text', callee, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        unused_vreg = emit_call_newline(session%handle, callee, error)
+        unused_vreg = emit_call_newline(session%handle, callee, &
+            stdout_unit_operand(session), error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -337,10 +338,11 @@ contains
         emit_liric_print_space = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_text', callee, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        unused_vreg = emit_call_space(session%handle, callee, error)
+        unused_vreg = emit_call_space(session%handle, callee, &
+            stdout_unit_operand(session), error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -359,23 +361,38 @@ contains
             operand, error_msg)
     end subroutine materialize_liric_string
 
-    subroutine make_printf_operand(session, operand, error_msg)
+    subroutine make_runtime_callee(session, name, operand, error_msg)
+        ! Callee operand for a runtime entry point (#423). Scalar formatted
+        ! output goes through the runtime rather than a direct variadic
+        ! printf, so conversion, record buffering, and status all live in one
+        ! place and the call has the same shape on every target.
         type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
         type(lr_operand_desc_t), intent(out) :: operand
         character(len=:), allocatable, intent(out) :: error_msg
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: symbol_id
 
-        call to_c_chars('printf', c_name)
+        call to_c_chars(name, c_name)
         symbol_id = lr_session_intern(session%handle, c_name)
         if (symbol_id < 0_c_int32_t) then
-            error_msg = 'LIRIC could not intern printf'
+            error_msg = 'LIRIC could not intern '//name
             return
         end if
 
-        operand = global_operand_session(session, symbol_id, lr_type_ptr_s(session%handle))
+        operand = global_operand_session(session, symbol_id, &
+                                         lr_type_ptr_s(session%handle))
         call set_empty(error_msg)
-    end subroutine make_printf_operand
+    end subroutine make_runtime_callee
+
+    ! Every output helper here writes to the preconnected standard output
+    ! unit; a file WRITE reaches the same runtime entry with its own unit.
+    function stdout_unit_operand(session) result(operand)
+        type(liric_session_t), intent(in) :: session
+        type(lr_operand_desc_t) :: operand
+
+        operand = i32_immediate(session, 6_c_int64_t)
+    end function stdout_unit_operand
 
     subroutine make_string_literal_operand(session, name, text, operand, &
             error_msg)
@@ -487,72 +504,83 @@ contains
         call set_empty(error_msg)
     end subroutine materialize_global_pointer
 
-    function emit_call_i32(handle, callee, format_ptr, value, error) result(vreg)
+    function emit_call_i32(handle, callee, unit, format_ptr, value, error) &
+            result(vreg)
+        ! _ffc_write_*(unit, fmt, value). Fixed arity, not variadic: the
+        ! runtime entry point takes the type in its name (#423).
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_operand_desc_t), intent(in) :: unit
         type(lr_operand_desc_t), intent(in) :: format_ptr
         type(lr_operand_desc_t), intent(in) :: value
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(3)
+        type(lr_operand_desc_t), target :: operands(4)
         type(lr_inst_desc_t) :: inst
 
-        operands = [callee, format_ptr, value]
+        operands = [callee, unit, format_ptr, value]
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 3_c_int32_t
+        inst%num_operands = 4_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
         inst%icmp_pred = 0_c_int
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
-        inst%call_vararg = c_true
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 3_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_i32
 
-    function emit_call_ptr(handle, callee, format_ptr, value, error) result(vreg)
+    function emit_call_ptr(handle, callee, unit, format_ptr, value, error) &
+            result(vreg)
+        ! _ffc_write_*(unit, fmt, value). Fixed arity, not variadic: the
+        ! runtime entry point takes the type in its name (#423).
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_operand_desc_t), intent(in) :: unit
         type(lr_operand_desc_t), intent(in) :: format_ptr
         type(lr_operand_desc_t), intent(in) :: value
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(3)
+        type(lr_operand_desc_t), target :: operands(4)
         type(lr_inst_desc_t) :: inst
 
-        operands = [callee, format_ptr, value]
+        operands = [callee, unit, format_ptr, value]
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 3_c_int32_t
+        inst%num_operands = 4_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
         inst%icmp_pred = 0_c_int
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
-        inst%call_vararg = c_true
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 3_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_ptr
 
-    function emit_call_newline(handle, callee, error) result(vreg)
+    function emit_call_newline(handle, callee, unit, error) result(vreg)
+        ! _ffc_write_text(unit, text) for the record terminator and the
+        ! list-directed separating blank (#423).
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_operand_desc_t), intent(in) :: unit
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t), target :: operands(3)
         type(lr_inst_desc_t) :: inst
         character(kind=c_char), target :: newline_text(2)
 
@@ -561,35 +589,39 @@ contains
 
         call make_string_literal_operand_from_chars( &
             handle, '.ffc.str.nl', newline_text, 2_c_int64_t, &
-            operands(2), error)
-        if (.not. c_associated(operands(2)%typ)) return
+            operands(3), error)
+        if (.not. c_associated(operands(3)%typ)) return
 
         operands(1) = callee
+        operands(2) = unit
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
+        inst%num_operands = 3_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
         inst%icmp_pred = 0_c_int
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
-        inst%call_vararg = c_true
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 2_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_call_newline
 
-    function emit_call_space(handle, callee, error) result(vreg)
+    function emit_call_space(handle, callee, unit, error) result(vreg)
+        ! _ffc_write_text(unit, text) for the record terminator and the
+        ! list-directed separating blank (#423).
         type(c_ptr), intent(in) :: handle
         type(lr_operand_desc_t), intent(in) :: callee
+        type(lr_operand_desc_t), intent(in) :: unit
         type(lr_error_t), intent(inout) :: error
         integer(c_int32_t) :: vreg
-        type(lr_operand_desc_t), target :: operands(2)
+        type(lr_operand_desc_t), target :: operands(3)
         type(lr_inst_desc_t) :: inst
         character(kind=c_char), target :: space_text(2)
 
@@ -598,24 +630,25 @@ contains
 
         call make_string_literal_operand_from_chars( &
             handle, '.ffc.str.sp', space_text, 2_c_int64_t, &
-            operands(2), error)
-        if (.not. c_associated(operands(2)%typ)) return
+            operands(3), error)
+        if (.not. c_associated(operands(3)%typ)) return
 
         operands(1) = callee
+        operands(2) = unit
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
+        inst%num_operands = 3_c_int32_t
         inst%indices = c_null_ptr
         inst%num_indices = 0_c_int32_t
         inst%align = 0_c_int32_t
         inst%icmp_pred = 0_c_int
         inst%fcmp_pred = 0_c_int
         inst%call_external_abi = c_true
-        inst%call_vararg = c_true
-        inst%call_fixed_args = 1_c_int32_t
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 2_c_int32_t
 
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
@@ -1300,13 +1333,13 @@ contains
         emit_liric_print_i8_value = .false.
         if (.not. require_open_session(session, error_msg)) return
         if (.not. emit_liric_i8_to_i32(session, value, i32_value, error_msg)) return
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_i32', callee, error_msg)
         if (len_trim(error_msg) > 0) return
         call materialize_global_pointer(session, format_global_id, format_ptr, &
             error_msg)
         if (len_trim(error_msg) > 0) return
-        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, i32_value, &
-            error)
+        unused_vreg = emit_call_i32(session%handle, callee, &
+            stdout_unit_operand(session), format_ptr, i32_value, error)
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i8_value = .true.
@@ -1342,13 +1375,13 @@ contains
         emit_liric_print_i16_value = .false.
         if (.not. require_open_session(session, error_msg)) return
         if (.not. emit_liric_i16_to_i32(session, value, i32_value, error_msg)) return
-        call make_printf_operand(session, callee, error_msg)
+        call make_runtime_callee(session, '_ffc_write_i32', callee, error_msg)
         if (len_trim(error_msg) > 0) return
         call materialize_global_pointer(session, format_global_id, format_ptr, &
             error_msg)
         if (len_trim(error_msg) > 0) return
-        unused_vreg = emit_call_i32(session%handle, callee, format_ptr, i32_value, &
-            error)
+        unused_vreg = emit_call_i32(session%handle, callee, &
+            stdout_unit_operand(session), format_ptr, i32_value, error)
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_liric_print_i16_value = .true.
