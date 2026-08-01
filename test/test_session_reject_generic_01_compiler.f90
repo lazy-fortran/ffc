@@ -28,6 +28,7 @@ program test_session_reject_generic_01_compiler
     if (.not. test_derived_type_assignment_accepted()) all_passed = .false.
     if (.not. test_generic_call_with_specific()) all_passed = .false.
     if (.not. test_kind_distinguishable_specifics()) all_passed = .false.
+    if (.not. test_same_rank_array_specifics_ambiguous()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: malformed and ambiguous generic interfaces rejected'
@@ -576,5 +577,38 @@ contains
         test_kind_distinguishable_specifics = expect_exit_status( &
             source, 0, '/tmp/ffc_reject_generic_01_q10')
     end function test_kind_distinguishable_specifics
+
+    logical function test_same_rank_array_specifics_ambiguous()
+        !! Negative control for #595: rank distinguishes specifics only when it
+        !! differs. Two rank-1 integer array specifics stay ambiguous.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '   implicit none'//new_line('a')// &
+            '   interface gen'//new_line('a')// &
+            '      module procedure one_vec'//new_line('a')// &
+            '      module procedure other_vec'//new_line('a')// &
+            '   end interface'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '   subroutine one_vec(a)'//new_line('a')// &
+            '      integer, intent(in) :: a(3)'//new_line('a')// &
+            '      print *, a(1)'//new_line('a')// &
+            '   end subroutine'//new_line('a')// &
+            '   subroutine other_vec(a)'//new_line('a')// &
+            '      integer, intent(in) :: a(4)'//new_line('a')// &
+            '      print *, a(1)'//new_line('a')// &
+            '   end subroutine'//new_line('a')// &
+            'end module'//new_line('a')// &
+            ''//new_line('a')// &
+            'program p'//new_line('a')// &
+            '   use m'//new_line('a')// &
+            '   integer :: v(3)'//new_line('a')// &
+            '   v = 1'//new_line('a')// &
+            '   call gen(v)'//new_line('a')// &
+            'end program'
+
+        test_same_rank_array_specifics_ambiguous = expect_error_contains( &
+            source, 'ambiguous interfaces', &
+            '/tmp/ffc_reject_generic_01_r595')
+    end function test_same_rank_array_specifics_ambiguous
 
 end program test_session_reject_generic_01_compiler

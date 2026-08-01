@@ -195,6 +195,12 @@
                             rank = size(pn%dimension_indices)
                         end if
                     end if
+                    ! The dummy's own declaration in the specification part
+                    ! carries the rank when the parameter node does not
+                    ! (#595): differing rank distinguishes two specifics.
+                    if (rank == 0) then
+                        rank = dummy_declared_rank(arena, body_indices, name)
+                    end if
                     if (pn%has_kind) then
                         kind_value = pn%kind_value
                         if (pn%kind_value <= 0) return
@@ -216,6 +222,36 @@
         base_name = implicit_base_type(name)
         known = len_trim(base_name) > 0
     end subroutine dummy_signature_at
+
+    ! The rank a dummy is given by its own declaration in the specification
+    ! part, or 0 when no declaration in body_indices names it as an array of
+    ! statically known rank. Used where the parameter node itself carries no
+    ! shape, so that a rank-1 and a rank-2 specific of the same element kind
+    ! stay distinguishable (F2018 C1514, #595).
+    integer function dummy_declared_rank(arena, body_indices, param_name) &
+            result(rank)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        integer :: i
+
+        rank = 0
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (.not. declaration_declares_name(decl, &
+                                        trim(lowercase_text(param_name)))) cycle
+                if (allocated(decl%dimension_indices)) then
+                    rank = max(rank, size(decl%dimension_indices))
+                else
+                    rank = max(rank, 1)
+                end if
+            end select
+        end do
+    end function dummy_declared_rank
 
     ! unresolved reports a KIND selector that is not a literal - the declared
     ! kind is then unknown, and no distinguishability claim may rest on it.

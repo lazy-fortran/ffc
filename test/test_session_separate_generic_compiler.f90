@@ -13,6 +13,10 @@ program test_session_separate_generic_compiler
         '        module procedure total_scalar'//new_line('a')// &
         '        module procedure total_vec'//new_line('a')// &
         '    end interface total'//new_line('a')// &
+        '    interface merged'//new_line('a')// &
+        '        module procedure merged_vec'//new_line('a')// &
+        '        module procedure merged_mat'//new_line('a')// &
+        '    end interface merged'//new_line('a')// &
         '    interface grid_total'//new_line('a')// &
         '        module procedure grid_scalar'//new_line('a')// &
         '        module procedure grid_mat'//new_line('a')// &
@@ -34,6 +38,14 @@ program test_session_separate_generic_compiler
         '        integer, intent(in) :: y(2,2)'//new_line('a')// &
         '        r = y(1,1) + y(2,2)'//new_line('a')// &
         '    end function grid_mat'//new_line('a')// &
+        '    integer function merged_vec(z) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: z(3)'//new_line('a')// &
+        '        r = z(1)'//new_line('a')// &
+        '    end function merged_vec'//new_line('a')// &
+        '    integer function merged_mat(z) result(r)'//new_line('a')// &
+        '        integer, intent(in) :: z(2,2)'//new_line('a')// &
+        '        r = z(1,1)'//new_line('a')// &
+        '    end function merged_mat'//new_line('a')// &
         'end module fmod415_generic'
 
     print *, '=== separate-compilation generic interface tests ==='
@@ -42,6 +54,7 @@ program test_session_separate_generic_compiler
     if (.not. test_use_associated_generic_resolves()) all_passed = .false.
     if (.not. test_rank_aware_specifics_resolve()) all_passed = .false.
     if (.not. test_no_matching_rank_is_diagnosed()) all_passed = .false.
+    if (.not. test_rank_only_specifics_share_one_generic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -203,6 +216,49 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_no_matching_rank_is_diagnosed
+
+    logical function test_rank_only_specifics_share_one_generic() result(ok)
+        ! Two specifics of the same element kind that differ only in rank are
+        ! distinguishable (F2018 C1514), so one generic may hold both. The
+        ! source is valid - gfortran -fsyntax-only accepts it - and must
+        ! compile both same-unit and through the .fmod (#595).
+        character(len=:), allocatable :: dir
+        integer :: separate_status, same_status
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod415_generic, only: merged'//new_line('a')// &
+            '    integer :: v(3)'//new_line('a')// &
+            '    integer :: m(2,2)'//new_line('a')// &
+            '    v(1) = 1'//new_line('a')// &
+            '    v(2) = 2'//new_line('a')// &
+            '    v(3) = 3'//new_line('a')// &
+            '    m(1,1) = 10'//new_line('a')// &
+            '    m(2,1) = 0'//new_line('a')// &
+            '    m(1,2) = 0'//new_line('a')// &
+            '    m(2,2) = 20'//new_line('a')// &
+            '    stop merged(v) + merged(m)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('ffc595_rank_only', dir)
+        same_status = run_same_unit_compilation(dir, rank_module_source, &
+                                                program_source)
+        separate_status = run_separate_compilation(dir, rank_module_source, &
+                                                   program_source)
+        if (same_status /= 111) then
+            print *, 'FAIL: same-unit rank-only generic status ', same_status
+            call show_log(dir)
+            return
+        end if
+        if (separate_status /= 111) then
+            print *, 'FAIL: use-associated rank-only generic status ', &
+                separate_status
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_rank_only_specifics_share_one_generic
 
     integer function run_separate_compilation(dir, mod_source, prog_source) &
             result(status)
