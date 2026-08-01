@@ -732,7 +732,6 @@ execute_command_line_3.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit 
 exponent_1.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 external_procedures_2.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 external_procedures_3.f90 # owner=lazy-fortran/ffc#351; reason=preserve mixed-width COMMON byte layout
-external_procedures_4.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 f_c_string1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 f_c_string2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 fgetc_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
@@ -1729,7 +1728,6 @@ realloc_on_assign_15.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape
 realloc_on_assign_17.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 realloc_on_assign_23.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 realloc_on_assign_24.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-realloc_on_assign_25.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 realloc_on_assign_28.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 realloc_on_assign_30.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 realloc_on_assign_31.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
@@ -2172,3 +2170,9 @@ do_concurrent_15.f90 # owner=lazy-fortran/fortfront#2901; reason=validate DO CON
 hollerith4.f90 # scope=legacy; reason=deleted Hollerith storage and FORMAT extension
 pr59910.f90 # owner=lazy-fortran/ffc#450; reason=lower descriptor-backed RESHAPE
 value_5.f90 # owner=lazy-fortran/fortfront#2886; reason=enforce BIND(C) interoperability contracts
+elemental_pointer_1.f90 # owner=lazy-fortran/fortfront#2885; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
+initialization_17.f90 # owner=lazy-fortran/fortfront#2895; reason=reject duplicate or incompatible declaration attributes
+interface_52.f90 # owner=lazy-fortran/fortfront#2882; reason=reject procedure-call signature mismatches
+loop_interchange_1.f90 # owner=lazy-fortran/ffc#339; reason=owns ranks one through seven and retirement of rank-2-only metadata
+proc_decl_6.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
+use_rename_5.f90 # owner=lazy-fortran/fortfront#2887; reason=validate USE exports renames and operator imports
