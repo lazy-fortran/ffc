@@ -27,14 +27,16 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `990a004` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `29ab048` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
   logical literal KIND/STORAGE_SIZE inquiries, character-valued ERROR STOP,
   nested LOGICAL conversion-kind inquiries, allocatable logical NOT masks, and
-  formatted character file writes, with sampled manifest dispositions through
-  seed 1037). FortFront `54f1c410`. LIRIC `5436e5c`.
+  formatted character file writes, runtime rank-2 allocatable MATMUL and
+  runtime array-expression reductions, `CPU_TIME` widening, and explicit-shape
+  whole-array dummy aliasing, with sampled manifest dispositions through seed
+  1037). FortFront `4948ec2a`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
