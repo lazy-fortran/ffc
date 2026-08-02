@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `573ee00` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `52fa645` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -44,7 +44,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 437/437 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 439/439 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -205,14 +205,18 @@ explicit decision.
   Complex pointer dummy registration now follows the resolved declaration
   path, and an independent gfortran compile/run oracle passes. The XFAIL row
   was removed only after both bounded checks passed.
+- The focused array-shape rejection regression is green again: the accepted
+  masked `FORALL` case with `vec(j)=real(j)` now passes after guarding the
+  scalar-conversion lookup from invalid index-0 access. The focused compiler
+  test and independent gfortran oracle both pass.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
   helpers are a real module, literal-utils is a real submodule, and the unused
   `session_program_lowering_text.inc` fragment is gone, and declaration-conflict
   and generic-rejection checks are now real submodules with explicit build-order
-  units; array-constructor rejection is now a real submodule with an explicit
-  build-order unit as well. A clean sequential `fo build` and focused behavior
+  units; array-constructor and purity rejection are now real submodules with
+  explicit build-order units as well. A clean sequential `fo build` and focused behavior
   tests pass. The
   remaining rejection and other host-coupled fragments stay live until their
   dependencies are extracted safely.
