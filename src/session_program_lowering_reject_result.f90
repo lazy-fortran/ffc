@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_result
+    use session_program_lowering_reject_result_order
+    implicit none
+contains
     ! Function-result and ENTRY rules (#379). Four families of invalid source
     ! lower cleanly today but are not conforming Fortran, so each is rejected
     ! from the earliest layer that still holds the information:
@@ -14,9 +18,7 @@
     !      itself while a RESULT clause is present (gfortran "RESULT
     !      variable": func_result_7.f90). Bare attribute statements never
     !      reach the typed AST, so this one is checked on the source text.
-    subroutine check_result_and_entry_rules(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_result_and_entry_rules
 
         call check_function_name_in_interface(arena, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -25,7 +27,7 @@
         call check_assignment_to_procedure_name(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_function_name_attribute_source(arena, error_msg)
-    end subroutine check_result_and_entry_rules
+    contains
 
     ! A function's own name always designates its result variable when no
     ! RESULT clause renames it. An interface block in that function's
@@ -465,3 +467,5 @@
         end if
         name = leading_identifier(rest)
     end subroutine attribute_stmt_name
+    end procedure check_result_and_entry_rules
+end submodule session_program_lowering_reject_result
