@@ -5,7 +5,7 @@ module ffc_test_support
     ! expected behaviour of the resulting executable.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, &
-        compile_frontend_from_string, INPUT_MODE_STANDARD
+        compile_frontend_from_string, INPUT_MODE_LAZY, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
         lower_program_to_liric_object
     implicit none
@@ -224,15 +224,21 @@ contains
         ok = .true.
     end function expect_exe_has_symbol
 
-    logical function expect_exit_status(source, expected, exe_path) result(ok)
+    logical function expect_exit_status(source, expected, exe_path, input_mode) &
+            result(ok)
         character(len=*), intent(in) :: source
         integer, intent(in) :: expected
         character(len=*), intent(in) :: exe_path
+        integer, intent(in), optional :: input_mode
         character(len=:), allocatable :: error_msg
         integer :: exit_stat, cmd_stat
 
         ok = .false.
-        call compile_to_exe(source, exe_path, error_msg)
+        if (present(input_mode)) then
+            call compile_to_exe(source, exe_path, error_msg, input_mode)
+        else
+            call compile_to_exe(source, exe_path, error_msg)
+        end if
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: ', trim(error_msg)
             call execute_command_line('rm -f '//exe_path)
@@ -742,16 +748,18 @@ contains
         close (unit)
     end function read_text_file
 
-    subroutine compile_to_exe(source, exe_path, error_msg)
+    subroutine compile_to_exe(source, exe_path, error_msg, input_mode)
         character(len=*), intent(in) :: source
         character(len=*), intent(in) :: exe_path
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: input_mode
         type(compiler_frontend_options_t) :: options
         type(compiler_frontend_result_t) :: frontend_result
 
         options = compiler_frontend_options_t()
         options%run_semantics = .true.
         options%input_mode = INPUT_MODE_STANDARD
+        if (present(input_mode)) options%input_mode = input_mode
 
         call compile_frontend_from_string(source, frontend_result, options)
         if (.not. frontend_result%success()) then

@@ -359,12 +359,16 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=:), allocatable :: value, literal_type, err
+        character(len=:), allocatable :: lowered_value
 
         is_logical_literal = .false.
         call get_literal_info(arena, node_index, value, literal_type, err)
         if (len_trim(err) > 0) return
-        is_logical_literal = trim(value) == '.true.' .or. &
-                             trim(value) == '.false.' .or. &
+        lowered_value = lowercase_text(trim(value))
+        is_logical_literal = lowered_value == '.true.' .or. &
+                             lowered_value == '.false.' .or. &
+                             lowered_value == 'true' .or. &
+                             lowered_value == 'false' .or. &
                              trim(literal_type) == 'logical'
     end function is_logical_literal
 
@@ -397,8 +401,10 @@
 
     integer(c_int64_t) function logical_i32_value(text) result(value)
         character(len=*), intent(in) :: text
+        character(len=:), allocatable :: lowered
 
-        if (trim(text) == '.true.') then
+        lowered = lowercase_text(trim(adjustl(text)))
+        if (lowered == '.true.' .or. lowered == 'true') then
             value = 1_c_int64_t
         else
             value = 0_c_int64_t

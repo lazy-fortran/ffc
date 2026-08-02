@@ -9,8 +9,6 @@ array_index_brackets_simple.lf # owner=lazy-fortran/ffc#342; reason=centralize a
 array_slice_basic.lf # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 array_slice_empty_bounds.lf # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 array_slice_stride.lf # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-boolean_assign_bare_false.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-boolean_assign_bare_true.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 debug_mixed_constructs.lf # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 docs_unsigned_integers.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 intrinsic_functions.lf # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
