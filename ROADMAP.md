@@ -249,6 +249,80 @@ until the current in-scope XFAIL tranche is at zero. The final conformance gate
 requires zero in-scope XFAILs across every declared suite. Classification is
 not a substitute for fixing the behavior.
 
+## Fastest honest development loop
+
+The normal development loop is one bounded XFAIL/FAIL tranche, not a full
+pipeline or a full corpus run:
+
+1. Select the smallest owned tranche from the XFAIL/FAIL manifests. Read the
+   exact source, owner/reason, prerequisite sources, and existing focused
+   tests. `FAIL` and `XPASS` are blockers or promotion candidates; they are
+   never hidden by editing a manifest.
+2. Trace the implementation with `rg`, then use an independent behavioral
+   oracle. For runnable cases this is normally gfortran output and exit status;
+   for rejection cases it is the documented compile/rejection contract. A
+   test that only checks repository state is not an oracle.
+3. Build once per code change and keep the compiler sequential to protect RAM:
+
+   ```bash
+   export LIBRARY_PATH=<liric-build>
+   export FO_JOBS=1
+   fo build
+   fo test <smallest-focused-target>
+   ```
+
+   Reuse that compiler for every exact case in the tranche. Do not rebuild for
+   each corpus file, and do not use bare `fo` as the corpus development loop.
+4. Run the exact named selection with the normal manifest, then once with
+   XFAIL disabled. The second command must expose a real `FAIL` if the fix is
+   not complete:
+
+   ```bash
+   scripts/conformance_check.sh --no-build --suite <suite> \
+     --file <suite-relative-file> --ref-cache <private-ref-cache>
+   FFC_XFAIL_MANIFEST=/dev/null scripts/conformance_check.sh --no-build \
+     --suite <suite> --file <suite-relative-file> \
+     --ref-cache <private-ref-cache>
+   ```
+
+   Run those commands separately: the normal-manifest command is expected to
+   return nonzero for the named `XPASS` until its row is removed; that is a
+   promotion signal, not permission to ignore another failure.
+   Use `--files-from <tranche-list>` for a multi-file module family. Give each
+   run a unique report/TMPDIR when invoking runners directly; use one stable
+   reference cache per worktree so unchanged gfortran results are not rebuilt.
+5. Promote an XFAIL only after the named case has an independent oracle match,
+   the no-XFAIL run is `PASS`, the normal run reports the expected `XPASS`, and
+   the focused compiler tests are green. Remove only that exact manifest row,
+   rerun the normal selection, and require `PASS` with `XFAIL=0`, `XPASS=0`,
+   and `FAIL=0`. Never convert a failure into XFAIL to make a run green.
+6. After the owned tranche reaches zero, run the current stratified sample at
+   three fresh seeds, for example:
+
+   ```bash
+   for seed in 1038 1039 1040; do
+     scripts/conformance_check.sh --no-build --sample 900 --seed "$seed" \
+       --ref-cache <private-ref-cache>
+   done
+   ```
+
+   The sample is clean only when every selected disposition
+   is `PASS` (with no `FAIL`, `XPASS`, `XFAIL`, `FLAKY`, timeout, or OOM). Keep
+   the count unchanged while any owned XFAIL/FAIL remains. Only repeated
+   100%-clean subsets authorize a small increase, such as +100 or +200 files;
+   then repeat the fresh-seed check before increasing again.
+7. Parallelize only read-only audits, independent oracle preparation, and
+   disjoint code work in separate worktrees. Do not run multiple heavy ffc
+   builds or corpus gauntlets concurrently on this memory-constrained host;
+   separate worktrees do not make RAM free. Merge one green patch at a time,
+   rebase it on `main`, and rerun the focused build/check before pushing.
+
+The final whole-corpus run is a release/provenance gate after all declared
+XFAIL/XPASS/FAIL work and manifest ownership are resolved. It is not a routine
+progress measurement. The fast path is: zero the owned XFAIL tranche, prove it
+with an independent oracle, repeat clean random subsets, then widen the
+sample modestly.
+
 ## Active task list (2026-08-02)
 
 1. Completed: promote `module_array_init.f90`,
@@ -300,9 +374,10 @@ not a substitute for fixing the behavior.
 5. Performance and corpus safety: ffc #478, #531, #576, and #663.
 
 Every issue must preserve its stated invariant, use the shared representation,
-include positive and negative behavioral cases, and run its focused `fo test`
-plus `fo`. A manifest classification may record a known gap. It cannot replace
-the implementation or turn wrong code into `XFAIL`.
+include positive and negative behavioral cases, and run its focused
+`FO_JOBS=1 fo test` plus bounded exact conformance. A full `fo` workflow is a
+delivery-boundary check. A manifest classification may record a known gap; it
+cannot replace the implementation or turn wrong code into `XFAIL`.
 
 Architecture migration map:
 
@@ -430,12 +505,16 @@ filed as a FortFront issue, not an ffc workaround.
 
 ```bash
 export LIBRARY_PATH=<liric-build>   # so the LIRIC static library is linkable
-fo                                  # static analysis, build, tests, lint, fmt
-bash scripts/conformance_check.sh --no-build --sample 900 --seed <seed>
+export FO_JOBS=1                    # avoid parallel compiler OOM
+fo build                            # once per code change
+fo test <focused-target>            # smallest relevant unit/regression target
+bash scripts/conformance_check.sh --no-build --suite <suite> \
+  --files-from <tranche-list> --ref-cache <private-ref-cache>
 ```
 
-Use `fo` for every build and test loop. Call `fpm` directly only to isolate one
-named test or to diagnose a `fo` failure. CI runs the same workflow on every
-push and pull request. Increase the sample count only after repeated clean
-subsets, and do not run the whole corpus for routine progress checks. Run `fo`
-before pushing.
+Use `fo build` once and reuse the binary across the named checks. Call `fpm`
+directly only to isolate one named test or diagnose a `fo` failure. Use
+`conformance_check.sh --sample N --seed S` only after the active XFAIL tranche
+is zero; require several 100%-clean seeds before increasing `N`. CI runs the
+same bounded workflow on every push and pull request. A full `fo` workflow is a
+delivery-boundary check, not permission to run the external corpus wholesale.
