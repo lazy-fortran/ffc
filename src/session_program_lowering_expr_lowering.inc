@@ -588,6 +588,7 @@
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
+        integer :: external_index
 
         if (.not. is_contained_function_reference(node, context) .and. &
             (node%is_array_access .or. is_allocatable_element_ref(node, context) &
@@ -622,25 +623,24 @@
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
 
-        if (external_procedure_index(context, call_name) > 0 .and. &
-            .not. context%external_procedures( &
-                external_procedure_index(context, call_name))%by_reference) then
-            if (allocated(node%arg_indices)) then
-                call prepare_bind_c_args(arena, node%arg_indices, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
-            else
-                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
+        external_index = external_procedure_index(context, call_name)
+        if (external_index > 0) then
+            if (.not. context%external_procedures(external_index)%by_reference) then
+                if (allocated(node%arg_indices)) then
+                    call prepare_bind_c_args(arena, node%arg_indices, external_index, &
+                        context, args, copyback_indices, error_msg)
+                else
+                    call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, external_index, &
+                        context, args, copyback_indices, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_c_f32_call(context%session, &
+                        trim(context%external_procedures(external_index)%c_name), &
+                        args, value, error_msg)) return
+                call copy_back_reference_args(context, args, copyback_indices, &
+                                              error_msg)
+                return
             end if
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_c_f32_call(context%session, &
-                    trim(context%external_procedures( &
-                    external_procedure_index(context, call_name))%c_name), args, &
-                    value, error_msg)) return
-            call copy_back_reference_args(context, args, copyback_indices, error_msg)
-            return
         end if
 
         if (same_name(call_name, 'transfer') .and. .not. &
