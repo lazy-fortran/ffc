@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `14e267a` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `079ad12` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -44,7 +44,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 440/440 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 442/442 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -222,7 +222,7 @@ explicit decision.
   helpers are a real module, literal-utils is a real submodule, and the unused
   `session_program_lowering_text.inc` fragment is gone, and declaration-conflict
   and generic-rejection checks are now real submodules with explicit build-order
-  units; array-constructor and purity rejection are now real submodules with
+  units; array-constructor, purity, and pointer rejection are now real submodules with
   explicit build-order units as well. A clean sequential `fo build` and focused behavior
   tests pass. The
   remaining rejection and other host-coupled fragments stay live until their
@@ -270,8 +270,10 @@ not a substitute for fixing the behavior.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
-   and FMod token support; next extract literal-utils support, then the
-   host-coupled rejection checks. Remove each include only after a sequential
+   and FMod token support; literal-utils, declaration-conflict, generic,
+   result, array-constructor, purity, and pointer rejection are now real
+   submodules. Next extract the remaining host-coupled rejection fragments.
+   Remove each include only after a sequential
    `fo build` plus focused behavioral checks are green. This architecture
    migration runs alongside the named XFAIL work and never authorizes a
    whole-corpus run.
