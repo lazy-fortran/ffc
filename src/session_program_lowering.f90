@@ -1658,6 +1658,10 @@ module session_program_lowering
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_alloc_pointer_targets
+        module subroutine check_constant_expression_overflow(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_constant_expression_overflow
         module subroutine check_pointer_target_contracts(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -4874,5 +4878,4 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_reject_const_init.inc'
     include 'session_program_lowering_reject_storage.inc'
-    include 'session_program_lowering_reject_const_overflow.inc'
 end module session_program_lowering

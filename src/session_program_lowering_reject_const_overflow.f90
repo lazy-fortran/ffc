@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_const_overflow
+    use session_program_lowering_reject_const_overflow_order
+    implicit none
+contains
     ! Arithmetic overflow in a constant expression (F2018 10.1.12).
     !
     ! A constant expression is evaluated by the compiler, so a folded value that
@@ -329,3 +333,4 @@
         if (ios /= 0) return
         ok = .true.
     end subroutine parse_real_literal
+end submodule session_program_lowering_reject_const_overflow
