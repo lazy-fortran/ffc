@@ -26,6 +26,7 @@ program test_session_iostat_iomsg_compiler
     all_passed = .true.
     if (.not. test_open_failure_and_success()) all_passed = .false.
     if (.not. test_read_end_of_file()) all_passed = .false.
+    if (.not. test_formatted_character_write()) all_passed = .false.
     if (.not. test_iomsg_is_truncated()) all_passed = .false.
     if (.not. test_noninteger_iostat_is_rejected()) all_passed = .false.
     if (.not. test_noncharacter_iomsg_is_rejected()) all_passed = .false.
@@ -88,6 +89,25 @@ contains
             ' End of file    '//new_line('a'), &
             '/tmp/ffc_iostat_eof')
     end function test_read_end_of_file
+
+    logical function test_formatted_character_write() result(ok)
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: u, ios'//new_line('a')// &
+            '  logical :: flag'//new_line('a')// &
+            '  character(len=20) :: token'//new_line('a')// &
+            '  token = ''.true.'''//new_line('a')// &
+            '  open(newunit=u, status=''scratch'' )'//new_line('a')// &
+            '  write(u, ''(A)'') trim(token)'//new_line('a')// &
+            '  rewind(u)'//new_line('a')// &
+            '  read(u, *, iostat=ios) flag'//new_line('a')// &
+            '  print *, ios, flag'//new_line('a')// &
+            '  close(u)'//new_line('a')// &
+            'end program main'
+
+        ok = expect_output(source, '           0 T'//new_line('a'), &
+                           '/tmp/ffc_iostat_formatted_char_write')
+    end function test_formatted_character_write
 
     ! Fortran character assignment, not a C string: too long is truncated.
     logical function test_iomsg_is_truncated() result(ok)

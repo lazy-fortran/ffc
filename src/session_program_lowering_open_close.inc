@@ -821,6 +821,10 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
 
+        if (is_character_operand(arena, node_index, context)) then
+            file_write_value_kind = VALUE_CHARACTER
+            return
+        end if
         file_write_value_kind = expression_value_kind(arena, node_index, context, &
                                                        VALUE_I32)
     end function file_write_value_kind
@@ -914,7 +918,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: fmt_body, c_fmt
-        type(lr_operand_desc_t) :: fmtop
+        type(lr_operand_desc_t) :: fmtop, char_len
         type(lr_operand_desc_t), allocatable :: fa(:)
         integer(c_int32_t) :: fgid
         character(len=64) :: fgn
@@ -957,6 +961,9 @@
             case (VALUE_F64)
                 call lower_f64_expression(arena, node%arg_indices(i), context, &
                                            fa(i + 2), error_msg)
+            case (VALUE_CHARACTER)
+                call char_expr_operands(arena, node%arg_indices(i), context, &
+                                        fa(i + 2), char_len, error_msg)
             case default
                 call lower_i32_expression(arena, node%arg_indices(i), context, &
                                            fa(i + 2), error_msg)
