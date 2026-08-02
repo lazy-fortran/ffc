@@ -27,14 +27,14 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `a06320b` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `990a004` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
   logical literal KIND/STORAGE_SIZE inquiries, character-valued ERROR STOP,
-  nested LOGICAL conversion-kind inquiries, and allocatable logical NOT masks,
-  with sampled manifest dispositions through seed 1037). FortFront `54f1c410`.
-  LIRIC `5436e5c`.
+  nested LOGICAL conversion-kind inquiries, allocatable logical NOT masks, and
+  formatted character file writes, with sampled manifest dispositions through
+  seed 1037). FortFront `54f1c410`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -105,8 +105,12 @@ explicit decision.
   `XFAIL=0`, `XPASS=0`, and `FAIL=0`; shared whole-array lowering now covers
   allocatable comparison masks, array printing, and `ANY(.NOT. logical-array)`.
   The independent whole-array compiler test passes, and the XFAIL entry was
-  removed only after the normal-manifest run. The sample count remains 900.
-  The next adjacent XFAIL is `logical_testing.f90`.
+  removed only after the normal-manifest run. The formatted file-I/O tranche is
+  green too: `logical_testing.f90` passes with `PASS=1`, `XFAIL=0`, `XPASS=0`,
+  and `FAIL=0`; file-unit formatted writes now accept character expressions
+  such as `TRIM`, and the independent IOSTAT/IOMSG regression verifies a
+  scratch-file character-write/logical-read round trip. The sample count
+  remains 900. The next adjacent XFAIL is `matmul_01.f90`.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
