@@ -1771,8 +1771,10 @@
         integer(c_int64_t), intent(out) :: constant_value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: arg_index, sym
+        integer :: selector_index
         integer(c_int64_t) :: k
         character(len=:), allocatable :: id_name
+        character(len=:), allocatable :: selector_name
 
         constant_value = 0_c_int64_t
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
@@ -1816,6 +1818,44 @@
             call set_empty(error_msg)
             return
         end if
+
+        ! LOGICAL(x [, KIND]) is a scalar conversion whose result kind is
+        ! compile-time known even when its source is a variable.  KIND() can
+        ! therefore fold the nested call without lowering a runtime value.
+        select type (conversion => arena%entries(arg_index)%node)
+        type is (call_or_subscript_node)
+            if (same_name(conversion%name, 'logical')) then
+                constant_value = 4_c_int64_t
+                if (.not. allocated(conversion%arg_indices) .or. &
+                    size(conversion%arg_indices) < 1 .or. &
+                    size(conversion%arg_indices) > 2) then
+                    error_msg = 'logical requires one or two arguments'
+                    return
+                end if
+                if (size(conversion%arg_indices) == 2) then
+                    selector_index = conversion%arg_indices(2)
+                    select type (selector => arena%entries(selector_index)%node)
+                    type is (assignment_node)
+                        call get_identifier_name(arena, selector%target_index, &
+                                                  selector_name, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. same_name(selector_name, 'kind')) then
+                            error_msg = 'logical second argument must be KIND'
+                            return
+                        end if
+                        selector_index = selector%value_index
+                    class default
+                        ! A positional second argument is the KIND selector.
+                    end select
+                    call eval_i32_constant(arena, selector_index, context, &
+                                           constant_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                call set_empty(error_msg)
+                return
+            end if
+        class default
+        end select
 
         error_msg = 'kind argument is not a literal or named entity'
     end subroutine eval_kind_of_arg

@@ -10,6 +10,7 @@ program test_session_inquiry_fold
     if (.not. test_kind_of_double_literal()) all_passed = .false.
     if (.not. test_kind_of_default_literals()) all_passed = .false.
     if (.not. test_kind_of_variable()) all_passed = .false.
+    if (.not. test_kind_of_logical_conversion()) all_passed = .false.
     if (.not. test_size_whole_array()) all_passed = .false.
     if (.not. test_size_with_dim()) all_passed = .false.
     if (.not. test_size_as_array_bound()) all_passed = .false.
@@ -70,6 +71,26 @@ contains
             source, '           8'//new_line('a'), &
             '/tmp/ffc_session_kind_var')
     end function test_kind_of_variable
+
+    ! KIND(LOGICAL(x [, KIND=k])) folds the conversion result kind, not the
+    ! source variable's kind.
+    logical function test_kind_of_logical_conversion()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  logical(8) :: x8'//new_line('a')// &
+            '  integer, parameter :: k0 = kind(logical(x8))'// &
+            new_line('a')// &
+            '  integer, parameter :: k8 = kind(logical(x8, kind=8))'// &
+            new_line('a')// &
+            '  integer, parameter :: k4 = kind(logical(x8, kind=4))'// &
+            new_line('a')// &
+            '  print *, k0, k8, k4'//new_line('a')// &
+            'end program main'
+
+        test_kind_of_logical_conversion = expect_output( &
+            source, '           4           8           4'//new_line('a'), &
+            '/tmp/ffc_session_kind_logical_conversion')
+    end function test_kind_of_logical_conversion
 
     ! size(arr) folds to the total element count of a fixed-size array.
     logical function test_size_whole_array()
