@@ -644,8 +644,7 @@
         call parse_fmod_arg_names(proc, arg_names)
         call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
         call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
-        allocate (arg_opaque(max(proc%nargs, 0)))
-        arg_opaque = proc%opaque
+        call parse_fmod_arg_opaque(proc, arg_opaque)
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
@@ -667,6 +666,39 @@
                                     is_bind_c=proc%external_binding, &
                                     arg_opaque=arg_opaque)
     end subroutine import_fmod_procedure
+
+    subroutine parse_fmod_arg_opaque(proc, opaque)
+        ! Opaque procedures may still carry precise per-dummy kinds. Preserve
+        ! the old all-opaque interpretation only for artefacts whose tokens
+        ! are all opaque; newer artefacts mark just unsupported dummies.
+        type(fmod_procedure_t), intent(in) :: proc
+        logical, allocatable, intent(out) :: opaque(:)
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep
+
+        allocate (opaque(max(proc%nargs, 0)))
+        opaque = .false.
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_kinds)) then
+            opaque = proc%opaque
+            return
+        end if
+        rest = trim(adjustl(proc%arg_kinds))
+        i = 0
+        do while (len_trim(rest) > 0 .and. i < proc%nargs)
+            sep = index(rest, ' ')
+            i = i + 1
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            opaque(i) = trim(token) == 'opaque'
+        end do
+        if (i /= proc%nargs) opaque = proc%opaque
+    end subroutine parse_fmod_arg_opaque
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
         ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into

@@ -445,8 +445,9 @@ contains
         character(len=:), allocatable :: rank_tokens, extent_tokens
         character(len=:), allocatable :: proc_name
         character(len=:), allocatable :: arg_names
+        character(len=:), allocatable :: token
         integer, allocatable :: param_indices(:)
-        integer :: nargs, i
+        integer :: nargs, i, value_kind
         logical :: is_external, opaque_subroutine
         type(subroutine_def_node), pointer :: sb_node
 
@@ -510,10 +511,25 @@ contains
                             procs(count)%arg_extents = &
                                 procs(count)%arg_extents//' '
                         end if
-                        ! Opaque carries no scalar ABI claim. The importer must
-                        ! select a dedicated lowering path.
-                        procs(count)%arg_kinds = &
-                            procs(count)%arg_kinds//'opaque'
+                        ! Keep the per-dummy ABI precise even when another
+                        ! dummy makes the whole procedure opaque. A supported
+                        ! scalar or character dummy remains callable through
+                        ! its normal path; only the unsupported dummy needs
+                        ! the opaque placeholder.
+                        value_kind = param_at_value_kind(arena, param_indices, &
+                            sb_node%body_indices, i, context)
+                        token = scalar_kind_token(value_kind)
+                        if (len_trim(token) > 0) then
+                            procs(count)%arg_kinds = &
+                                procs(count)%arg_kinds//token
+                        else if (param_at_is_character(arena, param_indices, &
+                                                       sb_node%body_indices, i)) then
+                            procs(count)%arg_kinds = &
+                                procs(count)%arg_kinds//'character'
+                        else
+                            procs(count)%arg_kinds = &
+                                procs(count)%arg_kinds//'opaque'
+                        end if
                         procs(count)%arg_ranks = procs(count)%arg_ranks//'0'
                         procs(count)%arg_extents = procs(count)%arg_extents//'0'
                     end do
