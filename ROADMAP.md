@@ -27,11 +27,11 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `4fd0388` (structured DO WHILE lowering, array-valued predicates, bare
-  Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT, and
-  scalar logical/integer casts, with sampled manifest dispositions through seed
-  1037).
-  FortFront `0f49d25c`. LIRIC `5436e5c`.
+- Main: `423ee10` (structured DO WHILE lowering, array-valued predicates, bare
+  Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
+  scalar logical/integer casts, and logical array expressions in reductions and
+  I/O, with sampled manifest dispositions through seed 1037). FortFront
+  `cc39c3bc`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -66,6 +66,14 @@ explicit decision.
   passes against the same behavioral oracle with `PASS=1`, `XFAIL=0`, `XPASS=0`,
   and `FAIL=0`. Integer lowering now accepts logical literals and scalar
   logical identifiers, while whole logical arrays reuse their i32 storage.
+- The logical array-expression tranche is green:
+  `logical_arrays_logical_binop_01.f90` passes in the LFortran suite with
+  `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Shared lowering now handles
+  logical connectives, comparisons, scalar logical-function broadcasts,
+  constructor-shaped output, and nested masks in reductions. FortFront
+  `cc39c3bc` makes I/O argument parsing consume full logical expressions. The
+  XFAIL entry was removed after the named behavioral run. The sample count
+  remains 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
