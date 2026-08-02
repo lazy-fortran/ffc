@@ -27,9 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `9f704f1` (structured DO WHILE lowering, array-valued predicates, and
-  bare Lazy logical literals, with sampled manifest dispositions through seed
-  1037).
+- Main: `c4ab943` (structured DO WHILE lowering, array-valued predicates, bare
+  Lazy logical literals, and scalar logical connectives, with sampled manifest
+  dispositions through seed 1037).
   FortFront `0f49d25c`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -49,6 +49,9 @@ explicit decision.
   `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The shared literal classifier and value
   conversion now cover bare Lazy `true` and `false`, with independent runtime
   checks in `test_session_inferred_logical_compiler`.
+- The scalar logical tranche is green too: `logical3.f90` passes against the
+  gfortran behavioral oracle with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Shared
+  lowering now handles `.xor.` and keeps `.eqv.` inversion operands distinct.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
