@@ -347,11 +347,31 @@
         call set_empty(error_msg)
         if (.not. allocated(info%derived_types)) return
         do i = 1, size(info%derived_types)
+            if (.not. fmod_derived_type_dependencies_available(info%derived_types(i), &
+                                                               context) .and. &
+                .not. allocated(use_node%only_list)) cycle
             call import_fmod_derived_type(use_node, info%derived_types(i), &
                                           context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_fmod_derived_types
+
+    logical function fmod_derived_type_dependencies_available(dtype, context) &
+            result(available)
+        type(fmod_derived_type_t), intent(in) :: dtype
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+
+        available = .true.
+        if (.not. allocated(dtype%components)) return
+        do i = 1, size(dtype%components)
+            if (trim(dtype%components(i)%kind) /= 'derived') cycle
+            if (find_derived_type(context, trim(dtype%components(i)%type_name)) <= 0) then
+                available = .false.
+                return
+            end if
+        end do
+    end function fmod_derived_type_dependencies_available
 
     subroutine import_fmod_derived_type(use_node, dtype, context, error_msg)
         ! Reconstruct one derived type's layout from its artefact record.

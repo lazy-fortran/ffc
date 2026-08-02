@@ -184,6 +184,18 @@
 
         call set_empty(error_msg)
         if (.not. allocated(mod_node%declaration_indices)) return
+        ! Imported derived types must be registered before this module's layouts:
+        ! a component may name a type from a sibling module's .fmod.
+        do j = 1, size(mod_node%declaration_indices)
+            if (.not. node_exists(arena, mod_node%declaration_indices(j))) cycle
+            select type (use_node => &
+                arena%entries(mod_node%declaration_indices(j))%node)
+            type is (use_statement_node)
+                if (.not. module_use_is_resolvable(arena, context, use_node)) cycle
+                call import_module_derived_types(arena, use_node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
         do j = 1, size(mod_node%declaration_indices)
             if (.not. node_exists(arena, mod_node%declaration_indices(j))) cycle
             select type (decl => &
@@ -1271,6 +1283,26 @@ subroutine collect_component_declaration(component_index, parent_line, &
             return
         end if
 
+        if (component%is_allocatable .and. .not. component%is_array) then
+            if (component%is_multi_declaration .and. allocated(component%var_names)) then
+                do i = 1, size(component%var_names)
+                    call add_derived_component(context, type_index, &
+                        component%var_names(i), component%line, component%column, &
+                        .false., 0_c_int64_t, 1, VALUE_DERIVED, error_msg, &
+                        nested_type_index, is_allocatable=.true.)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(component%var_name)) then
+                call add_derived_component(context, type_index, component%var_name, &
+                    component%line, component%column, .false., 0_c_int64_t, 1, &
+                    VALUE_DERIVED, error_msg, nested_type_index, &
+                    is_allocatable=.true.)
+            else
+                error_msg = 'derived type component declaration did not expose a name'
+            end if
+            return
+        end if
+
         if (component%has_initializer) then
             ! A bare inner-type default constructor (`type(inner) :: c =
             ! inner()`) equals plain default initialisation, which nested
@@ -1458,7 +1490,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 return
             end if
             if (component%is_allocatable) then
-                if (.not. component%is_array .or. &
+                if (component%is_array .and. &
                     .not. component_alloc_array_rank_one(component)) then
                     call unsupported_feature_error('nested derived type component', &
                         component%line, component%column, 'only a rank-1 '// &
@@ -1740,6 +1772,28 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (old_size > 0 .and. allocated(context%derived_types(type_index)%component_names)) then
             if (old_size < size(context%derived_types(type_index)%component_names)) return
         else
+            if (allocated(context%derived_types(type_index)%component_names)) &
+                deallocate(context%derived_types(type_index)%component_names)
+            if (allocated(context%derived_types(type_index)%component_has_default)) &
+                deallocate(context%derived_types(type_index)%component_has_default)
+            if (allocated(context%derived_types(type_index)%component_default_value)) &
+                deallocate(context%derived_types(type_index)%component_default_value)
+            if (allocated(context%derived_types(type_index)%component_array_size)) &
+                deallocate(context%derived_types(type_index)%component_array_size)
+            if (allocated(context%derived_types(type_index)%component_value_kind)) &
+                deallocate(context%derived_types(type_index)%component_value_kind)
+            if (allocated(context%derived_types(type_index)%component_type_index)) &
+                deallocate(context%derived_types(type_index)%component_type_index)
+            if (allocated(context%derived_types(type_index)%component_is_allocatable)) &
+                deallocate(context%derived_types(type_index)%component_is_allocatable)
+            if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
+                deallocate(context%derived_types(type_index)%component_is_alloc_array)
+            if (allocated(context%derived_types(type_index)%component_is_pointer)) &
+                deallocate(context%derived_types(type_index)%component_is_pointer)
+            if (allocated(context%derived_types(type_index)%component_char_length)) &
+                deallocate(context%derived_types(type_index)%component_char_length)
+            if (allocated(context%derived_types(type_index)%component_dim1)) &
+                deallocate(context%derived_types(type_index)%component_dim1)
             allocate(context%derived_types(type_index)%component_names(8))
             allocate(context%derived_types(type_index)%component_has_default(8))
             allocate(context%derived_types(type_index)%component_default_value(8))

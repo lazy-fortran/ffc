@@ -96,6 +96,8 @@
             allocate (character(len=1) :: context%include_paths(0))
             context%include_path_count = 0
         end if
+        needs_main = emit_executable .or. unit_defines_main(arena, root_index)
+        context%unit_is_module_only = .not. needs_main
         if (.not. prepare_liric_print_runtime(context%session, &
                                               context%i32_print_format_id, &
                                               context%str_print_format_id, &
@@ -271,8 +273,6 @@
         ! A bare-module or block-data object defines no main. Emitting one would
         ! collide with the linked program's main when the object is a separate
         ! compilation prerequisite (#284), so it is skipped for object output.
-        needs_main = emit_executable .or. unit_defines_main(arena, root_index)
-        context%unit_is_module_only = .not. needs_main
         if (needs_main) then
             if (.not. begin_i32_main(context%session, error_msg, argc_vreg, &
                                      argv_vreg)) then

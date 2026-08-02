@@ -251,10 +251,12 @@
             if (len_trim(error_msg) > 0) return
             table(t + 1) = vtable_name
         end do
-        call create_pointer_table_global(context%session, '__ffc_vtable_table', &
-                                         table, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call emit_type_size_table(context, error_msg)
+        if (.not. context%unit_is_module_only) then
+            call create_pointer_table_global(context%session, '__ffc_vtable_table', &
+                                             table, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_type_size_table(context, error_msg)
+        end if
     end subroutine emit_type_vtables
 
     subroutine emit_type_size_table(context, error_msg)
