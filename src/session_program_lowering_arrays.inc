@@ -103,6 +103,14 @@
             end if
         type is (range_expression_node)
             has_var = bound_expr_references_variable(arena, n%end_index, context)
+        type is (call_or_subscript_node)
+            if (.not. allocated(n%name)) return
+            if (same_name(n%name, 'huge')) then
+                if (.not. allocated(n%arg_indices) .or. &
+                    size(n%arg_indices) /= 1) return
+                has_var = bound_expr_references_variable(arena, &
+                    n%arg_indices(1), context)
+            end if
         end select
     end function bound_expr_references_variable
 
