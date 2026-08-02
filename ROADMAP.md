@@ -27,12 +27,13 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `8f9aaee` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `41e1bae` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
-  logical literal KIND/STORAGE_SIZE inquiries, with sampled manifest
-  dispositions through seed 1037). FortFront `54f1c410`. LIRIC `5436e5c`.
+  logical literal KIND/STORAGE_SIZE inquiries, and character-valued ERROR STOP,
+  with sampled manifest dispositions through seed 1037). FortFront `54f1c410`.
+  LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -92,8 +93,11 @@ explicit decision.
   `XPASS=0`, and `FAIL=0`. ffc lowers logical `KIND` and `STORAGE_SIZE`, while
   FortFront preserves numeric, named, and mixed-case logical kind suffixes.
   Independent ffc and FortFront regressions pass; the sample count remains
-  900. `logical_kind_06.f90` remains the next adjacent XFAIL because it needs
-  character-valued `ERROR STOP` lowering.
+  900. The character-valued `ERROR STOP` tranche is green too:
+  `logical_kind_06.f90` passes with `PASS=1`, `XFAIL=0`, `XPASS=0`, and
+  `FAIL=0`; `test_session_stop_message_compiler` independently verifies the
+  dynamic message and exit status. `logical_kind_07.f90` is the next adjacent
+  XFAIL.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
