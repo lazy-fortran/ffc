@@ -610,6 +610,12 @@
             end block
         end if
 
+        if ((same_name(call_name, 'amin0') .or. same_name(call_name, 'amin1')) .and. &
+            .not. is_contained_f32_function(context, call_name)) then
+            call lower_f32_minmax_intrinsic(arena, node, LR_FCMP_OLE, context, &
+                                             value, error_msg)
+            return
+        end if
         intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f32_intrinsic_call(arena, node, intrinsic_id, context, &
@@ -846,6 +852,12 @@
             end block
         end if
 
+        if (same_name(call_name, 'dmin1') .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            call lower_f64_minmax_intrinsic(arena, node, LR_FCMP_OLE, context, &
+                                             value, error_msg)
+            return
+        end if
         intrinsic_id = f64_intrinsic_id(call_name)
         if (intrinsic_id /= F64_INTRINSIC_NONE) then
             call lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &

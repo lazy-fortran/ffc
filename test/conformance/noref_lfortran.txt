@@ -1,3 +1,4 @@
 # Cases with no behavioral oracle for the lfortran integration_tests suite.
 # Format: path # noref=CATEGORY; reason=text
 max_02.f90 # noref=undefined-runtime-value; reason=MAX reads an uninitialized integer(8) variable
+min_02.f90 # noref=undefined-runtime-value; reason=MIN reads an uninitialized integer(8) variable

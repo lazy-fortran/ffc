@@ -1158,6 +1158,7 @@ contains
     ! Typed TRANSPOSE also shares this include's complex and logical paths.
     ! Parameter TRANSPOSE initialization uses the same typed array stores.
     ! Typed integer MIN/MAX calls use the i64 comparison wrapper.
+    ! Legacy MIN aliases reuse the typed scalar min/max engines.
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_const_fold.inc'
     include 'session_program_lowering_array_elements.inc'
