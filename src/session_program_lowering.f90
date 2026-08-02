@@ -83,7 +83,7 @@ module session_program_lowering
         lr_session_global, lr_session_intern, &
         lr_session_emit, lr_inst_desc_t, lr_error_t, &
         clear_liric_error, status_ok, to_c_chars, &
-        LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
+        LR_OP_ADD, LR_OP_SREM, LR_OP_SDIV, LR_OP_SUB, &
         LR_OP_MUL, LR_OP_FADD, LR_OP_FMUL, LR_OP_FDIV, &
         LR_OP_AND, LR_OP_OR, LR_OP_XOR, &
         LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, &
@@ -1587,6 +1587,11 @@ contains
                     symbol_index, context, error_msg)
                 return
             end if
+            if (allocatable_assignment_rhs_is_matmul(arena, node)) then
+                call lower_allocatable_matmul_assignment(arena, node, symbol_index, &
+                    context, error_msg)
+                return
+            end if
             call lower_allocatable_elementwise_assignment(arena, node, &
                 symbol_index, context, error_msg)
             return
@@ -2153,12 +2158,18 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: wide_value
         integer :: symbol_index
 
         call intrinsic_out_scalar(arena, arg_indices, context, 'cpu_time', &
-            VALUE_F32, symbol_index, error_msg)
+            VALUE_F32, symbol_index, error_msg, allow_f64=.true.)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_cpu_time_value(context%session, value, error_msg)) return
+        if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
+            if (.not. emit_liric_f32_to_f64(context%session, value, wide_value, &
+                error_msg)) return
+            value = wide_value
+        end if
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
     end subroutine lower_cpu_time
 
@@ -2293,7 +2304,7 @@ contains
     end subroutine random_seed_array_address
 
     subroutine intrinsic_out_scalar(arena, arg_indices, context, name, kind, &
-            symbol_index, error_msg)
+            symbol_index, error_msg, allow_f64)
         ! Resolve the single intent(out) scalar argument of a timing intrinsic
         ! and verify its declared kind.
         type(ast_arena_t), intent(in) :: arena
@@ -2303,9 +2314,13 @@ contains
         integer, intent(in) :: kind
         integer, intent(out) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: allow_f64
         character(len=:), allocatable :: var_name
+        logical :: accepts_f64
 
         symbol_index = 0
+        accepts_f64 = .false.
+        if (present(allow_f64)) accepts_f64 = allow_f64
         if (size(arg_indices) /= 1) then
             error_msg = trim(name)//' requires exactly one scalar argument'
             return
@@ -2321,7 +2336,9 @@ contains
             error_msg = trim(name)//' argument is not declared: '//trim(var_name)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind /= kind) then
+        if (context%symbols(symbol_index)%value_kind /= kind .and. &
+            (.not. accepts_f64 .or. &
+             context%symbols(symbol_index)%value_kind /= VALUE_F64)) then
             error_msg = trim(name)//' argument has the wrong type: '//trim(var_name)
             return
         end if

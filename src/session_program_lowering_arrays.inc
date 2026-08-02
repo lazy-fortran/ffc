@@ -3480,7 +3480,8 @@
                 return
             end if
             ! sum(a + b) and friends: a general array-valued expression.
-            if (is_binary_op(arena, node%arg_indices(1))) then
+            if (is_binary_op(arena, node%arg_indices(1)) .or. &
+                reduction_expression_is_abs_call(arena, node%arg_indices(1))) then
                 expr_vk = VALUE_F32
                 if (.not. reduction_arg_extent(arena, node%arg_indices(1), &
                         context, expr_vk, expr_extent)) then
@@ -3490,8 +3491,23 @@
                         expr_vk = VALUE_I32
                         if (.not. reduction_arg_extent(arena, node%arg_indices(1), &
                                 context, expr_vk, expr_extent)) then
-                            error_msg = trim(reduction_name)// &
-                                ' argument expression is not supported'
+                            if (reduction_expression_has_kind(arena, &
+                                    node%arg_indices(1), context, VALUE_F32)) then
+                                expr_vk = VALUE_F32
+                            else if (reduction_expression_has_kind(arena, &
+                                    node%arg_indices(1), context, VALUE_F64)) then
+                                expr_vk = VALUE_F64
+                            else if (reduction_expression_has_kind(arena, &
+                                    node%arg_indices(1), context, VALUE_I32)) then
+                                expr_vk = VALUE_I32
+                            else
+                                error_msg = trim(reduction_name)// &
+                                    ' argument expression is not supported'
+                                return
+                            end if
+                            call lower_runtime_general_expr_reduction(arena, &
+                                node%arg_indices(1), expr_vk, context, value, &
+                                error_msg, reduction_name)
                             return
                         end if
                     end if

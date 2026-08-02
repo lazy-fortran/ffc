@@ -101,6 +101,11 @@
                                           vk, extent)
                 return
             end if
+            if (reduction_expression_is_abs_call(arena, node%arg_indices(1))) then
+                ok = reduction_expression_has_kind(arena, node%arg_indices(1), &
+                                                   context, vk)
+                return
+            end if
         end if
         call get_identifier_name(arena, node%arg_indices(1), arg_name, err)
         if (len_trim(err) > 0) return

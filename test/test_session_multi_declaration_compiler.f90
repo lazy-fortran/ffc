@@ -8,6 +8,7 @@ program test_session_multi_declaration_compiler
 
     all_passed = .true.
     if (.not. test_multi_scalar()) all_passed = .false.
+    if (.not. test_continued_multi_scalar()) all_passed = .false.
     if (.not. test_multi_array_distinct_shapes()) all_passed = .false.
     if (.not. test_array_dummy_arguments()) all_passed = .false.
 
@@ -32,6 +33,25 @@ contains
             source, '          10          20          30'//new_line('a'), &
             '/tmp/ffc_multi_scalar_test')
     end function test_multi_scalar
+
+    logical function test_continued_multi_scalar()
+        ! A trailing free-form continuation after a comma must not truncate a
+        ! multi-name declaration.  The expected output is an independent
+        ! behavioral check of both names beyond the first declaration line.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: a, b, c, d, e, f, g, h, &'//new_line('a')// &
+            '    i, j, k, l'//new_line('a')// &
+            '  a = 1'//new_line('a')// &
+            '  l = 12'//new_line('a')// &
+            '  print *, a, l'//new_line('a')// &
+            'end program main'
+
+        test_continued_multi_scalar = expect_output( &
+            source, '           1          12'//new_line('a'), &
+            '/tmp/ffc_multi_continued_scalar_test')
+    end function test_continued_multi_scalar
 
     logical function test_multi_array_distinct_shapes()
         ! real :: x(2), y(3) declares two arrays with distinct extents on one

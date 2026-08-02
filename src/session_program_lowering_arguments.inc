@@ -195,6 +195,14 @@
                         callee_name, call_arg_param_pos(i, sp)), callee_name, &
                     args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
+                     callee_dummy_is_array_ctx(arena, context, callee_name, &
+                                               i)) then
+                ! Explicit-shape array actual to an array dummy: pass the
+                ! contiguous base address; the callee binds it as its dummy view.
+                call whole_array_actual_address(arena, arg_indices(i), context, &
+                                                 args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else if (callee_dummy_is_array_ctx(arena, context, callee_name, &
                                                call_arg_param_pos(i, sp)) .and. &
                      callee_dummy_assumed_shape_dims(arena, callee_name, &
@@ -206,14 +214,6 @@
                 call array_expression_actual_address(arena, arg_indices(i), &
                     context, callee_name, call_arg_param_pos(i, sp), default_kind, &
                     args(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
-                     callee_dummy_is_array_ctx(arena, context, callee_name, &
-                                               i)) then
-                ! Explicit-shape array actual to an array dummy: pass the
-                ! contiguous base address; the callee binds it as its dummy view.
-                call whole_array_actual_address(arena, arg_indices(i), context, &
-                                                 args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
                      .and. callee_dummy_is_allocatable_array(arena, callee_name, &

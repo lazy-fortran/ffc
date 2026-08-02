@@ -109,10 +109,22 @@ explicit decision.
   green too: `logical_testing.f90` passes with `PASS=1`, `XFAIL=0`, `XPASS=0`,
   and `FAIL=0`; file-unit formatted writes now accept character expressions
   such as `TRIM`, and the independent IOSTAT/IOMSG regression verifies a
-  scratch-file character-write/logical-read round trip. The sample count
-  remains 900. The next adjacent XFAIL is `matmul_01.f90`.
+  scratch-file character-write/logical-read round trip. The dynamic MATMUL
+  tranche is green too: `matmul_01.f90` passes in the LFortran suite with
+  `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Runtime rank-2 allocatable
+  MATMUL, runtime array-expression reduction, `CPU_TIME` widening, and
+  explicit-shape whole-array dummy aliasing now share the corrected lowering
+  paths; the continuation-boundary regression and focused multi-declaration
+  compiler test also pass. The next XFAIL-first case is `matmul_02.f90`.
+  The sample count remains 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
+
+All corpus work stays bounded: use deterministic random subsets, never the
+whole corpus, and increase the sample only after repeated 100%-clean subsets.
+Finish the owned XFAIL-first tranche at zero before moving to another corpus
+area or increasing the count. Keep compiler jobs sequential and bounded to
+avoid OOM.
 
 ## XFAIL-zero work gate
 
