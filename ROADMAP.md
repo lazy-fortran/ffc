@@ -27,8 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `87a6274` (structured DO WHILE lowering and array-valued predicates;
-  sampled manifest dispositions through seed 1037).
+- Main: `9f704f1` (structured DO WHILE lowering, array-valued predicates, and
+  bare Lazy logical literals, with sampled manifest dispositions through seed
+  1037).
   FortFront `0f49d25c`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -43,6 +44,11 @@ explicit decision.
   array-expression materialisation, and the DO WHILE header all pass. Keep the
   random sample at 900 until the next owned XFAIL tranche is selected and
   reaches zero.
+- The next owned tranche is complete as well: `boolean_assign_bare_true.lf`
+  and `boolean_assign_bare_false.lf` pass in the FortFront-LF suite with
+  `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The shared literal classifier and value
+  conversion now cover bare Lazy `true` and `false`, with independent runtime
+  checks in `test_session_inferred_logical_compiler`.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
