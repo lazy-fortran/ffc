@@ -1253,6 +1253,16 @@ module session_program_lowering
             type(ast_arena_t), intent(in) :: arena
             character(len=*), intent(in) :: proc_name
         end function arena_proc_param_count
+        module subroutine identifier_name_at(arena, idx, name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: name
+        end subroutine identifier_name_at
+        module subroutine check_array_constructor_compatibility(arena, error_msg, lazy_mode)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical, intent(in), optional :: lazy_mode
+        end subroutine check_array_constructor_compatibility
         module subroutine check_array_constructor_type_specs(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -4707,7 +4717,6 @@ contains
     end function lowercase_text
 
     include 'session_program_lowering_select.inc'
-    include 'session_program_lowering_reject_array_ctor.inc'
     include 'session_program_lowering_reject_array_shape.inc'
     include 'session_program_lowering_reject_pointer.inc'
     include 'session_program_lowering_reject_const_init.inc'

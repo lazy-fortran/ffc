@@ -1,3 +1,19 @@
+submodule (session_program_lowering) session_program_lowering_reject_array_ctor
+    use session_program_lowering_reject_array_ctor_order
+    implicit none
+contains
+    module procedure identifier_name_at
+        call set_empty(name)
+        if (idx <= 0) return
+        if (.not. node_exists(arena, idx)) return
+        select type (nd => arena%entries(idx)%node)
+        type is (identifier_node)
+            if (allocated(nd%name)) name = nd%name
+        end select
+    end procedure identifier_name_at
+
+    module procedure check_array_constructor_compatibility
+
     ! Array-constructor compatibility (F2018 7.8, 10.2.1.2, R769).
     !
     ! Four rules live here:
@@ -15,10 +31,6 @@
     !      otherwise. [1, 2.5] is not an integer constructor with a truncated
     !      element, it is invalid.
 
-    subroutine check_array_constructor_compatibility(arena, error_msg, lazy_mode)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
-        logical, intent(in), optional :: lazy_mode
         logical :: is_lazy
 
         is_lazy = .false.
@@ -34,7 +46,7 @@
         call check_array_ctor_assignments(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_array_ctor_element_agreement(arena, is_lazy, error_msg)
-    end subroutine check_array_constructor_compatibility
+    contains
 
     ! Rule 4: an array constructor written without a type-spec takes its
     ! element type from its values, so literal values of differing intrinsic
@@ -476,20 +488,6 @@
         end do
     end function array_ctor_class_upper
 
-    subroutine identifier_name_at(arena, idx, name)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: idx
-        character(len=:), allocatable, intent(out) :: name
-
-        call set_empty(name)
-        if (idx <= 0) return
-        if (.not. node_exists(arena, idx)) return
-        select type (nd => arena%entries(idx)%node)
-        type is (identifier_node)
-            if (allocated(nd%name)) name = nd%name
-        end select
-    end subroutine identifier_name_at
-
     ! The type class of an array constructor: its explicit type-spec when it
     ! has one, otherwise the class shared by its literal elements.
     integer function array_ctor_value_class(arena, idx) result(cls)
@@ -674,3 +672,6 @@
                   starts_with_word(low, 'character') .or. &
                   starts_with_word(low, 'double')
     end function line_starts_intrinsic_type
+
+    end procedure check_array_constructor_compatibility
+end submodule session_program_lowering_reject_array_ctor
