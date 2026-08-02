@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `079820b` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `96ef029` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -37,7 +37,8 @@ explicit decision.
   runtime array-expression reductions, `CPU_TIME` widening, and explicit-shape
   whole-array dummy aliasing, explicit-lower-bound assumed-shape descriptors,
   mixed-rank runtime section expressions, allocatable function-result MATMUL
-  matrix-vector lowering, rank-2 automatic array-result materialisation, with
+  matrix-vector lowering, rank-2 automatic array-result materialisation, typed
+  integer/real/double/complex/logical TRANSPOSE lowering, with
   sampled manifest dispositions through seed 1037). FortFront `4948ec2a`.
   LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
@@ -128,8 +129,12 @@ explicit decision.
   `XPASS=0`, and `FAIL=0`; `matmul_06.f90` now passes as well after rank-2
   automatic array results were registered through the raw sret ABI and
   materialised into bounded temporaries. The combined `matmul_01`-`matmul_06`
-  run is `PASS=6` with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The next
-  XFAIL-first case is `matrix_01_transpose.f90`; keep the sample count at 900.
+  run is `PASS=6` with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The typed
+  TRANSPOSE tranche is green too: `matrix_01_transpose.f90` passes against the
+  gfortran oracle with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; complex
+  `RESHAPE` literals and typed integer/real/double/logical transpose storage are
+  covered by the same run. The next XFAIL-first case is
+  `matrix_03_transpose_param.f90`; keep the sample count at 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
