@@ -187,8 +187,19 @@
         context%in_loop = saved_in_loop
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then
-            error_msg = 'direct LIRIC session DO cannot merge loop declarations'
-            return
+            ! Array-valued section expressions may need a fixed-size temporary
+            ! while lowering a loop body.  These symbols are ordinary function
+            ! storage and are not loop-carried; permit only that narrowly
+            ! scoped addition so declarations that would change loop state
+            ! still fail instead of being silently merged.
+            do i = initial_symbol_count + 1, context%symbol_count
+                if (index(trim(context%symbols(i)%name), '__ffc.array.expr.') /= 1 &
+                    .or. .not. context%symbols(i)%is_array .or. &
+                    context%symbols(i)%array_rank /= 1) then
+                    error_msg = 'direct LIRIC session DO cannot merge loop declarations'
+                    return
+                end if
+            end do
         end if
         if (body_terminated .and. .not. body_exited) then
             call unsupported_feature_error('terminating do loop body', &

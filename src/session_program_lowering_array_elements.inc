@@ -14,12 +14,14 @@
         integer :: source_rank
         integer :: dim
         integer :: bounds_index
+        integer :: runtime_bounds_index
         integer :: kept_dim
         integer(c_int64_t) :: lower_value
         integer(c_int64_t) :: upper_value
         integer(c_int64_t) :: stride_value
         integer(c_int64_t) :: scalar_value
         integer(c_int64_t) :: extent_value
+        logical :: runtime_extent_known
 
         info%source_name = ''
         info%source_index = 0
@@ -224,11 +226,23 @@
         end do
 
         if (info%has_runtime_bounds) then
-            ! This direct session has no descriptor loop for runtime section
-            ! bounds yet.  Keep such references compile-safe without inventing
-            ! a static set of elements; callers see a zero-element view.
+            ! Runtime coordinates still often have a compile-time extent, e.g.
+            ! y:y+8-1.  Preserve that extent for bounded expansion while the
+            ! actual coordinates are computed from live values at runtime.
             do dim = 1, source_rank
-                if (info%keep_dim(dim)) info%section_extents(dim) = 0_c_int64_t
+                if (info%keep_dim(dim)) then
+                    runtime_bounds_index = 0
+                    if (dim <= slice_node%num_dimensions) then
+                        runtime_bounds_index = slice_node%bounds_indices(dim)
+                    end if
+                    call try_runtime_range_extent(arena, context, &
+                        runtime_bounds_index, extent_value, runtime_extent_known)
+                    if (runtime_extent_known) then
+                        info%section_extents(dim) = extent_value
+                    else
+                        info%section_extents(dim) = 0_c_int64_t
+                    end if
+                end if
             end do
         end if
 
@@ -289,17 +303,202 @@
         end if
     end subroutine resolve_section_scalar
 
+    subroutine try_runtime_range_extent(arena, context, bounds_index, extent, &
+                                        extent_known)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: bounds_index
+        integer(c_int64_t), intent(out) :: extent
+        logical, intent(out) :: extent_known
+        integer :: lower_index, upper_index, stride_index
+        integer(c_int64_t) :: lower_const, upper_const
+        integer(c_int64_t) :: stride_value
+        character(len=64) :: lower_names(8), upper_names(8)
+        integer(c_int64_t) :: lower_coeffs(8), upper_coeffs(8)
+        integer :: lower_count, upper_count, i, j
+        logical :: lower_known, upper_known, term_found
+        character(len=:), allocatable :: error_msg
+
+        extent = 0_c_int64_t
+        extent_known = .false.
+        if (.not. node_exists(arena, bounds_index)) return
+        lower_index = 0
+        upper_index = 0
+        stride_index = 0
+        select type (bounds_node => arena%entries(bounds_index)%node)
+        type is (range_expression_node)
+            lower_index = bounds_node%start_index
+            upper_index = bounds_node%end_index
+            stride_index = bounds_node%stride_index
+        type is (array_bounds_node)
+            if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
+                bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) return
+            lower_index = bounds_node%lower_bound_index
+            upper_index = bounds_node%upper_bound_index
+            stride_index = bounds_node%stride_index
+        class default
+            return
+        end select
+        if (lower_index <= 0 .or. upper_index <= 0) return
+        call affine_bound_expression(arena, lower_index, context, lower_names, &
+                                     lower_coeffs, lower_count, lower_const, lower_known)
+        call affine_bound_expression(arena, upper_index, context, upper_names, &
+                                     upper_coeffs, upper_count, upper_const, upper_known)
+        if (.not. lower_known .or. .not. upper_known) return
+        if (lower_count /= upper_count) return
+        do i = 1, lower_count
+            term_found = .false.
+            do j = 1, upper_count
+                if (trim(lower_names(i)) == trim(upper_names(j)) .and. &
+                    lower_coeffs(i) == upper_coeffs(j)) then
+                    term_found = .true.
+                    exit
+                end if
+            end do
+            if (.not. term_found) return
+        end do
+        call resolve_section_stride(arena, context, stride_index, stride_value, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0 .or. stride_value == 0_c_int64_t) return
+        if (stride_value > 0_c_int64_t) then
+            if (upper_const < lower_const) return
+            extent = (upper_const - lower_const) / stride_value + 1_c_int64_t
+        else
+            if (upper_const > lower_const) return
+            extent = (lower_const - upper_const) / abs(stride_value) + 1_c_int64_t
+        end if
+        extent_known = extent > 0_c_int64_t
+    end subroutine try_runtime_range_extent
+
+    recursive subroutine affine_bound_expression(arena, node_index, context, &
+                                                 variable_names, coefficients, &
+                                                 term_count, constant, known)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(out) :: variable_names(:)
+        integer(c_int64_t), intent(out) :: coefficients(:)
+        integer, intent(out) :: term_count
+        integer(c_int64_t), intent(out) :: constant
+        logical, intent(out) :: known
+        character(len=:), allocatable :: name, op, err
+        character(len=64) :: left_names(size(variable_names))
+        character(len=64) :: right_names(size(variable_names))
+        character(len=64) :: source_names(size(variable_names))
+        integer :: left_index, right_index, line, column
+        integer(c_int64_t) :: left_coeffs(size(variable_names))
+        integer(c_int64_t) :: right_coeffs(size(variable_names))
+        integer(c_int64_t) :: source_coeffs(size(variable_names))
+        integer(c_int64_t) :: left_const, right_const
+        integer :: left_count, right_count, i, j, sign, source_count
+        logical :: left_known, right_known
+
+        variable_names = ''
+        coefficients = 0_c_int64_t
+        term_count = 0
+        constant = 0_c_int64_t
+        known = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, err)
+            if (len_trim(err) > 0) return
+            call eval_i32_constant(arena, node_index, context, constant, err)
+            if (len_trim(err) == 0) then
+                known = .true.
+                return
+            end if
+            variable_names(1) = trim(name)
+            coefficients(1) = 1_c_int64_t
+            term_count = 1
+            known = .true.
+            return
+        end if
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, left_index, right_index, &
+                                    line, column, err)
+            if (len_trim(err) > 0) return
+            call affine_bound_expression(arena, left_index, context, left_names, &
+                                         left_coeffs, left_count, left_const, left_known)
+            call affine_bound_expression(arena, right_index, context, right_names, &
+                                         right_coeffs, right_count, right_const, right_known)
+            if (.not. left_known .or. .not. right_known) return
+            select case (trim(op))
+            case ('+', '.plus.')
+                sign = 1
+                source_names = right_names
+                source_coeffs = right_coeffs
+                source_count = right_count
+                constant = left_const + right_const
+            case ('-', '.minus.')
+                sign = -1
+                source_names = right_names
+                source_coeffs = right_coeffs
+                source_count = right_count
+                constant = left_const - right_const
+            case ('*', '.times.')
+                if (left_count > 0 .and. right_count > 0) return
+                if (left_count == 0) then
+                    variable_names(1:right_count) = right_names(1:right_count)
+                    coefficients(1:right_count) = left_const * &
+                        right_coeffs(1:right_count)
+                    term_count = right_count
+                    constant = left_const * right_const
+                else
+                    variable_names(1:left_count) = left_names(1:left_count)
+                    coefficients(1:left_count) = right_const * &
+                        left_coeffs(1:left_count)
+                    term_count = left_count
+                    constant = right_const * left_const
+                end if
+                known = .true.
+                return
+            case default
+                return
+            end select
+
+            variable_names(1:left_count) = left_names(1:left_count)
+            coefficients(1:left_count) = left_coeffs(1:left_count)
+            term_count = left_count
+            do i = 1, source_count
+                if (source_coeffs(i) == 0_c_int64_t) cycle
+                do j = 1, term_count
+                    if (trim(variable_names(j)) == trim(source_names(i))) exit
+                end do
+                if (j <= term_count) then
+                    coefficients(j) = coefficients(j) + sign * source_coeffs(i)
+                else
+                    if (term_count >= size(variable_names)) return
+                    term_count = term_count + 1
+                    variable_names(term_count) = source_names(i)
+                    coefficients(term_count) = sign * source_coeffs(i)
+                end if
+            end do
+            do i = term_count, 1, -1
+                if (coefficients(i) /= 0_c_int64_t) cycle
+                if (i < term_count) then
+                    variable_names(i:term_count-1) = variable_names(i+1:term_count)
+                    coefficients(i:term_count-1) = coefficients(i+1:term_count)
+                end if
+                term_count = term_count - 1
+            end do
+            known = .true.
+            return
+        end if
+        call eval_i32_constant(arena, node_index, context, constant, err)
+        known = len_trim(err) == 0
+    end subroutine affine_bound_expression
+
     integer(c_int64_t) function array_section_total_elements(info) result(total)
         type(array_section_info_t), intent(in) :: info
         integer :: i
 
         total = 1_c_int64_t
         if (info%result_rank <= 0) return
-        if (info%has_runtime_bounds) then
-            total = 0_c_int64_t
-            return
-        end if
         do i = 1, info%result_rank
+            if (info%section_extents(info%kept_dims(i)) <= 0_c_int64_t) then
+                total = 0_c_int64_t
+                return
+            end if
             total = total * info%section_extents(info%kept_dims(i))
         end do
     end function array_section_total_elements
@@ -708,6 +907,76 @@
         end if
         symbol_index = cached_array_expression_symbol(context, node_index)
     end function array_expression_symbol
+
+    recursive subroutine array_section_assignment_rhs_extent(arena, node_index, &
+                                                             context, extent, known, &
+                                                             error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: extent
+        logical, intent(out) :: known
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, op, err
+        integer :: symbol_index, left_index, right_index, line, column
+        integer(c_int64_t) :: left_extent, right_extent
+        logical :: left_known, right_known
+        integer, allocatable :: flat(:)
+
+        extent = 0_c_int64_t
+        known = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = resolve_symbol_at_node(context, node_index, name)
+            if (symbol_index <= 0) return
+            if (.not. is_elementwise_array_operand(context, symbol_index)) return
+            extent = int(effective_array_extent(context, symbol_index), c_int64_t)
+            known = extent > 0_c_int64_t
+            return
+        end if
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, left_index, right_index, &
+                                    line, column, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call array_section_assignment_rhs_extent(arena, left_index, context, &
+                                                     left_extent, left_known, err)
+            if (len_trim(err) > 0) return
+            call array_section_assignment_rhs_extent(arena, right_index, context, &
+                                                     right_extent, right_known, err)
+            if (len_trim(err) > 0) return
+            if (left_known .and. right_known) then
+                if (left_extent /= right_extent) then
+                    error_msg = 'array expression operands have nonconforming extents'
+                    return
+                end if
+                extent = left_extent
+                known = .true.
+            else if (left_known) then
+                extent = left_extent
+                known = .true.
+            else if (right_known) then
+                extent = right_extent
+                known = .true.
+            end if
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call section_available_element_count(arena, node, context, extent, known, &
+                                                 error_msg)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            extent = int(size(flat), c_int64_t)
+            known = extent > 0_c_int64_t
+        end select
+    end subroutine array_section_assignment_rhs_extent
 
     subroutine lower_array_section_print(arena, slice_node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -2075,10 +2344,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
 
         type(array_section_info_t) :: tinfo, sinfo
+        type(array_expr_plan_t) :: expression_plan
         type(lr_operand_desc_t) :: value
         type(lr_operand_desc_t) :: addr
         type(lr_operand_desc_t), allocatable :: rhs_values(:)
-        integer :: k, k2, n, rhs_symbol
+        integer :: k, k2, n, expression_symbol, expression_count
         integer(c_int64_t) :: rhs_count
         logical :: rhs_known
         integer(c_int64_t) :: tgt_lin, src_lin
@@ -2103,24 +2373,33 @@
                 error_msg = 'runtime array section assignment requires one kept dimension'
                 return
             end if
-            call actual_available_element_count(arena, node%value_index, context, &
-                                                rhs_count, rhs_known, error_msg)
+            call array_section_assignment_rhs_extent(arena, node%value_index, context, &
+                                                     rhs_count, rhs_known, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. rhs_known .or. rhs_count <= 0_c_int64_t) then
                 error_msg = 'runtime array section assignment requires a known '// &
                             'positive RHS extent'
                 return
             end if
-            rhs_symbol = array_expression_symbol(arena, node%value_index, context)
-            if (rhs_symbol <= 0) then
+            if (.not. actual_is_array_expression(arena, node%value_index, context)) then
                 error_msg = 'runtime array section assignment requires an array RHS'
                 return
             end if
             n = int(rhs_count)
+            call create_array_expression_temp(context, &
+                context%symbols(tinfo%source_index)%value_kind, n, 0, &
+                expression_symbol, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call build_array_expression(context, expression_symbol, node%value_index, &
+                                        expression_plan, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_expression_assignment(arena, expression_plan, context, &
+                                                  error_msg)
+            if (len_trim(error_msg) > 0) return
             allocate (rhs_values(n))
             do k = 0, n - 1
-                call lower_array_elementwise_value(arena, node%value_index, &
-                    rhs_symbol, k, context, rhs_values(k + 1), error_msg)
+                call load_array_linear_element(context, expression_symbol, &
+                    int(k, c_int64_t), rhs_values(k + 1), error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
             do k = 0, n - 1
@@ -2135,12 +2414,44 @@
             call set_empty(error_msg)
             return
         end if
-        n = int(tinfo%section_extents(1))
+        n = int(tinfo%section_extents(tinfo%kept_dims(1)))
+
+        ! An array-valued expression has no single scalar value to broadcast.
+        ! Materialize it into a rank-1 temporary before touching the target so
+        ! mixed-rank expressions such as u(0,:) + A0(:) * B(k,:) retain both
+        ! element-wise semantics and Fortran's fully-evaluated RHS rule.
+        if (tinfo%result_rank == 1 .and. actual_is_array_expression( &
+                arena, node%value_index, context)) then
+            expression_count = n
+            if (expression_count <= 0) then
+                error_msg = 'array section expression requires a positive extent'
+                return
+            end if
+            call create_array_expression_temp(context, &
+                context%symbols(tinfo%source_index)%value_kind, expression_count, &
+                0, expression_symbol, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call build_array_expression(context, expression_symbol, node%value_index, &
+                                        expression_plan, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_expression_assignment(arena, expression_plan, context, &
+                                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            allocate (rhs_values(expression_count))
+            do k = 0, expression_count - 1
+                call load_array_linear_element(context, expression_symbol, &
+                                               int(k, c_int64_t), rhs_values(k + 1), &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            call store_section_elements(context, tinfo, rhs_values, error_msg)
+            return
+        end if
 
         ! Constructor and section-copy right-hand sides are handled for rank-1
         ! sections only; the scalar-broadcast tail below also covers rank-2.
         if (node_exists(arena, node%value_index) .and. tinfo%result_rank == 1 &
-            .and. tinfo%source_rank == 1) then
+            .and. tinfo%source_rank >= 1 .and. tinfo%source_rank <= 2) then
             select type (rhs => arena%entries(node%value_index)%node)
             type is (array_literal_node)
                 if (.not. allocated(rhs%element_indices)) then
@@ -2162,17 +2473,16 @@
             type is (array_slice_node)
                 call describe_array_section(arena, rhs, context, sinfo, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (sinfo%source_rank /= 1 .or. sinfo%result_rank /= 1 .or. &
-                    int(sinfo%section_extents(1)) /= n) then
+                if (sinfo%result_rank /= 1 .or. &
+                    int(sinfo%section_extents(sinfo%kept_dims(1))) /= n) then
                     error_msg = 'array section assignment requires matching '// &
                                 'rank-1 shapes'
                     return
                 end if
                 allocate (rhs_values(n))
                 do k = 0, n - 1
-                    src_lin = sinfo%section_lowers(1) + &
-                              int(k, c_int64_t) * sinfo%section_strides(1) - &
-                              sinfo%source_lowers(1)
+                    src_lin = array_section_source_linear_index(sinfo, &
+                                                                  int(k, c_int64_t))
                     call load_array_linear_element(context, sinfo%source_index, &
                                                    src_lin, rhs_values(k + 1), &
                                                    error_msg)
@@ -2184,9 +2494,10 @@
         end if
 
         ! Scalar broadcast: arr(section) = expr, for rank-1 and rank-2 sections.
-        if (tinfo%source_rank /= tinfo%result_rank .or. tinfo%result_rank > 2) then
-            error_msg = 'array section assignment supports whole rank-1 and '// &
-                        'rank-2 sections'
+        if (tinfo%result_rank < 1 .or. tinfo%result_rank > 2 .or. &
+            tinfo%source_rank < tinfo%result_rank) then
+            error_msg = 'array section assignment supports rank-1 and rank-2 '// &
+                        'result sections'
             return
         end if
         select case (context%symbols(tinfo%source_index)%value_kind)
@@ -2206,9 +2517,8 @@
         if (len_trim(error_msg) > 0) return
         if (tinfo%result_rank == 1) then
             do k = 0, n - 1
-                tgt_lin = tinfo%section_lowers(1) + &
-                          int(k, c_int64_t) * tinfo%section_strides(1) - &
-                          tinfo%source_lowers(1)
+                tgt_lin = array_section_source_linear_index(tinfo, &
+                                                             int(k, c_int64_t))
                 call store_array_linear_element(context, tinfo%source_index, &
                                                 tgt_lin, value, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -2216,12 +2526,9 @@
         else
             do k2 = 0, int(tinfo%section_extents(2)) - 1
                 do k = 0, n - 1
-                    tgt_lin = (tinfo%section_lowers(1) + &
-                               int(k, c_int64_t) * tinfo%section_strides(1) - &
-                               tinfo%source_lowers(1)) + tinfo%source_sizes(1) * &
-                              (tinfo%section_lowers(2) + &
-                               int(k2, c_int64_t) * tinfo%section_strides(2) - &
-                               tinfo%source_lowers(2))
+                    tgt_lin = array_section_source_linear_index(tinfo, &
+                        int(k, c_int64_t) + int(tinfo%section_extents( &
+                            tinfo%kept_dims(1)), c_int64_t) * int(k2, c_int64_t))
                     call store_array_linear_element(context, tinfo%source_index, &
                                                     tgt_lin, value, error_msg)
                     if (len_trim(error_msg) > 0) return
@@ -2245,9 +2552,7 @@
         integer(c_int64_t) :: tgt_lin
 
         do k = 0, size(values) - 1
-            tgt_lin = tinfo%section_lowers(1) + &
-                      int(k, c_int64_t) * tinfo%section_strides(1) - &
-                      tinfo%source_lowers(1)
+            tgt_lin = array_section_source_linear_index(tinfo, int(k, c_int64_t))
             call store_array_linear_element(context, tinfo%source_index, &
                                             tgt_lin, values(k + 1), error_msg)
             if (len_trim(error_msg) > 0) return

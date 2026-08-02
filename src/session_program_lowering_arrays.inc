@@ -9,8 +9,11 @@
         if (.not. node_exists(arena, dim_index)) return
         select type (dim_node => arena%entries(dim_index)%node)
         type is (range_expression_node)
-            is_assumed = dim_node%start_index <= 0 .and. &
-                         dim_node%end_index <= 0 .and. dim_node%stride_index <= 0
+            ! An assumed-shape dummy may specify an explicit lower bound,
+            ! e.g. a(0:).  The omitted upper bound, rather than an omitted
+            ! lower bound, identifies the assumed-shape dimension.
+            is_assumed = dim_node%end_index <= 0 .and. &
+                         dim_node%stride_index <= 0
         type is (array_bounds_node)
             is_assumed = dim_node%is_assumed_shape
         end select
@@ -551,6 +554,44 @@
         end if
     end subroutine lower_assumed_shape_declaration
 
+    subroutine assumed_shape_lower_bounds(node, context, dim_count, lowers, &
+                                          error_msg)
+        ! Recover the dummy's declared lower bound for each assumed-shape
+        ! dimension.  A bare colon defaults to one; an explicit lower bound
+        ! such as 0: is part of the dummy view and must be retained in the
+        ! descriptor-backed element addressing.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: lowers(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, dim_index, lower_index
+        integer(c_int64_t) :: lower_value
+
+        call set_empty(error_msg)
+        lowers = 1
+        do i = 1, dim_count
+            dim_index = node%dimension_indices(i)
+            if (.not. node_exists(context%arena, dim_index)) then
+                error_msg = 'assumed-shape dimension index is invalid'
+                return
+            end if
+            lower_index = 0
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                lower_index = dim_node%start_index
+            type is (array_bounds_node)
+                lower_index = dim_node%lower_bound_index
+            end select
+            if (lower_index > 0) then
+                call eval_i32_constant(context%arena, lower_index, context, &
+                                       lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                lowers(i) = int(lower_value)
+            end if
+        end do
+    end subroutine assumed_shape_lower_bounds
+
     subroutine bind_one_assumed_shape(node, context, name, dim_count, &
                                       value_kind, error_msg)
         type(declaration_node), intent(in) :: node
@@ -559,7 +600,7 @@
         integer, intent(in) :: dim_count
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: extents(2), total, i, index
+        integer :: extents(2), lowers(2), total, i, index
         logical :: ok
 
         if (.not. allocated(context%current_proc_name)) then
@@ -568,6 +609,9 @@
                 'a contained procedure', error_msg)
             return
         end if
+        call assumed_shape_lower_bounds(node, context, dim_count, lowers, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
         ! Every assumed-shape dummy is bound from the caller's descriptor
         ! (#334): bind_assumed_shape_descriptor_params already loaded the base
         ! address and each dimension's extent from it before this declaration
@@ -601,7 +645,8 @@
             end if
             call define_declared_array_symbol(context, node, name, 1, total, &
                                               value_kind, error_msg, &
-                                              assumed_extents=extents(1:dim_count))
+                                              assumed_extents=extents(1:dim_count), &
+                                              assumed_lowers=lowers(1:dim_count))
             return
         end if
 
@@ -611,7 +656,8 @@
                 call define_declared_array_symbol(context, node, name, 1, 0, &
                                                   value_kind, error_msg, &
                                                   assumed_extents=spread(0, 1, &
-                                                                     dim_count))
+                                                                     dim_count), &
+                                                  assumed_lowers=lowers(1:dim_count))
                 if (len_trim(error_msg) > 0) return
                 ! A rank-1 dummy with no constant shape has no compile-time
                 ! element count, exactly like a runtime-sized local automatic
@@ -2122,7 +2168,8 @@
 
     subroutine define_declared_array_symbol(context, node, name, array_lower_bound, &
                                             array_size, value_kind, error_msg, &
-                                            assumed_extents, is_assumed_size)
+                                            assumed_extents, assumed_lowers, &
+                                            is_assumed_size)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node
         character(len=*), intent(in) :: name
@@ -2133,6 +2180,8 @@
         ! For an assumed-shape dummy a(:), the caller-derived extent per
         ! dimension (lower bound 1). Present and positive only for assumed-shape.
         integer, intent(in), optional :: assumed_extents(:)
+        ! Explicit lower bounds on assumed-shape dummies, such as a(0:).
+        integer, intent(in), optional :: assumed_lowers(:)
         ! True for an assumed-size dummy a(n1, ..., *): the trailing dimension
         ! carries no compile-time extent, so its fold below is skipped.
         logical, intent(in), optional :: is_assumed_size
@@ -2247,6 +2296,10 @@
             ! local indexing), matching gfortran for an assumed-shape view.
             do i = 1, dim_count
                 context%symbols(index)%array_dim_lowers(i) = 1
+                if (present(assumed_lowers)) then
+                    context%symbols(index)%array_dim_lowers(i) = &
+                        assumed_lowers(i)
+                end if
                 context%symbols(index)%array_dim_sizes(i) = assumed_extents(i)
             end do
             context%symbols(index)%element_address = param_base

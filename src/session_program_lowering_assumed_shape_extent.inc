@@ -193,6 +193,113 @@
         end do
     end function callee_dummy_assumed_shape_dims
 
+    subroutine dummy_assumed_shape_lowers(arena, body_indices, param_name, &
+                                          context, dim_count, lowers, found, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: body_indices(:)
+        character(len=*), intent(in) :: param_name
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: lowers(:)
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, k, d
+        logical :: name_matches, all_assumed
+
+        lowers = 1
+        found = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array .or. decl%is_allocatable) cycle
+                if (.not. allocated(decl%dimension_indices)) cycle
+                if (size(decl%dimension_indices) /= dim_count) cycle
+                all_assumed = .true.
+                do d = 1, dim_count
+                    if (.not. dim_is_assumed_shape(arena, &
+                            decl%dimension_indices(d))) all_assumed = .false.
+                end do
+                if (.not. all_assumed) cycle
+                name_matches = .false.
+                if (allocated(decl%var_name)) then
+                    name_matches = trim(decl%var_name) == trim(param_name)
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == trim(param_name)) &
+                            name_matches = .true.
+                    end do
+                end if
+                if (.not. name_matches) cycle
+                call assumed_shape_lower_bounds(decl, context, dim_count, &
+                                                lowers, error_msg)
+                if (len_trim(error_msg) > 0) return
+                found = .true.
+                return
+            end select
+        end do
+    end subroutine dummy_assumed_shape_lowers
+
+    subroutine callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
+                                                 context, dim_count, lowers, &
+                                                 found, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: dim_count
+        integer, intent(out) :: lowers(:)
+        logical, intent(out) :: found
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n
+        character(len=:), allocatable :: name, name_err, node_type
+        type(subroutine_def_node), pointer :: sb_node
+        type(function_def_node), pointer :: fn_node
+
+        lowers = 1
+        found = .false.
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name) .or. &
+                    .not. same_name(sb_node%name, callee_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(sb_node%param_indices)) return
+                call parameter_name(arena, sb_node%param_indices(param_pos), name, &
+                                    name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_assumed_shape_lowers(arena, sb_node%body_indices, name, &
+                                                context, dim_count, lowers, found, &
+                                                error_msg)
+                return
+            else if (node_type == 'function_def_node' .or. &
+                     node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name) .or. &
+                    .not. same_name(fn_node%name, callee_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos < 1 .or. param_pos > size(fn_node%param_indices)) return
+                call parameter_name(arena, fn_node%param_indices(param_pos), name, &
+                                    name_err)
+                if (len_trim(name_err) > 0) return
+                call dummy_assumed_shape_lowers(arena, fn_node%body_indices, name, &
+                                                context, dim_count, lowers, found, &
+                                                error_msg)
+                return
+            end if
+        end do
+    end subroutine callee_dummy_assumed_shape_lowers
+
     logical function callee_dummy_assumed_shape_rank1(arena, callee_name, &
                                                        param_pos) result(is_match)
         type(ast_arena_t), intent(in) :: arena

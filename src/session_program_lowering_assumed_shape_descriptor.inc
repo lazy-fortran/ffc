@@ -8,10 +8,9 @@
     !
     ! The descriptor describes the DUMMY's view of the actual, which is what
     ! F2018 15.5.2.4 associates: `base` is the address of the actual's first
-    ! element and every `lower_bound` is 1, because an assumed-shape dummy
-    ! without an explicit lower bound has lower bound 1 whatever the actual's
-    ! own bounds are. Extents and byte strides are the actual's, so column-major
-    ! layout and element identity are preserved exactly.
+    ! element; a bare-colon dummy has lower bound 1, while an explicit lower
+    ! bound such as 0: is retained. Extents and byte strides are the actual's,
+    ! so column-major layout and element identity are preserved exactly.
 
     integer(c_int64_t) function assumed_shape_dim_field_offset(dim, field) &
             result(offset)
@@ -266,7 +265,8 @@
     end subroutine store_descriptor_i32
 
     subroutine build_assumed_shape_descriptor(arena, node_index, context, rank, &
-                                              callee_name, descriptor, error_msg)
+                                              callee_name, param_pos, descriptor, &
+                                              error_msg)
         ! Materialize the canonical descriptor an assumed-shape dummy receives.
         ! One stack descriptor per call argument; it borrows the actual's
         ! storage and never claims ownership, so passing an array never changes
@@ -276,14 +276,16 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: rank
         character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
         type(lr_operand_desc_t), intent(out) :: descriptor
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: base, extent, stride, running
         integer :: symbol_index, value_kind, actual_rank, dim
+        integer :: dummy_lowers(ARRAY_MAX_RANK)
         integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
         integer(c_int32_t) :: flags
-        logical :: is_component_projection
+        logical :: is_component_projection, has_dummy_lowers
         character(len=32) :: rank_text, actual_rank_text
 
         actual_rank = assumed_shape_actual_rank(arena, node_index, context)
@@ -295,6 +297,12 @@
                         ' received an actual of rank '//trim(actual_rank_text)
             return
         end if
+
+        call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
+                                               context, rank, dummy_lowers, &
+                                               has_dummy_lowers, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. has_dummy_lowers) dummy_lowers(1:rank) = 1
 
         symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
         if (symbol_index <= 0) then
@@ -377,10 +385,11 @@
             call assumed_shape_actual_extent(arena, node_index, context, rank, &
                                              dim, extent, error_msg)
             if (len_trim(error_msg) > 0) return
-            ! An assumed-shape dummy without an explicit lower bound has lower
-            ! bound 1 regardless of the actual's own bounds (F2018 8.5.8.3).
+            ! A bare-colon dummy has lower bound 1; an explicit lower bound such
+            ! as 0: is part of the dummy view (F2018 8.5.8.3).
             if (.not. emit_i64_store_at(context%session, &
-                    i64_immediate(context%session, 1_c_int64_t), descriptor, &
+                    i64_immediate(context%session, int(dummy_lowers(dim), &
+                                                        c_int64_t)), descriptor, &
                     assumed_shape_dim_field_offset(dim, &
                         int(ARRAY_DIMENSION_LOWER_OFFSET, c_int64_t)), &
                     error_msg)) return

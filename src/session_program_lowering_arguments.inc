@@ -193,6 +193,7 @@
                 call build_assumed_shape_descriptor(arena, arg_indices(i), &
                     context, callee_dummy_assumed_shape_dims(arena, &
                         callee_name, call_arg_param_pos(i, sp)), callee_name, &
+                    call_arg_param_pos(i, sp), &
                     args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
