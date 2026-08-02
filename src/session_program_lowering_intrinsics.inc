@@ -1627,6 +1627,73 @@
         call set_empty(error_msg)
     end subroutine lower_i32_dot_product_intrinsic
 
+    subroutine lower_logical_dot_product_intrinsic(arena, node, context, value, &
+                                                   error_msg)
+        ! For logical arrays, DOT_PRODUCT is ANY(a .AND. b), not an integer
+        ! sum. Keep this path separate from the numeric implementation so the
+        ! generic intrinsic dispatcher preserves the result type.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: a_name, b_name
+        integer :: a_index, b_index, n, i
+        integer(c_int64_t) :: addr_offset
+        type(lr_operand_desc_t) :: a_elem, b_elem, both, acc, next_acc
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call get_identifier_name(arena, node%arg_indices(1), a_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call get_identifier_name(arena, node%arg_indices(2), b_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        a_index = find_symbol_compat(context, a_name)
+        b_index = find_symbol_compat(context, b_name)
+        if (a_index <= 0 .or. b_index <= 0) then
+            error_msg = 'logical dot_product arguments were not declared'
+            return
+        end if
+        if (.not. context%symbols(a_index)%is_array .or. &
+            .not. context%symbols(b_index)%is_array) then
+            error_msg = 'logical dot_product requires array arguments'
+            return
+        end if
+        if (context%symbols(a_index)%value_kind /= VALUE_LOGICAL .or. &
+            context%symbols(b_index)%value_kind /= VALUE_LOGICAL) then
+            error_msg = 'logical dot_product requires logical arrays'
+            return
+        end if
+        if (context%symbols(a_index)%array_rank /= 1 .or. &
+            context%symbols(b_index)%array_rank /= 1) then
+            error_msg = 'logical dot_product requires rank-1 arrays'
+            return
+        end if
+        n = context%symbols(a_index)%array_size
+        if (n <= 0 .or. n /= context%symbols(b_index)%array_size) then
+            error_msg = 'logical dot_product requires conforming non-empty arrays'
+            return
+        end if
+
+        acc = i32_immediate(context%session, 0_c_int64_t)
+        do i = 0, n - 1
+            addr_offset = int(i, c_int64_t)
+            call load_array_linear_element(context, a_index, addr_offset, &
+                                           a_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, b_index, addr_offset, &
+                                           b_elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_AND, a_elem, &
+                                      b_elem, both, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, both, &
+                                      next_acc, error_msg)) return
+            acc = next_acc
+        end do
+        value = acc
+        call set_empty(error_msg)
+    end subroutine lower_logical_dot_product_intrinsic
+
     subroutine lower_f32_dot_product_intrinsic(arena, node, context, value, &
                                                error_msg)
         use, intrinsic :: iso_c_binding, only: c_float

@@ -1014,7 +1014,6 @@ list_read_7.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length c
 list_read_8.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 list_read_9.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 loc_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-logical_dot_product.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 logical_temp_io.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
 longnames.f90 # owner=lazy-fortran/ffc#327; reason=preserve distinct declaration bindings
 malloc_free_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering

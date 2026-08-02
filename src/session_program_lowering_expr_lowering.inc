@@ -207,6 +207,12 @@
             call lower_btest_intrinsic(arena, node, context, value, error_msg)
             return
         end if
+        if (same_name(call_name, 'dot_product') .and. .not. &
+            is_contained_logical_function(context, call_name)) then
+            call lower_logical_dot_product_intrinsic(arena, node, context, &
+                                                     value, error_msg)
+            return
+        end if
         if ((same_name(call_name, 'all') .or. same_name(call_name, 'any')) &
             .and. .not. is_contained_logical_function(context, call_name)) then
             block
