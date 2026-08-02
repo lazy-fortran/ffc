@@ -1658,6 +1658,138 @@ module session_program_lowering
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_alloc_pointer_targets
+        module subroutine check_pointer_target_contracts(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_pointer_target_contracts
+        module subroutine check_present_argument_subobject(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_present_argument_subobject
+        module subroutine check_abstract_interface_pointer(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_abstract_interface_pointer
+        module function pointer_declaration_line(arena, name) result(line_no)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            integer :: line_no
+        end function pointer_declaration_line
+        module subroutine check_proc_pointer_targets(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_proc_pointer_targets
+        module function name_is_proc_pointer(arena, name) result(is_proc_ptr)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            logical :: is_proc_ptr
+        end function name_is_proc_pointer
+        module function name_is_data_object(arena, name) result(is_data)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            logical :: is_data
+        end function name_is_data_object
+        module function name_is_visible_procedure(arena, name) result(is_visible)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            logical :: is_visible
+        end function name_is_visible_procedure
+        module subroutine enclosing_procedure_of(arena, node_index, name, is_recursive)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: name
+            logical, intent(out) :: is_recursive
+        end subroutine enclosing_procedure_of
+        module subroutine check_pointer_intent_actuals(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_pointer_intent_actuals
+        module subroutine dummy_pointer_intent(arena, proc_name, position, &
+                                               is_pointer, intent_text)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: proc_name
+            integer, intent(in) :: position
+            logical, intent(out) :: is_pointer
+            character(len=:), allocatable, intent(out) :: intent_text
+        end subroutine dummy_pointer_intent
+        module subroutine param_node_name(arena, node_index, name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: name
+        end subroutine param_node_name
+        module subroutine body_declaration_attributes(arena, body_indices, name, &
+                                                       found, is_pointer, intent_text)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: name
+            logical, intent(out) :: found, is_pointer
+            character(len=:), allocatable, intent(out) :: intent_text
+        end subroutine body_declaration_attributes
+        module subroutine declared_pointer_intent(arena, name, found, is_pointer, &
+                                                  intent_text)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            logical, intent(out) :: found, is_pointer
+            character(len=:), allocatable, intent(out) :: intent_text
+        end subroutine declared_pointer_intent
+        module subroutine check_pointer_source_forms(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_pointer_source_forms
+        module function pointer_statement_line(arena, name) result(line_no)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            integer :: line_no
+        end function pointer_statement_line
+        module subroutine check_present_source_line(code, line_no, error_msg)
+            character(len=*), intent(in) :: code
+            integer, intent(in) :: line_no
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_present_source_line
+        module function is_plain_identifier(text) result(plain)
+            character(len=*), intent(in) :: text
+            logical :: plain
+        end function is_plain_identifier
+        module subroutine get_pointer_source_lines(arena, source)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: source
+        end subroutine get_pointer_source_lines
+        module subroutine check_cray_pointer_line(code, line_no, error_msg)
+            character(len=*), intent(in) :: code
+            integer, intent(in) :: line_no
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_cray_pointer_line
+        module subroutine check_associated_target_line(code, line_no, error_msg)
+            character(len=*), intent(in) :: code
+            integer, intent(in) :: line_no
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_associated_target_line
+        module subroutine check_parenthesised_actual_line(arena, code, line_no, &
+                                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: code
+            integer, intent(in) :: line_no
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_parenthesised_actual_line
+        module subroutine find_call_paren(low, name, from, open_pos)
+            character(len=*), intent(in) :: low
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: from
+            integer, intent(out) :: open_pos
+        end subroutine find_call_paren
+        module subroutine matching_paren(text, open_pos, close_pos)
+            character(len=*), intent(in) :: text
+            integer, intent(in) :: open_pos
+            integer, intent(out) :: close_pos
+        end subroutine matching_paren
+        module subroutine top_level_args(text, starts, ends, n_args)
+            character(len=*), intent(in) :: text
+            integer, intent(out) :: starts(:), ends(:), n_args
+        end subroutine top_level_args
+        module function is_parenthesised(text) result(wrapped)
+            character(len=*), intent(in) :: text
+            logical :: wrapped
+        end function is_parenthesised
         module subroutine check_declaration_conflicts(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -4740,7 +4872,6 @@ contains
     end function lowercase_text
 
     include 'session_program_lowering_select.inc'
-    include 'session_program_lowering_reject_pointer.inc'
     include 'session_program_lowering_reject_const_init.inc'
     include 'session_program_lowering_reject_storage.inc'
     include 'session_program_lowering_reject_const_overflow.inc'

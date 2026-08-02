@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_pointer
+    use session_program_lowering_reject_pointer_order
+    implicit none
+contains
     ! Data and procedure pointer target contracts (#381).
     !
     ! A pointer only ever associates with something that can be a target:
@@ -10,9 +14,7 @@
     ! pointer actuals in a pointer-association context, Cray pointer
     ! declarations, and parenthesised expressions where a target is
     ! required.
-    subroutine check_pointer_target_contracts(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_pointer_target_contracts
 
         call set_empty(error_msg)
         call check_present_argument_subobject(arena, error_msg)
@@ -24,15 +26,13 @@
         call check_pointer_intent_actuals(arena, error_msg)
         if (len_trim(error_msg) > 0) return
         call check_pointer_source_forms(arena, error_msg)
-    end subroutine check_pointer_target_contracts
+    end procedure check_pointer_target_contracts
 
     ! The A argument of PRESENT shall be the name of an optional dummy
     ! argument, never a subobject of one (F2018 16.9.157, gfortran
     ! "must not be a subobject"). Anything but a bare identifier is a
     ! component reference, array element or expression.
-    subroutine check_present_argument_subobject(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_present_argument_subobject
         integer :: n
         character(len=64) :: location
 
@@ -54,15 +54,13 @@
                 return
             end select
         end do
-    end subroutine check_present_argument_subobject
+    end procedure check_present_argument_subobject
 
     ! An interface body in an ABSTRACT INTERFACE names an abstract
     ! interface, not a procedure, so that name shall not also carry the
     ! POINTER attribute (F2018 C1213, gfortran "PROCEDURE POINTER
     ! attribute conflicts with ABSTRACT attribute").
-    subroutine check_abstract_interface_pointer(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_abstract_interface_pointer
         integer :: n, i
         character(len=:), allocatable :: proc_name
         character(len=64) :: location
@@ -91,13 +89,11 @@
                 end do
             end select
         end do
-    end subroutine check_abstract_interface_pointer
+    end procedure check_abstract_interface_pointer
 
     ! Line of the first declaration giving name the POINTER attribute,
     ! or 0 when no such declaration exists.
-    integer function pointer_declaration_line(arena, name) result(line_no)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure pointer_declaration_line
         integer :: n, i
 
         line_no = 0
@@ -122,7 +118,7 @@
                 end do
             end select
         end do
-    end function pointer_declaration_line
+    end procedure pointer_declaration_line
 
     ! A proc-target shall be a procedure that is visible in this scope:
     ! a data object, the result variable of the enclosing function, or a
@@ -130,9 +126,7 @@
     ! gfortran "Invalid procedure pointer", "is invalid as proc-target",
     ! "must be either an intrinsic, host or use associated, referenced or
     ! have the EXTERNAL attribute").
-    subroutine check_proc_pointer_targets(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_proc_pointer_targets
         character(len=:), allocatable :: ptr_name, target_name, ff_error
         character(len=:), allocatable :: enclosing_name
         integer :: n
@@ -181,12 +175,10 @@
                 return
             end select
         end do
-    end subroutine check_proc_pointer_targets
+    end procedure check_proc_pointer_targets
 
     ! A procedure pointer is declared as procedure(...), pointer :: p.
-    logical function name_is_proc_pointer(arena, name) result(is_proc_ptr)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure name_is_proc_pointer
         integer :: n, i
         logical :: names_it
 
@@ -214,13 +206,11 @@
                 end if
             end select
         end do
-    end function name_is_proc_pointer
+    end procedure name_is_proc_pointer
 
     ! A declaration with an intrinsic or derived type name and no
     ! PROCEDURE prefix declares a data object.
-    logical function name_is_data_object(arena, name) result(is_data)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure name_is_data_object
         integer :: n, i
         logical :: names_it
 
@@ -248,14 +238,12 @@
                 end if
             end select
         end do
-    end function name_is_data_object
+    end procedure name_is_data_object
 
     ! A name is a usable proc-target when a procedure definition, an
     ! interface body, an EXTERNAL declaration or an INTRINSIC statement
     ! makes it visible.
-    logical function name_is_visible_procedure(arena, name) result(is_visible)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure name_is_visible_procedure
         character(len=:), allocatable :: def_name
         integer :: n, i
 
@@ -302,14 +290,10 @@
                 end if
             end select
         end do
-    end function name_is_visible_procedure
+    end procedure name_is_visible_procedure
 
     ! Name and recursiveness of the procedure whose body holds node_index.
-    subroutine enclosing_procedure_of(arena, node_index, name, is_recursive)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        character(len=:), allocatable, intent(out) :: name
-        logical, intent(out) :: is_recursive
+    module procedure enclosing_procedure_of
         integer :: n, i
 
         call set_empty(name)
@@ -327,15 +311,13 @@
                 end do
             end select
         end do
-    end subroutine enclosing_procedure_of
+    end procedure enclosing_procedure_of
 
     ! An INTENT(IN) pointer shall not appear as the actual argument of an
     ! INTENT(OUT) or INTENT(INOUT) pointer dummy: that is a pointer
     ! association context (F2018 C844, gfortran "INTENT(IN) in pointer
     ! association context").
-    subroutine check_pointer_intent_actuals(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_pointer_intent_actuals
         character(len=:), allocatable :: call_name, actual_name, ff_error
         character(len=:), allocatable :: dummy_intent, actual_intent
         integer, allocatable :: arg_indices(:)
@@ -374,16 +356,10 @@
                 return
             end do
         end do
-    end subroutine check_pointer_intent_actuals
+    end procedure check_pointer_intent_actuals
 
     ! POINTER attribute and INTENT of the position-th dummy of proc_name.
-    subroutine dummy_pointer_intent(arena, proc_name, position, is_pointer, &
-                                    intent_text)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: proc_name
-        integer, intent(in) :: position
-        logical, intent(out) :: is_pointer
-        character(len=:), allocatable, intent(out) :: intent_text
+    module procedure dummy_pointer_intent
         character(len=:), allocatable :: dummy_name
         integer :: n
         logical :: found
@@ -407,13 +383,10 @@
                 return
             end select
         end do
-    end subroutine dummy_pointer_intent
+    end procedure dummy_pointer_intent
 
     ! Declared name of a dummy argument node.
-    subroutine param_node_name(arena, node_index, name)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        character(len=:), allocatable, intent(out) :: name
+    module procedure param_node_name
 
         call set_empty(name)
         if (.not. node_exists(arena, node_index)) return
@@ -425,17 +398,10 @@
         type is (identifier_node)
             if (allocated(nd%name)) name = trim(nd%name)
         end select
-    end subroutine param_node_name
+    end procedure param_node_name
 
     ! POINTER attribute and INTENT of a declaration inside a procedure body.
-    subroutine body_declaration_attributes(arena, body_indices, name, found, &
-                                           is_pointer, intent_text)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: body_indices(:)
-        character(len=*), intent(in) :: name
-        logical, intent(out) :: found
-        logical, intent(out) :: is_pointer
-        character(len=:), allocatable, intent(out) :: intent_text
+    module procedure body_declaration_attributes
         integer :: i, j
         logical :: names_it
 
@@ -464,16 +430,10 @@
                 return
             end select
         end do
-    end subroutine body_declaration_attributes
+    end procedure body_declaration_attributes
 
     ! POINTER attribute and INTENT of the first declaration naming name.
-    subroutine declared_pointer_intent(arena, name, found, is_pointer, &
-                                       intent_text)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
-        logical, intent(out) :: found
-        logical, intent(out) :: is_pointer
-        character(len=:), allocatable, intent(out) :: intent_text
+    module procedure declared_pointer_intent
         integer :: n, i
         logical :: names_it
 
@@ -503,16 +463,14 @@
                 return
             end select
         end do
-    end subroutine declared_pointer_intent
+    end procedure declared_pointer_intent
 
     ! Parentheses never survive into the typed AST, so the forms that turn
     ! on them are checked on the statement source: a Cray pointer
     ! declaration (POINTER (ptr, pointee), not accepted without
     ! -fcray-pointer), a parenthesised ASSOCIATED target, and a
     ! parenthesised actual argument passed to a POINTER dummy.
-    subroutine check_pointer_source_forms(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_pointer_source_forms
         character(len=:), allocatable :: source, line, code
         integer :: pos, next_nl, line_no
 
@@ -541,14 +499,12 @@
             call check_present_source_line(code, line_no, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_pointer_source_forms
+    end procedure check_pointer_source_forms
 
     ! Line of a POINTER attribute statement (POINTER :: a, b) naming name,
     ! or 0. The attribute-statement form carries no type and does not reach
     ! the typed AST as a declaration, so it is read from the source.
-    integer function pointer_statement_line(arena, name) result(line_no)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure pointer_statement_line
         character(len=:), allocatable :: source, line, code, low, list
         integer :: pos, next_nl, current, rest, starts(32), ends(32), n_names, k
 
@@ -592,15 +548,12 @@
                 return
             end do
         end do
-    end function pointer_statement_line
+    end procedure pointer_statement_line
 
     ! PRESENT applied to anything but a bare name, read from the source.
     ! The typed AST does not expose the argument of PRESENT in every scope,
     ! so the constraint is also enforced on the statement text.
-    subroutine check_present_source_line(code, line_no, error_msg)
-        character(len=*), intent(in) :: code
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(inout) :: error_msg
+    module procedure check_present_source_line
         character(len=:), allocatable :: low, arg_text
         integer :: open_pos, close_pos, cursor
         character(len=64) :: location
@@ -622,12 +575,11 @@
                 'must not be a subobject'
             return
         end do
-    end subroutine check_present_source_line
+    end procedure check_present_source_line
 
     ! A name is a plain identifier: a letter followed by letters, digits
     ! or underscores, with nothing else attached.
-    logical function is_plain_identifier(text) result(plain)
-        character(len=*), intent(in) :: text
+    module procedure is_plain_identifier
         character(len=:), allocatable :: trimmed
         integer :: i
 
@@ -639,25 +591,20 @@
             if (.not. is_fortran_identifier_char(trimmed(i:i))) return
         end do
         plain = .true.
-    end function is_plain_identifier
+    end procedure is_plain_identifier
 
-    subroutine get_pointer_source_lines(arena, source)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: source
+    module procedure get_pointer_source_lines
         logical :: found
 
         call get_source_text(arena, source, found)
         if (.not. found) call set_empty(source)
         if (.not. allocated(source)) call set_empty(source)
-    end subroutine get_pointer_source_lines
+    end procedure get_pointer_source_lines
 
     ! POINTER (ptr, pointee) is the Cray pointer extension, distinct from
     ! the standard POINTER attribute statement (gfortran: "Cray pointer
     ! declaration ... requires -fcray-pointer").
-    subroutine check_cray_pointer_line(code, line_no, error_msg)
-        character(len=*), intent(in) :: code
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(inout) :: error_msg
+    module procedure check_cray_pointer_line
         character(len=:), allocatable :: low
         integer :: rest
         character(len=64) :: location
@@ -676,15 +623,12 @@
         error_msg = 'Cray pointer declaration'//trim(location)// &
             ' requires -fcray-pointer; the Cray pointer extension is '// &
             'not accepted'
-    end subroutine check_cray_pointer_line
+    end procedure check_cray_pointer_line
 
     ! The TARGET argument of ASSOCIATED shall be a pointer or a variable
     ! with the TARGET attribute; a parenthesised expression is neither
     ! (gfortran: "must be a VARIABLE or FUNCTION").
-    subroutine check_associated_target_line(code, line_no, error_msg)
-        character(len=*), intent(in) :: code
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(inout) :: error_msg
+    module procedure check_associated_target_line
         character(len=:), allocatable :: low, arg_text
         integer :: open_pos, close_pos, starts(8), ends(8), n_args
         character(len=64) :: location
@@ -701,16 +645,12 @@
         write (location, '(" at line ",I0)') line_no
         error_msg = 'TARGET argument of ASSOCIATED'//trim(location)// &
             ' must be a VARIABLE or FUNCTION, not a parenthesised expression'
-    end subroutine check_associated_target_line
+    end procedure check_associated_target_line
 
     ! A parenthesised actual argument is an expression, so it can never
     ! associate with a POINTER dummy (gfortran: "must be a pointer or a
     ! valid target").
-    subroutine check_parenthesised_actual_line(arena, code, line_no, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: code
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(inout) :: error_msg
+    module procedure check_parenthesised_actual_line
         character(len=:), allocatable :: low, call_name, arg_text
         integer :: open_pos, close_pos, starts(8), ends(8), n_args, k, name_end
         logical :: dummy_pointer
@@ -745,14 +685,10 @@
                 ' must be a pointer or a valid target'
             return
         end do
-    end subroutine check_parenthesised_actual_line
+    end procedure check_parenthesised_actual_line
 
     ! Position of the opening parenthesis of a call to name, or 0.
-    subroutine find_call_paren(low, name, from, open_pos)
-        character(len=*), intent(in) :: low
-        character(len=*), intent(in) :: name
-        integer, intent(in) :: from
-        integer, intent(out) :: open_pos
+    module procedure find_call_paren
         integer :: hit, cursor, after
 
         open_pos = 0
@@ -775,13 +711,10 @@
             open_pos = after
             return
         end do
-    end subroutine find_call_paren
+    end procedure find_call_paren
 
     ! Position of the parenthesis closing the one at open_pos, or 0.
-    subroutine matching_paren(text, open_pos, close_pos)
-        character(len=*), intent(in) :: text
-        integer, intent(in) :: open_pos
-        integer, intent(out) :: close_pos
+    module procedure matching_paren
         integer :: i, depth
 
         close_pos = 0
@@ -796,14 +729,10 @@
                 end if
             end if
         end do
-    end subroutine matching_paren
+    end procedure matching_paren
 
     ! Split an argument list on commas that sit outside parentheses.
-    subroutine top_level_args(text, starts, ends, n_args)
-        character(len=*), intent(in) :: text
-        integer, intent(out) :: starts(:)
-        integer, intent(out) :: ends(:)
-        integer, intent(out) :: n_args
+    module procedure top_level_args
         integer :: i, depth, arg_start
 
         n_args = 0
@@ -825,12 +754,11 @@
         n_args = n_args + 1
         starts(n_args) = arg_start
         ends(n_args) = len(text)
-    end subroutine top_level_args
+    end procedure top_level_args
 
     ! An argument is parenthesised when one outer pair of parentheses
     ! wraps the whole expression.
-    logical function is_parenthesised(text) result(wrapped)
-        character(len=*), intent(in) :: text
+    module procedure is_parenthesised
         character(len=:), allocatable :: trimmed
         integer :: close_pos
 
@@ -841,4 +769,5 @@
         call matching_paren(trimmed, 1, close_pos)
         if (close_pos /= len(trimmed)) return
         wrapped = .true.
-    end function is_parenthesised
+    end procedure is_parenthesised
+end submodule session_program_lowering_reject_pointer
