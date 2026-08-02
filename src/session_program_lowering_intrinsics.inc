@@ -1197,27 +1197,39 @@
         end do
     end subroutine lower_i32_minmax_intrinsic
 
-    subroutine lower_i32_legacy_min_call(arena, node, context, real_args, &
-                                         value, error_msg)
+    subroutine lower_i32_legacy_minmax_call(arena, node, context, real_args, &
+                                            is_max, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         logical, intent(in) :: real_args
+        logical, intent(in) :: is_max
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: real_value
+        integer(c_int) :: predicate
 
         if (real_args) then
-            call lower_f32_minmax_intrinsic(arena, node, LR_FCMP_OLE, context, &
+            if (is_max) then
+                predicate = LR_FCMP_OGE
+            else
+                predicate = LR_FCMP_OLE
+            end if
+            call lower_f32_minmax_intrinsic(arena, node, predicate, context, &
                                             real_value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_f32_to_i32(context%session, real_value, value, &
                                             error_msg)) return
         else
-            call lower_i32_minmax_intrinsic(arena, node, LR_CMP_SLE, context, &
+            if (is_max) then
+                predicate = LR_CMP_SGE
+            else
+                predicate = LR_CMP_SLE
+            end if
+            call lower_i32_minmax_intrinsic(arena, node, predicate, context, &
                                             value, error_msg)
         end if
-    end subroutine lower_i32_legacy_min_call
+    end subroutine lower_i32_legacy_minmax_call
 
     subroutine lower_i64_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)

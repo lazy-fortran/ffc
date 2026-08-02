@@ -425,11 +425,15 @@
               if (len_trim(error_msg) > 0) return
           end block
       end if
-      if ((same_name(call_name, 'min0') .or. same_name(call_name, 'min1')) .and. &
+      if ((same_name(call_name, 'min0') .or. same_name(call_name, 'min1') .or. &
+          same_name(call_name, 'max0') .or. same_name(call_name, 'max1')) .and. &
           .not. is_contained_i32_function(context, call_name)) then
-          call lower_i32_legacy_min_call(arena, node, context, &
-                                         same_name(call_name, 'min1'), value, &
-                                         error_msg)
+          call lower_i32_legacy_minmax_call(arena, node, context, &
+                                            same_name(call_name, 'min1') .or. &
+                                            same_name(call_name, 'max1'), &
+                                            same_name(call_name, 'max0') .or. &
+                                            same_name(call_name, 'max1'), value, &
+                                            error_msg)
           return
       end if
       intrinsic_id = i32_intrinsic_id(call_name)
