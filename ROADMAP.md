@@ -25,11 +25,11 @@ The retired MLIR/HLFIR experiment lives only in git history. Reference it
 by commit hash if you need to look back, but do not revive it without an
 explicit decision.
 
-## Current status (2026-08-01)
+## Current status (2026-08-02)
 
-- Main: `4fd5e95` (module-artifact export visibility fixed; sampled manifest
-  dispositions through seed 1037).
-  FortFront `bef13511`. LIRIC `5436e5c`.
+- Main: `87a6274` (structured DO WHILE lowering and array-valued predicates;
+  sampled manifest dispositions through seed 1037).
+  FortFront `0f49d25c`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -37,6 +37,12 @@ explicit decision.
   passes after public-but-unsupported module procedures were preserved in
   `.fmod` exports. The next sample increase is deliberately deferred while
   owned XFAIL implementation work continues.
+- The current owned XFAIL tranche is complete: `while_05.f90` and
+  `do_while_1.f90` pass as ordinary no-manifest cases, and their XFAIL entries
+  were removed. Focused independent regressions for character array results,
+  array-expression materialisation, and the DO WHILE header all pass. Keep the
+  random sample at 900 until the next owned XFAIL tranche is selected and
+  reaches zero.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
