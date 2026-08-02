@@ -761,8 +761,14 @@
                 end if
                 if (.not. allocated(binding%binding_name)) cycle
                 method_name_buf = trim(binding%binding_name)
-                if (allocated(binding%implementation) .and. &
-                    len_trim(binding%implementation) > 0) then
+                if (binding%is_deferred) then
+                    ! An abstract deferred binding occupies a vtable slot but
+                    ! has no linkable implementation in this compilation
+                    ! unit. Keep the slot for extensions and leave its target
+                    ! null so an abstract module can still be linked.
+                    target_name_buf = ''
+                else if (allocated(binding%implementation) .and. &
+                         len_trim(binding%implementation) > 0) then
                     target_name_buf = trim(binding%implementation)
                 else
                     target_name_buf = trim(binding%binding_name)
@@ -868,7 +874,11 @@
                     parent%component_default_value(c), &
                     parent%component_array_size(c), &
                     parent%component_value_kind(c), error_msg, &
-                    parent%component_type_index(c))
+                    parent%component_type_index(c), &
+                    is_allocatable=parent%component_is_allocatable(c), &
+                    comp_char_length=parent%component_char_length(c), &
+                    is_alloc_array=parent%component_is_alloc_array(c), &
+                    is_pointer=parent%component_is_pointer(c))
                 if (len_trim(error_msg) > 0) return
             end do
         end associate

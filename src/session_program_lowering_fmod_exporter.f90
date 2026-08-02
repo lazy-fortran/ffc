@@ -43,7 +43,8 @@ contains
         type(module_exports_t), intent(in) :: export
         type(module_info_t), intent(out) :: info
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, j, module_index, derived_count
+        integer, allocatable :: derived_indices(:)
 
         call set_empty(error_msg)
         info%name = trim(export%module_name)
@@ -53,13 +54,50 @@ contains
                                       info%parameters(i), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-        allocate (info%derived_types(export%derived_type_count))
-        do i = 1, export%derived_type_count
+        ! A public derived type may contain a private helper type.  The helper
+        ! is not a USE export, but its layout is needed to reconstruct the
+        ! public type in a separately compiled user (e.g. a private table
+        ! component in a public tokenizer).  Include all derived declarations
+        ! belonging to this module in the artefact; USE visibility is still
+        ! enforced by the source-unit path.
+        module_index = 0
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (arena%entries(i)%parent_index /= 0) cycle
+            select type (node => arena%entries(i)%node)
+            type is (module_node)
+                if (allocated(node%name) .and. same_name(node%name, &
+                        export%module_name)) module_index = i
+            end select
+        end do
+        derived_count = 0
+        if (module_index > 0) then
+            do i = 1, arena%size
+                if (.not. node_exists(arena, i)) cycle
+                if (arena%entries(i)%parent_index /= module_index) cycle
+                if (.not. is_derived_type_node(arena, i)) cycle
+                derived_count = derived_count + 1
+            end do
+        end if
+        allocate (derived_indices(derived_count))
+        j = 0
+        if (module_index > 0) then
+            do i = 1, arena%size
+                if (.not. node_exists(arena, i)) cycle
+                if (arena%entries(i)%parent_index /= module_index) cycle
+                if (.not. is_derived_type_node(arena, i)) cycle
+                j = j + 1
+                derived_indices(j) = i
+            end do
+        end if
+        allocate (info%derived_types(derived_count))
+        do i = 1, derived_count
             call build_fmod_derived_type(arena, context, &
-                                         export%derived_type_indices(i), &
+                                         derived_indices(i), &
                                          info%derived_types(i), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
+        deallocate (derived_indices)
         ! Scalar module variables round-trip so a separately compiled program
         ! can bind the shared global on USE (#274).
         allocate (info%variables(export%variable_count))

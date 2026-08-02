@@ -851,14 +851,14 @@
                     'logical, character, and c_ptr scalars', error_msg)
             end if
         case ('class')
-            ! Unlimited polymorphic class(*); other class(name) forms are not
-            ! supported yet (#141).
+            ! Unlimited polymorphic class(*) has its descriptor ABI. A named
+            ! class(t) is a derived value and uses that descriptor path. This
+            ! classifier also runs before the derived-type table is populated,
+            ! so name lookup cannot be required here (#417).
             if (trim(kind_spec) == '*') then
                 value_kind = VALUE_CLASS_STAR
             else
-                call unsupported_feature_error('scalar type', line, column, &
-                    'direct LIRIC session supports class(*) but not '// &
-                    'class('//trim(kind_spec)//')', error_msg)
+                value_kind = VALUE_DERIVED
             end if
         case default
             call unsupported_feature_error('scalar type', line, column, &
@@ -1159,6 +1159,15 @@
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
+        ! A declared class(t) entity is a derived value with a polymorphic
+        ! descriptor, not an intrinsic scalar spelling. Resolve it through
+        ! the registered derived-type table before classifying the type text.
+        if (present(context)) then
+            if (declaration_derived_type_index(context, node) > 0) then
+                value_kind = VALUE_DERIVED
+                return
+            end if
+        end if
         call type_name_value_kind(node%type_name, node%line, node%column, &
                                   value_kind, error_msg, context, reference_index)
     end subroutine declaration_value_kind

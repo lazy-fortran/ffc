@@ -2789,7 +2789,8 @@ contains
         type(parameter_declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index, value_kind, character_length
+        integer :: symbol_index, value_kind, character_length, declared_index
+        character(len=:), allocatable :: declared_type
         if (.not. allocated(node%name)) then
             error_msg = 'parameter declaration did not expose a name'
             return
@@ -2832,6 +2833,21 @@ contains
                     symbol_index, character_length, error_msg)
             else
                 call bind_character_parameter_symbol(context, symbol_index, &
+                    error_msg)
+            end if
+        else if (value_kind == VALUE_DERIVED) then
+            if (allocated(node%type_name)) then
+                if (is_class_derived_type_spec(node%type_name)) then
+                    call extracted_derived_type_name(node%type_name, declared_type)
+                    declared_index = find_derived_type(context, declared_type)
+                    call bind_class_dummy_descriptor(context, symbol_index, &
+                        declared_index, error_msg)
+                else
+                    call update_parameter_symbol(context, symbol_index, &
+                        value_kind, error_msg)
+                end if
+            else
+                call update_parameter_symbol(context, symbol_index, value_kind, &
                     error_msg)
             end if
         else
@@ -3011,6 +3027,13 @@ contains
             end if
             context%symbols(index)%value = &
                 liric_f64_immediate(context%session, 0.0_c_double)
+        else if (value_kind == VALUE_DERIVED) then
+            ! A class(t) dummy is initially registered from the procedure
+            ! signature, before its specification-part declaration binds the
+            ! class descriptor. Keep that signature update harmless; the
+            ! declaration path above installs the descriptor once the declared
+            ! type is available.
+            call set_empty(error_msg)
         else
             error_msg = 'unsupported parameter declaration value kind'
             return

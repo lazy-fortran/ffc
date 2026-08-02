@@ -2116,9 +2116,6 @@ list_test_06_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar e
 list_test_08_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_09_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 merge_str_01.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
-modules_25.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-modules_25_module1.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
-modules_25_module.f90 # owner=lazy-fortran/ffc#417; reason=track runtime type identity for class scalars
 modules_26.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 modules_27_module2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 modules_28.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
