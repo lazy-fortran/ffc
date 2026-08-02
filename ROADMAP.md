@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `12dcb1f` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `573ee00` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -199,13 +199,21 @@ explicit decision.
   `real :: x(n)` now remain runtime bounds instead of being looked up as named
   compile-time parameters. The XFAIL row was removed only after all bounded
   checks passed.
+- The `modules_27_module2.f90` generic module-registration case (#457) is
+  green: exact normal-manifest and no-manifest runs both report `PASS=1`,
+  `XFAIL=0`, `XPASS=0`, and `FAIL=0` (`NOREF=1` for the module-only unit).
+  Complex pointer dummy registration now follows the resolved declaration
+  path, and an independent gfortran compile/run oracle passes. The XFAIL row
+  was removed only after both bounded checks passed.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
   helpers are a real module, literal-utils is a real submodule, and the unused
   `session_program_lowering_text.inc` fragment is gone, and declaration-conflict
   and generic-rejection checks are now real submodules with explicit build-order
-  units. A clean sequential `fo build` and focused behavior tests pass. The
+  units; array-constructor rejection is now a real submodule with an explicit
+  build-order unit as well. A clean sequential `fo build` and focused behavior
+  tests pass. The
   remaining rejection and other host-coupled fragments stay live until their
   dependencies are extracted safely.
 - The `modules_15b.f90` module-interface companion compiles with ffc and
@@ -243,8 +251,9 @@ not a substitute for fixing the behavior.
    both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair,
    `modules_24.f90` (#417), the three-file `modules_25.f90` class/runtime-
    character tranche (#350/#417), and `modules_26.f90` (#376) are now green
-   after bounded normal and no-manifest runs. The next XFAIL-first target is
-   `modules_27_module2.f90` (#457), which remains in the module/runtime tranche.
+   after bounded normal and no-manifest runs. `modules_27_module2.f90` (#457)
+   is now green; the next XFAIL-first tranche is the modules28 family
+   (`modules_28.f90`, `modules_28_module1.f90`, and `modules_28_module2.f90`).
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
