@@ -5,4 +5,3 @@ module session_program_lowering_reject_result_order
     implicit none
     private
 end module session_program_lowering_reject_result_order
-
