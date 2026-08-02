@@ -1648,6 +1648,64 @@ module session_program_lowering
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_alloc_pointer_targets
+        module subroutine check_declaration_conflicts(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_declaration_conflicts
+        module subroutine check_scope_decl_conflicts(arena, indices, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_scope_decl_conflicts
+        module subroutine check_procedure_type_conflicts(arena, indices, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_procedure_type_conflicts
+        module function procedure_decl_has_interface(decl) result(has_iface)
+            logical :: has_iface
+            type(declaration_node), intent(in) :: decl
+        end function procedure_decl_has_interface
+        module subroutine typed_declaration_position(arena, indices, name, &
+                                                     line, column)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=*), intent(in) :: name
+            integer, intent(out) :: line, column
+        end subroutine typed_declaration_position
+        module function proc_decl_name_count(decl) result(count)
+            integer :: count
+            type(declaration_node), intent(in) :: decl
+        end function proc_decl_name_count
+        module function proc_decl_name_at(decl, k) result(name)
+            character(len=:), allocatable :: name
+            type(declaration_node), intent(in) :: decl
+            integer, intent(in) :: k
+        end function proc_decl_name_at
+        module subroutine check_null_mold_assignments(arena, indices, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_null_mold_assignments
+        module subroutine null_mold_name(arena, idx, name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: name
+        end subroutine null_mold_name
+        module subroutine declared_type_and_rank(arena, indices, name, &
+                                                 type_name, is_array, found)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: type_name
+            logical, intent(out) :: is_array
+            logical, intent(out) :: found
+        end subroutine declared_type_and_rank
+        module function base_type_name(text) result(base)
+            character(len=:), allocatable :: base
+            character(len=*), intent(in) :: text
+        end function base_type_name
         module subroutine check_polymorphic_entity_attributes(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -4377,5 +4435,4 @@ contains
     include 'session_program_lowering_reject_const_overflow.inc'
     include 'session_program_lowering_reject_result.inc'
     include 'session_program_lowering_reject_generic.inc'
-    include 'session_program_lowering_reject_decl_conflict.inc'
 end module session_program_lowering
