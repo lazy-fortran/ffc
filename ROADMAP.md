@@ -44,7 +44,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 428/428 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 437/437 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
