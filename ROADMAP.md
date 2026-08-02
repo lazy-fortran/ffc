@@ -27,12 +27,13 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `2e84b19` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `8f9aaee` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
-  I/O, with sampled manifest dispositions through seed 1037). FortFront
-  `cc39c3bc`. LIRIC `5436e5c`.
-- `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
+  I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
+  logical literal KIND/STORAGE_SIZE inquiries, with sampled manifest
+  dispositions through seed 1037). FortFront `54f1c410`. LIRIC `5436e5c`.
+- `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -86,6 +87,13 @@ explicit decision.
   scalar logical kind is transferred into a same-width integer byte array.
   The independent logical-transfer compiler test also passes. The sample
   count remains 900.
+- The logical kind inquiry/literal tranche is green: `logical_kind_04.f90` and
+  `logical_kind_05.f90` pass in the LFortran suite with `PASS=2`, `XFAIL=0`, <!-- slop-ok: technical status counts -->
+  `XPASS=0`, and `FAIL=0`. ffc lowers logical `KIND` and `STORAGE_SIZE`, while
+  FortFront preserves numeric, named, and mixed-case logical kind suffixes.
+  Independent ffc and FortFront regressions pass; the sample count remains
+  900. `logical_kind_06.f90` remains the next adjacent XFAIL because it needs
+  character-valued `ERROR STOP` lowering.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
