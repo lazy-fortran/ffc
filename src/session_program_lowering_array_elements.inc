@@ -833,6 +833,186 @@
         call set_empty(error_msg)
     end subroutine emit_allocatable_print_items
 
+    integer function cached_array_expression_symbol(context, expr_index) &
+            result(symbol_index)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: expr_index
+        integer :: i
+
+        symbol_index = 0
+        if (expr_index <= 0) return
+        if (.not. allocated(context%array_expression_cache_nodes)) return
+        do i = context%array_expression_cache_count, 1, -1
+            if (context%array_expression_cache_nodes(i) == expr_index) then
+                symbol_index = context%array_expression_cache_symbols(i)
+                return
+            end if
+        end do
+    end function cached_array_expression_symbol
+
+    subroutine cache_array_expression_symbol(context, expr_index, symbol_index)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: expr_index
+        integer, intent(in) :: symbol_index
+        integer, allocatable :: old_nodes(:), old_symbols(:)
+        integer :: capacity
+
+        if (.not. allocated(context%array_expression_cache_nodes)) then
+            allocate (context%array_expression_cache_nodes(8))
+            allocate (context%array_expression_cache_symbols(8))
+        else if (context%array_expression_cache_count >= &
+                 size(context%array_expression_cache_nodes)) then
+            capacity = size(context%array_expression_cache_nodes)
+            call move_alloc(context%array_expression_cache_nodes, old_nodes)
+            call move_alloc(context%array_expression_cache_symbols, old_symbols)
+            allocate (context%array_expression_cache_nodes(2 * capacity))
+            allocate (context%array_expression_cache_symbols(2 * capacity))
+            context%array_expression_cache_nodes(1:capacity) = old_nodes
+            context%array_expression_cache_symbols(1:capacity) = old_symbols
+        end if
+        context%array_expression_cache_count = &
+            context%array_expression_cache_count + 1
+        context%array_expression_cache_nodes( &
+            context%array_expression_cache_count) = expr_index
+        context%array_expression_cache_symbols( &
+            context%array_expression_cache_count) = symbol_index
+    end subroutine cache_array_expression_symbol
+
+    subroutine create_array_expression_temp(context, element_kind, array_size, &
+                                             character_length, symbol_index, &
+                                             error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: element_kind
+        integer, intent(in) :: array_size
+        integer, intent(in) :: character_length
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64) :: temp_name
+        integer(c_int64_t) :: byte_count
+
+        call set_empty(error_msg)
+        symbol_index = 0
+        if (array_size <= 0) then
+            error_msg = 'array expression temporary requires a positive extent'
+            return
+        end if
+
+        call grow_symbols(context)
+        symbol_index = context%symbol_count + 1
+        context%symbols(symbol_index) = symbol_t()
+        write (temp_name, '("__ffc.array.expr.",I0)') symbol_index
+        context%symbols(symbol_index)%name = trim(temp_name)
+        context%symbols(symbol_index)%value_kind = element_kind
+        context%symbols(symbol_index)%is_array = .true.
+        context%symbols(symbol_index)%array_rank = 1
+        context%symbols(symbol_index)%array_size = array_size
+        context%symbols(symbol_index)%array_lower_bound = 1
+        context%symbols(symbol_index)%array_dim_lowers(1) = 1
+        context%symbols(symbol_index)%array_dim_sizes(1) = array_size
+
+        select case (element_kind)
+        case (VALUE_CHARACTER)
+            if (character_length <= 0) then
+                error_msg = 'array expression temporary requires a fixed '// &
+                            'character length'
+                return
+            end if
+            context%symbols(symbol_index)%character_length = character_length
+            byte_count = int(array_size, c_int64_t) * &
+                         int(character_length, c_int64_t)
+            if (.not. emit_alloca_bytes(context%session, &
+                    i64_immediate(context%session, byte_count), &
+                    context%symbols(symbol_index)%element_address, error_msg)) then
+                error_msg = 'array expression character temporary: '//error_msg
+                return
+            end if
+        case (VALUE_F32)
+            if (.not. emit_f32_array_alloca(context%session, array_size, &
+                    context%symbols(symbol_index)%element_address, error_msg)) then
+                error_msg = 'array expression real(4) temporary: '//error_msg
+                return
+            end if
+        case (VALUE_F64)
+            if (.not. emit_f64_array_alloca(context%session, array_size, &
+                    context%symbols(symbol_index)%element_address, error_msg)) then
+                error_msg = 'array expression real(8) temporary: '//error_msg
+                return
+            end if
+        case default
+            if (.not. emit_i32_array_alloca(context%session, array_size, &
+                    context%symbols(symbol_index)%element_address, error_msg)) then
+                error_msg = 'array expression logical/integer temporary: '// &
+                            error_msg
+                return
+            end if
+        end select
+        context%symbol_count = symbol_index
+    end subroutine create_array_expression_temp
+
+    recursive subroutine materialize_array_expression_calls(arena, expr_index, &
+                                                             context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: cached, element_kind, array_size, character_length
+        integer :: i, left_index, right_index, line, column, symbol_index
+        character(len=:), allocatable :: op
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, expr_index)) return
+
+        select type (call_node => arena%entries(expr_index)%node)
+        type is (call_or_subscript_node)
+            if (is_array_result_call(arena, expr_index, context)) then
+                cached = cached_array_expression_symbol(context, expr_index)
+                if (cached > 0) return
+                call contained_array_result_info(arena, context, call_node%name, &
+                    element_kind, array_size, error_msg, character_length)
+                if (len_trim(error_msg) > 0) return
+                call create_array_expression_temp(context, element_kind, &
+                    array_size, character_length, symbol_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_array_result_call(arena, expr_index, symbol_index, &
+                                             context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call cache_array_expression_symbol(context, expr_index, symbol_index)
+                return
+            end if
+            if (allocated(call_node%arg_indices)) then
+                do i = 1, size(call_node%arg_indices)
+                    call materialize_array_expression_calls(arena, &
+                        call_node%arg_indices(i), context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+            return
+        end select
+
+        if (is_binary_op(arena, expr_index)) then
+            call get_binary_op_info(arena, expr_index, op, left_index, &
+                right_index, line, column, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call materialize_array_expression_calls(arena, left_index, context, &
+                                                    error_msg)
+            if (len_trim(error_msg) > 0) return
+            call materialize_array_expression_calls(arena, right_index, context, &
+                                                    error_msg)
+            return
+        end if
+
+        select type (literal_node => arena%entries(expr_index)%node)
+        type is (array_literal_node)
+            if (allocated(literal_node%element_indices)) then
+                do i = 1, size(literal_node%element_indices)
+                    call materialize_array_expression_calls(arena, &
+                        literal_node%element_indices(i), context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        end select
+    end subroutine materialize_array_expression_calls
+
     subroutine build_array_expression(context, target_symbol_index, expr_index, &
                                       plan, error_msg)
         !! Derive the rank, shape, and element type of one array-valued
@@ -904,7 +1084,15 @@
         type(lr_operand_desc_t), allocatable :: values(:)
         integer :: i, n
 
+        context%array_expression_cache_count = 0
         n = plan%element_count()
+        if (n <= 0) then
+            error_msg = 'array expression requires a positive element count'
+            return
+        end if
+        call materialize_array_expression_calls(arena, plan%expr_index, context, &
+                                                error_msg)
+        if (len_trim(error_msg) > 0) return
         allocate (values(n))
         do i = 1, n
             call lower_array_elementwise_value(arena, plan%expr_index, &
@@ -991,6 +1179,17 @@
                 return
             end if
         end select
+
+        symbol_index = cached_array_expression_symbol(context, node_index)
+        if (symbol_index > 0) then
+            call ensure_array_shapes_match(context, target_symbol_index, &
+                                           symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_linear_element(context, symbol_index, &
+                                           int(linear_index, c_int64_t), value, &
+                                           error_msg)
+            return
+        end if
 
         if (is_elemental_minmax_call(arena, node_index)) then
             call lower_elementwise_minmax_call(arena, node_index, &

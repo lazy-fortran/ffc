@@ -72,6 +72,11 @@
         call lower_i1_condition(arena, node%condition_index, context, &
                                 condition, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! Lowering a condition may materialise an array-valued actual (for
+        ! example a character-array comparison passed to a contained function).
+        ! Those temporaries belong to the loop scaffold, not to the body being
+        ! merged on each iteration.
+        initial_symbol_count = context%symbol_count
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
                                     exit_block, error_msg)) return
 

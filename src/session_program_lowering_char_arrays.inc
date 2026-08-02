@@ -216,13 +216,26 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
         integer :: dim_count
+        logical :: is_result_view
 
-        if (find_symbol_compat(context, name) > 0) then
-            error_msg = 'duplicate array declaration: '//trim(name)
-            return
+        ! VALUE_ARRAY_RESULT functions pre-register the result name against the
+        ! hidden sret buffer before lowering the specification part. A
+        ! character result reaches this path after its element type is known,
+        ! so fill in the character-array metadata on that existing view rather
+        ! than allocating a second array or reporting a duplicate declaration.
+        index = find_symbol_compat(context, name)
+        is_result_view = .false.
+        if (index > 0) then
+            if (context%symbols(index)%is_array_result) then
+                is_result_view = .true.
+            else
+                error_msg = 'duplicate array declaration: '//trim(name)
+                return
+            end if
+        else
+            call grow_symbols(context)
+            index = context%symbol_count + 1
         end if
-        call grow_symbols(context)
-        index = context%symbol_count + 1
         dim_count = 0
         if (allocated(node%dimension_indices)) dim_count = size(node%dimension_indices)
 
@@ -236,6 +249,14 @@
 
         call character_array_fold_dims(context, node, index, dim_count, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (is_result_view) then
+            ! element_address already points at the caller-owned sret buffer.
+            ! The result declaration supplies shape and character width only;
+            ! it must not blank-fill or allocate that buffer.
+            call set_empty(error_msg)
+            return
+        end if
 
         ! One contiguous block: array_size elements of character_length bytes.
         if (.not. emit_alloca_bytes(context%session, &

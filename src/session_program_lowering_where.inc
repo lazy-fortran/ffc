@@ -346,6 +346,8 @@
         integer :: bin_left, bin_right, bin_line, bin_col
         integer :: operand_symbol, value_kind
         type(lr_operand_desc_t) :: lhs, rhs
+        type(lr_operand_desc_t) :: lhs_data, lhs_length
+        type(lr_operand_desc_t) :: rhs_data, rhs_length, cmp
         integer(c_int) :: ipred, fpred
 
         call set_empty(error_msg)
@@ -364,12 +366,29 @@
                                      value_kind, operand_symbol, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call lower_where_operand_element(arena, bin_left, value_kind, &
-                                         linear_index, context, lhs, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call lower_where_operand_element(arena, bin_right, value_kind, &
-                                         linear_index, context, rhs, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (value_kind == VALUE_CHARACTER) then
+            call lower_where_character_operand_element(arena, bin_left, &
+                linear_index, context, lhs_data, lhs_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_where_character_operand_element(arena, bin_right, &
+                linear_index, context, rhs_data, rhs_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call char_compare(context, lhs_data, lhs_length, rhs_data, &
+                              rhs_length, cmp, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call integer_compare_predicate(bin_op, ipred, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, ipred, cmp, &
+                                          i32_immediate(context%session, 0_c_int64_t), &
+                                          cond, error_msg)) return
+        else
+            call lower_where_operand_element(arena, bin_left, value_kind, &
+                                             linear_index, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_where_operand_element(arena, bin_right, value_kind, &
+                                             linear_index, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (value_kind == VALUE_F32 .or. value_kind == VALUE_F64) then
             call real_compare_fpred(bin_op, fpred, error_msg)
@@ -381,13 +400,62 @@
                 if (.not. emit_liric_f64_fcmp(context%session, fpred, lhs, rhs, &
                                               cond, error_msg)) return
             end if
-        else
+        else if (value_kind /= VALUE_CHARACTER) then
             call integer_compare_predicate(bin_op, ipred, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_icmp(context%session, ipred, lhs, rhs, &
                                           cond, error_msg)) return
         end if
     end subroutine lower_where_mask_element
+
+    subroutine lower_where_character_operand_element(arena, node_index, &
+                                                     linear_index, context, &
+                                                     data_ptr, length, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: flat_error
+
+        call set_empty(error_msg)
+        symbol_index = where_array_operand_symbol(arena, node_index, context)
+        if (symbol_index > 0 .and. context%symbols(symbol_index)%value_kind == &
+            VALUE_CHARACTER) then
+            call character_array_symbol_element_operands(context, symbol_index, &
+                linear_index, data_ptr, length, error_msg)
+            return
+        end if
+
+        select type (constructor => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(constructor%element_indices)) then
+                error_msg = 'character array constructor has no elements'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, constructor%element_indices, &
+                                              flat, flat_error)
+            if (len_trim(flat_error) > 0) then
+                error_msg = flat_error
+                return
+            end if
+            if (linear_index < 0 .or. linear_index >= size(flat)) then
+                error_msg = 'character array constructor is shorter than its mask'
+                return
+            end if
+            call char_expr_operands(arena, flat(linear_index + 1), context, &
+                                    data_ptr, length, error_msg)
+            return
+        end select
+
+        call char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                error_msg)
+    end subroutine lower_where_character_operand_element
 
     subroutine where_mask_operand_kind(arena, left, right, context, value_kind, &
                                        array_symbol, error_msg)
@@ -424,6 +492,8 @@
         character(len=:), allocatable :: name, err
 
         sym = 0
+        sym = cached_array_expression_symbol(context, node_index)
+        if (sym > 0) return
         if (.not. is_identifier(arena, node_index)) return
         call get_identifier_name(arena, node_index, name, err)
         if (len_trim(err) > 0) return

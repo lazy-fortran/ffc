@@ -12,6 +12,7 @@ program test_session_do_while_compiler
     if (.not. test_do_while_logical_accumulator()) all_passed = .false.
     if (.not. test_do_while_exit_preserves_body_values()) all_passed = .false.
     if (.not. test_do_while_cycle_reaches_latch()) all_passed = .false.
+    if (.not. test_do_while_array_predicate()) all_passed = .false.
     if (.not. test_do_while_xfail_fixture()) all_passed = .false.
     if (.not. test_do_while_nested_return_fixture()) all_passed = .false.
 
@@ -111,6 +112,41 @@ contains
         test_do_while_cycle_reaches_latch = expect_exit_status( &
             source, 53, '/tmp/ffc_session_do_while_cycle_test')
     end function test_do_while_cycle_reaches_latch
+
+    logical function test_do_while_array_predicate()
+        ! The condition passes an elementwise character-array comparison as an
+        ! actual argument to a contained logical function. This exercises the
+        ! array-result sret view, one-time expression materialisation, and the
+        ! loop header's temporary lifetime together.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: x = 2, hit = 0'//new_line('a')// &
+            'do while (boo(foo(x) == ["Hello", "World"]))'//new_line('a')// &
+            '    x = 1'//new_line('a')// &
+            '    hit = hit + 1'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'if (hit /= 1) error stop 1'//new_line('a')// &
+            'if (x /= 1) error stop 2'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'function foo(i) result(r)'//new_line('a')// &
+            '    integer :: i'//new_line('a')// &
+            '    character(5) :: r(2)'//new_line('a')// &
+            '    if (i == 1) then'//new_line('a')// &
+            '        r = ["bla", "bla"]'//new_line('a')// &
+            '    else'//new_line('a')// &
+            '        r = ["Hello", "World"]'//new_line('a')// &
+            '    end if'//new_line('a')// &
+            'end function foo'//new_line('a')// &
+            'function boo(arr) result(r_logical)'//new_line('a')// &
+            '    logical :: arr(2)'//new_line('a')// &
+            '    logical :: r_logical'//new_line('a')// &
+            '    r_logical = all(arr .eqv. [.true., .true.])'//new_line('a')// &
+            'end function boo'//new_line('a')// &
+            'end program main'
+
+        test_do_while_array_predicate = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_do_while_array_predicate_test')
+    end function test_do_while_array_predicate
 
     logical function test_do_while_xfail_fixture()
         character(len=*), parameter :: source = &

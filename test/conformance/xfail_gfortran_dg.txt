@@ -2121,7 +2121,6 @@ proc_ptr_16.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar pro
 array_constructor_39.f90 # owner=lazy-fortran/ffc#459; reason=owns typed constructors and implied-DO elements
 attr_deprecated.f90 # owner=lazy-fortran/ffc#328; reason=owns same-unit USE export storage, the current blocker; directive warnings are unchecked
 binding_label_tests_30.f90 # owner=lazy-fortran/fortfront#2884; reason=reject duplicate global BIND(C) labels
-do_while_1.f90 # owner=lazy-fortran/ffc#455; reason=lower DO WHILE control flow
 elemental_subroutine_6.f90 # owner=lazy-fortran/ffc#405; reason=lower ELEMENTAL scalar procedure semantics
 goto_2.f90 # owner=lazy-fortran/ffc#455; reason=owns resolved GOTO labels and structured block targets
 unf_io_convert_2.f90 # scope=vendor; reason=GNU CONVERT unformatted I/O extension

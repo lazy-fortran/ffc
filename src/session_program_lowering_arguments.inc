@@ -195,6 +195,18 @@
                         callee_name, call_arg_param_pos(i, sp)), callee_name, &
                     args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (callee_dummy_is_array_ctx(arena, context, callee_name, &
+                                               call_arg_param_pos(i, sp)) .and. &
+                     callee_dummy_assumed_shape_dims(arena, callee_name, &
+                                         call_arg_param_pos(i, sp)) < 1 .and. &
+                     actual_is_array_expression(arena, arg_indices(i), context)) then
+                ! An array-valued expression has no storage of its own. Materialise
+                ! it into a temporary with the dummy's element kind, then pass the
+                ! temporary's contiguous base address just like a named array.
+                call array_expression_actual_address(arena, arg_indices(i), &
+                    context, callee_name, call_arg_param_pos(i, sp), default_kind, &
+                    args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
                      callee_dummy_is_array_ctx(arena, context, callee_name, &
                                                i)) then
@@ -235,6 +247,96 @@
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    recursive logical function actual_is_array_expression(arena, node_index, context) &
+            result(is_array)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: i, left_index, right_index, line, column
+        character(len=:), allocatable :: op, error_text
+
+        is_array = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (actual_is_whole_array(arena, node_index, context)) then
+            is_array = .true.
+            return
+        end if
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, left_index, &
+                right_index, line, column, error_text)
+            if (len_trim(error_text) > 0) return
+            is_array = actual_is_array_expression(arena, left_index, context) .or. &
+                       actual_is_array_expression(arena, right_index, context)
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            is_array = allocated(node%element_indices)
+        type is (array_slice_node)
+            is_array = .true.
+        type is (call_or_subscript_node)
+            if (is_array_result_call(arena, node_index, context)) then
+                is_array = .true.
+            else if (allocated(node%arg_indices)) then
+                ! Elementwise intrinsic expressions (for example abs(a)) carry
+                ! their array rank through an array actual argument. Reductions
+                ! are deliberately excluded: they return a scalar.
+                if (.not. node%is_intrinsic) return
+                if (allocated(node%name)) then
+                    if (same_name(node%name, 'sum') .or. &
+                        same_name(node%name, 'product') .or. &
+                        same_name(node%name, 'count') .or. &
+                        same_name(node%name, 'any') .or. &
+                        same_name(node%name, 'all')) return
+                end if
+                do i = 1, size(node%arg_indices)
+                    if (actual_is_array_expression(arena, node%arg_indices(i), &
+                                                    context)) then
+                        is_array = .true.
+                        return
+                    end if
+                end do
+            end if
+        end select
+    end function actual_is_array_expression
+
+    subroutine array_expression_actual_address(arena, node_index, context, &
+                                               callee_name, param_pos, default_kind, &
+                                               address, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer, intent(in) :: default_kind
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_expr_plan_t) :: plan
+        integer :: extent, target_kind, target_symbol
+        logical :: known
+
+        call set_empty(error_msg)
+        call array_expression_static_extent(arena, node_index, context, extent, &
+                                            known)
+        if (.not. known .or. extent <= 0) then
+            error_msg = 'array-valued actual has no statically known extent in '// &
+                        trim(callee_name)
+            return
+        end if
+        target_kind = callee_dummy_value_kind(arena, callee_name, param_pos, &
+                                              context)
+        if (target_kind <= 0) target_kind = default_kind
+        call create_array_expression_temp(context, target_kind, extent, 0, &
+                                          target_symbol, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call build_array_expression(context, target_symbol, node_index, plan, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_array_expression_assignment(arena, plan, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        address = context%symbols(target_symbol)%element_address
+    end subroutine array_expression_actual_address
 
     logical function registered_procedure_body_missing(arena, context, name) &
             result(missing)

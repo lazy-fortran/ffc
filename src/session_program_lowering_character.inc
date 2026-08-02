@@ -1339,6 +1339,29 @@
         end select
     end function is_trim_call
 
+    subroutine character_array_symbol_element_operands(context, symbol_index, &
+                                                       linear_index, data_ptr, &
+                                                       length, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_index
+
+        element_index = i32_immediate(context%session, &
+                                      int(linear_index, c_int64_t))
+        call character_array_element_address(context, symbol_index, element_index, &
+                                             data_ptr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        length = i32_immediate(context%session, &
+                               int(context%symbols(symbol_index)%character_length, &
+                                   c_int64_t))
+        call set_empty(error_msg)
+    end subroutine character_array_symbol_element_operands
+
     recursive subroutine char_expr_operands(arena, node_index, context, &
                                             data_ptr, length, error_msg)
         ! Resolve a scalar character expression (a variable, a // concatenation,

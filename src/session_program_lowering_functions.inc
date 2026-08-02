@@ -2258,7 +2258,7 @@
     end function dummy_is_intent_in
 
     subroutine contained_array_result_info(arena, context, name, element_kind, &
-                                           array_size, error_msg)
+                                           array_size, error_msg, character_length)
         ! Element scalar kind and total element count of a rank-1 array function
         ! result, read from the result variable's body declaration. Used by the
         ! print path that materialises the result into a scratch buffer.
@@ -2268,12 +2268,14 @@
         integer, intent(out) :: element_kind
         integer, intent(out) :: array_size
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(out), optional :: character_length
         type(function_def_node), pointer :: fn_node
         character(len=:), allocatable :: result_name
         integer :: i, k, node_index, lower_bound
 
         element_kind = VALUE_I32
         array_size = 0
+        if (present(character_length)) character_length = 0
         call set_empty(error_msg)
 
         node_index = 0
@@ -2313,6 +2315,13 @@
                                                     error_msg, context, &
                                                     fn_node%body_indices(i))
                         if (len_trim(error_msg) > 0) return
+                        if (present(character_length) .and. &
+                            element_kind == VALUE_CHARACTER) then
+                            call declaration_character_length(context, decl, &
+                                                             character_length, &
+                                                             error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        end if
                         call get_array_bounds(decl, context, lower_bound, &
                                               array_size, error_msg)
                         return
@@ -2325,6 +2334,13 @@
                                                         error_msg, context, &
                                                         fn_node%body_indices(i))
                             if (len_trim(error_msg) > 0) return
+                            if (present(character_length) .and. &
+                                element_kind == VALUE_CHARACTER) then
+                                call declaration_character_length(context, decl, &
+                                                                 character_length, &
+                                                                 error_msg)
+                                if (len_trim(error_msg) > 0) return
+                            end if
                             call get_array_bounds(decl, context, lower_bound, &
                                                   array_size, error_msg)
                             return

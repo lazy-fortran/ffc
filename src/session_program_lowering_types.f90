@@ -740,6 +740,13 @@ module session_program_lowering_types
         type(lr_operand_desc_t), allocatable :: char_temp_data(:)
         type(lr_operand_desc_t), allocatable :: char_temp_storage(:)
         integer :: char_temp_count = 0
+        ! Whole-array expressions may contain an array-valued function call.
+        ! Materialise each such call once per consuming statement, then let the
+        ! elementwise evaluator load its cached array elements rather than
+        ! re-invoking the function for every element.
+        integer, allocatable :: array_expression_cache_nodes(:)
+        integer, allocatable :: array_expression_cache_symbols(:)
+        integer :: array_expression_cache_count = 0
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
