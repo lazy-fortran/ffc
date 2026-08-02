@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `96ef029` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `cc9ca6a` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -38,7 +38,8 @@ explicit decision.
   whole-array dummy aliasing, explicit-lower-bound assumed-shape descriptors,
   mixed-rank runtime section expressions, allocatable function-result MATMUL
   matrix-vector lowering, rank-2 automatic array-result materialisation, typed
-  integer/real/double/complex/logical TRANSPOSE lowering, with
+  integer/real/double/complex/logical TRANSPOSE lowering, compile-time
+  parameter TRANSPOSE initialization, with
   sampled manifest dispositions through seed 1037). FortFront `4948ec2a`.
   LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
@@ -133,8 +134,10 @@ explicit decision.
   TRANSPOSE tranche is green too: `matrix_01_transpose.f90` passes against the
   gfortran oracle with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; complex
   `RESHAPE` literals and typed integer/real/double/logical transpose storage are
-  covered by the same run. The next XFAIL-first case is
-  `matrix_03_transpose_param.f90`; keep the sample count at 900.
+  covered by the same run. The compile-time parameter TRANSPOSE tranche is
+  green too: `matrix_03_transpose_param.f90` passes against the gfortran oracle
+  with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The next XFAIL-first case
+  is `max_02.f90`; keep the sample count at 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
