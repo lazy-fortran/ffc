@@ -888,6 +888,7 @@ while IFS= read -r full_path <&3; do
     # through to its normal failure handling below.
     ffc_extra=()
     ref_extra=()
+    inc_dir=""
 
     # LFortran's integration tests keep INCLUDE material in a directory named
     # after the test (CMake INCLUDE_PATH <stem>). Both compilers get that
@@ -922,6 +923,38 @@ while IFS= read -r full_path <&3; do
                 prereq_idx=$((prereq_idx + 1))
             done 4< "$prereq_list"
         fi
+    fi
+
+    # Some LFortran integration tests name non-module companion sources in
+    # CMake EXTRAFILES. Keep that harness contract explicit and bounded rather
+    # than silently treating a link failure as an implementation failure.
+    extra_manifest="$PROJECT_DIR/test/conformance/extra_${SUITE}.txt"
+    extra_list="$TMPDIR_WORK/extra_${TOTAL_COUNT}.txt"
+    resolve_extra_sources "$rel_path" "$extra_manifest" > "$extra_list"
+    if [ -s "$extra_list" ]; then
+        if [ -z "${inc_dir:-}" ]; then
+            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
+            mkdir -p "$inc_dir"
+            ffc_extra+=(-I "$inc_dir")
+        fi
+        extra_idx=0
+        while IFS= read -r extra_name; do
+            [ -z "$extra_name" ] && continue
+            extra_src="$SUITE_ROOT/$extra_name"
+            if [ ! -f "$extra_src" ]; then
+                echo "  FAIL: $rel_path (missing extra source $extra_name)"
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                HAS_FAIL=1
+                continue
+            fi
+            ref_extra+=("$extra_src")
+            extra_obj="$inc_dir/extra_${extra_idx}.o"
+            if compile_object_with_extra_inc "$extra_src" "$extra_obj" \
+                    "$FFC_BIN" "$inc_dir"; then
+                ffc_extra+=("$extra_obj")
+            fi
+            extra_idx=$((extra_idx + 1))
+        done < "$extra_list"
     fi
 
     # Step 1: compile with ffc

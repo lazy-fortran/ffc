@@ -327,6 +327,18 @@ resolve_prerequisites() {
     unset -f _rp_collect
 }
 
+# resolve_extra_sources <source> <manifest>
+# Emit explicit sibling sources required by a corpus harness's EXTRAFILES
+# contract. USE-based module dependencies remain handled by the index above.
+resolve_extra_sources() {
+    local source="$1" manifest="$2"
+    [ -f "$manifest" ] || return 0
+    awk -v source="$source" '
+        /^[[:space:]]*#/ || NF == 0 { next }
+        $1 == source { for (i = 2; i <= NF; i++) print $i }
+    ' "$manifest"
+}
+
 # compile_object_with_ffc <source> <object> <ffc_path>
 # Returns 0 on success, non-zero on failure.
 compile_object_with_ffc() {
@@ -345,6 +357,46 @@ compile_object_with_ffc_inc() {
     timeout "${FFC_COMPILE_TIMEOUT:-10}" \
         "$ffc" "$source" -c -o "$object" -I "$inc_dir" 2>/dev/null
     return $?
+}
+
+# compile_object_with_extra_inc <source> <object> <ffc_path> <inc_dir>
+# Compile an explicit corpus companion with the compiler matching its source
+# language. C/C++ companions are linked into an ffc-built Fortran executable;
+# Fortran companions still go through ffc so their module files and ABI match.
+compile_object_with_extra_inc() {
+    local source="$1" object="$2" ffc="$3" inc_dir="$4"
+    local extension compiler
+    extension="${source##*.}"
+    case "$extension" in
+        c)
+            compiler="${CC:-cc}"
+            timeout "${C_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+                "$compiler" -I "$inc_dir" -c "$source" -o "$object" \
+                2>/dev/null
+            return $?
+            ;;
+        C|cc|CC|cpp|CPP|cxx|CXX)
+            compiler="${CXX:-c++}"
+            timeout "${CXX_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+                "$compiler" -I "$inc_dir" -c "$source" -o "$object" \
+                2>/dev/null
+            return $?
+            ;;
+        *)
+            extension="${extension,,}"
+            case "$extension" in
+                f|f03|f08|f77|f90|f95|f18|for|lf)
+                    compile_object_with_ffc_inc "$source" "$object" "$ffc" \
+                        "$inc_dir"
+                    return $?
+                    ;;
+                *)
+                    echo "unsupported companion source extension: $source" >&2
+                    return 2
+                    ;;
+            esac
+            ;;
+    esac
 }
 
 # compile_with_gfortran <source> <exe> [extra_sources...]
