@@ -27,7 +27,12 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `e704502` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `493b611` (modules31 separate-compilation support: one-specific generic
+  type-bound aliases, serialized type-bound bindings in `.fmod` schema 10,
+  imported vtable ownership and module-mangled type-bound calls, and rank-1
+  fixed-length allocatable character-component declaration/layout metadata;
+  runtime character-array element access remains intentionally unsupported;
+  structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -45,7 +50,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `98666075`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 443/443 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 444/444 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -248,7 +253,17 @@ explicit decision.
   FFC now preserves per-dummy kinds in opaque public procedure interfaces,
   keeping supported character dummies callable while unsupported derived
   dummies retain the opaque path. The two XFAIL rows were removed only after
-  these checks. The next smallest XFAIL-first tranche is modules31.
+  these checks.
+- The modules31 separate-compilation family is green: exact named normal and
+  XFAIL-disabled runs of `modules_31.f90`, `modules_31_module1.f90`, and
+  `modules_31_module2.f90` report `PASS=3`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`
+  (`NOREF=2` for the two module-only companions). The independent ffc object
+  compile/link/run chain and the equivalent gfortran chain both print
+  `running modules_31 program`. The three stale XFAIL rows were removed only
+  after the receiver-slot regression and focused ABI tests were green. The
+  next task is the next smallest owned XFAIL tranche from the manifest (the
+  current modules-family candidates begin with `modules_33_module1.f90` and
+  `modules_33_module3.f90`, tested with their sibling sources).
 - The focused constant-expression rejection regression is green again:
   `test_session_reject_const_01_compiler` passes after `HUGE` bounds stop being
   misclassified as runtime extents. The constant-overflow checker is now a real
@@ -292,13 +307,16 @@ binary is unchanged.
    oracle. For runnable cases this is normally gfortran output and exit status;
    for rejection cases it is the documented compile/rejection contract. A
    test that only checks repository state is not an oracle.
-3. Build once per code change and keep the compiler sequential to protect RAM:
+3. Build once per code change and keep the compiler sequential to protect RAM.
+   The current `fo test` wrapper rebuilds its 443-test target on each separate
+   invocation, so batch all focused names from one code change in a single
+   command; never launch several `fo test` builds concurrently:
 
    ```bash
    export LIBRARY_PATH=<liric-build>
    export FO_JOBS=1
    fo build
-   fo test <smallest-focused-target>
+   fo test <focused-target-1> <focused-target-2> ...
    ```
 
    Reuse that compiler for every exact case in the tranche. Do not rebuild for
@@ -385,8 +403,10 @@ sample modestly.
    oracle. Its stale XFAIL rows are removed. The modules30 family
    (`modules_30.f90` and `modules_30_module2.f90`) is also green after exact
    normal/no-XFAIL checks and the independent gfortran module-chain oracle;
-   its two XFAIL rows are removed. The next smallest tranche is modules31
-   (`modules_31.f90`, `modules_31_module1.f90`, and `modules_31_module2.f90`).
+   its two XFAIL rows are removed. The modules31 family is now complete as
+   recorded above; select the next smallest owned XFAIL tranche from the
+   manifest, beginning with the modules33 sibling closure when its owners and
+   independent oracle are prepared.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
