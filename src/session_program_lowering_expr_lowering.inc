@@ -204,28 +204,6 @@
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
 
-        if (external_procedure_index(context, call_name) > 0 .and. &
-            (context%external_procedures( &
-                external_procedure_index(context, call_name))%is_bind_c .or. &
-             .not. context%external_procedures( &
-                external_procedure_index(context, call_name))%by_reference)) then
-            if (allocated(node%arg_indices)) then
-                call prepare_bind_c_args(arena, node%arg_indices, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
-            else
-                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
-            end if
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_c_f32_call(context%session, &
-                    trim(context%external_procedures( &
-                    external_procedure_index(context, call_name))%c_name), args, &
-                    value, error_msg)) return
-            call copy_back_reference_args(context, args, copyback_indices, error_msg)
-            return
-        end if
         if (same_name(call_name, 'kind') .and. .not. &
             is_contained_logical_function(context, call_name)) then
             call lower_kind_intrinsic(arena, node, context, value, error_msg)
@@ -278,6 +256,28 @@
                 call lower_logical_array_any_intrinsic(arena, node, context, &
                                                        value, error_msg)
             end if
+            return
+        end if
+        if (external_procedure_index(context, call_name) > 0 .and. &
+            (context%external_procedures( &
+                external_procedure_index(context, call_name))%is_bind_c .or. &
+             .not. context%external_procedures( &
+                external_procedure_index(context, call_name))%by_reference)) then
+            if (allocated(node%arg_indices)) then
+                call prepare_bind_c_args(arena, node%arg_indices, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            else
+                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_c_f32_call(context%session, &
+                    trim(context%external_procedures( &
+                    external_procedure_index(context, call_name))%c_name), args, &
+                    value, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
             return
         end if
         if (.not. is_contained_logical_function(context, call_name)) then

@@ -663,7 +663,8 @@
             call strip_literal_quotes(lit_value, literal_text)
         else if (is_identifier(arena, node%value_index) .or. &
                  is_char_expr_call(arena, node%value_index, context) .or. &
-                 is_character_substring(arena, node%value_index, context)) then
+                 is_character_substring(arena, node%value_index, context) .or. &
+                 is_character_operand(arena, node%value_index, context)) then
             ! A character variable, a substring view, or a
             ! trim()/adjustl()/adjustr()/achar()/repeat() result assigned to a
             ! fixed-length target: pad or truncate to the target's declared

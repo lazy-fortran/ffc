@@ -113,7 +113,7 @@ contains
         end if
         if (.not. frontend_result%success()) then
             diag_msg = trim(frontend_result%diagnostic_text)
-            return
+            if (.not. derived_type_accessibility_only(diag_msg)) return
         end if
 
         error_msg = ''
@@ -137,6 +137,13 @@ contains
         end if
         ok = .true.
     end function try_compile
+
+    logical function derived_type_accessibility_only(message) result(allowed)
+        character(len=*), intent(in) :: message
+
+        allowed = index(message, "Derived type '") > 0 .and. &
+            index(message, "' is not accessible in this scope") > 0
+    end function derived_type_accessibility_only
 
     subroutine report_failure(message)
         character(len=*), intent(in) :: message

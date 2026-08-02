@@ -17,6 +17,7 @@ program test_session_derived_character_component_compiler
     if (.not. test_character_component_type_lowers()) all_passed = .false.
     if (.not. test_nested_character_component_lowers()) all_passed = .false.
     if (.not. test_character_component_read_write()) all_passed = .false.
+    if (.not. test_character_component_rhs_expression()) all_passed = .false.
     if (.not. test_character_component_constructor()) all_passed = .false.
     if (.not. test_character_component_argument()) all_passed = .false.
     if (.not. test_character_array_component_rejected()) all_passed = .false.
@@ -92,6 +93,28 @@ contains
         test_character_component_read_write = expect_output( &
             source, expected, '/tmp/ffc_derived_char_component_rw_test')
     end function test_character_component_read_write
+
+    logical function test_character_component_rhs_expression()
+        ! A component is a character expression too: assigning it to another
+        ! fixed-length character variable must copy and pad its bytes.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: person_t'//new_line('a')// &
+            '    character(len=8) :: name'//new_line('a')// &
+            '  end type person_t'//new_line('a')// &
+            '  type(person_t) :: p'//new_line('a')// &
+            '  character(len=8) :: copy'//new_line('a')// &
+            '  p%name = "Ada"'//new_line('a')// &
+            '  copy = p%name'//new_line('a')// &
+            '  if (copy /= "Ada") error stop'//new_line('a')// &
+            '  print *, copy'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            ' Ada     '//new_line('a')
+
+        test_character_component_rhs_expression = expect_output( &
+            source, expected, '/tmp/ffc_derived_char_component_rhs_test')
+    end function test_character_component_rhs_expression
 
     logical function test_character_component_constructor()
         ! A structure constructor's character-literal argument stores into

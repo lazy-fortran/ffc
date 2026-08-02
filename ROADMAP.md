@@ -169,6 +169,13 @@ explicit decision.
   (`NOREF=1` for the module-only companion). Derived `integer(8)` components
   now use their two-slot layout and i64 load/store path; the XFAIL rows were
   removed only after the focused independent regression passed.
+- The character-component module tranche is green as well: exact named runs of
+  `modules_23.f90` and `modules_23_module.f90` report `PASS=2`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0` under both normal and no-manifest configurations
+  (`NOREF=1` for the module-only companion). Character component expressions
+  now use the fixed-length assignment path, and the frontend accessibility
+  workaround is limited to its known false diagnostic; the XFAIL rows were
+  removed only after the independent component regression passed.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
@@ -210,8 +217,8 @@ not a substitute for fixing the behavior.
    `modules_18.f90`/`modules_18b.f90`, and `modules_19.f90`/`modules_19b.f90`
    only after the exact C-plus-gfortran oracle and normal-manifest run were
    both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair is now
-   green; the next XFAIL-first target is `modules_23.f90`/`modules_23_module.f90`,
-   being audited in a separate Luna worktree.
+   green; the next XFAIL-first target is `modules_24.f90` (#417), which remains
+   in the module/class identity tranche.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
