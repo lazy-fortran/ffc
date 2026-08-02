@@ -253,6 +253,15 @@
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
+            if (component_is_pointer(context, type_index, c)) then
+                ! Derived and intrinsic data pointers both occupy an opaque
+                ! two-slot address. Do not recurse into a derived pointee.
+                call null_allocatable_component_slots(context, symbol_index, &
+                                                      outer_slots, abs_slot, 2, &
+                                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             if (nested /= 0) then
                 do e = 0, nested_element_count(context, type_index, c) - 1
                     call store_type_default_slots(context, symbol_index, &

@@ -1233,6 +1233,34 @@ subroutine collect_component_declaration(component_index, parent_line, &
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, inner_slots, element_count, span
 
+        ! A scalar derived POINTER component is an opaque two-slot address,
+        ! not an inline nested instance. Keep the pointee type for compatibility
+        ! checks, but reserve only the pointer slot in the containing type.
+        if (component%is_pointer) then
+            if (component%is_array .or. component%is_allocatable) then
+                call unsupported_feature_error('nested derived type component', &
+                    component%line, component%column, 'only scalar derived '// &
+                    'pointer components are supported', error_msg)
+                return
+            end if
+            if (component%is_multi_declaration .and. allocated(component%var_names)) then
+                do i = 1, size(component%var_names)
+                    call add_derived_component(context, type_index, &
+                        component%var_names(i), component%line, component%column, &
+                        .false., 0_c_int64_t, 1, VALUE_DERIVED, error_msg, &
+                        nested_type_index, is_pointer=.true.)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(component%var_name)) then
+                call add_derived_component(context, type_index, component%var_name, &
+                    component%line, component%column, .false., 0_c_int64_t, 1, &
+                    VALUE_DERIVED, error_msg, nested_type_index, is_pointer=.true.)
+            else
+                error_msg = 'derived type component declaration did not expose a name'
+            end if
+            return
+        end if
+
         if (component%has_initializer) then
             ! A bare inner-type default constructor (`type(inner) :: c =
             ! inner()`) equals plain default initialisation, which nested
@@ -1410,9 +1438,13 @@ subroutine collect_component_declaration(component_index, parent_line, &
             ! allocatable, and higher-rank allocatable derived components stay
             ! unsupported.
             if (component%is_pointer) then
-                call unsupported_feature_error('nested derived type component', &
-                    component%line, component%column, 'pointer derived '// &
-                    'components are not supported', error_msg)
+                if (component%is_array .or. component%is_allocatable) then
+                    call unsupported_feature_error('nested derived type component', &
+                        component%line, component%column, 'only scalar derived '// &
+                        'pointer components are supported', error_msg)
+                else
+                    call set_empty(error_msg)
+                end if
                 return
             end if
             if (component%is_allocatable) then

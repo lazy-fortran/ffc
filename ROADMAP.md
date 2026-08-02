@@ -176,6 +176,13 @@ explicit decision.
   now use the fixed-length assignment path, and the frontend accessibility
   workaround is limited to its known false diagnostic; the XFAIL rows were
   removed only after the independent component regression passed.
+- The `modules_24.f90` class/derived-pointer case (#417) is green: exact
+  no-manifest and normal-manifest runs both report `PASS=1`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0`. Module type collection now records scalar derived
+  pointer components as opaque two-slot addresses, initializes them null, and
+  routes compatible class-pointer associations through the existing derived
+  pointer path. The XFAIL row was removed only after both bounded runs and the
+  existing independent derived-pointer regression passed.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
@@ -217,8 +224,8 @@ not a substitute for fixing the behavior.
    `modules_18.f90`/`modules_18b.f90`, and `modules_19.f90`/`modules_19b.f90`
    only after the exact C-plus-gfortran oracle and normal-manifest run were
    both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair is now
-   green; the next XFAIL-first target is `modules_24.f90` (#417), which remains
-   in the module/class identity tranche.
+   green; the next XFAIL-first target is `modules_25.f90` and its module
+   companions (#350/#417), which remain in the module/class identity tranche.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,

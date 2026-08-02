@@ -607,8 +607,16 @@
         if (context%symbols(ptr_index)%is_derived .and. &
             context%symbols(ptr_index)%derived_type_index /= &
             context%symbols(target_index)%derived_type_index) then
-            error_msg = 'pointer and target derived types do not match'
-            return
+            ! A class(parent) pointer may associate with a target declared as
+            ! an extension, while a type(parent) pointer keeps the same
+            ! compatibility relation for this storage-only ABI. Reject only
+            ! unrelated derived types; exact identity remains the common path.
+            if (.not. derived_type_extends(context, &
+                    context%symbols(target_index)%derived_type_index, &
+                    context%symbols(ptr_index)%derived_type_index)) then
+                error_msg = 'pointer and target derived types do not match'
+                return
+            end if
         end if
         if (context%symbols(ptr_index)%value_kind == VALUE_CHARACTER .and. &
             context%symbols(ptr_index)%character_length /= &
@@ -1573,22 +1581,41 @@
                         trim(target_name)
             return
         end if
-        if (.not. context%symbols(tgt)%has_address) then
-            error_msg = 'pointer assignment source has no storage: '// &
-                        trim(target_name)
-            return
+        if (component_kind(context, type_index, comp_index) == VALUE_DERIVED) then
+            if (.not. context%symbols(tgt)%is_derived .or. &
+                context%symbols(tgt)%derived_type_index /= &
+                    context%derived_types(type_index)%component_type_index(comp_index)) then
+                error_msg = 'pointer component target derived types do not match'
+                return
+            end if
+            if (.not. context%symbols(tgt)%has_address) then
+                if (.not. context%symbols(tgt)%is_pointer) then
+                    error_msg = 'pointer assignment source has no storage: '// &
+                                trim(target_name)
+                    return
+                end if
+                target_addr = null_ptr_operand(context)
+            else
+                target_addr = context%symbols(tgt)%element_address
+            end if
+        else
+            if (.not. context%symbols(tgt)%has_address) then
+                error_msg = 'pointer assignment source has no storage: '// &
+                            trim(target_name)
+                return
+            end if
+            if (context%symbols(tgt)%is_array .or. context%symbols(tgt)%is_derived) then
+                error_msg = 'pointer component target must be a scalar of '// &
+                            'intrinsic type: '//trim(target_name)
+                return
+            end if
+            if (context%symbols(tgt)%value_kind /= &
+                component_kind(context, type_index, comp_index)) then
+                error_msg = 'pointer and target scalar kinds do not match'
+                return
+            end if
+            target_addr = context%symbols(tgt)%address
         end if
-        if (context%symbols(tgt)%is_array .or. context%symbols(tgt)%is_derived) then
-            error_msg = 'pointer component target must be a scalar of '// &
-                        'intrinsic type: '//trim(target_name)
-            return
-        end if
-        if (context%symbols(tgt)%value_kind /= &
-            component_kind(context, type_index, comp_index)) then
-            error_msg = 'pointer and target scalar kinds do not match'
-            return
-        end if
-        target_addr = context%symbols(tgt)%address
         call set_empty(error_msg)
     end subroutine data_pointer_target_address
 
