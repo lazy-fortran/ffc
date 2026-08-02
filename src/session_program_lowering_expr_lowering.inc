@@ -203,6 +203,11 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+        if (same_name(call_name, 'kind') .and. .not. &
+            is_contained_logical_function(context, call_name)) then
+            call lower_kind_intrinsic(arena, node, context, value, error_msg)
+            return
+        end if
         if (same_name(call_name, 'c_associated') .and. .not. &
             is_contained_logical_function(context, call_name)) then
             call lower_c_associated(arena, node%arg_indices, context, value, &

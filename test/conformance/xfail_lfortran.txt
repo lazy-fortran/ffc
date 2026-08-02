@@ -2115,8 +2115,6 @@ list_test_04_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar e
 list_test_06_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_08_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_09_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-logical_kind_04.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-logical_kind_05.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 logical_kind_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 logical_kind_07.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 logical_not_01.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions

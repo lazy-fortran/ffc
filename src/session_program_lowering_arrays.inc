@@ -1801,7 +1801,12 @@
                 error_msg = 'kind argument was not declared: '//trim(id_name)
                 return
             end if
-            k = value_kind_number(context%symbols(sym)%value_kind)
+            if (context%symbols(sym)%value_kind == VALUE_LOGICAL .and. &
+                context%symbols(sym)%logical_kind_bytes > 0) then
+                k = int(context%symbols(sym)%logical_kind_bytes, c_int64_t)
+            else
+                k = value_kind_number(context%symbols(sym)%value_kind)
+            end if
             if (k < 0) then
                 error_msg = 'kind argument has no compile-time kind: '// &
                             trim(id_name)
@@ -1829,7 +1834,20 @@
         if (is_character_literal(arena, node_index)) then
             k = 1_c_int64_t
         else if (is_logical_literal(arena, node_index)) then
-            k = 4_c_int64_t
+            select type (literal => arena%entries(node_index)%node)
+                type is (literal_node)
+                if (literal%resolved_kind_value > 0) then
+                    k = int(literal%resolved_kind_value, c_int64_t)
+                else
+                    call get_literal_info(arena, node_index, lit_value, &
+                                          lit_type, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call logical_literal_kind_number(lit_value, context, k, &
+                                                     error_msg)
+                end if
+                class default
+                error_msg = 'logical literal has no resolved kind metadata'
+            end select
         else if (is_real_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1844,6 +1862,49 @@
             call integer_literal_kind_number(lit_value, k, error_msg)
         end if
     end subroutine kind_of_literal
+
+    ! Determine the kind number of a logical literal's optional kind suffix
+    ! (.true._1, .false._int8, or a declared integer kind parameter).
+    subroutine logical_literal_kind_number(text, context, k, error_msg)
+        character(len=*), intent(in) :: text
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: k
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lo, suffix
+        integer :: uscore
+        integer(c_int64_t) :: resolved_value
+        logical :: resolved
+
+        lo = lowercase_text(trim(text))
+        k = 4_c_int64_t
+        call set_empty(error_msg)
+        uscore = scan(lo, '_')
+        if (uscore <= 0) return
+        suffix = trim(lo(uscore + 1:))
+        select case (suffix)
+        case ('1', 'int8')
+            k = 1_c_int64_t
+        case ('2', 'int16')
+            k = 2_c_int64_t
+        case ('4', 'int32')
+            k = 4_c_int64_t
+        case ('8', 'int64')
+            k = 8_c_int64_t
+        case default
+            if (iso_c_binding_kind_value(suffix, resolved_value)) then
+                k = resolved_value
+            else
+                call resolve_kind_parameter_value(context, suffix, resolved, &
+                                                  resolved_value)
+                if (.not. resolved) then
+                    error_msg = 'unsupported logical literal kind suffix: '// &
+                                trim(suffix)
+                else
+                    k = resolved_value
+                end if
+            end if
+        end select
+    end subroutine logical_literal_kind_number
 
     ! Fold size(arr[, dim]) for a fixed-size array symbol.
     subroutine eval_size_constant(arena, node, context, constant_value, error_msg)

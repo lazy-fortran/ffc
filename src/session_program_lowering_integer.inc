@@ -313,6 +313,17 @@
           call lower_array_size_intrinsic(arena, node, context, value, error_msg)
           return
       end if
+      if (same_name(node%name, 'storage_size') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_storage_size_intrinsic(arena, node, context, value, &
+                                            error_msg)
+          return
+      end if
+      if (same_name(node%name, 'kind') .and. .not. &
+          is_contained_i32_function(context, node%name)) then
+          call lower_kind_intrinsic(arena, node, context, value, error_msg)
+          return
+      end if
       if (same_name(node%name, 'sum') .and. .not. &
           is_contained_i32_function(context, node%name)) then
           call lower_array_reduction_intrinsic(arena, node, context, value, &
@@ -451,6 +462,67 @@
                               args, value, error_msg)) return
       call copy_back_reference_args(context, args, copyback_indices, error_msg)
   end subroutine lower_i32_call
+
+  subroutine lower_storage_size_intrinsic(arena, node, context, value, error_msg)
+      type(ast_arena_t), intent(in) :: arena
+      type(call_or_subscript_node), intent(in) :: node
+      type(lowering_context_t), intent(in) :: context
+      type(lr_operand_desc_t), intent(out) :: value
+      character(len=:), allocatable, intent(out) :: error_msg
+      character(len=:), allocatable :: name, name_error
+      integer :: symbol_index, bytes
+      integer(c_int64_t) :: kind_value
+
+      call set_empty(error_msg)
+      if (.not. allocated(node%arg_indices) .or. &
+          size(node%arg_indices) < 1) then
+          error_msg = 'storage_size requires an argument'
+          return
+      end if
+
+      bytes = 0
+      if (is_identifier(arena, node%arg_indices(1))) then
+          call get_identifier_name(arena, node%arg_indices(1), name, name_error)
+          if (len_trim(name_error) > 0) then
+              error_msg = name_error
+              return
+          end if
+          symbol_index = resolve_symbol_at_node(context, node%arg_indices(1), name)
+          if (symbol_index > 0) then
+              bytes = transfer_kind_bytes( &
+                  context%symbols(symbol_index)%value_kind)
+              if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL .and. &
+                  context%symbols(symbol_index)%logical_kind_bytes > 0) then
+                  bytes = context%symbols(symbol_index)%logical_kind_bytes
+              end if
+          end if
+      else if (is_literal(arena, node%arg_indices(1))) then
+          call kind_of_literal(arena, node%arg_indices(1), context, kind_value, &
+                               error_msg)
+          if (len_trim(error_msg) > 0) return
+          bytes = int(kind_value)
+      end if
+
+      if (bytes <= 0) then
+          error_msg = 'storage_size argument has no supported scalar kind'
+          return
+      end if
+      value = i32_immediate(context%session, &
+                            int(8 * bytes, c_int64_t))
+  end subroutine lower_storage_size_intrinsic
+
+  subroutine lower_kind_intrinsic(arena, node, context, value, error_msg)
+      type(ast_arena_t), intent(in) :: arena
+      type(call_or_subscript_node), intent(in) :: node
+      type(lowering_context_t), intent(in) :: context
+      type(lr_operand_desc_t), intent(out) :: value
+      character(len=:), allocatable, intent(out) :: error_msg
+      integer(c_int64_t) :: kind_value
+
+      call eval_kind_of_arg(arena, node, context, kind_value, error_msg)
+      if (len_trim(error_msg) > 0) return
+      value = i32_immediate(context%session, kind_value)
+  end subroutine lower_kind_intrinsic
 
   subroutine lower_i32_array_element(arena, node, context, value, error_msg)
       type(ast_arena_t), intent(in) :: arena

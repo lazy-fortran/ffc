@@ -367,6 +367,8 @@
         lowered_value = lowercase_text(trim(value))
         is_logical_literal = lowered_value == '.true.' .or. &
                              lowered_value == '.false.' .or. &
+                             index(lowered_value, '.true._') == 1 .or. &
+                             index(lowered_value, '.false._') == 1 .or. &
                              lowered_value == 'true' .or. &
                              lowered_value == 'false' .or. &
                              trim(literal_type) == 'logical'
@@ -404,7 +406,8 @@
         character(len=:), allocatable :: lowered
 
         lowered = lowercase_text(trim(adjustl(text)))
-        if (lowered == '.true.' .or. lowered == 'true') then
+        if (lowered == '.true.' .or. lowered == 'true' .or. &
+            index(lowered, '.true._') == 1) then
             value = 1_c_int64_t
         else
             value = 0_c_int64_t
