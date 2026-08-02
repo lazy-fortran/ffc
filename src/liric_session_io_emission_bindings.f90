@@ -65,6 +65,7 @@ module liric_session_io_emission_bindings
     public :: emit_liric_print_string_operand
     public :: emit_liric_print_string_operand_value
     public :: emit_liric_print_string_value
+    public :: emit_liric_write_string_operand
     public :: liric_f32_immediate
     public :: liric_f64_immediate
     public :: materialize_liric_string
@@ -309,6 +310,33 @@ contains
         call set_empty(error_msg)
         emit_liric_print_string_operand_value = .true.
     end function emit_liric_print_string_operand_value
+
+    logical function emit_liric_write_string_operand(session, unit, &
+            format_ptr, string_ptr, error_msg)
+        ! Fixed-arity _ffc_write_str(unit, fmt, value), used when a character
+        ! value must be written to a non-stdout Fortran unit.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: unit
+        type(lr_operand_desc_t), intent(in) :: format_ptr
+        type(lr_operand_desc_t), intent(in) :: string_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: unused_vreg
+
+        emit_liric_write_string_operand = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        call make_runtime_callee(session, '_ffc_write_str', callee, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        unused_vreg = emit_call_ptr(session%handle, callee, unit, format_ptr, &
+                                    string_ptr, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        call set_empty(error_msg)
+        emit_liric_write_string_operand = .true.
+    end function emit_liric_write_string_operand
 
     logical function emit_liric_print_newline(session, error_msg)
         type(liric_session_t), intent(inout) :: session

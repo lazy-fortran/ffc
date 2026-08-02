@@ -31,6 +31,7 @@ module liric_session_io_bindings
         emit_liric_print_string_operand, &
         emit_liric_print_string_operand_value, &
         emit_liric_print_string_value, &
+        emit_liric_write_string_operand, &
         liric_f32_immediate, &
         liric_f64_immediate, &
         emit_liric_i8_to_i32, &
@@ -71,6 +72,7 @@ module liric_session_io_bindings
     public :: emit_liric_print_string_operand
     public :: emit_liric_print_string_operand_value
     public :: emit_liric_print_string_value
+    public :: emit_liric_write_string_operand
     public :: liric_f32_immediate
     public :: liric_f64_immediate
     public :: materialize_liric_string

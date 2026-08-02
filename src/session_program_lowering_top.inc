@@ -1117,7 +1117,7 @@
         type is (error_stop_node)
             call lower_error_stop(arena, node, context, value, error_msg)
             if (len_trim(error_msg) == 0) then
-                call emit_error_stop_banner(node, value, context, error_msg)
+                call emit_error_stop_banner(arena, node, value, context, error_msg)
                 if (len_trim(error_msg) > 0) return
                 ! ERROR STOP always terminates the whole program with the error
                 ! code (default 1). From a contained procedure use libc exit();

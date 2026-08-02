@@ -190,6 +190,7 @@ module session_program_lowering
         emit_liric_print_string_operand_value, &
         emit_liric_print_string, &
         emit_liric_print_string_value, &
+        emit_liric_write_string_operand, &
         liric_f32_immediate, &
         liric_f64_immediate, &
         materialize_liric_string, &
@@ -1888,7 +1889,8 @@ contains
 
     subroutine lower_error_stop(arena, node, context, value, error_msg)
         ! ERROR STOP terminates with an error code: the given integer code, or 1
-        ! when none is supplied (gfortran's default error-termination status).
+        ! when none is supplied. A character-valued stop expression is a
+        ! message, not an integer termination code, and uses the default code.
         type(ast_arena_t), intent(in) :: arena
         type(error_stop_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -1897,26 +1899,36 @@ contains
         if (node%error_code_index <= 0) then
             value = i32_immediate(context%session, 1_c_int64_t)
             call set_empty(error_msg)
+        else if (is_character_operand(arena, node%error_code_index, context)) then
+            value = i32_immediate(context%session, 1_c_int64_t)
+            call set_empty(error_msg)
         else
             call lower_i32_expression(arena, node%error_code_index, context, &
                 value, error_msg)
         end if
     end subroutine lower_error_stop
 
-    subroutine emit_error_stop_banner(node, code_value, context, error_msg)
+    subroutine emit_error_stop_banner(arena, node, code_value, context, error_msg)
         ! gfortran writes "ERROR STOP <message>" / "ERROR STOP <n>" / "ERROR STOP"
-        ! to stderr (fd 2). Mirror emit_stop_banner with the ERROR STOP prefix.
+        ! to stderr. Mirror emit_stop_banner with the ERROR STOP prefix.
+        type(ast_arena_t), intent(in) :: arena
         type(error_stop_node), intent(in) :: node
         type(lr_operand_desc_t), intent(in) :: code_value
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: fa(3), fmtop, msgop
+        type(lr_operand_desc_t) :: fa(3), fmtop, msgop, dynamic_msg
+        type(lr_operand_desc_t) :: dynamic_length
         character(len=:), allocatable :: msg_text
+        logical :: literal_message
         integer(c_int32_t) :: fmt_gid, msg_gid
         character(len=64) :: gname
 
         call set_empty(error_msg)
+        literal_message = .false.
         if (allocated(node%error_message)) then
+            literal_message = len_trim(node%error_message) > 0
+        end if
+        if (literal_message) then
             call strip_literal_quotes(node%error_message, msg_text)
             context%string_literal_count = context%string_literal_count + 1
             gname = ffc_unit_global_name( &
@@ -1937,6 +1949,24 @@ contains
             fa(2) = fmtop
             fa(3) = msgop
             if (.not. emit_dprintf(context%session, fa, error_msg)) return
+        else if (node%error_code_index > 0 .and. &
+                 is_character_operand(arena, node%error_code_index, context)) then
+            call char_expr_operands(arena, node%error_code_index, context, &
+                                    dynamic_msg, dynamic_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%string_literal_count = context%string_literal_count + 1
+            gname = ffc_unit_global_name( &
+                context, 'estop.fmt.', context%string_literal_count)
+            call create_printf_format_global(context%session, trim(gname), &
+                'ERROR STOP %s'//achar(10), fmt_gid, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            fmtop = printf_format_ptr(context%session, fmt_gid)
+            ! The runtime maps Fortran unit 0 to stderr; descriptor 2 is the
+            ! POSIX file descriptor used by the variadic dprintf path.
+            fa(1) = i32_immediate(context%session, 0_c_int64_t)
+            if (.not. emit_liric_write_string_operand(context%session, fa(1), &
+                    fmtop, dynamic_msg, error_msg)) return
         else if (node%error_code_index > 0) then
             context%string_literal_count = context%string_literal_count + 1
             gname = ffc_unit_global_name( &

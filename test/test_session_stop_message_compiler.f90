@@ -10,6 +10,7 @@ program test_session_stop_message_compiler
 
     if (.not. test_stop_message()) all_passed = .false.
     if (.not. test_stop_nonzero_code()) all_passed = .false.
+    if (.not. test_error_stop_message()) all_passed = .false.
 
     if (all_passed) then
         print *, 'PASS: stop banners match gfortran'
@@ -46,5 +47,18 @@ contains
             source, 'STOP 99'//new_line('a'), 99, &
             '/tmp/ffc_session_stop_message_nonzero_test')
     end function test_stop_nonzero_code
+
+    logical function test_error_stop_message()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  character(len=5) :: message'//new_line('a')// &
+            "  message = 'hello'"//new_line('a')// &
+            '  error stop message'//new_line('a')// &
+            'end program main'
+
+        test_error_stop_message = expect_stderr_and_exit( &
+            source, 'ERROR STOP hello'//new_line('a'), 1, &
+            '/tmp/ffc_session_error_stop_message_test')
+    end function test_error_stop_message
 
 end program test_session_stop_message_compiler
