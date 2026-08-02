@@ -79,7 +79,8 @@
     integer function assumed_shape_actual_rank(arena, node_index, context) &
             result(rank)
         ! Rank the actual presents to the dummy: a whole array's declared rank,
-        ! or 1 for a contiguous rank-1 section.
+        ! or 1 for a rank-1 section actual (strided or stride-1), which binds a
+        ! rank-1 dummy through a descriptor view.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -87,7 +88,7 @@
         character(len=:), allocatable :: id_name, err
 
         rank = 0
-        if (actual_is_contiguous_section(arena, node_index, context)) then
+        if (actual_is_rank1_section(arena, node_index, context)) then
             rank = 1
             return
         end if
@@ -161,7 +162,10 @@
         else if (actual_is_allocatable_array(arena, node_index, context)) then
             call allocatable_array_actual_data_address(arena, node_index, &
                                                        context, base, error_msg)
-        else if (actual_is_contiguous_section(arena, node_index, context)) then
+        else if (actual_is_slice_node(arena, node_index)) then
+            ! Any array section travels through the section address lowerer so
+            ! an invalid triplet (e.g. a zero stride) surfaces its source
+            ! diagnostic here rather than falling to the generic message.
             call section_actual_address(arena, node_index, context, base, &
                                         error_msg)
         else if (actual_is_whole_array(arena, node_index, context)) then
@@ -172,6 +176,35 @@
                         'allocatable array, or a contiguous array section'
         end if
     end subroutine assumed_shape_actual_base
+
+
+    subroutine section_actual_extents(arena, node_index, context, extents, ok)
+        ! Extents of a rank-1 section actual (a(lo:hi:s), a(:,j)) resolved from
+        ! its compile-time triplet bounds.  Uses the same section description
+        ! the value-lowering paths rely on, so a triplet's extent (which may be
+        ! zero for a valid empty section) is preserved for the descriptor view.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: extents(:)
+        logical, intent(out) :: ok
+        type(array_section_info_t) :: info
+        character(len=:), allocatable :: err
+
+        ok = .false.
+        extents = 0
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, err, &
+                                        allow_derived=.true.)
+            if (len_trim(err) > 0) return
+            if (info%result_rank /= 1) return
+            extents(1) = int(info%section_extents(info%kept_dims(1)))
+            ok = .true.
+        class default
+            ok = .false.
+        end select
+    end subroutine section_actual_extents
 
     subroutine assumed_shape_actual_extent(arena, node_index, context, rank, &
                                            dim, extent, error_msg)
@@ -213,8 +246,8 @@
 
         extents = 0
         ok = .false.
-        if (actual_is_contiguous_section(arena, node_index, context)) then
-            call section_actual_decl_extents(context, node_index, 1, extents, ok)
+        if (actual_is_rank1_section(arena, node_index, context)) then
+            call section_actual_extents(arena, node_index, context, extents, ok)
         else if (is_identifier(arena, node_index)) then
             symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
             if (symbol_index > 0) then
@@ -264,6 +297,33 @@
         call set_empty(error_msg)
     end subroutine store_descriptor_i32
 
+
+    subroutine section_actual_step(arena, node_index, context, step, err)
+        ! Signed subscript-step of a rank-1 section actual's kept dimension
+        ! (a(lo:hi:s) keeps s, a(:,j) keeps ..., the parent has stride 1 in its
+        ! own subscript space).  step is the value that multiplies the parent's
+        ! byte stride (i.e. the view's stride scale) and is negative for a
+        ! descending triplet.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t), intent(out) :: step
+        character(len=:), allocatable, intent(out) :: err
+        type(array_section_info_t) :: info
+
+        step = 1_c_int64_t
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, err, &
+                                        allow_derived=.true.)
+            if (len_trim(err) > 0) return
+            if (info%result_rank /= 1) return
+            step = info%section_strides(info%kept_dims(1))
+        class default
+            err = 'section actual expected an array slice node'
+        end select
+    end subroutine section_actual_step
+
     subroutine build_assumed_shape_descriptor(arena, node_index, context, rank, &
                                               callee_name, param_pos, descriptor, &
                                               error_msg)
@@ -284,9 +344,27 @@
         integer :: dummy_lowers(ARRAY_MAX_RANK)
         integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
+        integer(c_int64_t) :: section_step
         integer(c_int32_t) :: flags
         logical :: is_component_projection, has_dummy_lowers
         character(len=32) :: rank_text, actual_rank_text
+
+        ! Validate a section actual up front so an invalid triplet (e.g. a
+        ! zero stride) surfaces its source diagnostic before the rank or shape
+        ! checks below mask it with a generic message.
+        if (actual_is_slice_node(arena, node_index)) then
+            block
+                type(array_slice_node), pointer :: sec_slice => null()
+                type(array_section_info_t) :: sec_info
+                select type (entry => arena%entries(node_index)%node)
+                type is (array_slice_node)
+                    sec_slice => entry
+                end select
+                call describe_array_section(arena, sec_slice, context, sec_info, &
+                                            error_msg, allow_derived=.true.)
+                if (len_trim(error_msg) > 0) return
+            end block
+        end if
 
         actual_rank = assumed_shape_actual_rank(arena, node_index, context)
         if (actual_rank /= rank) then
@@ -355,12 +433,22 @@
             int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), error_msg)
         if (len_trim(error_msg) > 0) return
         ! The dummy borrows the actual's storage: allocated and associated, and
-        ! contiguous for every actual form this ABI accepts, but never owning.
+        ! never owning.  A whole-array or stride-1 contiguous actual is also
+        ! flagged contiguous; a strided triplet section describes a non-
+        ! contiguous view, so it stays non-contiguous in the descriptor.
         flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED
         if (.not. is_component_projection) then
-            if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
-                context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
-                flags = flags + ARRAY_FLAG_CONTIGUOUS
+            section_step = 1_c_int64_t
+            if (actual_is_rank1_section(arena, node_index, context)) then
+                call section_actual_step(arena, node_index, context, &
+                                         section_step, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (section_step == 1_c_int64_t) then
+                if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
+                    context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
+                    flags = flags + ARRAY_FLAG_CONTIGUOUS
+                end if
             end if
         end if
         call store_descriptor_i32(context, flags, descriptor, &
@@ -385,6 +473,20 @@
             call assumed_shape_actual_extent(arena, node_index, context, rank, &
                                              dim, extent, error_msg)
             if (len_trim(error_msg) > 0) return
+            ! A triplet section actual carries its own stride: the view steps
+            ! by (parent stride * section step), which may be signed.  Scale
+            ! the running column-major stride for the retained dimension so the
+            ! descriptor addresses the section's element spacing in place
+            ! (zero-copy view, #337).
+            if (dim == 1 .and. actual_is_rank1_section(arena, node_index, &
+                                                       context)) then
+                call section_actual_step(arena, node_index, context, &
+                                         section_step, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, running, &
+                        i64_immediate(context%session, section_step), running, &
+                        error_msg)) return
+            end if
             ! A bare-colon dummy has lower bound 1; an explicit lower bound such
             ! as 0: is part of the dummy view (F2018 8.5.8.3).
             if (.not. emit_i64_store_at(context%session, &

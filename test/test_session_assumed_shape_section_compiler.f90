@@ -1,5 +1,5 @@
 program test_session_assumed_shape_section
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
 
     logical :: all_passed
@@ -10,6 +10,9 @@ program test_session_assumed_shape_section
     if (.not. test_rank1_integer_section()) all_passed = .false.
     if (.not. test_rank2_column_section()) all_passed = .false.
     if (.not. test_rank1_real_section()) all_passed = .false.
+    if (.not. test_strided_positive_section()) all_passed = .false.
+    if (.not. test_strided_negative_section()) all_passed = .false.
+    if (.not. test_zero_stride_section_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: array-section actuals bind rank-1 assumed-shape dummies'
@@ -89,5 +92,78 @@ contains
         test_rank1_real_section = expect_output(source, expected, &
             '/tmp/ffc_session_assumed_shape_section_r1f')
     end function test_rank1_real_section
+
+    logical function test_strided_positive_section()
+        ! a(2:8:2) passed to a rank-1 assumed-shape dummy: the descriptor view's
+        ! stride steps two elements at a time in the caller's storage, so v(i)
+        ! reads 2, 4, 6, 8 in subscript order.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(8), i'//new_line('a')// &
+            'a = [(i, i = 1, 8)]'//new_line('a')// &
+            'call show(a(2:8:2))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'subroutine show(v)'//new_line('a')// &
+            'integer, intent(in) :: v(:)'//new_line('a')// &
+            'integer :: i'//new_line('a')// &
+            'do i = 1, size(v)'//new_line('a')// &
+            'print *, v(i)'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'end subroutine show'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           2'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           6'//new_line('a')// &
+            '           8'//new_line('a')
+
+        test_strided_positive_section = expect_output(source, expected, &
+            '/tmp/ffc_session_assumed_shape_section_stride_pos')
+    end function test_strided_positive_section
+
+    logical function test_strided_negative_section()
+        ! a(8:2:-2) descends: the descriptor's base is element 8 and its byte
+        ! stride is negative, so v(i) reads 8, 6, 4, 2 in subscript order.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(8), i'//new_line('a')// &
+            'a = [(i, i = 1, 8)]'//new_line('a')// &
+            'call show(a(8:2:-2))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'subroutine show(v)'//new_line('a')// &
+            'integer, intent(in) :: v(:)'//new_line('a')// &
+            'integer :: i'//new_line('a')// &
+            'do i = 1, size(v)'//new_line('a')// &
+            'print *, v(i)'//new_line('a')// &
+            'end do'//new_line('a')// &
+            'end subroutine show'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '           8'//new_line('a')// &
+            '           6'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           2'//new_line('a')
+
+        test_strided_negative_section = expect_output(source, expected, &
+            '/tmp/ffc_session_assumed_shape_section_stride_neg')
+    end function test_strided_negative_section
+
+    logical function test_zero_stride_section_diagnostic()
+        ! A zero-stride triplet is invalid Fortran; it must be rejected at
+        ! compile time with a source diagnostic, not lowered.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(8)'//new_line('a')// &
+            'call show(a(1:5:0))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'subroutine show(v)'//new_line('a')// &
+            'integer, intent(in) :: v(:)'//new_line('a')// &
+            'end subroutine show'//new_line('a')// &
+            'end program main'
+
+        test_zero_stride_section_diagnostic = expect_error_contains( &
+            source, 'stride must be nonzero', &
+            '/tmp/ffc_session_assumed_shape_section_zero_stride')
+    end function test_zero_stride_section_diagnostic
 
 end program test_session_assumed_shape_section

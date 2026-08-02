@@ -1295,7 +1295,58 @@
             if (step /= 1_c_int64_t) return
             actual_is_contiguous_section = .true.
         end select
+
     end function actual_is_contiguous_section
+
+    logical function actual_is_rank1_section(arena, node_index, context)
+        ! Whether an actual argument is a rank-1 array section formed by a
+        ! lower:upper:stride triplet on a rank-1 or rank-2 array whose kept
+        ! dimension is the first source dimension (a(lo:hi:s) or a(:,j)).  A
+        ! section needs no physical contiguity to bind a rank-1 assumed-shape
+        ! dummy: the descriptor view carries its stride, so both stride-1 and
+        ! strided triplets qualify.  ok stays false for a non-constant or
+        ! runtime-bounds section.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        type(array_section_info_t) :: info
+        character(len=:), allocatable :: err
+        integer :: keep
+
+        actual_is_rank1_section = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, err, &
+                                        allow_derived=.true.)
+            if (len_trim(err) > 0) return
+            if (info%has_runtime_bounds) return
+            if (info%result_rank /= 1) return
+            keep = info%kept_dims(1)
+            ! A column section of a rank-2 array keeps the leading dimension
+            ! only when the scalar subscript is on the second dimension.
+            if (info%source_rank == 2 .and. keep /= 1) return
+            actual_is_rank1_section = .true.
+        end select
+    end function actual_is_rank1_section
+
+    logical function actual_is_slice_node(arena, node_index)
+        ! Whether an actual is an array section AST node at all.  Unlike
+        ! actual_is_rank1_section this performs no describe pass, so an invalid
+        ! triplet (e.g. a zero stride) is still routed through the section
+        ! address lowerer, where the source diagnostic can surface.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        logical :: is_slice
+        is_slice = .false.
+        if (node_exists(arena, node_index)) then
+            select type (entry => arena%entries(node_index)%node)
+            type is (array_slice_node)
+                is_slice = .true.
+            end select
+        end if
+        actual_is_slice_node = is_slice
+    end function actual_is_slice_node
 
     subroutine section_actual_address(arena, node_index, context, address, &
                                       error_msg)
