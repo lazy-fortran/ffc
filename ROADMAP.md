@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `41cbc2d` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `079820b` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -37,8 +37,9 @@ explicit decision.
   runtime array-expression reductions, `CPU_TIME` widening, and explicit-shape
   whole-array dummy aliasing, explicit-lower-bound assumed-shape descriptors,
   mixed-rank runtime section expressions, allocatable function-result MATMUL
-  matrix-vector lowering, with sampled manifest dispositions through seed
-  1037). FortFront `4948ec2a`. LIRIC `5436e5c`.
+  matrix-vector lowering, rank-2 automatic array-result materialisation, with
+  sampled manifest dispositions through seed 1037). FortFront `4948ec2a`.
+  LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -124,9 +125,11 @@ explicit decision.
   multi-declaration, diagnostic, and allocatable-function-result tests pass.
   The allocatable-result MATMUL tranche is green too: `matmul_03.f90`,
   `matmul_04.f90`, and `matmul_05.f90` pass with `PASS=3`, `XFAIL=0`,
-  `XPASS=0`, and `FAIL=0`; the combined `matmul_01`-`matmul_05` run is
-  `PASS=5` with no unexpected result. The next XFAIL-first tranche is
-  `matmul_06.f90`; keep the sample count at 900.
+  `XPASS=0`, and `FAIL=0`; `matmul_06.f90` now passes as well after rank-2
+  automatic array results were registered through the raw sret ABI and
+  materialised into bounded temporaries. The combined `matmul_01`-`matmul_06`
+  run is `PASS=6` with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The next
+  XFAIL-first case is `matrix_01_transpose.f90`; keep the sample count at 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
