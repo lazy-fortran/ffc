@@ -2464,7 +2464,10 @@
                                                             index, context, error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (call_or_subscript_node)
-                    if (allocated(init%name) .and. same_name(init%name, 'reshape')) then
+                    if (allocated(init%name) .and. same_name(init%name, 'transpose')) then
+                        call lower_parameter_transpose_initializer(context%arena, init, &
+                            index, context, error_msg)
+                    else if (allocated(init%name) .and. same_name(init%name, 'reshape')) then
                         call lower_reshape_call(context%arena, init, index, &
                                                 context, error_msg)
                     else
@@ -2484,6 +2487,134 @@
 
         call set_empty(error_msg)
     end subroutine define_declared_array_symbol
+
+    subroutine lower_parameter_transpose_initializer(arena, rhs, symbol_index, &
+                                                     context, error_msg)
+        ! Fold the common PARAMETER form transpose(reshape([..], [..])) into
+        ! the already allocated target. This keeps parameter initialization in
+        ! the typed array path instead of asking scalar lowering to emit a
+        ! whole-array intrinsic call.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: source_index, shape_index, pad_index, order_index
+        integer :: source_rows, source_cols, target_rows, target_cols
+        integer :: i, j, source_linear, target_linear, vk
+        integer(c_int64_t) :: shape_value
+        integer(c_int64_t), allocatable :: shape_values(:)
+        integer, allocatable :: flat(:)
+        type(lr_operand_desc_t) :: value
+        integer :: reshape_index
+
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 1) then
+            error_msg = 'parameter transpose requires one reshape argument'
+            return
+        end if
+        if (.not. node_exists(arena, rhs%arg_indices(1))) then
+            error_msg = 'parameter transpose reshape argument is missing'
+            return
+        end if
+        reshape_index = rhs%arg_indices(1)
+        select type (reshape_node => arena%entries(reshape_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(reshape_node%name) .or. &
+                .not. same_name(reshape_node%name, 'reshape')) then
+                error_msg = 'parameter transpose requires transpose(reshape(...))'
+                return
+            end if
+        class default
+            error_msg = 'parameter transpose requires transpose(reshape(...))'
+            return
+        end select
+        select type (reshape_node => arena%entries(reshape_index)%node)
+        type is (call_or_subscript_node)
+            call resolve_reshape_args(arena, reshape_node, source_index, &
+                                      shape_index, pad_index, order_index, error_msg)
+        class default
+            error_msg = 'parameter transpose requires transpose(reshape(...))'
+        end select
+        if (len_trim(error_msg) > 0) return
+        if (pad_index > 0 .or. order_index > 0) then
+            error_msg = 'parameter transpose reshape does not support pad/order'
+            return
+        end if
+        select type (shape_node => arena%entries(shape_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(shape_node%element_indices) .or. &
+                size(shape_node%element_indices) /= 2) then
+                error_msg = 'parameter transpose reshape shape must have rank two'
+                return
+            end if
+            allocate (shape_values(2))
+            do i = 1, 2
+                call eval_i32_constant(arena, shape_node%element_indices(i), &
+                                       context, shape_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                shape_values(i) = shape_value
+            end do
+        class default
+            error_msg = 'parameter transpose reshape shape must be a literal'
+            return
+        end select
+        source_rows = int(shape_values(1))
+        source_cols = int(shape_values(2))
+        target_rows = int(context%symbols(symbol_index)%array_dim_sizes(1))
+        target_cols = int(context%symbols(symbol_index)%array_dim_sizes(2))
+        if (source_rows < 0 .or. source_cols < 0 .or. &
+            target_rows /= source_cols .or. target_cols /= source_rows) then
+            error_msg = 'parameter transpose result shape does not match reshape'
+            return
+        end if
+        select type (source => arena%entries(source_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(source%element_indices)) then
+                error_msg = 'parameter transpose reshape source is empty'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, source%element_indices, flat, &
+                                               error_msg)
+        class default
+            error_msg = 'parameter transpose reshape source must be a literal'
+            return
+        end select
+        if (len_trim(error_msg) > 0) return
+        if (size(flat) /= source_rows * source_cols .or. &
+            size(flat) /= context%symbols(symbol_index)%array_size) then
+            error_msg = 'parameter transpose reshape source size does not match'
+            return
+        end if
+        vk = context%symbols(symbol_index)%value_kind
+        do j = 0, target_cols - 1
+            do i = 0, target_rows - 1
+                source_linear = j + source_rows * i
+                target_linear = i + target_rows * j
+                select case (vk)
+                case (VALUE_F32)
+                    call lower_f32_expression(arena, flat(source_linear + 1), &
+                                              context, value, error_msg)
+                case (VALUE_F64)
+                    call lower_f64_expression(arena, flat(source_linear + 1), &
+                                              context, value, error_msg)
+                case (VALUE_LOGICAL)
+                    call lower_logical_expression(arena, flat(source_linear + 1), &
+                                                  context, value, error_msg)
+                case default
+                    call lower_constructor_i32_element(arena, flat(source_linear + 1), &
+                                                       context, value, error_msg)
+                end select
+                if (len_trim(error_msg) > 0) return
+                call store_array_linear_element(context, symbol_index, &
+                                                int(target_linear, c_int64_t), &
+                                                value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_parameter_transpose_initializer
 
     subroutine broadcast_scalar_initializer(context, symbol_index, value_index, &
                                             array_size, error_msg)

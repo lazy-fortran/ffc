@@ -1155,6 +1155,7 @@ contains
     end subroutine lower_parameter_declaration
     ! Array lowering is included here; keep this unit invalidated when the include changes.
     ! Typed TRANSPOSE also shares this include's complex and logical paths.
+    ! Parameter TRANSPOSE initialization uses the same typed array stores.
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_const_fold.inc'
     include 'session_program_lowering_array_elements.inc'
