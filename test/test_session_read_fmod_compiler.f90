@@ -4,7 +4,7 @@ program test_session_read_fmod_compiler
         compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe, &
         lower_program_to_liric_object
-    use ffc_module_artefact, only: module_info_t, write_fmod
+    use ffc_module_artefact, only: module_info_t, write_fmod, read_fmod
     implicit none
 
     logical :: all_passed
@@ -648,17 +648,18 @@ contains
     end function test_fmod_intent_out_rejects_literal
 
     logical function test_fmod_schema_version_is_checked() result(ok)
-        ! A .fmod whose schema version this ffc does not implement is rejected
-        ! with an artefact-version diagnostic instead of being misread. An
-        ! artefact with no schema version at all (written before the field
-        ! existed) is stale and rejected the same way (#397).
+        ! Schema 10 is a supported read-only legacy format; schema 11 is what
+        ! write_fmod emits. Unknown and unversioned artefacts remain rejected
+        ! instead of being silently misread (#397).
         character(len=*), parameter :: dir = '/tmp/ffc_fmod397_schema'
+        character(len=*), parameter :: legacy_path = dir//'/legacy.fmod'
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  use m, only: value'//new_line('a')// &
             '  stop value'//new_line('a')// &
             'end program main'
         type(module_info_t) :: info
+        type(module_info_t) :: legacy_info
         character(len=:), allocatable :: error_msg
 
         ok = .false.
@@ -679,6 +680,58 @@ contains
         call compile_with_include(source, dir//'/current', dir, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: current-schema .fmod rejected: ', trim(error_msg)
+            return
+        end if
+
+        ! This literal fixture uses the schema-10 three-field binding format.
+        ! Reading it directly verifies both version compatibility and the
+        ! fallback that maps its target to the schema-11 specific-name field.
+        if (.not. write_file(legacy_path, &
+            '[module]'//new_line('a')// &
+            'name = "legacy_bindings"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 10'//new_line('a')//new_line('a')// &
+            '[[derived_type]]'//new_line('a')// &
+            'name = "widget"'//new_line('a')// &
+            'parent_name = ""'//new_line('a')// &
+            'bindings = "operate=>operate_impl|other|0"')) return
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-10 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
+        if (trim(legacy_info%name) /= 'legacy_bindings') then
+            print *, 'FAIL: schema-10 module name was not read'
+            return
+        end if
+        if (.not. allocated(legacy_info%derived_types)) then
+            print *, 'FAIL: schema-10 derived type table was not read'
+            return
+        end if
+        if (size(legacy_info%derived_types) /= 1) then
+            print *, 'FAIL: schema-10 derived type count was not preserved'
+            return
+        end if
+        if (.not. allocated(legacy_info%derived_types(1)%bindings)) then
+            print *, 'FAIL: schema-10 binding table was not read'
+            return
+        end if
+        if (size(legacy_info%derived_types(1)%bindings) /= 1) then
+            print *, 'FAIL: schema-10 binding count was not preserved'
+            return
+        end if
+        if (trim(legacy_info%derived_types(1)%bindings(1)%method_name) /= &
+            'operate' .or. &
+            trim(legacy_info%derived_types(1)%bindings(1)%target_name) /= &
+            'operate_impl' .or. &
+            trim(legacy_info%derived_types(1)%bindings(1)%pass_name) /= &
+            'other' .or. legacy_info%derived_types(1)%bindings(1)%pass_arg) then
+            print *, 'FAIL: schema-10 binding fields were not normalized'
+            return
+        end if
+        if (trim(legacy_info%derived_types(1)%bindings(1)%specific_names) /= &
+            'operate_impl') then
+            print *, 'FAIL: schema-10 binding target fallback was not set'
             return
         end if
 

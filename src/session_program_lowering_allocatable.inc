@@ -1201,6 +1201,100 @@
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
 
+    subroutine lower_allocatable_character_array_assignment(arena, node, &
+                                                            symbol_index, context, &
+                                                            handled, error_msg)
+        ! Copy a conforming rank-1 character allocatable from another character
+        ! allocatable. Character allocatable arrays use one immutable string
+        ! pointer per element, so copying the pointer slots is the element-value
+        ! copy; later element assignment replaces a slot and does not mutate the
+        ! shared string data. Keep this path deliberately narrow: a known source
+        ! extent and equal known element lengths avoid silently walking an
+        ! unknown or nonconforming descriptor.
+        use, intrinsic :: iso_fortran_env, only: int64
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_index, source_extent, target_extent
+        type(lr_operand_desc_t) :: target_data, source_data
+        integer(int64) :: byte_count
+        logical :: empty_constructor
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%array_rank /= 1) return
+        if (context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) return
+        if (.not. node_exists(arena, node%value_index)) return
+
+        empty_constructor = .false.
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(rhs%element_indices)) then
+                empty_constructor = .true.
+            else if (size(rhs%element_indices) == 0) then
+                empty_constructor = .true.
+            end if
+        class default
+        end select
+        if (empty_constructor) then
+            if (.not. emit_ptr_load(context%session, &
+                    context%symbols(symbol_index)%allocatable_descriptor_address, &
+                    target_data, error_msg)) return
+            if (.not. emit_free(context%session, target_data, error_msg)) return
+            call lower_allocate_i32_1d_operand( &
+                i32_immediate(context%session, 0_c_int64_t), symbol_index, &
+                context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(symbol_index)%allocatable_static_size = 0
+            handled = .true.
+            return
+        end if
+        if (.not. is_identifier(arena, node%value_index)) return
+
+        call get_identifier_name(arena, node%value_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol_compat(context, source_name)
+        if (source_index <= 0) return
+        if (.not. context%symbols(source_index)%is_allocatable) return
+        if (context%symbols(source_index)%array_rank /= 1) return
+        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) return
+
+        source_extent = context%symbols(source_index)%allocatable_static_size
+        if (source_extent <= 0) return
+        target_extent = context%symbols(symbol_index)%allocatable_static_size
+        if (target_extent > 0 .and. target_extent /= source_extent) then
+            error_msg = 'whole-array assignment requires conforming shapes: '// &
+                trim(context%symbols(symbol_index)%name)//' and '// &
+                trim(context%symbols(source_index)%name)//' differ in extent'
+            return
+        end if
+        if (context%symbols(symbol_index)%character_length > 0 .and. &
+            context%symbols(source_index)%character_length > 0 .and. &
+            context%symbols(symbol_index)%character_length /= &
+                context%symbols(source_index)%character_length) then
+            error_msg = 'whole-array assignment requires equal character lengths'
+            return
+        end if
+
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(symbol_index)%allocatable_descriptor_address, &
+                target_data, error_msg)) return
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(source_index)%allocatable_descriptor_address, &
+                source_data, error_msg)) return
+        byte_count = int(source_extent, int64) * &
+            int(allocatable_elem_size(VALUE_CHARACTER), int64)
+        if (.not. emit_memcpy(context%session, target_data, source_data, &
+                i64_immediate(context%session, byte_count), error_msg)) return
+
+        context%symbols(symbol_index)%allocatable_static_size = source_extent
+        handled = .true.
+    end subroutine lower_allocatable_character_array_assignment
+
     subroutine lower_allocatable_scalar_broadcast(arena, value_index, &
                                                   symbol_index, context, error_msg)
         ! a = scalar where a is a rank-1 allocatable: store the scalar into every

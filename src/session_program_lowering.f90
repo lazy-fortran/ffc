@@ -3491,6 +3491,11 @@ contains
                     symbol_index, handled, error_msg)
                 if (handled .or. len_trim(error_msg) > 0) return
             end if
+            if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+                call lower_allocatable_character_array_assignment(arena, node, &
+                    symbol_index, context, handled, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            end if
             if (is_alloc_array_result_call(arena, node%value_index, context)) then
                 call lower_alloc_array_result_assignment(arena, node%value_index, &
                     symbol_index, context, error_msg)

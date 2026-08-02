@@ -192,14 +192,19 @@
                                            callee_name, &
                                            call_arg_param_pos(i, sp), error_msg)
             if (len_trim(error_msg) > 0) return
-            ! A character actual passed to a character(len=*) dummy is a single
-            ! reference parameter pointing at a {data, length} descriptor. Use
-            ! that ABI only when the callee actually declares the dummy as
-            ! character(len=*); otherwise fall through to the scalar path (which
-            ! rejects an unsupported character actual).
-            if (actual_is_character(arena, arg_indices(i), context) .and. &
-                callee_dummy_char_writable(arena, callee_name, &
-                                           call_arg_param_pos(i, sp))) then
+            ! An allocatable array actual has a descriptor ABI even when its
+            ! element kind is CHARACTER. Handle this before the scalar
+            ! character descriptor path, which otherwise reinterprets the
+            ! array descriptor as a {data,length} scalar descriptor.
+            if (actual_is_allocatable_array(arena, arg_indices(i), context) &
+                    .and. callee_dummy_is_allocatable_array(arena, callee_name, &
+                                                            call_arg_param_pos(i, sp))) then
+                call allocatable_array_actual_descriptor_address(arena, &
+                    arg_indices(i), context, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (actual_is_character(arena, arg_indices(i), context) .and. &
+                     callee_dummy_char_writable(arena, callee_name, &
+                                                call_arg_param_pos(i, sp))) then
                 ! intent(out)/(inout) allocatable character: pass the actual's
                 ! own descriptor so the callee's writes land in the caller.
                 call char_actual_inout_descriptor(arena, arg_indices(i), &
@@ -275,16 +280,6 @@
                 call array_expression_actual_address(arena, arg_indices(i), &
                     context, callee_name, call_arg_param_pos(i, sp), default_kind, &
                     args(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
-                     .and. callee_dummy_is_allocatable_array(arena, callee_name, &
-                                                             call_arg_param_pos(i, sp))) then
-                ! Allocatable array actual to an allocatable array dummy: pass
-                ! the caller's own descriptor address so the callee aliases it
-                ! (allocate/deallocate inside the callee are visible to the
-                ! caller too, W11).
-                call allocatable_array_actual_descriptor_address(arena, &
-                    arg_indices(i), context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_contiguous_section(arena, arg_indices(i), context) &
                      .and. callee_dummy_is_array_ctx(arena, context, &

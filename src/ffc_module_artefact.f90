@@ -20,12 +20,12 @@ module ffc_module_artefact
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
-    ! The .fmod schema this ffc writes and is able to read. Every artefact
-    ! carries it as `fmod_schema` in its [module] header. A reader rejects any
-    ! other value, and an artefact without the field, so a stale or
-    ! newer-than-supported artefact is diagnosed instead of silently misread
-    ! (#397).
+    ! The .fmod schema this ffc writes and the newest schema it can read.
+    ! Schema 10 remains readable because its records are structurally
+    ! compatible; schema 11 adds the optional specific-target list for generic
+    ! type-bound bindings. Writers always emit the newest schema.
     integer, parameter, public :: FMOD_SCHEMA_VERSION = 11
+    integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -497,11 +497,13 @@ contains
             return
         end if
         ! Reject an artefact this ffc cannot read rather than misinterpret it:
-        ! a missing field means it predates the versioned schema, any other
-        ! value means it was written by a different ffc (#397).
-        if (schema /= FMOD_SCHEMA_VERSION) then
+        ! a missing field means it predates the versioned schema, while schema
+        ! 10 is explicitly retained for backwards-compatible reads (#397).
+        if (schema /= FMOD_SCHEMA_VERSION .and. &
+            schema /= FMOD_LEGACY_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
-                ' in '//trim(path)//' (this ffc reads schema version '// &
+                ' in '//trim(path)//' (this ffc reads schema versions '// &
+                int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
