@@ -2124,7 +2124,6 @@ logical_kind_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar
 logical_kind_07.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 logical_not_01.f90 # owner=lazy-fortran/ffc#345; reason=route WHERE and FORALL through array expressions
 logical_testing.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
-logical_to_integer_cast.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 matmul_01.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 matmul_02.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 matmul_03.f90 # owner=lazy-fortran/ffc#373; reason=reallocate allocatables from runtime expressions

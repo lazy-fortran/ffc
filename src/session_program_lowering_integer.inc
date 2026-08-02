@@ -32,6 +32,11 @@
       if (is_literal(arena, node_index)) then
           call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
           if (len_trim(error_msg) > 0) return
+          if (is_logical_literal(arena, node_index)) then
+              call lower_logical_expression(arena, node_index, context, value, &
+                                            error_msg)
+              return
+          end if
           call parse_i32_literal(lit_value, literal_value, error_msg)
           if (len_trim(error_msg) > 0) return
           value = i32_immediate(context%session, literal_value)
@@ -109,6 +114,12 @@
                   return
               end if
               error_msg = 'integer identifier was not declared: '//trim(id_name)
+              return
+          end if
+          if (.not. context%symbols(symbol_index)%is_array .and. &
+              context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
+              call lower_logical_expression(arena, node_index, context, value, &
+                                            error_msg)
               return
           end if
           if (context%symbols(symbol_index)%is_array) then
