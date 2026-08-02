@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `52fa645` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `14e267a` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -44,7 +44,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 439/439 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 440/440 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -209,6 +209,13 @@ explicit decision.
   masked `FORALL` case with `vec(j)=real(j)` now passes after guarding the
   scalar-conversion lookup from invalid index-0 access. The focused compiler
   test and independent gfortran oracle both pass.
+- The modules28 separate-compilation family (#328/#447) is green: exact named
+  runs of `modules_28.f90`, `modules_28_module1.f90`, and
+  `modules_28_module2.f90` report `PASS=3`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`
+  in both normal and no-manifest modes (`NOREF=2` for the module-only units).
+  Imported derived types are registered before dependent layouts, repeated
+  component metadata is rebuilt safely, and the independent gfortran program
+  oracle passes. All three XFAIL rows were removed only after both bounded runs.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
@@ -256,8 +263,10 @@ not a substitute for fixing the behavior.
    `modules_24.f90` (#417), the three-file `modules_25.f90` class/runtime-
    character tranche (#350/#417), and `modules_26.f90` (#376) are now green
    after bounded normal and no-manifest runs. `modules_27_module2.f90` (#457)
-   is now green; the next XFAIL-first tranche is the modules28 family
-   (`modules_28.f90`, `modules_28_module1.f90`, and `modules_28_module2.f90`).
+   and the modules28 family (`modules_28.f90`, `modules_28_module1.f90`, and
+   `modules_28_module2.f90`) are now green after bounded normal and
+   no-manifest runs. The next XFAIL-first tranche is the modules29 family:
+   `modules_29.f90`, `modules_29_module2.f90`, and `modules_29_module3.f90`.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
