@@ -1110,6 +1110,36 @@
                 error_msg)
             return
         end if
+        if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+            handled = .true.
+            n = int(context%symbols(sym)%array_size, c_int64_t)
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                if (.not. emit_liric_print_space(context%session, error_msg)) &
+                    return
+                block
+                    type(lr_operand_desc_t) :: re_addr, im_addr, re_value, im_value
+                    call complex_array_linear_addresses(context, sym, int(k), vk, &
+                        re_addr, im_addr, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (vk == VALUE_C4) then
+                        if (.not. emit_liric_f32_load(context%session, re_addr, &
+                                                     re_value, error_msg)) return
+                        if (.not. emit_liric_f32_load(context%session, im_addr, &
+                                                     im_value, error_msg)) return
+                        if (.not. emit_complex4_print_call(context%session, &
+                            re_value, im_value, error_msg)) return
+                    else
+                        if (.not. emit_liric_f64_load(context%session, re_addr, &
+                                                     re_value, error_msg)) return
+                        if (.not. emit_liric_f64_load(context%session, im_addr, &
+                                                     im_value, error_msg)) return
+                        if (.not. emit_complex8_print_call(context%session, &
+                            re_value, im_value, error_msg)) return
+                    end if
+                end block
+            end do
+            return
+        end if
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
             vk /= VALUE_LOGICAL .and. vk /= VALUE_I64 .and. vk /= VALUE_I8 .and. &
             vk /= VALUE_I16) return

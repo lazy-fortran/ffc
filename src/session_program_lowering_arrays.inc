@@ -2193,6 +2193,7 @@
         integer(c_int64_t) :: upper_value
         integer(c_int64_t) :: extent
         logical :: is_dummy
+        logical :: is_prebound_parameter_array
         logical :: is_assumed
         integer :: binding_index
         type(declaration_binding_t) :: binding
@@ -2201,6 +2202,7 @@
         type(lr_operand_desc_t) :: runtime_extent
 
         is_assumed = present(assumed_extents)
+        is_prebound_parameter_array = .false.
 
         ! An array body declaration whose name matches a dummy argument binds
         ! the explicit-shape array view onto the parameter pointer instead of
@@ -2243,6 +2245,12 @@
                 .not. context%symbols(index)%is_array) then
                 is_dummy = .true.
                 param_base = context%symbols(index)%address
+            else if (context%symbols(index)%is_parameter .and. &
+                     context%symbols(index)%is_array .and. binding_index > 0) then
+                ! A host-associated named-constant array was materialized before
+                ! internal procedures were emitted. Reuse its global storage and
+                ! lower the declaration's constructor into it below.
+                is_prebound_parameter_array = .true.
             else if (context%symbols(index)%is_array_result) then
                 ! The result array was pre-bound to the sret buffer (param 0);
                 ! this body declaration fills in its shape and element kind and
@@ -2279,7 +2287,7 @@
             return
         end if
 
-        if (.not. is_dummy) then
+        if (.not. is_dummy .and. .not. is_prebound_parameter_array) then
             call grow_symbols(context)
             index = context%symbol_count + 1
         end if
@@ -2389,6 +2397,7 @@
             return
         end if
 
+        if (.not. is_prebound_parameter_array) then
         select case (value_kind)
         case (VALUE_F32)
             if (.not. emit_f32_array_alloca(context%session, array_size, &
@@ -2452,6 +2461,7 @@
                 return
             end if
         end select
+        end if
 
         context%symbol_count = index
 

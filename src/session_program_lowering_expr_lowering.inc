@@ -203,6 +203,29 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+
+        if (external_procedure_index(context, call_name) > 0 .and. &
+            (context%external_procedures( &
+                external_procedure_index(context, call_name))%is_bind_c .or. &
+             .not. context%external_procedures( &
+                external_procedure_index(context, call_name))%by_reference)) then
+            if (allocated(node%arg_indices)) then
+                call prepare_bind_c_args(arena, node%arg_indices, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            else
+                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_c_f32_call(context%session, &
+                    trim(context%external_procedures( &
+                    external_procedure_index(context, call_name))%c_name), args, &
+                    value, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
+            return
+        end if
         if (same_name(call_name, 'kind') .and. .not. &
             is_contained_logical_function(context, call_name)) then
             call lower_kind_intrinsic(arena, node, context, value, error_msg)
@@ -599,6 +622,27 @@
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
 
+        if (external_procedure_index(context, call_name) > 0 .and. &
+            .not. context%external_procedures( &
+                external_procedure_index(context, call_name))%by_reference) then
+            if (allocated(node%arg_indices)) then
+                call prepare_bind_c_args(arena, node%arg_indices, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            else
+                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_c_f32_call(context%session, &
+                    trim(context%external_procedures( &
+                    external_procedure_index(context, call_name))%c_name), args, &
+                    value, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
+            return
+        end if
+
         if (same_name(call_name, 'transfer') .and. .not. &
             is_contained_f32_function(context, call_name)) then
             block
@@ -797,6 +841,8 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: element_addr
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
         integer :: call_arg_count
@@ -840,6 +886,40 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+
+        if (external_procedure_index(context, call_name) > 0) then
+            if (context%external_procedures( &
+                    external_procedure_index(context, call_name))%by_reference .and. &
+                .not. context%external_procedures( &
+                    external_procedure_index(context, call_name))%is_bind_c) then
+                call lower_module_proc_f64_call(arena, node, &
+                    external_procedure_index(context, call_name), context, value, &
+                    error_msg, call_name)
+                return
+            end if
+            if (allocated(node%arg_indices)) then
+                call prepare_bind_c_args(arena, node%arg_indices, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            else
+                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                    external_procedure_index(context, call_name), context, args, &
+                    copyback_indices, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_c_f64_call(context%session, &
+                    trim(context%external_procedures( &
+                    external_procedure_index(context, call_name))%c_name), args, &
+                    value, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
+            return
+        end if
+
+        if (same_name(call_name, 'dabs') .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            call lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
+            return
+        end if
 
         if (same_name(call_name, 'transfer') .and. .not. &
             is_contained_f64_function(context, call_name)) then
@@ -1137,6 +1217,7 @@
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
         integer :: uscore_pos
+        integer :: ext_idx
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'expression index does not reference an AST node'
@@ -1238,7 +1319,10 @@
                                                     context, value, error_msg)
                     return
                 end if
-                if (contained_function_kind(context, node%name) == VALUE_I64) then
+                ext_idx = external_procedure_index(context, node%name)
+                if (contained_function_kind(context, node%name) == VALUE_I64 .or. &
+                    (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
+                        return_value_kind == VALUE_I64)) then
                     call lower_i64_call(arena, node, context, value, error_msg)
                     return
                 end if
@@ -1253,6 +1337,10 @@
                     end block
                 end if
             end if
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, &
+                                               error_msg)
+            return
         end select
 
         error_msg = 'ffc direct-session lowering only supports integer(8) expressions'
@@ -1266,6 +1354,29 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+
+        if (external_procedure_index(context, node%name) > 0 .and. &
+            (context%external_procedures( &
+                external_procedure_index(context, node%name))%is_bind_c .or. &
+             .not. context%external_procedures( &
+                external_procedure_index(context, node%name))%by_reference)) then
+            if (allocated(node%arg_indices)) then
+                call prepare_bind_c_args(arena, node%arg_indices, &
+                    external_procedure_index(context, node%name), context, args, &
+                    copyback_indices, error_msg)
+            else
+                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                    external_procedure_index(context, node%name), context, args, &
+                    copyback_indices, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_c_i64_call(context%session, &
+                    trim(context%external_procedures( &
+                    external_procedure_index(context, node%name))%c_name), args, &
+                    value, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
+            return
+        end if
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &

@@ -50,6 +50,8 @@
         integer :: sp
         integer :: param_count
         logical :: handled_by_value
+        logical :: supplied, is_optional, is_value
+        integer :: intent_code, p
         ! Actual arguments in dummy-argument order: keyword actuals are moved
         ! to the slot their dummy name selects, and a slot no actual reaches
         ! holds 0 (an omitted optional, passed as a null reference).
@@ -68,19 +70,50 @@
 
         ! More actual arguments than the callee (defined or interfaced in this
         ! unit) declares is always invalid, whatever the argument keywords or
-        ! optionality. A missing trailing dummy is left to the optional-padding
-        ! path, which cannot tell optional from required, so only the excess is
-        ! diagnosed here. Type-bound calls (sp > 0) carry a hidden receiver and
-        ! are skipped to keep the count comparison exact.
-        if (sp <= 0) then
-            param_count = arena_proc_param_count(arena, callee_name)
-            if (param_count < 0) param_count = proc_param_count(context, callee_name)
-            if (param_count >= 0 .and. visible_count > param_count) then
-                error_msg = 'More actual than formal arguments in call to '// &
-                    trim(callee_name)
-                return
-            end if
+        ! optionality. Missing optional dummies must still be materialized as
+        ! null reference arguments: same-unit functions have fixed LIRIC
+        ! parameter slots even when Fortran omits the actual. Type-bound calls
+        ! include the receiver in arg_indices, so the position mapper keeps
+        ! the contract check aligned with the implementation's dummies.
+        param_count = arena_proc_param_count(arena, callee_name)
+        if (param_count < 0) param_count = proc_param_count(context, callee_name)
+        if (param_count >= 0 .and. visible_count > param_count) then
+            error_msg = 'More actual than formal arguments in call to '// &
+                trim(callee_name)
+            return
         end if
+        if (param_count >= 0) then
+            if (size(arg_indices) < param_count) then
+                block
+                    integer, allocatable :: padded_indices(:)
+                    allocate (padded_indices(param_count))
+                    padded_indices = 0
+                    if (size(arg_indices) > 0) padded_indices(1:size(arg_indices)) = &
+                        arg_indices
+                    call move_alloc(padded_indices, arg_indices)
+                end block
+            end if
+            do p = 1, param_count
+                supplied = .false.
+                do i = 1, size(arg_indices)
+                    if (arg_indices(i) <= 0) cycle
+                    if (call_arg_param_pos(i, sp) == p) then
+                        supplied = .true.
+                        exit
+                    end if
+                end do
+                if (supplied) cycle
+                call callee_dummy_contracts(arena, context, callee_name, p, &
+                                            is_optional, is_value, intent_code)
+                if (.not. is_optional) then
+                    error_msg = 'Missing required actual argument in call to '// &
+                        trim(callee_name)
+                    return
+                end if
+            end do
+        end if
+
+        visible_count = size(arg_indices)
 
         ! Keep array-interface diagnostics (rank and storage extent) useful even
         ! when the interface has no body in this lowering unit.  Scalar calls
@@ -163,7 +196,9 @@
                                                    context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_character(arena, arg_indices(i), context) .and. &
-                     callee_dummy_is_character(arena, callee_name, i)) then
+                     (callee_dummy_is_character(arena, callee_name, i) .or. &
+                      external_dummy_value_kind(context, callee_name, &
+                          call_arg_param_pos(i, sp)) == VALUE_CHARACTER)) then
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -1075,7 +1110,7 @@
             actual_is_character = .true.
             return
         end if
-        if (is_char_expr_call(arena, node_index)) then
+        if (is_char_expr_call(arena, node_index, context)) then
             actual_is_character = .true.
             return
         end if
@@ -1581,7 +1616,8 @@
         if (dummy_kind == VALUE_I32 .or. dummy_kind == VALUE_F32 .or. &
             dummy_kind == VALUE_F64 .or. dummy_kind == VALUE_LOGICAL .or. &
             dummy_kind == VALUE_I64 .or. dummy_kind == VALUE_I8 .or. &
-            dummy_kind == VALUE_I16) then
+            dummy_kind == VALUE_I16 .or. dummy_kind == VALUE_C4 .or. &
+            dummy_kind == VALUE_C8 .or. dummy_kind == VALUE_CHARACTER) then
             kind = dummy_kind
         end if
     end function arg_default_kind
@@ -1769,6 +1805,7 @@ integer function expression_value_kind(arena, node_index, context, &
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
+        integer :: external_index
         character(len=:), allocatable :: id_name, id_err
 
         value_kind = default_kind
@@ -1835,6 +1872,12 @@ integer function expression_value_kind(arena, node_index, context, &
                     value_kind = VALUE_F64
                 else if (is_contained_logical_function(context, node%name)) then
                     value_kind = VALUE_LOGICAL
+                else
+                    external_index = external_procedure_index(context, node%name)
+                    if (external_index > 0) then
+                        value_kind = context%external_procedures( &
+                            external_index)%return_value_kind
+                    end if
                 end if
             end if
         type is (component_access_node)

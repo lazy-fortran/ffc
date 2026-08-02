@@ -1,12 +1,13 @@
-    logical function synthesize_get_arg_helper(session, error_msg)
+submodule (liric_session_real_print_bindings) liric_session_real_print_bindings_tail
+contains
+
+    module procedure synthesize_get_arg_helper
         ! void .ffc.get_arg(i32 index, ptr argv, ptr dest, i64 destlen):
         !   snprintf(tmp[destlen+1], "%-*.*s", destlen, destlen, argv[index]);
         !   memcpy(dest, tmp, destlen)
         ! "%-*.*s" left-justifies, pads with blanks to destlen, and truncates
         ! to destlen, reproducing Fortran character assignment into dest.
         ! snprintf is already declared by synthesize_real8_printer.
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: g_fmt
         type(lr_operand_desc_t) :: index_op, argv_op, dest_op, destlen_op
         type(lr_operand_desc_t) :: idx64, slot, src, tmpsize, tmp, dl32, args(5)
@@ -70,14 +71,9 @@
         if (.not. status_ok(status, error, error_msg)) return
         call set_empty(error_msg)
         synthesize_get_arg_helper = .true.
-    end function synthesize_get_arg_helper
+    end procedure synthesize_get_arg_helper
 
-    logical function emit_get_arg_call(session, index_op, argv_op, dest_op, &
-                                       destlen_op, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: index_op, argv_op, dest_op
-        type(lr_operand_desc_t), intent(in) :: destlen_op
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_get_arg_call
         type(lr_operand_desc_t) :: args(4)
         integer(c_int32_t) :: vreg
 
@@ -88,28 +84,19 @@
         emit_get_arg_call = emit_call(session, '.ffc.get_arg', args, &
                                       lr_type_void_s(session%handle), &
                                       4_c_int32_t, c_false, vreg, error_msg)
-    end function emit_get_arg_call
+    end procedure emit_get_arg_call
 
-    function typed_param(session, index, typ) result(operand)
-        type(liric_session_t), intent(in) :: session
-        integer, intent(in) :: index
-        type(c_ptr), intent(in) :: typ
-        type(lr_operand_desc_t) :: operand
+    module procedure typed_param
 
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(lr_session_param(session%handle, &
                                                int(index, c_int32_t)), c_int64_t)
         operand%typ = typ
         operand%global_offset = 0_c_int64_t
-    end function typed_param
+    end procedure typed_param
 
-    logical function emit_call6(session, callee_name, head_args, tail_arg, error_msg)
+    module procedure emit_call6
         ! Variadic call with five leading args plus one trailing arg.
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: callee_name
-        type(lr_operand_desc_t), intent(in) :: head_args(5)
-        type(lr_operand_desc_t), intent(in) :: tail_arg
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(6)
         integer(c_int32_t) :: vreg
 
@@ -118,15 +105,9 @@
         emit_call6 = emit_call(session, callee_name, args, &
                                lr_type_i32_s(session%handle), 3_c_int32_t, &
                                c_true, vreg, error_msg)
-    end function emit_call6
+    end procedure emit_call6
 
-    logical function emit_cast(session, op, src, dst_typ, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int), intent(in) :: op
-        type(lr_operand_desc_t), intent(in) :: src
-        type(c_ptr), intent(in) :: dst_typ
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_cast
         type(lr_operand_desc_t), target :: operands(1)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -156,15 +137,10 @@
         result%global_offset = 0_c_int64_t
         call set_empty(error_msg)
         emit_cast = .true.
-    end function emit_cast
+    end procedure emit_cast
 
-    logical function gep_index(session, base, index_op, elem_typ, result, error_msg)
+    module procedure gep_index
         ! getelementptr elem_typ, base, index_op (element-typed stride).
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: base, index_op
-        type(c_ptr), intent(in) :: elem_typ
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -192,14 +168,9 @@
         result = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         gep_index = .true.
-    end function gep_index
+    end procedure gep_index
 
-    logical function load_typed(session, addr, typ, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: addr
-        type(c_ptr), intent(in) :: typ
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure load_typed
         type(lr_operand_desc_t), target :: operands(1)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -229,71 +200,55 @@
         result%global_offset = 0_c_int64_t
         call set_empty(error_msg)
         load_typed = .true.
-    end function load_typed
+    end procedure load_typed
 
-    logical function emit_snprintf(session, args, error_msg)
+    module procedure emit_snprintf
         ! Variadic snprintf(dest, size, fmt, ...) call. args holds dest, size,
         ! fmt, then the value arguments. snprintf is declared by
         ! synthesize_real8_printer (run during runtime preparation).
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_snprintf = emit_call(session, 'snprintf', args, &
                                   lr_type_i32_s(session%handle), 3_c_int32_t, &
                                   c_true, vreg, error_msg)
-    end function emit_snprintf
+    end procedure emit_snprintf
 
-    logical function emit_sscanf(session, args, error_msg)
+    module procedure emit_sscanf
         ! Variadic sscanf(buf, fmt, ...) call. args holds buf, fmt, then the
         ! destination pointer arguments.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_sscanf = emit_call(session, 'sscanf', args, &
                                 lr_type_i32_s(session%handle), 2_c_int32_t, &
                                 c_true, vreg, error_msg)
-    end function emit_sscanf
+    end procedure emit_sscanf
 
-    logical function emit_scanf(session, args, error_msg)
+    module procedure emit_scanf
         ! Variadic scanf(fmt, ...) call for list-directed stdin reads.
         ! args(1) is the format-string pointer; remaining args are destination
         ! pointers. Only the format is fixed; all destination pointers are vararg.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_scanf = emit_call(session, 'scanf', args, &
                                lr_type_i32_s(session%handle), 1_c_int32_t, &
                                c_true, vreg, error_msg)
-    end function emit_scanf
+    end procedure emit_scanf
 
-    logical function emit_fscanf(session, args, error_msg)
+    module procedure emit_fscanf
         ! Variadic fscanf(fp, fmt, ...) call for list-directed file-unit reads.
         ! args(1) is the FILE* pointer, args(2) the format-string pointer;
         ! remaining args are destination pointers. Two fixed args, rest vararg.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_fscanf = emit_call(session, 'fscanf', args, &
                                 lr_type_i32_s(session%handle), 2_c_int32_t, &
                                 c_true, vreg, error_msg)
-    end function emit_fscanf
+    end procedure emit_fscanf
 
-    logical function emit_fscanf_count(session, args, result, error_msg)
+    module procedure emit_fscanf_count
         ! Variadic fscanf(fp, fmt, ...) that also yields the conversion count.
         ! A caller uses the count to distinguish a successful conversion from a
         ! matching failure when it must report a READ status.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_fscanf_count = emit_call(session, 'fscanf', args, &
@@ -301,43 +256,34 @@
                                       2_c_int32_t, c_true, vreg, error_msg)
         if (.not. emit_fscanf_count) return
         result = i32_vreg(session, vreg)
-    end function emit_fscanf_count
+    end procedure emit_fscanf_count
 
-    logical function emit_fprintf(session, args, error_msg)
+    module procedure emit_fprintf
         ! Variadic fprintf(fp, fmt, ...) call (#247 B5c file I/O).
         ! args(1) is the FILE* pointer, args(2) the format-string pointer;
         ! remaining args are the values to print.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_fprintf = emit_call(session, 'fprintf', args, &
                                  lr_type_i32_s(session%handle), 2_c_int32_t, &
                                  c_true, vreg, error_msg)
-    end function emit_fprintf
+    end procedure emit_fprintf
 
-    logical function emit_dprintf(session, args, error_msg)
+    module procedure emit_dprintf
         ! Variadic dprintf(int fd, fmt, ...) call. args(1) is the file
         ! descriptor, args(2) the format-string pointer; the rest are values.
         ! Used for STOP banners, which gfortran writes to stderr (fd 2).
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: vreg
 
         emit_dprintf = emit_call(session, 'dprintf', args, &
                                  lr_type_i32_s(session%handle), 2_c_int32_t, &
                                  c_true, vreg, error_msg)
-    end function emit_dprintf
+    end procedure emit_dprintf
 
-    logical function emit_getchar(session, result, error_msg)
+    module procedure emit_getchar
         ! getchar() -> int: read one byte from stdin, or EOF (-1). Used by PAUSE
         ! to detect whether a resume line is available (#280).
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(0)
         integer(c_int32_t) :: vreg
 
@@ -350,14 +296,11 @@
         result%typ = lr_type_i32_s(session%handle)
         result%global_offset = 0_c_int64_t
         emit_getchar = .true.
-    end function emit_getchar
+    end procedure emit_getchar
 
-    logical function emit_exit(session, code, error_msg)
+    module procedure emit_exit
         ! exit(int) terminates the process, flushing stdio buffers. PAUSE calls
         ! it with 0 when stdin signals end-of-input, matching gfortran (#280).
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: code
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(1)
         integer(c_int32_t) :: vreg
 
@@ -365,18 +308,9 @@
         emit_exit = emit_call(session, 'exit', args, &
                               lr_type_void_s(session%handle), 1_c_int32_t, &
                               c_false, vreg, error_msg)
-    end function emit_exit
+    end procedure emit_exit
 
-    logical function emit_call(session, callee_name, args, ret_typ, fixed_args, &
-                               vararg, vreg, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: callee_name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(c_ptr), intent(in) :: ret_typ
-        integer(c_int32_t), intent(in) :: fixed_args
-        logical(c_bool), intent(in) :: vararg
-        integer(c_int32_t), intent(out) :: vreg
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_call
         type(lr_operand_desc_t), allocatable, target :: operands(:)
         type(lr_operand_desc_t) :: callee
         type(lr_inst_desc_t) :: inst
@@ -410,15 +344,10 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_call = .true.
-    end function emit_call
+    end procedure emit_call
 
-    logical function gep_byte(session, base, offset, result, error_msg)
+    module procedure gep_byte
         ! getelementptr i8, ptr base, i64 offset (byte stride).
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: base
-        integer(c_int64_t), intent(in) :: offset
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: offset_op
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
@@ -452,13 +381,10 @@
         result = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         gep_byte = .true.
-    end function gep_byte
+    end procedure gep_byte
 
-    logical function store_zero_byte(session, addr, error_msg)
+    module procedure store_zero_byte
         ! Store an i8 0 at addr to null-terminate the mantissa string.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: addr
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: val
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
@@ -491,13 +417,9 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         store_zero_byte = .true.
-    end function store_zero_byte
+    end procedure store_zero_byte
 
-    logical function make_callee(session, name, operand, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(out) :: operand
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure make_callee
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: symbol_id
 
@@ -514,11 +436,9 @@
         operand%global_offset = 0_c_int64_t
         call set_empty(error_msg)
         make_callee = .true.
-    end function make_callee
+    end procedure make_callee
 
-    logical function declare_libc(session, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure declare_libc
         type(c_ptr), target :: p3(3), p2(2), p1(1)
 
         declare_libc = .false.
@@ -535,16 +455,9 @@
         if (.not. declare_one(session, 'strchr', lr_type_ptr_s(session%handle), &
                               c_loc(p2), 2_c_int32_t, c_false, error_msg)) return
         declare_libc = .true.
-    end function declare_libc
+    end procedure declare_libc
 
-    logical function declare_one(session, name, ret, params, n, vararg, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(c_ptr), intent(in) :: ret
-        type(c_ptr), intent(in) :: params
-        integer(c_int32_t), intent(in) :: n
-        logical(c_bool), intent(in) :: vararg
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure declare_one
         character(kind=c_char), allocatable :: c_name(:)
         type(lr_error_t) :: error
         integer(c_int) :: status
@@ -556,14 +469,9 @@
                                     vararg, error)
         if (.not. status_ok(status, error, error_msg)) return
         declare_one = .true.
-    end function declare_one
+    end procedure declare_one
 
-    logical function create_cstring(session, name, text, operand, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        character(len=*), intent(in) :: text
-        type(lr_operand_desc_t), intent(out) :: operand
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure create_cstring
         character(kind=c_char), allocatable, target :: bytes(:)
         character(kind=c_char), allocatable :: c_name(:)
         type(c_ptr) :: array_type
@@ -604,14 +512,9 @@
         operand%global_offset = 0_c_int64_t
         call set_empty(error_msg)
         create_cstring = .true.
-    end function create_cstring
+    end procedure create_cstring
 
-    logical function begin_real8_printer(session, param_vreg, entry_block, &
-                                         error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int32_t), intent(out) :: param_vreg
-        integer(c_int32_t), intent(out) :: entry_block
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure begin_real8_printer
         character(kind=c_char), allocatable :: c_name(:)
         type(c_ptr), target :: params(1)
         type(lr_error_t) :: error
@@ -630,11 +533,9 @@
         entry_block = create_liric_block(session)
         call set_empty(error_msg)
         begin_real8_printer = .true.
-    end function begin_real8_printer
+    end procedure begin_real8_printer
 
-    logical function emit_ret_void_local(session, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_ret_void_local
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
@@ -659,4 +560,6 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_ret_void_local = .true.
-    end function emit_ret_void_local
+    end procedure emit_ret_void_local
+
+end submodule liric_session_real_print_bindings_tail

@@ -1,9 +1,11 @@
+submodule (session_program_lowering) session_program_lowering_const_fold
+    use session_program_lowering_const_fold_order
+contains
+
     ! ISO_C_BINDING integer-kind named constants used as compile-time integer
     ! values (e.g. "integer, parameter :: lp = c_bool"), matching the actual
     ! kind numbers gfortran reports at runtime.
-    logical function iso_c_binding_kind_value(name, value) result(found)
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: value
+    module procedure iso_c_binding_kind_value
         character(len=:), allocatable :: lo
 
         lo = lowercase_text(trim(name))
@@ -22,16 +24,14 @@
             found = .false.
             value = 0_c_int64_t
         end select
-    end function iso_c_binding_kind_value
+    end procedure iso_c_binding_kind_value
 
     ! ISO_FORTRAN_ENV integer-kind named constants used as compile-time integer
     ! values (e.g. "associate (k => int32)" or "integer, parameter :: ik =
     ! int64"), matching the kind numbers gfortran reports at runtime. Only the
     ! kind-parameter constants are folded here; the storage-size and unit
     ! constants keep their own lowering paths.
-    logical function iso_fortran_env_kind_value(name, value) result(found)
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: value
+    module procedure iso_fortran_env_kind_value
         character(len=:), allocatable :: lo
 
         lo = lowercase_text(trim(name))
@@ -51,14 +51,11 @@
             found = .false.
             value = 0_c_int64_t
         end select
-    end function iso_fortran_env_kind_value
+    end procedure iso_fortran_env_kind_value
 
     ! Determine the kind number of an integer literal's optional kind suffix
     ! (12_8, 12_int64, 12_c_long); a bare literal is default kind 4.
-    subroutine integer_literal_kind_number(text, k, error_msg)
-        character(len=*), intent(in) :: text
-        integer(c_int64_t), intent(out) :: k
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure integer_literal_kind_number
         character(len=:), allocatable :: lo, suffix
         integer :: uscore
         integer(c_int64_t) :: iso_value
@@ -86,19 +83,12 @@
                             trim(suffix)
             end if
         end select
-    end subroutine integer_literal_kind_number
+    end procedure integer_literal_kind_number
 
     ! Constant-fold min(...)/max(...) over two or more compile-time integer
     ! arguments; real/character overloads carry a different declared value
     ! kind and route through the runtime expression lowerer instead.
-    subroutine eval_min_max_constant(arena, node, context, want_max, &
-                                     constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        logical, intent(in) :: want_max
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_min_max_constant
         integer(c_int64_t) :: arg_value
         integer :: i
 
@@ -123,18 +113,13 @@
             end if
         end do
         call set_empty(error_msg)
-    end subroutine eval_min_max_constant
+    end procedure eval_min_max_constant
 
     ! Constant-fold int(x[, kind]): the compile-time integer folder only ever
     ! reaches this for an already-integer x (a real x carries a different
     ! declared value kind and routes through the runtime expression
     ! lowerer), so folding is a value pass-through.
-    subroutine eval_int_constant(arena, node, context, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_int_constant
 
         constant_value = 0_c_int64_t
         if (.not. allocated(node%arg_indices)) then
@@ -147,16 +132,11 @@
         end if
         call eval_i32_constant(arena, node%arg_indices(1), context, &
                                constant_value, error_msg)
-    end subroutine eval_int_constant
+    end procedure eval_int_constant
 
     ! Determine the Fortran kind number of a compile-time-foldable argument
     ! (a literal or a named entity), for huge()'s kind-dependent bound.
-    subroutine constant_arg_kind_number(arena, context, arg_index, k, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: arg_index
-        integer(c_int64_t), intent(out) :: k
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure constant_arg_kind_number
         character(len=:), allocatable :: id_name
         integer :: sym
 
@@ -181,16 +161,11 @@
             return
         end if
         error_msg = 'huge argument is not a literal or named entity'
-    end subroutine constant_arg_kind_number
+    end procedure constant_arg_kind_number
 
     ! Constant-fold huge(x) for an integer x: the largest representable value
     ! of x's kind.
-    subroutine eval_huge_constant(arena, node, context, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_huge_constant
         integer(c_int64_t) :: k
 
         constant_value = 0_c_int64_t
@@ -215,16 +190,10 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_huge_constant
+    end procedure eval_huge_constant
 
     ! Constant-fold precision(x) for a real x: decimal precision of x's kind.
-    subroutine eval_precision_constant(arena, node, context, constant_value, &
-                                       error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_precision_constant
         integer(c_int64_t) :: k
 
         constant_value = 0_c_int64_t
@@ -245,16 +214,10 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_precision_constant
+    end procedure eval_precision_constant
 
     ! Constant-fold bit_size(x) for an integer x: 8 times its byte width.
-    subroutine eval_bit_size_constant(arena, node, context, constant_value, &
-                                      error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_bit_size_constant
         integer(c_int64_t) :: k
 
         constant_value = 0_c_int64_t
@@ -273,17 +236,11 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_bit_size_constant
+    end procedure eval_bit_size_constant
 
     ! Constant-fold range(x): decimal exponent range of x's kind, which
     ! differs for integer versus real kinds sharing the same kind number.
-    subroutine eval_range_constant(arena, node, context, constant_value, &
-                                   error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_range_constant
         integer :: arg_index, sym
         integer(c_int64_t) :: k
         logical :: arg_is_real
@@ -347,16 +304,11 @@
             end select
         end if
         call set_empty(error_msg)
-    end subroutine eval_range_constant
+    end procedure eval_range_constant
 
     ! Constant-fold selected_char_kind(name), matching the kind numbers
     ! gfortran reports for the character sets it recognizes.
-    subroutine eval_selected_char_kind_constant(arena, node, constant_value, &
-                                                error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_selected_char_kind_constant
         character(len=:), allocatable :: lit_value, lit_type, stripped, lo
 
         constant_value = -1_c_int64_t
@@ -386,19 +338,12 @@
             constant_value = -1_c_int64_t
         end select
         call set_empty(error_msg)
-    end subroutine eval_selected_char_kind_constant
+    end procedure eval_selected_char_kind_constant
 
     ! Constant-fold a one-argument integer intrinsic whose Fortran generic
     ! name and semantics match the target intrinsic exactly (abs, not), so
     ! the host Fortran intrinsic performs the fold directly.
-    subroutine eval_one_arg_i32_intrinsic(arena, node, context, name, &
-                                          constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_one_arg_i32_intrinsic
         integer(c_int64_t) :: a
 
         constant_value = 0_c_int64_t
@@ -419,19 +364,12 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_one_arg_i32_intrinsic
+    end procedure eval_one_arg_i32_intrinsic
 
     ! Constant-fold a two-argument integer intrinsic whose Fortran generic
     ! name and semantics match the target intrinsic exactly (mod, modulo,
     ! sign, dim, iand, ior, ieor/xor, ishft, ishftc, ibset, ibclr).
-    subroutine eval_two_arg_i32_intrinsic(arena, node, context, name, &
-                                          constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_two_arg_i32_intrinsic
         integer(c_int64_t) :: a, b
 
         constant_value = 0_c_int64_t
@@ -480,16 +418,11 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_two_arg_i32_intrinsic
+    end procedure eval_two_arg_i32_intrinsic
 
     ! Constant-fold ibits(i, pos, len): extract len bits of i starting at
     ! bit position pos, matching the IBITS intrinsic exactly.
-    subroutine eval_ibits_constant(arena, node, context, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_ibits_constant
         integer(c_int64_t) :: i_val, pos_val, len_val
 
         constant_value = 0_c_int64_t
@@ -505,19 +438,14 @@
         if (len_trim(error_msg) > 0) return
         constant_value = ibits(i_val, int(pos_val), int(len_val))
         call set_empty(error_msg)
-    end subroutine eval_ibits_constant
+    end procedure eval_ibits_constant
 
     ! Constant-fold merge(tsource, fsource, mask) for a scalar compile-time
     ! integer mask (a comparison or a folded logical literal, both 0/1).
     ! mask may arrive positionally or as a keyword argument (mask=..., an
     ! assignment_node); eval_i32_constant already unwraps the keyword form,
     ! so the positional order (tsource, fsource, mask) always applies.
-    subroutine eval_merge_constant(arena, node, context, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_merge_constant
         integer(c_int64_t) :: tsource, fsource, mask
 
         constant_value = 0_c_int64_t
@@ -536,16 +464,11 @@
         if (len_trim(error_msg) > 0) return
         constant_value = merge(tsource, fsource, mask /= 0_c_int64_t)
         call set_empty(error_msg)
-    end subroutine eval_merge_constant
+    end procedure eval_merge_constant
 
     ! Constant-fold digits(x): the number of significant base-radix digits
     ! in x's kind (mantissa bits for real, value bits for integer).
-    subroutine eval_digits_constant(arena, node, context, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_digits_constant
         integer :: arg_index, sym
         integer(c_int64_t) :: k
         logical :: arg_is_real
@@ -608,14 +531,10 @@
             end select
         end if
         call set_empty(error_msg)
-    end subroutine eval_digits_constant
+    end procedure eval_digits_constant
 
     ! Constant-fold radix(x): 2 for every integer and real kind ffc supports.
-    subroutine eval_radix_constant(arena, node, constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_radix_constant
 
         constant_value = 2_c_int64_t
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
@@ -627,18 +546,11 @@
             return
         end if
         call set_empty(error_msg)
-    end subroutine eval_radix_constant
+    end procedure eval_radix_constant
 
     ! Constant-fold minexponent(x)/maxexponent(x): the minimum/maximum
     ! binary exponent representable in x's real kind.
-    subroutine eval_exponent_range_constant(arena, node, context, want_max, &
-                                            constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        logical, intent(in) :: want_max
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_exponent_range_constant
         integer(c_int64_t) :: k
 
         constant_value = 0_c_int64_t
@@ -660,18 +572,12 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_exponent_range_constant
+    end procedure eval_exponent_range_constant
 
     ! Constant-fold selected_logical_kind(bits): ffc only ever materialises
     ! default logical (kind 4), matching gfortran's kind for any bit count
     ! it can satisfy.
-    subroutine eval_selected_logical_kind_constant(arena, node, context, &
-                                                    constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_selected_logical_kind_constant
         integer(c_int64_t) :: bits
 
         constant_value = -1_c_int64_t
@@ -687,14 +593,11 @@
             constant_value = -1_c_int64_t
         end if
         call set_empty(error_msg)
-    end subroutine eval_selected_logical_kind_constant
+    end procedure eval_selected_logical_kind_constant
 
     ! Declaration of name's array PARAMETER, anywhere in the unit, if one
     ! exists with a compile-time array-constructor initializer.
-    function find_integer_parameter_array_decl(arena, name) result(decl)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
-        type(declaration_node), pointer :: decl
+    module procedure find_integer_parameter_array_decl
         type(declaration_node), pointer :: candidate
         integer :: n
 
@@ -710,18 +613,12 @@
             decl => candidate
             return
         end do
-    end function find_integer_parameter_array_decl
+    end procedure find_integer_parameter_array_decl
 
-    recursive subroutine fold_i32_array_literal(arena, context, node_index, &
-                                                values, error_msg)
+    module procedure fold_i32_array_literal
         ! Fold a compile-time integer array: an array constructor of
         ! foldable elements, or an identifier naming an integer PARAMETER
         ! array (recurses into that array's own constructor initializer).
-        type(ast_arena_t), intent(in) :: arena
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: node_index
-        integer(c_int64_t), allocatable, intent(out) :: values(:)
-        character(len=:), allocatable, intent(out) :: error_msg
         integer, allocatable :: flat(:)
         character(len=:), allocatable :: id_name
         integer :: i, n
@@ -760,15 +657,9 @@
         end if
 
         error_msg = 'array argument is not a compile-time integer array constant'
-    end subroutine fold_i32_array_literal
+    end procedure fold_i32_array_literal
 
-    recursive subroutine fold_i32_array_literal_by_name(arena, context, name, &
-                                                         values, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(lowering_context_t), intent(in) :: context
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), allocatable, intent(out) :: values(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure fold_i32_array_literal_by_name
         type(declaration_node), pointer :: decl
 
         decl => find_integer_parameter_array_decl(context%arena, name)
@@ -779,18 +670,12 @@
         end if
         call fold_i32_array_literal(arena, context, decl%initializer_index, &
                                     values, error_msg)
-    end subroutine fold_i32_array_literal_by_name
+    end procedure fold_i32_array_literal_by_name
 
     ! call_or_subscript_node whose name is not a known intrinsic may index
     ! into an integer PARAMETER array (arr(k)); fold the whole array from
     ! its declaration and read one element.
-    subroutine fold_param_array_element_from_arena(arena, node, context, &
-                                                    constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure fold_param_array_element_from_arena
         integer(c_int64_t), allocatable :: values(:)
         integer(c_int64_t) :: idx
 
@@ -815,17 +700,11 @@
         end if
         constant_value = values(int(idx))
         call set_empty(error_msg)
-    end subroutine fold_param_array_element_from_arena
+    end procedure fold_param_array_element_from_arena
 
     ! Constant-fold product(array): product of a compile-time integer array
     ! constructor or named integer PARAMETER array.
-    subroutine eval_product_constant(arena, node, context, constant_value, &
-                                     error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_product_constant
         integer(c_int64_t), allocatable :: values(:)
         integer :: i
 
@@ -841,19 +720,12 @@
             constant_value = constant_value*values(i)
         end do
         call set_empty(error_msg)
-    end subroutine eval_product_constant
+    end procedure eval_product_constant
 
     ! Constant-fold sum(array)/maxval(array)/minval(array) (no mask, no dim)
     ! over a compile-time integer array constructor or named integer
     ! PARAMETER array.
-    subroutine eval_array_reduction_constant(arena, node, context, name, &
-                                             constant_value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        character(len=*), intent(in) :: name
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_array_reduction_constant
         integer(c_int64_t), allocatable :: values(:)
         integer :: i
 
@@ -889,17 +761,11 @@
             return
         end select
         call set_empty(error_msg)
-    end subroutine eval_array_reduction_constant
+    end procedure eval_array_reduction_constant
 
     ! Constant-fold dot_product(a, b): sum of elementwise products of two
     ! same-length compile-time integer arrays.
-    subroutine eval_dot_product_constant(arena, node, context, constant_value, &
-                                         error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer(c_int64_t), intent(out) :: constant_value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure eval_dot_product_constant
         integer(c_int64_t), allocatable :: a_values(:), b_values(:)
         integer :: i
 
@@ -922,16 +788,14 @@
             constant_value = constant_value + a_values(i)*b_values(i)
         end do
         call set_empty(error_msg)
-    end subroutine eval_dot_product_constant
+    end procedure eval_dot_product_constant
 
     ! #384: classify the text of a character length specification. An empty
     ! result means the text is not a literal that is plainly non-integer;
     ! otherwise it states why the length is not a scalar INTEGER expression.
     ! Only literal forms are judged here: names and general expressions carry
     ! no constant value at this layer and are resolved by the callers.
-    function character_length_literal_reason(expr) result(reason)
-        character(len=*), intent(in) :: expr
-        character(len=:), allocatable :: reason
+    module procedure character_length_literal_reason
         character(len=:), allocatable :: text
         integer :: i
         integer :: depth
@@ -978,13 +842,11 @@
         if (has_digit .and. has_real_marker) then
             reason = 'a REAL value is not an INTEGER expression'
         end if
-    end function character_length_literal_reason
+    end procedure character_length_literal_reason
 
     ! Remove parentheses that wrap the whole expression, repeatedly, so that
     ! ((1.)) is classified like 1. and (('')) like ''.
-    function strip_outer_parentheses(expr) result(text)
-        character(len=*), intent(in) :: expr
-        character(len=:), allocatable :: text
+    module procedure strip_outer_parentheses
         integer :: i
         integer :: depth
         logical :: wraps
@@ -1007,4 +869,5 @@
             if (.not. wraps) exit
             text = trim(adjustl(text(2:len(text) - 1)))
         end do
-    end function strip_outer_parentheses
+    end procedure strip_outer_parentheses
+end submodule session_program_lowering_const_fold

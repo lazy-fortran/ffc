@@ -2,10 +2,10 @@
     ! mutable LIRIC global named __<module>_MOD_<var> (gfortran convention),
     ! carrying its declared initializer. Module procedures bind the same global
     ! as an addressed reference symbol; a using program imports it via
-    ! import_module_variables. Supported kinds are the scalar kinds whose
-    ! addressed load/store paths are complete: integer(4), real(4), real(8),
-    ! and logical. Arrays, multi-declarations, and other kinds stay xfail with
-    ! a clean diagnostic.
+    ! import_module_variables. Supported scalar kinds are integer(4), real(4),
+    ! real(8), and logical; fixed-size complex arrays use parallel real and
+    ! imaginary globals. Multi-declarations and other kinds stay xfail with a
+    ! clean diagnostic.
 
     subroutine module_variable_kind(arena, var_idx, value_kind, status, context, &
                                     error_msg)
@@ -159,7 +159,7 @@
     subroutine module_array_variable_kind(arena, var_idx, value_kind, status, &
                                            context, error_msg)
         ! Classify a module-level ARRAY declaration. A fixed-size rank-1 array of
-        ! integer(4), real, or logical whose extent folds to a compile-time
+        ! integer(4), real, logical, or complex whose extent folds to a compile-time
         ! constant is MODVAR_OK (value_kind is the element kind). Allocatable,
         ! pointer, character, derived, multidimensional, or runtime-sized arrays
         ! stay MODVAR_UNSUPPORTED with a clean diagnostic, so a case that never
@@ -264,10 +264,10 @@
             return
         end if
         select case (value_kind)
-        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, VALUE_C4, VALUE_C8)
         case default
             error_msg = 'direct LIRIC session stores only integer(4), real, '// &
-                        'and logical module arrays'
+                        'logical, and fixed-size complex module arrays'
         end select
     end subroutine module_array_variable_info
 
@@ -285,9 +285,26 @@
         integer(c_int32_t), allocatable :: probe_i32(:)
         real(c_float), allocatable :: probe_f32(:)
         real(c_double), allocatable :: probe_f64(:)
+        real(c_float), allocatable :: probe_c4_re(:), probe_c4_im(:)
+        real(c_double), allocatable :: probe_c8_re(:), probe_c8_im(:)
 
         call set_empty(error_msg)
         if (array_size <= 0) return
+        if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            if (value_kind == VALUE_C4) then
+                allocate (probe_c4_re(array_size), probe_c4_im(array_size))
+                probe_c4_re = 0.0_c_float
+                probe_c4_im = 0.0_c_float
+            else
+                allocate (probe_c8_re(array_size), probe_c8_im(array_size))
+                probe_c8_re = 0.0_c_double
+                probe_c8_im = 0.0_c_double
+            end if
+            call fold_module_complex_array_initializer(arena, var_idx, &
+                value_kind, array_size, context, probe_c4_re, probe_c4_im, &
+                probe_c8_re, probe_c8_im, error_msg)
+            return
+        end if
         allocate (probe_i32(array_size), probe_f32(array_size), &
                   probe_f64(array_size))
         probe_i32 = 0_c_int32_t
@@ -297,6 +314,51 @@
                                            array_size, context, probe_i32, &
                                            probe_f32, probe_f64, error_msg)
     end subroutine probe_module_array_initializer
+
+    subroutine fold_module_complex_array_initializer(arena, var_idx, &
+                                                     value_kind, array_size, &
+                                                     context, array_c4_re, &
+                                                     array_c4_im, array_c8_re, &
+                                                     array_c8_im, error_msg)
+        ! Fold a fixed-size complex module-array initializer into parallel real
+        ! and imaginary element buffers. The supported module form is the same
+        ! scalar complex literal that the local complex-array path accepts.
+        use, intrinsic :: iso_c_binding, only: c_float, c_double
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx, value_kind, array_size
+        type(lowering_context_t), intent(in) :: context
+        real(c_float), allocatable, intent(inout) :: array_c4_re(:), array_c4_im(:)
+        real(c_double), allocatable, intent(inout) :: array_c8_re(:), array_c8_im(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: init_index
+        real(c_double) :: real_value, imag_value
+
+        call set_empty(error_msg)
+        if (.not. get_declaration_has_initializer(arena, var_idx)) return
+        init_index = get_declaration_initializer_index(arena, var_idx)
+        if (init_index <= 0) return
+        select type (init => arena%entries(init_index)%node)
+        type is (complex_literal_node)
+            call fold_module_real_scalar_initializer(arena, init%real_index, &
+                context, real_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call fold_module_real_scalar_initializer(arena, init%imag_index, &
+                context, imag_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'complex module array initializer must be a scalar '// &
+                        'complex literal'
+            return
+        end select
+        if (value_kind == VALUE_C4) then
+            array_c4_re = real(real_value, c_float)
+            array_c4_im = real(imag_value, c_float)
+        else
+            array_c8_re = real_value
+            array_c8_im = imag_value
+        end if
+        if (array_size <= 0) call set_empty(error_msg)
+    end subroutine fold_module_complex_array_initializer
 
     logical function module_declaration_is_multi(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
@@ -581,6 +643,11 @@
         call module_array_variable_info(arena, var_idx, context, value_kind_local, &
                                         array_size, array_lower, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            call emit_module_complex_array_globals(arena, var_idx, value_kind, &
+                var_name, module_name, array_size, context, error_msg)
+            return
+        end if
         select case (value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
             allocate (array_i32(array_size))
@@ -627,6 +694,81 @@
         call set_empty(error_msg)
     end subroutine emit_module_array_variable_global
 
+    subroutine emit_module_complex_array_globals(arena, var_idx, value_kind, &
+                                                 var_name, module_name, &
+                                                 array_size, context, error_msg)
+        ! Complex arrays use two globals because the direct-session complex
+        ! access ABI addresses real and imaginary components independently.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_int64_t, c_loc, c_size_t, &
+                                               c_ptr, c_double, c_float
+        use liric_session_bindings, only: lr_type_f32_s, lr_type_f64_s, &
+                                          lr_type_array_s
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx, value_kind, array_size
+        character(len=*), intent(in) :: var_name, module_name
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: mangled, imaginary_mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        real(c_float), target, allocatable :: c4_re(:), c4_im(:)
+        real(c_double), target, allocatable :: c8_re(:), c8_im(:)
+        type(c_ptr) :: elem_type, gtype, init_ptr
+        integer(c_size_t) :: init_size
+        integer(c_int32_t) :: global_id
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        if (value_kind == VALUE_C4) then
+            allocate (c4_re(array_size), c4_im(array_size))
+            c4_re = 0.0_c_float
+            c4_im = 0.0_c_float
+            call fold_module_complex_array_initializer(arena, var_idx, value_kind, &
+                array_size, context, c4_re, c4_im, c8_re, c8_im, error_msg)
+            if (len_trim(error_msg) > 0) return
+            elem_type = lr_type_f32_s(context%session%handle)
+            init_size = int(array_size, c_size_t) * 4_c_size_t
+            init_ptr = c_loc(c4_re)
+        else
+            allocate (c8_re(array_size), c8_im(array_size))
+            c8_re = 0.0_c_double
+            c8_im = 0.0_c_double
+            call fold_module_complex_array_initializer(arena, var_idx, value_kind, &
+                array_size, context, c4_re, c4_im, c8_re, c8_im, error_msg)
+            if (len_trim(error_msg) > 0) return
+            elem_type = lr_type_f64_s(context%session%handle)
+            init_size = int(array_size, c_size_t) * 8_c_size_t
+            init_ptr = c_loc(c8_re)
+        end if
+        mangled = module_procedure_mangled(module_name, trim(var_name))
+        imaginary_mangled = trim(mangled)//'__im'
+        call to_c_chars(mangled, c_name)
+        gtype = lr_type_array_s(context%session%handle, elem_type, &
+                                int(array_size, c_int64_t))
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+                                      c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create module complex-array global: '// &
+                        trim(mangled)
+            return
+        end if
+        call to_c_chars(imaginary_mangled, c_name)
+        if (value_kind == VALUE_C4) then
+            init_ptr = c_loc(c4_im)
+        else
+            init_ptr = c_loc(c8_im)
+        end if
+        global_id = lr_session_global(context%session%handle, c_name, gtype, &
+                                      c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create module complex-array global: '// &
+                        trim(imaginary_mangled)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine emit_module_complex_array_globals
+
     subroutine fold_module_array_initializer(arena, var_idx, value_kind, &
                                              array_size, context, array_i32, &
                                              array_f32, array_f64, error_msg)
@@ -659,8 +801,15 @@
         allocate (flat(0))
         call module_array_constructor_elements(arena, init_index, flat, error_msg)
         if (len_trim(error_msg) > 0) then
-            call unsupported_feature_error('module array initializer', line, &
-                column, trim(error_msg), error_msg)
+            call set_empty(error_msg)
+            call fold_module_array_scalar_initializer(arena, init_index, &
+                value_kind, array_size, context, array_i32, array_f32, &
+                array_f64, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call unsupported_feature_error('module array initializer', line, &
+                    column, 'only compile-time constant array constructors or '// &
+                    'scalar broadcasts initialise module arrays', error_msg)
+            end if
             return
         end if
         if (size(flat) /= array_size) then
@@ -703,6 +852,114 @@
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine fold_module_array_initializer
+
+    subroutine fold_module_array_scalar_initializer(arena, init_index, &
+                                                     value_kind, array_size, &
+                                                     context, array_i32, &
+                                                     array_f32, array_f64, &
+                                                     error_msg)
+        ! Fortran permits a scalar initializer for an array declaration; the
+        ! scalar is broadcast to every element. Keep this separate from the
+        ! constructor path so unsupported runtime expressions remain rejected.
+        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t, c_float, &
+                                               c_double
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: init_index, value_kind, array_size
+        type(lowering_context_t), intent(in) :: context
+        integer(c_int32_t), intent(inout), allocatable :: array_i32(:)
+        real(c_float), intent(inout), allocatable :: array_f32(:)
+        real(c_double), intent(inout), allocatable :: array_f64(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type, lit_err
+        integer(c_int64_t) :: iconst
+        real(c_double) :: real_value
+        integer :: io_stat
+
+        call set_empty(error_msg)
+        if (array_size <= 0) return
+        select case (value_kind)
+        case (VALUE_I32)
+            call eval_i32_constant(arena, init_index, context, iconst, error_msg)
+            if (len_trim(error_msg) > 0) return
+            array_i32 = int(iconst, c_int32_t)
+        case (VALUE_LOGICAL)
+            call get_literal_info(arena, init_index, lit_value, lit_type, lit_err)
+            if (len_trim(lit_err) > 0 .or. &
+                .not. is_logical_literal(arena, init_index)) then
+                error_msg = 'logical array broadcast is not a constant literal'
+                return
+            end if
+            array_i32 = logical_literal_to_i32(lit_value)
+        case (VALUE_F32, VALUE_F64)
+            call fold_module_real_scalar_initializer(arena, init_index, context, &
+                                                     real_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (value_kind == VALUE_F32) then
+                array_f32 = real(real_value, c_float)
+            else
+                array_f64 = real_value
+            end if
+        case default
+            error_msg = 'unsupported scalar module array broadcast kind'
+        end select
+    end subroutine fold_module_array_scalar_initializer
+
+    recursive subroutine fold_module_real_scalar_initializer(arena, node_index, &
+                                                              context, value, &
+                                                              error_msg)
+        use, intrinsic :: iso_c_binding, only: c_double
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        real(c_double), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type, lit_err, op
+        integer :: left, right, line, column, io_stat
+        real(c_double) :: lhs, rhs
+
+        value = 0.0_c_double
+        call set_empty(error_msg)
+        if (is_literal(arena, node_index)) then
+            call get_literal_info(arena, node_index, lit_value, lit_type, lit_err)
+            if (len_trim(lit_err) > 0) then
+                error_msg = lit_err
+                return
+            end if
+            read (lit_value, *, iostat=io_stat) value
+            if (io_stat /= 0) error_msg = 'malformed real array broadcast literal: '// &
+                                             trim(lit_value)
+            return
+        end if
+        if (.not. is_binary_op(arena, node_index)) then
+            error_msg = 'real array broadcast is not a compile-time constant'
+            return
+        end if
+        call get_binary_op_info(arena, node_index, op, left, right, line, column, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call fold_module_real_scalar_initializer(arena, left, context, lhs, &
+                                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        call fold_module_real_scalar_initializer(arena, right, context, rhs, &
+                                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (trim(op))
+        case ('+')
+            value = lhs + rhs
+        case ('-')
+            value = lhs - rhs
+        case ('*')
+            value = lhs * rhs
+        case ('/')
+            if (rhs == 0.0_c_double) then
+                error_msg = 'division by zero in real array broadcast'
+            else
+                value = lhs / rhs
+            end if
+        case default
+            error_msg = 'unsupported real array broadcast operator: '//trim(op)
+        end select
+    end subroutine fold_module_real_scalar_initializer
 
     subroutine module_array_constructor_elements(arena, init_index, flat, error_msg)
         ! Flatten a plain array-constructor initialiser into ordered leaf element
@@ -989,7 +1246,7 @@
         end if
         if (module_declaration_is_array(arena, var_idx)) then
             call bind_one_module_array_variable(arena, var_idx, value_kind, &
-                trim(var_name), global_id, context, error_msg)
+                trim(var_name), trim(module_name), global_id, context, error_msg)
             return
         end if
         call grow_symbols(context)
@@ -1007,23 +1264,27 @@
     end subroutine bind_one_module_variable
 
     subroutine bind_one_module_array_variable(arena, var_idx, value_kind, &
-                                              sym_name, global_id, context, &
-                                              error_msg)
+                                              sym_name, module_name, global_id, &
+                                              context, error_msg)
         ! Bind a fixed-size module array as an addressed reference whose storage
         ! is the interned [extent x elem] global. element_address mirrors address
         ! so the shared element-GEP path (session_program_lowering_array_elements)
         ! reads and writes the global, and array_size/array_dim_* carry the shape
         ! that size and bounds inquiries need. sym_name is the local binding name
         ! (a USE rename may differ from the module name).
-        use, intrinsic :: iso_c_binding, only: c_int32_t, c_int64_t
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
         character(len=*), intent(in) :: sym_name
+        character(len=*), intent(in) :: module_name
         integer(c_int32_t), intent(in) :: global_id
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: sym_idx, value_kind_local, array_size, array_lower
+        character(len=:), allocatable :: mangled, imaginary_mangled
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t) :: imaginary_global_id
 
         call module_array_variable_info(arena, var_idx, context, value_kind_local, &
                                         array_size, array_lower, error_msg)
@@ -1040,10 +1301,32 @@
         context%symbols(sym_idx)%array_dim_sizes(1) = array_size
         context%symbols(sym_idx)%array_dim_lowers(1) = array_lower
         context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
-        context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+        if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+            mangled = module_procedure_mangled(module_name, trim(sym_name))
+            imaginary_mangled = trim(mangled)//'__im'
+            call to_c_chars(imaginary_mangled, c_name)
+            imaginary_global_id = lr_session_intern(context%session%handle, c_name)
+            if (imaginary_global_id < 0_c_int32_t) then
+                error_msg = 'module complex-array imaginary global not found: '// &
+                            trim(imaginary_mangled)
+                return
+            end if
+            context%symbols(sym_idx)%address%payload = &
+                int(imaginary_global_id, c_int64_t)
+            context%symbols(sym_idx)%element_address%kind = LR_OP_KIND_GLOBAL
+            context%symbols(sym_idx)%element_address%payload = &
+                int(global_id, c_int64_t)
+            context%symbols(sym_idx)%element_address%typ = &
+                lr_type_ptr_s(context%session%handle)
+            context%symbols(sym_idx)%element_address%global_offset = 0_c_int64_t
+        else
+            context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+        end if
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
-        context%symbols(sym_idx)%element_address = context%symbols(sym_idx)%address
+        if (value_kind /= VALUE_C4 .and. value_kind /= VALUE_C8) then
+            context%symbols(sym_idx)%element_address = context%symbols(sym_idx)%address
+        end if
         context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_one_module_array_variable

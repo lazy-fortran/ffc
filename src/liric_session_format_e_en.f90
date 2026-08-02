@@ -1,11 +1,11 @@
+submodule (liric_session_format_bindings) liric_session_format_e_en
+contains
     ! Synthesized .ffc.fmt_e_en runtime helper and its emit utilities for the
     ! Fortran E and EN edit descriptors. printf cannot produce the 0.dddE+nn
     ! (E) or engineering (EN) forms, so the helper rebuilds the field from a
-    ! normalized %.*E decomposition. Included by liric_session_format_bindings.
+    ! normalized %.*E decomposition. Implemented in a separate module subprogram.
 
-    logical function synthesize_e_en_format_helper(session, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure synthesize_e_en_format_helper
         type(lr_operand_desc_t) :: g_norm, g_field
         type(lr_operand_desc_t) :: x, mode, digits, width, buf, tmp, p, pe1, ex
         type(lr_operand_desc_t) :: exp_digits
@@ -66,13 +66,8 @@
         if (.not. status_ok(status, error, error_msg)) return
         call set_empty(error_msg)
         synthesize_e_en_format_helper = .true.
-    end function synthesize_e_en_format_helper
-    subroutine begin_e_en_helper(session, params, c_name, status, error)
-        type(liric_session_t), intent(inout) :: session
-        type(c_ptr), target, intent(out) :: params(6)
-        character(kind=c_char), allocatable, intent(out) :: c_name(:)
-        integer(c_int), intent(out) :: status
-        type(lr_error_t), intent(out) :: error
+    end procedure synthesize_e_en_format_helper
+    module procedure begin_e_en_helper
         params(1) = lr_type_f64_s(session%handle)
         params(2) = lr_type_i32_s(session%handle)
         params(3) = lr_type_i32_s(session%handle)
@@ -85,11 +80,8 @@
                                        lr_type_i32_s(session%handle), &
                                        c_loc(params), 6_c_int32_t, c_false, &
                                        error)
-    end subroutine begin_e_en_helper
-    subroutine e_en_params(session, x, mode, digits, width, buf, exp_digits)
-        type(liric_session_t), intent(in) :: session
-        type(lr_operand_desc_t), intent(out) :: x, mode, digits, width, buf
-        type(lr_operand_desc_t), intent(out) :: exp_digits
+    end procedure begin_e_en_helper
+    module procedure e_en_params
         x = typed_param(session, 0_c_int32_t, lr_type_f64_s(session%handle))
         mode = typed_param(session, 1_c_int32_t, lr_type_i32_s(session%handle))
         digits = typed_param(session, 2_c_int32_t, lr_type_i32_s(session%handle))
@@ -97,12 +89,8 @@
         buf = typed_param(session, 4_c_int32_t, lr_type_ptr_s(session%handle))
         exp_digits = typed_param(session, 5_c_int32_t, &
                                  lr_type_i32_s(session%handle))
-    end subroutine e_en_params
-    subroutine create_e_en_blocks(session, entry, finite, nonfinite, eblk, enblk, &
-                                  ezero, enonzero)
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int32_t), intent(out) :: entry, finite, nonfinite, eblk, enblk
-        integer(c_int32_t), intent(out) :: ezero, enonzero
+    end procedure e_en_params
+    module procedure create_e_en_blocks
         entry = create_liric_block(session)
         finite = create_liric_block(session)
         nonfinite = create_liric_block(session)
@@ -110,14 +98,8 @@
         enblk = create_liric_block(session)
         ezero = create_liric_block(session)
         enonzero = create_liric_block(session)
-    end subroutine create_e_en_blocks
-    logical function emit_e_en_head(session, x, g_norm, tmp, p, finite, &
-                                    nonfinite, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: x, g_norm
-        type(lr_operand_desc_t), intent(out) :: tmp, p
-        integer(c_int32_t), intent(in) :: finite, nonfinite
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure create_e_en_blocks
+    module procedure emit_e_en_head
         type(lr_operand_desc_t) :: args(4), cond, nullptr
         emit_e_en_head = .false.
         if (.not. emit_alloca_bytes(session, i64_immediate(session, 96_c_int64_t), &
@@ -136,12 +118,8 @@
         if (.not. emit_liric_condbr(session, cond, finite, nonfinite, &
                                     error_msg)) return
         emit_e_en_head = .true.
-    end function emit_e_en_head
-    logical function parse_e_en_exponent(session, p, ex, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: p
-        type(lr_operand_desc_t), intent(out) :: ex
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_e_en_head
+    module procedure parse_e_en_exponent
         type(lr_operand_desc_t) :: pe1, args(1)
         integer(c_int32_t) :: vreg
         parse_e_en_exponent = .false.
@@ -152,13 +130,8 @@
                                    c_false, vreg, error_msg)) return
         ex = i32_vreg(session, vreg)
         parse_e_en_exponent = .true.
-    end function parse_e_en_exponent
-    logical function emit_e_field(session, x, ex, digits, width, buf, g_field, &
-                                  exp_digits, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: x, ex, digits, width, buf, g_field
-        type(lr_operand_desc_t), intent(in) :: exp_digits
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure parse_e_en_exponent
+    module procedure emit_e_field
         type(lr_operand_desc_t) :: e_exp
         emit_e_field = .false.
         if (.not. emit_i32_binary(session, LR_OP_ADD, ex, &
@@ -166,13 +139,8 @@
                                   error_msg)) return
         emit_e_field = emit_scaled_field(session, x, e_exp, digits, width, buf, &
                                          g_field, exp_digits, error_msg)
-    end function emit_e_field
-    logical function emit_en_field(session, x, ex, digits, width, buf, g_field, &
-                                   exp_digits, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: x, ex, digits, width, buf, g_field
-        type(lr_operand_desc_t), intent(in) :: exp_digits
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_e_field
+    module procedure emit_en_field
         type(lr_operand_desc_t) :: ex_f64, third, div, floored, quotient, e_exp
         emit_en_field = .false.
         if (.not. cast_i32_to_f64(session, ex, ex_f64, error_msg)) return
@@ -186,13 +154,8 @@
                                   error_msg)) return
         emit_en_field = emit_scaled_field(session, x, e_exp, digits, width, buf, &
                                           g_field, exp_digits, error_msg)
-    end function emit_en_field
-    logical function emit_scaled_field(session, x, e_exp, digits, width, buf, &
-                                       g_field, exp_digits, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: x, e_exp, digits, width, buf
-        type(lr_operand_desc_t), intent(in) :: g_field, exp_digits
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_en_field
+    module procedure emit_scaled_field
         type(lr_operand_desc_t) :: abs_exp, exp_f64, scale, mant, field_width
         type(lr_operand_desc_t) :: exp_room
         type(lr_operand_desc_t) :: args(8), cond
@@ -223,12 +186,8 @@
         if (.not. snprintf_scaled(session, buf, g_field, field_width, digits, &
                                   mant, '+', e_exp, exp_digits, error_msg)) return
         emit_scaled_field = .true.
-    end function emit_scaled_field
-    logical function scaled_mantissa(session, x, e_exp, mant, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: x, e_exp
-        type(lr_operand_desc_t), intent(out) :: mant
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_scaled_field
+    module procedure scaled_mantissa
         type(lr_operand_desc_t) :: exp_f64, scale, args(2)
         integer(c_int32_t) :: vreg
         scaled_mantissa = .false.
@@ -245,15 +204,8 @@
         if (.not. emit_f64_binary(session, LR_OP_FDIV, x, scale, mant, &
                                   error_msg)) return
         scaled_mantissa = .true.
-    end function scaled_mantissa
-    logical function snprintf_scaled(session, buf, g_field, field_width, digits, &
-                                     mant, sign_ch, abs_exp, exp_digits, &
-                                     error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: buf, g_field, field_width, digits
-        type(lr_operand_desc_t), intent(in) :: mant, abs_exp, exp_digits
-        character, intent(in) :: sign_ch
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure scaled_mantissa
+    module procedure snprintf_scaled
         type(lr_operand_desc_t) :: args(9)
         snprintf_scaled = .false.
         args(1) = buf
@@ -270,11 +222,8 @@
                               c_true, error_msg)) return
         if (.not. return_zero(session, error_msg)) return
         snprintf_scaled = .true.
-    end function snprintf_scaled
-    logical function copy_nonfinite_field(session, tmp, width, buf, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: tmp, width, buf
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure snprintf_scaled
+    module procedure copy_nonfinite_field
         type(lr_operand_desc_t) :: args(5), g_fmt
         copy_nonfinite_field = .false.
         if (.not. create_cstring_operand(session, '.ffc.een.nonfinite', '%*s', &
@@ -289,24 +238,15 @@
                               c_true, error_msg)) return
         if (.not. return_zero(session, error_msg)) return
         copy_nonfinite_field = .true.
-    end function copy_nonfinite_field
-    logical function return_zero(session, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure copy_nonfinite_field
+    module procedure return_zero
         return_zero = emit_ret_i32_local(session, &
                                          i32_immediate(session, 0_c_int64_t), &
                                          error_msg)
-    end function return_zero
-    logical function emit_e_en_format_call(session, value, mode, digits, width, &
-                                           buf, error_msg, exp_digits)
+    end procedure return_zero
+    module procedure emit_e_en_format_call
         ! exp_digits is the Ew.dEe exponent digit count; it defaults to the
         ! standard two-digit exponent when the descriptor omits Ee.
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        integer, intent(in) :: mode, digits, width
-        type(lr_operand_desc_t), intent(in) :: buf
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer, intent(in), optional :: exp_digits
         integer :: exp_width
         type(lr_operand_desc_t) :: args(6)
         args(1) = value
@@ -320,10 +260,8 @@
         emit_e_en_format_call = emit_c_call(session, E_EN_FORMAT_HELPER, args, &
                                             lr_type_i32_s(session%handle), &
                                             6_c_int32_t, c_false, error_msg)
-    end function emit_e_en_format_call
-    logical function declare_e_en_libc(session, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_e_en_format_call
+    module procedure declare_e_en_libc
         type(c_ptr), target :: p3(3), p2(2), p1(1), f1(1)
         declare_e_en_libc = .false.
         p3(1) = lr_type_ptr_s(session%handle)
@@ -351,15 +289,8 @@
                                  c_loc(p2), 2_c_int32_t, c_false, error_msg)) &
             return
         declare_e_en_libc = .true.
-    end function declare_e_en_libc
-    logical function declare_c_func(session, name, ret, params_ptr, n, vararg, &
-                                    error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(c_ptr), intent(in) :: ret, params_ptr
-        integer(c_int32_t), intent(in) :: n
-        logical(c_bool), intent(in) :: vararg
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure declare_e_en_libc
+    module procedure declare_c_func
         character(kind=c_char), allocatable :: c_name(:)
         type(lr_error_t) :: error
         integer(c_int) :: status
@@ -370,13 +301,8 @@
                                     vararg, error)
         if (.not. status_ok(status, error, error_msg)) return
         declare_c_func = .true.
-    end function declare_c_func
-    logical function create_cstring_operand(session, name, text, operand, &
-                                            error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name, text
-        type(lr_operand_desc_t), intent(out) :: operand
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure declare_c_func
+    module procedure create_cstring_operand
         integer(c_int32_t) :: global_id
         create_cstring_operand = .false.
         call create_printf_format_global(session, name, text, global_id, &
@@ -384,31 +310,20 @@
         if (len_trim(error_msg) > 0) return
         operand = printf_format_ptr(session, global_id)
         create_cstring_operand = .true.
-    end function create_cstring_operand
-    function typed_param(session, index, typ) result(operand)
-        type(liric_session_t), intent(in) :: session
-        integer(c_int32_t), intent(in) :: index
-        type(c_ptr), intent(in) :: typ
-        type(lr_operand_desc_t) :: operand
+    end procedure create_cstring_operand
+    module procedure typed_param
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(lr_session_param(session%handle, index), c_int64_t)
         operand%typ = typ
         operand%global_offset = 0_c_int64_t
-    end function typed_param
-    subroutine null_ptr_operand(session, operand)
-        type(liric_session_t), intent(in) :: session
-        type(lr_operand_desc_t), intent(out) :: operand
+    end procedure typed_param
+    module procedure null_ptr_operand
         operand%kind = LR_OP_KIND_IMM_I64
         operand%payload = 0_c_int64_t
         operand%typ = lr_type_ptr_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end subroutine null_ptr_operand
-    logical function find_char(session, text, ch, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: text
-        character, intent(in) :: ch
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure null_ptr_operand
+    module procedure find_char
         type(lr_operand_desc_t) :: args(2)
         integer(c_int32_t) :: vreg
         find_char = .false.
@@ -419,30 +334,13 @@
                                    c_false, vreg, error_msg)) return
         result = ptr_vreg(session, vreg)
         find_char = .true.
-    end function find_char
-    logical function emit_c_call(session, name, args, ret_typ, fixed_args, &
-                                 vararg, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(c_ptr), intent(in) :: ret_typ
-        integer(c_int32_t), intent(in) :: fixed_args
-        logical(c_bool), intent(in) :: vararg
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure find_char
+    module procedure emit_c_call
         integer(c_int32_t) :: vreg
         emit_c_call = emit_c_call_vreg(session, name, args, ret_typ, fixed_args, &
                                        vararg, vreg, error_msg)
-    end function emit_c_call
-    logical function emit_c_call_vreg(session, name, args, ret_typ, fixed_args, &
-                                      vararg, vreg, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: args(:)
-        type(c_ptr), intent(in) :: ret_typ
-        integer(c_int32_t), intent(in) :: fixed_args
-        logical(c_bool), intent(in) :: vararg
-        integer(c_int32_t), intent(out) :: vreg
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_c_call
+    module procedure emit_c_call_vreg
         type(lr_operand_desc_t), allocatable, target :: operands(:)
         type(lr_operand_desc_t) :: callee
         type(lr_inst_desc_t) :: inst
@@ -483,13 +381,8 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_c_call_vreg = .true.
-    end function emit_c_call_vreg
-    logical function gep_byte(session, base, offset, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: base
-        integer(c_int64_t), intent(in) :: offset
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_c_call_vreg
+    module procedure gep_byte
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -515,32 +408,18 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         result = ptr_vreg(session, vreg)
         gep_byte = .true.
-    end function gep_byte
-    logical function cast_i32_to_f64(session, source, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: source
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure gep_byte
+    module procedure cast_i32_to_f64
         cast_i32_to_f64 = emit_cast(session, LR_OP_SITOFP, source, &
                                     lr_type_f64_s(session%handle), result, &
                                     error_msg)
-    end function cast_i32_to_f64
-    logical function cast_f64_to_i32(session, source, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: source
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure cast_i32_to_f64
+    module procedure cast_f64_to_i32
         cast_f64_to_i32 = emit_cast(session, LR_OP_FPTOSI, source, &
                                     lr_type_i32_s(session%handle), result, &
                                     error_msg)
-    end function cast_f64_to_i32
-    logical function emit_cast(session, op, src, dst_typ, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int), intent(in) :: op
-        type(lr_operand_desc_t), intent(in) :: src
-        type(c_ptr), intent(in) :: dst_typ
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure cast_f64_to_i32
+    module procedure emit_cast
         type(lr_operand_desc_t), target :: operands(1)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -568,13 +447,8 @@
         result%typ = dst_typ
         result%global_offset = 0_c_int64_t
         emit_cast = .true.
-    end function emit_cast
-    logical function emit_f64_binary(session, opcode, lhs, rhs, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int), intent(in) :: opcode
-        type(lr_operand_desc_t), intent(in) :: lhs, rhs
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_cast
+    module procedure emit_f64_binary
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -603,13 +477,8 @@
         result%typ = lr_type_f64_s(session%handle)
         result%global_offset = 0_c_int64_t
         emit_f64_binary = .true.
-    end function emit_f64_binary
-    logical function call_f64_unary(session, name, arg, result, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: arg
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure emit_f64_binary
+    module procedure call_f64_unary
         type(lr_operand_desc_t) :: args(1)
         integer(c_int32_t) :: vreg
         call_f64_unary = .false.
@@ -622,20 +491,14 @@
         result%typ = lr_type_f64_s(session%handle)
         result%global_offset = 0_c_int64_t
         call_f64_unary = .true.
-    end function call_f64_unary
-    function f64_immediate(session, value) result(operand)
-        type(liric_session_t), intent(in) :: session
-        real(c_double), intent(in) :: value
-        type(lr_operand_desc_t) :: operand
+    end procedure call_f64_unary
+    module procedure f64_immediate
         operand%kind = LR_OP_KIND_IMM_F64
         operand%payload = transfer(value, operand%payload)
         operand%typ = lr_type_f64_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end function f64_immediate
-    logical function emit_ret_i32_local(session, value, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure f64_immediate
+    module procedure emit_ret_i32_local
         type(lr_operand_desc_t), target :: operands(1)
         type(lr_inst_desc_t) :: inst
         type(lr_error_t) :: error
@@ -659,4 +522,6 @@
         vreg = lr_session_emit(session%handle, inst, error)
         if (.not. status_ok(error%code, error, error_msg)) return
         emit_ret_i32_local = .true.
-    end function emit_ret_i32_local
+    end procedure emit_ret_i32_local
+
+end submodule liric_session_format_e_en

@@ -24,7 +24,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 5
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 7
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -82,6 +82,9 @@ module ffc_module_artefact
     ! pretending that ffc can lower a call to them (#584).
     type :: fmod_procedure_t
         character(len=:), allocatable :: name
+        ! External linker symbol for a plain BIND(C) interface procedure;
+        ! empty for module-mangled procedures and when it matches name.
+        character(len=:), allocatable :: external_name
         character(len=:), allocatable :: kind
         character(len=:), allocatable :: arg_kinds
         ! Space-joined dummy-argument names (e.g. "hi lo"), so a using unit
@@ -107,6 +110,9 @@ module ffc_module_artefact
         ! False means the export is known to exist but its call ABI is outside
         ! the direct-session backend. It remains visible to USE validation.
         logical :: callable = .true.
+        ! True for a public plain INTERFACE procedure whose implementation is
+        ! an external symbol rather than a module-mangled procedure.
+        logical :: external_binding = .false.
         ! True when this module's interface declares the procedure and a
         ! submodule supplies its body. The symbol and call contract are the
         ! same either way; a separately compiled submodule reads the interface
@@ -204,6 +210,8 @@ contains
                 write (unit, '(A)') ''
                 write (unit, '(A)') '[[procedure]]'
                 write (unit, '(A)') 'name = "'//field(info%procedures(i)%name)//'"'
+                write (unit, '(A)') 'external_name = "'// &
+                    field(info%procedures(i)%external_name)//'"'
                 write (unit, '(A)') 'kind = "'//field(info%procedures(i)%kind)//'"'
                 write (unit, '(A,I0)') 'nargs = ', info%procedures(i)%nargs
                 write (unit, '(A)') 'arg_kinds = "'// &
@@ -226,6 +234,8 @@ contains
                     field(info%procedures(i)%arg_extents)//'"'
                 write (unit, '(A)') 'callable = '// &
                     bool_text(info%procedures(i)%callable)
+                write (unit, '(A)') 'external_binding = '// &
+                    bool_text(info%procedures(i)%external_binding)
                 write (unit, '(A)') 'deferred_body = '// &
                     bool_text(info%procedures(i)%deferred_body)
             end do
@@ -321,6 +331,7 @@ contains
                 nproc = nproc + 1
                 call grow_procs(procs, nproc)
                 procs(nproc)%name = ''
+                procs(nproc)%external_name = ''
                 procs(nproc)%kind = ''
                 procs(nproc)%arg_kinds = ''
                 procs(nproc)%arg_names = ''
@@ -332,6 +343,7 @@ contains
                 procs(nproc)%arg_ranks = ''
                 procs(nproc)%arg_extents = ''
                 procs(nproc)%callable = .true.
+                procs(nproc)%external_binding = .false.
                 procs(nproc)%deferred_body = .false.
                 procs(nproc)%nargs = 0
                 cycle
@@ -385,6 +397,8 @@ contains
                 if (key == 'c_name') vars(nvar)%c_name = unquote(val)
             case ('procedure')
                 if (key == 'name') procs(nproc)%name = unquote(val)
+                if (key == 'external_name') &
+                    procs(nproc)%external_name = unquote(val)
                 if (key == 'kind') procs(nproc)%kind = unquote(val)
                 if (key == 'arg_kinds') procs(nproc)%arg_kinds = unquote(val)
                 if (key == 'arg_names') procs(nproc)%arg_names = unquote(val)
@@ -402,6 +416,8 @@ contains
                     procs(nproc)%arg_extents = unquote(val)
                 if (key == 'callable') &
                     procs(nproc)%callable = unquote(val) == '1'
+                if (key == 'external_binding') &
+                    procs(nproc)%external_binding = unquote(val) == '1'
                 if (key == 'deferred_body') &
                     procs(nproc)%deferred_body = unquote(val) == '1'
                 if (key == 'nargs') then

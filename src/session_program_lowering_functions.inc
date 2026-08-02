@@ -1508,13 +1508,17 @@
     end subroutine copy_declaration_registry
 
     subroutine copy_host_global_symbols(source, destination)
+        ! Module procedures also need host-associated named constants and
+        ! USE-imported parameters. They carry no global address, so include
+        ! those symbols alongside the existing module storage handoff (#584).
         type(lowering_context_t), intent(in) :: source
         type(lowering_context_t), intent(inout) :: destination
         integer :: i
         type(declaration_binding_t) :: binding
 
         do i = 1, source%symbol_count
-            if (.not. symbol_has_global_storage(source%symbols(i))) cycle
+            if (.not. symbol_has_global_storage(source%symbols(i)) .and. &
+                .not. source%symbols(i)%is_parameter) cycle
             if (source%symbols(i)%has_binding) then
                 binding%found = .true.
                 binding%name = trim(source%symbols(i)%name)
@@ -1575,6 +1579,7 @@
             if (binding%scope_node_index == procedure_index) cycle
             if (binding_scope_is_module(arena, binding%scope_node_index)) cycle
             if (binding%binding_kind /= BINDING_DECLARATION .and. &
+                binding%binding_kind /= BINDING_NAMED_CONSTANT .and. &
                 binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
             declaration_index = find_declaration_record(context, binding)
             if (declaration_index > 0 .and. &
@@ -1883,7 +1888,6 @@
         end select
         if (len_trim(error_msg) > 0) return
         if (array_size <= 0) return
-
         c_false_local = .false.
         select case (record%value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
@@ -1931,6 +1935,7 @@
         context%symbols(index)%has_address = .true.
         context%symbols(index)%is_reference = .true.
         context%symbols(index)%is_array = .true.
+        context%symbols(index)%is_parameter = record%is_parameter
         context%symbols(index)%array_rank = 1
         context%symbols(index)%array_size = array_size
         context%symbols(index)%array_lower_bound = array_lower
@@ -2331,12 +2336,13 @@
                                                     error_msg, context, &
                                                     fn_node%body_indices(i))
                         if (len_trim(error_msg) > 0) return
-                        if (present(character_length) .and. &
-                            element_kind == VALUE_CHARACTER) then
-                            call declaration_character_length(context, decl, &
-                                                             character_length, &
-                                                             error_msg)
-                            if (len_trim(error_msg) > 0) return
+                        if (present(character_length)) then
+                            if (element_kind == VALUE_CHARACTER) then
+                                call declaration_character_length(context, decl, &
+                                                                 character_length, &
+                                                                 error_msg)
+                                if (len_trim(error_msg) > 0) return
+                            end if
                         end if
                         call get_array_bounds(decl, context, lower_bound, &
                                               array_size, error_msg)
@@ -2350,12 +2356,13 @@
                                                         error_msg, context, &
                                                         fn_node%body_indices(i))
                             if (len_trim(error_msg) > 0) return
-                            if (present(character_length) .and. &
-                                element_kind == VALUE_CHARACTER) then
-                                call declaration_character_length(context, decl, &
-                                                                 character_length, &
-                                                                 error_msg)
-                                if (len_trim(error_msg) > 0) return
+                            if (present(character_length)) then
+                                if (element_kind == VALUE_CHARACTER) then
+                                    call declaration_character_length(context, decl, &
+                                                                     character_length, &
+                                                                     error_msg)
+                                    if (len_trim(error_msg) > 0) return
+                                end if
                             end if
                             call get_array_bounds(decl, context, lower_bound, &
                                                   array_size, error_msg)
@@ -2564,7 +2571,7 @@
         character(len=*), intent(in) :: module_name
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: node_type
+        character(len=:), allocatable :: node_type, emit_name
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
@@ -2577,8 +2584,11 @@
             call lower_nested_internal_procedures(arena, fn_node%body_indices, &
                                                   context, error_msg)
             if (len_trim(error_msg) > 0) return
+            emit_name = module_procedure_mangled(module_name, fn_node%name)
+            if (has_bind_c(fn_node%bind_c_clause)) emit_name = &
+                procedure_emit_name(fn_node%name, fn_node%bind_c_clause)
             call lower_scalar_function(arena, fn_node, context, error_msg, &
-                module_procedure_mangled(module_name, fn_node%name), &
+                emit_name, &
                 procedure_node_index=node_index)
             if (len_trim(error_msg) > 0) return
         else if (node_type == 'subroutine_def_node' .or. &
@@ -2588,8 +2598,11 @@
             call lower_nested_internal_procedures(arena, sb_node%body_indices, &
                                                   context, error_msg)
             if (len_trim(error_msg) > 0) return
+            emit_name = module_procedure_mangled(module_name, sb_node%name)
+            if (has_bind_c(sb_node%bind_c_clause)) emit_name = &
+                procedure_emit_name(sb_node%name, sb_node%bind_c_clause)
             call lower_void_subroutine(arena, sb_node, context, error_msg, &
-                module_procedure_mangled(module_name, sb_node%name), &
+                emit_name, &
                 procedure_node_index=node_index)
             if (len_trim(error_msg) > 0) return
         end if
@@ -2743,13 +2756,101 @@
                         end if
                     end block
                 end if
-                if (.not. allocated(iblock%name)) cycle
-                if (len_trim(iblock%name) == 0) cycle
-                call register_generic_interface(arena, iblock, context, error_msg)
+                if (.not. allocated(iblock%name) .or. &
+                    len_trim(iblock%name) == 0) then
+                    ! An unnamed interface block carries the explicit ABI of
+                    ! external procedures used by a module procedure. It must
+                    ! be registered before that body is lowered; the later
+                    ! statement walk is too late for child contexts (#584).
+                    call lower_interface_block(arena, iblock, context, error_msg)
+                    if (len_trim(error_msg) == 0) then
+                        call enrich_bind_c_interface_contracts(arena, iblock, &
+                                                              context, error_msg)
+                    end if
+                else
+                    call register_generic_interface(arena, iblock, context, &
+                                                     error_msg)
+                end if
                 if (len_trim(error_msg) > 0) return
             end select
         end do
     end subroutine register_procedures_from_indices
+
+    subroutine enrich_bind_c_interface_contracts(arena, block, context, error_msg)
+        ! The interface registrar records the C spelling and result kind, while
+        ! the call path also needs each dummy's resolved kind and VALUE/INTENT
+        ! contract. Keep that metadata beside the registered entry so a mixed
+        ! scalar call (integer VALUE, real VALUE, reference result) follows the
+        ! same contract-aware lowering as a contained procedure.
+        type(ast_arena_t), intent(in) :: arena
+        type(interface_block_node), intent(in) :: block
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j, idx, arg_count
+        integer :: value_kind
+        character(len=:), allocatable :: intent_token
+        logical :: is_optional, is_value
+
+        call set_empty(error_msg)
+        if (.not. allocated(block%procedure_indices)) return
+        do i = 1, size(block%procedure_indices)
+            if (.not. node_exists(arena, block%procedure_indices(i))) cycle
+            select type (proc => arena%entries(block%procedure_indices(i))%node)
+            type is (function_def_node)
+                if (.not. has_bind_c(proc%bind_c_clause)) cycle
+                idx = external_procedure_index(context, proc%name)
+                if (idx <= 0) cycle
+                arg_count = 0
+                if (allocated(proc%param_indices)) arg_count = size(proc%param_indices)
+                ! BIND(C) keeps the C ABI selected by the interface registrar.
+                ! Only separately compiled Fortran module procedures use the
+                ! descriptor-based by-reference path; changing this flag here
+                ! makes a CHARACTER actual reach C as the {data,length}
+                ! descriptor instead of its data pointer (#584).
+                do j = 1, min(arg_count, MAX_PROC_ARGS)
+                    value_kind = param_at_value_kind(arena, proc%param_indices, &
+                        proc%body_indices, j, context)
+                    if (value_kind > 0) then
+                        context%external_procedures(idx)%arg_value_kinds(j) = &
+                            value_kind
+                    end if
+                    call param_at_attributes(arena, proc%param_indices, &
+                        proc%body_indices, j, intent_token, is_optional, is_value)
+                    context%external_procedures(idx)%arg_is_value(j) = is_value
+                    context%external_procedures(idx)%arg_is_optional(j) = &
+                        is_optional
+                    context%external_procedures(idx)%arg_intents(j) = &
+                        arg_intent_code(intent_token)
+                end do
+            type is (subroutine_def_node)
+                if (.not. has_bind_c(proc%bind_c_clause)) cycle
+                idx = external_procedure_index(context, proc%name)
+                if (idx <= 0) cycle
+                arg_count = 0
+                if (allocated(proc%param_indices)) arg_count = size(proc%param_indices)
+                ! Keep BIND(C) on the external ABI path.  The argument metadata
+                ! below enriches that path; it must not turn the interface into
+                ! a Fortran module-procedure call (#584).
+                do j = 1, min(arg_count, MAX_PROC_ARGS)
+                    value_kind = param_at_value_kind(arena, proc%param_indices, &
+                        proc%body_indices, j, context)
+                    if (value_kind > 0) then
+                        context%external_procedures(idx)%arg_value_kinds(j) = &
+                            value_kind
+                    end if
+                    call param_at_attributes(arena, proc%param_indices, &
+                        proc%body_indices, j, intent_token, is_optional, is_value)
+                    context%external_procedures(idx)%arg_is_value(j) = is_value
+                    context%external_procedures(idx)%arg_is_optional(j) = &
+                        is_optional
+                    context%external_procedures(idx)%arg_intents(j) = &
+                        arg_intent_code(intent_token)
+                end do
+            class default
+                cycle
+            end select
+        end do
+    end subroutine enrich_bind_c_interface_contracts
 
     subroutine register_nested_internal_names(arena, body_indices, context, &
                                               error_msg)
@@ -2884,6 +2985,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_external_procedures(parent_context, context)
         call copy_declaration_registry(parent_context, context)
         call copy_host_global_symbols(parent_context, context)
         result_binding_index = 0
@@ -2897,6 +2999,7 @@
         context%in_internal_function = .true.
         context%current_proc_name = trim(node%name)
         context%current_proc_node_index = function_node_index
+        context%current_proc_bind_c = has_bind_c(node%bind_c_clause)
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
@@ -2906,7 +3009,11 @@
             emit_name = nested_procedure_emit_name(arena, function_node_index, &
                 node%name, node%bind_c_clause)
         end if
-        if (value_kind == VALUE_F32) then
+        if (context%current_proc_bind_c .and. &
+            is_bind_c_scalar_result_kind(value_kind)) then
+            if (.not. begin_bind_c_procedure(arena, emit_name, value_kind, &
+                    node%param_indices, node%body_indices, context, error_msg)) return
+        else if (value_kind == VALUE_F32) then
             if (.not. begin_liric_f32_function(context%session, emit_name, &
                                                param_count, error_msg)) return
         else if (value_kind == VALUE_F64) then
@@ -3082,12 +3189,14 @@
             call define_reference_parameters(arena, node%param_indices, context, &
                                               error_msg, body_indices = &
                                               node%body_indices, param_offset=1, &
-                                              return_value_kind=value_kind)
+                                              return_value_kind=value_kind, &
+                                              external_abi=context%current_proc_bind_c)
         else
             call define_reference_parameters(arena, node%param_indices, context, &
                                               error_msg, body_indices = &
                                               node%body_indices, &
-                                              return_value_kind=value_kind)
+                                              return_value_kind=value_kind, &
+                                              external_abi=context%current_proc_bind_c)
         end if
         if (len_trim(error_msg) > 0) return
 
@@ -3103,6 +3212,26 @@
         ! Host-associate module-scope named constants and enumerators (#1826).
         call bind_module_constants_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! Keep scalar function results in a real stack slot while lowering the
+        ! body. A result updated across a loop/EXIT path cannot rely solely on
+        ! transient SSA state: RETURN and the normal epilogue must read one
+        ! initialized value (#350).
+        if ((value_kind == VALUE_I32 .or. value_kind == VALUE_LOGICAL) .and. &
+            .not. context%symbols(context%current_function_result_index)%&
+                has_address) then
+            if (.not. emit_i32_alloca(context%session, &
+                context%symbols(context%current_function_result_index)%address, &
+                error_msg)) return
+            context%symbols(context%current_function_result_index)%has_address = &
+                .true.
+            context%symbols(context%current_function_result_index)%is_reference = &
+                .true.
+            if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                context%symbols(context%current_function_result_index)%address, &
+                error_msg)) return
+        end if
 
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
@@ -3145,12 +3274,12 @@
                     error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. emit_ret_i64_operand(context%session, value, error_msg)) return
-            else
-                call load_function_result_value(context, result_index, value, &
+        else
+            call load_function_result_value(context, result_index, value, &
                     error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
-            end if
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
+        end if
         end if
         if (.not. finish_function(context%session, error_msg)) return
 

@@ -5,6 +5,15 @@ compiler ABI for the current supported subset, not a stable external ABI.
 Changes require matching executable tests and updates to
 `docs/SUPPORT_CONTRACT.md`.
 
+## Architecture status
+
+`array_descriptor_t` in `docs/ARRAY_DESCRIPTOR_ABI.md` is the canonical array
+representation for migrated runtime paths. New lowering must not introduce a
+second array, section, pointer, assumed-shape, character-array, or polymorphic
+descriptor convention. The remaining legacy paths are migration work, not
+additional supported ABIs; each must be removed with an ownership/lifetime
+oracle when its issue closes.
+
 ## Stability Rule
 
 Only the representations listed in this document are supported. Other values,

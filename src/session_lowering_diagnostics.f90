@@ -1,3 +1,11 @@
+module session_lowering_diagnostics
+    implicit none
+    private
+
+    public :: unsupported_feature_error
+
+contains
+
     subroutine unsupported_feature_error(feature, line, column, limitation, &
                                          error_msg)
         character(len=*), intent(in) :: feature
@@ -15,3 +23,5 @@
             error_msg = 'unsupported '//trim(feature)//': '//trim(limitation)
         end if
     end subroutine unsupported_feature_error
+
+end module session_lowering_diagnostics

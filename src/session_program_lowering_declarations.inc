@@ -203,7 +203,7 @@
         record%type_kind = node%resolved_type_kind
         record%kind_value = node%resolved_kind_value
         record%rank = node%resolved_rank
-        if (record%rank < 0 .and. allocated(node%dimension_indices)) then
+        if (record%rank <= 0 .and. allocated(node%dimension_indices)) then
             record%rank = size(node%dimension_indices)
         end if
         record%is_array = node%is_array .or. record%rank > 0
@@ -232,7 +232,7 @@
         record%type_kind = node%resolved_type_kind
         record%kind_value = node%resolved_kind_value
         record%rank = node%resolved_rank
-        if (record%rank < 0 .and. allocated(node%dimension_indices)) then
+        if (record%rank <= 0 .and. allocated(node%dimension_indices)) then
             record%rank = size(node%dimension_indices)
         end if
         ! A parameter-list entry has no shape until its specification-part

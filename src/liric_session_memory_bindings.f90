@@ -7,7 +7,7 @@ module liric_session_memory_bindings
         clear_liric_error, to_c_chars, set_empty, &
         lr_error_t, lr_inst_desc_t
     use liric_session_bindings, only: liric_session_t, lr_operand_desc_t, &
-        i32_vreg, i32_immediate
+        i32_vreg, i32_immediate, emit_c_aggregate_call
     implicit none
     private
 
@@ -45,7 +45,8 @@ module liric_session_memory_bindings
     public :: emit_i8_array_alloca, emit_i8_array_element_addr
     public :: emit_i16_array_alloca, emit_i16_array_element_addr
     public :: emit_i64_binary
-    public :: emit_alloca_typed, emit_load_typed, emit_store_typed
+    public :: emit_alloca_typed, emit_load_typed, emit_store_typed, &
+        emit_complex_value_load, emit_c_complex_call, emit_extract_value_typed
     public :: i8_immediate, emit_i8_alloca, emit_i8_load, emit_i8_store, emit_i8_binary
     public :: i16_immediate, emit_i16_alloca, emit_i16_load, emit_i16_store, emit_i16_binary
 
@@ -96,6 +97,15 @@ module liric_session_memory_bindings
             type(c_ptr) :: typ
         end function lr_type_array_s
 
+        function lr_type_struct_s(handle, fields, count, packed) result(typ) bind(c)
+            import :: c_bool, c_int32_t, c_ptr
+            type(c_ptr), value :: handle
+            type(c_ptr), value :: fields
+            integer(c_int32_t), value :: count
+            logical(c_bool), value :: packed
+            type(c_ptr) :: typ
+        end function lr_type_struct_s
+
         function lr_type_f32_s(handle) result(typ) bind(c)
             import :: c_ptr
             type(c_ptr), value :: handle
@@ -127,6 +137,303 @@ module liric_session_memory_bindings
             type(c_ptr), value :: handle
             type(c_ptr) :: typ
         end function lr_type_void_s
+
+        module function emit_binary(handle, opcode, lhs, rhs, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            integer(c_int), intent(in) :: opcode
+            type(lr_operand_desc_t), intent(in) :: lhs, rhs
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_binary
+        module function emit_binary_with_dest(handle, opcode, lhs, rhs, error, &
+                                              dest_vreg) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            integer(c_int), intent(in) :: opcode
+            type(lr_operand_desc_t), intent(in) :: lhs, rhs
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t), intent(in) :: dest_vreg
+            integer(c_int32_t) :: vreg
+        end function emit_binary_with_dest
+        module function emit_alloca_i32(handle, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_alloca_i32
+        module function emit_alloca_i64(handle, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_alloca_i64
+        module function emit_load_i32(handle, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_load_i32
+        module function emit_store_i32(handle, value, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: value, address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_store_i32
+        module function emit_load_i64(handle, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_load_i64
+        module function emit_load_ptr(handle, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_load_ptr
+        module function emit_store_i64(handle, value, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: value, address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_store_i64
+        module function emit_binary_i64(handle, opcode, lhs, rhs, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            integer(c_int), intent(in) :: opcode
+            type(lr_operand_desc_t), intent(in) :: lhs, rhs
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_binary_i64
+        module function emit_alloca_i64_bytes(handle, size, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: size
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_alloca_i64_bytes
+        module function emit_store_ptr(handle, value, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: value, address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_store_ptr
+        module function global_operand(session, id, typ) result(operand)
+            type(liric_session_t), intent(in) :: session
+            integer(c_int32_t), intent(in) :: id
+            type(c_ptr), intent(in) :: typ
+            type(lr_operand_desc_t) :: operand
+        end function global_operand
+        module function emit_memcpy_call(handle, args, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_memcpy_call
+        module function emit_malloc_call(handle, args, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_malloc_call
+        module function emit_strnlen_call(handle, args, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_strnlen_call
+        module function emit_calloc_call(handle, args, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_calloc_call
+        module function global_operand_from_id(handle, symbol_id) result(operand)
+            type(c_ptr), intent(in) :: handle
+            integer(c_int32_t), intent(in) :: symbol_id
+            type(lr_operand_desc_t) :: operand
+        end function global_operand_from_id
+        module function ptr_global_operand(handle, symbol_id) result(operand)
+            type(c_ptr), intent(in) :: handle
+            integer(c_int32_t), intent(in) :: symbol_id
+            type(lr_operand_desc_t) :: operand
+        end function ptr_global_operand
+        module function emit_alloca_typed(handle, typ, error) result(vreg)
+            type(c_ptr), intent(in) :: handle, typ
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_alloca_typed
+        module function emit_load_typed(handle, typ, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle, typ
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_load_typed
+        module function emit_complex_value_load(session, address, is_double, &
+                                                value, error_msg)
+            logical :: emit_complex_value_load
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: address
+            logical, intent(in) :: is_double
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_complex_value_load
+        module function emit_c_complex_call(session, name, args, is_double, &
+                                            re_value, im_value, error_msg)
+            logical :: emit_c_complex_call
+            type(liric_session_t), intent(inout) :: session
+            character(len=*), intent(in) :: name
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            logical, intent(in) :: is_double
+            type(lr_operand_desc_t), intent(out) :: re_value, im_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_c_complex_call
+        module function emit_extract_value_typed(session, aggregate, element_type, &
+                                                 index, value, error_msg)
+            logical :: emit_extract_value_typed
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: aggregate
+            type(c_ptr), intent(in) :: element_type
+            integer(c_int32_t), intent(in) :: index
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_extract_value_typed
+        module function emit_store_typed(handle, value, address, error) result(vreg)
+            type(c_ptr), intent(in) :: handle
+            type(lr_operand_desc_t), intent(in) :: value, address
+            type(lr_error_t), intent(inout) :: error
+            integer(c_int32_t) :: vreg
+        end function emit_store_typed
+        module function i8_vreg_op(session, vreg) result(operand)
+            type(liric_session_t), intent(in) :: session
+            integer(c_int32_t), intent(in) :: vreg
+            type(lr_operand_desc_t) :: operand
+        end function i8_vreg_op
+        module function i8_immediate(session, value) result(operand)
+            type(liric_session_t), intent(in) :: session
+            integer(c_int64_t), intent(in) :: value
+            type(lr_operand_desc_t) :: operand
+        end function i8_immediate
+        module function emit_i8_alloca(session, address, error_msg)
+            logical :: emit_i8_alloca
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_alloca
+        module function emit_i8_load(session, address, value, error_msg)
+            logical :: emit_i8_load
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_load
+        module function emit_i8_store(session, value, address, error_msg)
+            logical :: emit_i8_store
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: value
+            type(lr_operand_desc_t), intent(in) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_store
+        module function emit_i8_binary(session, opcode, lhs, rhs, result, error_msg)
+            logical :: emit_i8_binary
+            type(liric_session_t), intent(inout) :: session
+            integer(c_int), intent(in) :: opcode
+            type(lr_operand_desc_t), intent(in) :: lhs
+            type(lr_operand_desc_t), intent(in) :: rhs
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_binary
+        module function i16_vreg_op(session, vreg) result(operand)
+            type(liric_session_t), intent(in) :: session
+            integer(c_int32_t), intent(in) :: vreg
+            type(lr_operand_desc_t) :: operand
+        end function i16_vreg_op
+        module function i16_immediate(session, value) result(operand)
+            type(liric_session_t), intent(in) :: session
+            integer(c_int64_t), intent(in) :: value
+            type(lr_operand_desc_t) :: operand
+        end function i16_immediate
+        module function emit_i16_alloca(session, address, error_msg)
+            logical :: emit_i16_alloca
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_alloca
+        module function emit_i16_load(session, address, value, error_msg)
+            logical :: emit_i16_load
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_load
+        module function emit_i16_store(session, value, address, error_msg)
+            logical :: emit_i16_store
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: value
+            type(lr_operand_desc_t), intent(in) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_store
+        module function emit_i16_binary(session, opcode, lhs, rhs, result, error_msg)
+            logical :: emit_i16_binary
+            type(liric_session_t), intent(inout) :: session
+            integer(c_int), intent(in) :: opcode
+            type(lr_operand_desc_t), intent(in) :: lhs
+            type(lr_operand_desc_t), intent(in) :: rhs
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_binary
+        module function emit_i64_array_alloca(session, array_size, address, &
+                                              error_msg)
+            logical :: emit_i64_array_alloca
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i64_array_alloca
+        module function emit_i64_array_element_addr(session, array_size, &
+                                                    base_ptr, index_0based, &
+                                                    element_addr, error_msg)
+            logical :: emit_i64_array_element_addr
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(in) :: base_ptr
+            type(lr_operand_desc_t), intent(in) :: index_0based
+            type(lr_operand_desc_t), intent(out) :: element_addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i64_array_element_addr
+        module function emit_i8_array_alloca(session, array_size, address, &
+                                             error_msg)
+            logical :: emit_i8_array_alloca
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_array_alloca
+        module function emit_i8_array_element_addr(session, array_size, &
+                                                   base_ptr, index_0based, &
+                                                   element_addr, error_msg)
+            logical :: emit_i8_array_element_addr
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(in) :: base_ptr
+            type(lr_operand_desc_t), intent(in) :: index_0based
+            type(lr_operand_desc_t), intent(out) :: element_addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i8_array_element_addr
+        module function emit_i16_array_alloca(session, array_size, address, &
+                                              error_msg)
+            logical :: emit_i16_array_alloca
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_array_alloca
+        module function emit_i16_array_element_addr(session, array_size, &
+                                                    base_ptr, index_0based, &
+                                                    element_addr, error_msg)
+            logical :: emit_i16_array_element_addr
+            type(liric_session_t), intent(inout) :: session
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(in) :: base_ptr
+            type(lr_operand_desc_t), intent(in) :: index_0based
+            type(lr_operand_desc_t), intent(out) :: element_addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_i16_array_element_addr
     end interface
 
 contains
@@ -1318,10 +1625,6 @@ contains
         call set_empty(error_msg)
         emit_f64_array_element_addr = .true.
     end function emit_f64_array_element_addr
-
-    include 'liric_session_memory_bindings_narrow_int_arrays.inc'
-    include 'liric_session_memory_bindings_i8_i16.inc'
-    include 'liric_session_memory_bindings_tail.inc'
 
     logical function emit_ptr_alloca(session, address, error_msg)
         ! Allocate one pointer slot on the stack; address is a ptr to ptr.

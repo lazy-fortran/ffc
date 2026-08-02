@@ -499,6 +499,10 @@ module session_program_lowering_types
         ! Empty unless the binding declared pass(name); names the dummy that
         ! receives the passed object.
         character(len=64), allocatable :: binding_pass_names(:)
+        ! True when the binding passes the object (default PASS or PASS(name));
+        ! false identifies an explicit NOPASS binding, whose call has no
+        ! implicit receiver argument.
+        logical, allocatable :: binding_pass_args(:)
         ! Non-empty when the type declares the same binding name twice. Such a
         ! type has no single occupant for that vtable slot, so it is reported
         ! when the vtables are emitted rather than when it is collected: a
@@ -588,6 +592,11 @@ module session_program_lowering_types
         ! compiled module procedure resolved from a .fmod passes them by
         ! reference (Fortran ABI) and targets its mangled name (#284).
         logical :: by_reference = .false.
+        ! A BIND(C) interface uses the platform C ABI even when its dummies
+        ! are not VALUE.  Keep this separate from by_reference: the latter is
+        ! the .fmod/module-procedure ABI selector, while this flag identifies
+        ! the call contract itself.
+        logical :: is_bind_c = .false.
         ! Per-dummy contracts the .fmod carries: OPTIONAL dummies may be
         ! omitted at a call site, a VALUE dummy receives a copy, and an
         ! INTENT(OUT)/INTENT(INOUT) dummy requires a definable actual (#397).
@@ -734,6 +743,10 @@ module session_program_lowering_types
         ! name, this remains unambiguous when a contained procedure shadows a
         ! USE-associated procedure with the same spelling (#330).
         integer :: current_proc_node_index = 0
+        ! BIND(C) bodies use the C ABI for their emitted signature. This is
+        ! deliberately per-procedure: ordinary Fortran/module procedures in
+        ! the same translation unit keep the pointer-based ABI.
+        logical :: current_proc_bind_c = .false.
         integer :: current_function_result_index = 0
         ! Character result temporaries created while lowering the current
         ! statement. A character-returning call writes its result through a

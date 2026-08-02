@@ -7,6 +7,7 @@ program test_session_module_derived_arg_compiler
     if (.not. test_subroutine_derived_args()) stop 1
     if (.not. test_function_derived_result()) stop 1
     if (.not. test_derived_arg_output()) stop 1
+    if (.not. test_i64_derived_component()) stop 1
 
     print *, 'PASS: module derived-type arguments lower through direct LIRIC'
 
@@ -118,5 +119,30 @@ contains
             source, '          11          22'//new_line('a'), &
             '/tmp/ffc_module_derived_arg_out_test')
     end function test_derived_arg_output
+
+    logical function test_i64_derived_component()
+        ! A module function reading an integer(8) component exercises the
+        ! two-slot derived layout and the i64 component-load path.
+        character(len=*), parameter :: source = &
+            'module bits_mod'//new_line('a')// &
+            '  type :: bitset_type'//new_line('a')// &
+            '    integer(8) :: num_bits'//new_line('a')// &
+            '  end type bitset_type'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine check_bits(self)'//new_line('a')// &
+            '    type(bitset_type), intent(in) :: self'//new_line('a')// &
+            '    if (self%num_bits /= 42_8) error stop 1'//new_line('a')// &
+            '  end subroutine check_bits'//new_line('a')// &
+            'end module bits_mod'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use bits_mod'//new_line('a')// &
+            '  type(bitset_type) :: value'//new_line('a')// &
+            '  value%num_bits = 42_8'//new_line('a')// &
+            '  call check_bits(value)'//new_line('a')// &
+            'end program main'
+
+        test_i64_derived_component = expect_exit_status( &
+            source, 0, '/tmp/ffc_module_i64_derived_component_test')
+    end function test_i64_derived_component
 
 end program test_session_module_derived_arg_compiler

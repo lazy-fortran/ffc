@@ -455,9 +455,11 @@
                 ! Attribute form: integer, private, parameter :: name.
                 if (decl_names_match(vis, name)) then
                     if (allocated(vis%accessibility)) then
-                        if (trim(lowercase_text(vis%accessibility)) == 'private') &
-                            then
+                        if (trim(lowercase_text(vis%accessibility)) == 'private') then
                             module_symbol_is_private = .true.
+                            return
+                        else if (trim(lowercase_text(vis%accessibility)) == 'public') then
+                            module_symbol_is_private = .false.
                             return
                         end if
                     end if
@@ -671,8 +673,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, b, inherited, new_total, slot
         character(len=64) :: method_name_buf, target_name_buf, pass_name_buf
-        logical :: overrides
+        logical :: overrides, pass_arg_buf
         character(len=64), allocatable :: old_methods(:), old_targets(:), old_passes(:)
+        logical, allocatable :: old_pass_args(:)
 
         call set_empty(error_msg)
         if (.not. allocated(node%binding_indices)) return
@@ -686,28 +689,37 @@
                 binding_target_names(size(node%binding_indices)))
             allocate(context%derived_types(type_index)% &
                 binding_pass_names(size(node%binding_indices)))
+            allocate(context%derived_types(type_index)% &
+                binding_pass_args(size(node%binding_indices)))
             context%derived_types(type_index)%binding_pass_names = ''
+            context%derived_types(type_index)%binding_pass_args = .false.
         else
             ! Inherited bindings exist: grow arrays to hold inherited + new own.
             new_total = inherited + size(node%binding_indices)
             old_methods = context%derived_types(type_index)%binding_method_names
             old_targets = context%derived_types(type_index)%binding_target_names
             old_passes  = context%derived_types(type_index)%binding_pass_names
+            old_pass_args = context%derived_types(type_index)%binding_pass_args
             deallocate(context%derived_types(type_index)%binding_method_names)
             deallocate(context%derived_types(type_index)%binding_target_names)
             deallocate(context%derived_types(type_index)%binding_pass_names)
+            deallocate(context%derived_types(type_index)%binding_pass_args)
             allocate(context%derived_types(type_index)%binding_method_names(new_total))
             allocate(context%derived_types(type_index)%binding_target_names(new_total))
             allocate(context%derived_types(type_index)%binding_pass_names(new_total))
+            allocate(context%derived_types(type_index)%binding_pass_args(new_total))
             context%derived_types(type_index)%binding_method_names = ''
             context%derived_types(type_index)%binding_target_names = ''
             context%derived_types(type_index)%binding_pass_names = ''
+            context%derived_types(type_index)%binding_pass_args = .false.
             context%derived_types(type_index)%binding_method_names(1:inherited) = &
                 old_methods(1:inherited)
             context%derived_types(type_index)%binding_target_names(1:inherited) = &
                 old_targets(1:inherited)
             context%derived_types(type_index)%binding_pass_names(1:inherited) = &
                 old_passes(1:inherited)
+            context%derived_types(type_index)%binding_pass_args(1:inherited) = &
+                old_pass_args(1:inherited)
         end if
 
         do i = 1, size(node%binding_indices)
@@ -760,6 +772,7 @@
                     if (len_trim(binding%pass_name) > 0) &
                         pass_name_buf = trim(binding%pass_name)
                 end if
+                pass_arg_buf = binding%pass_arg
                 ! Override inherited binding with same method name, or append.
                 overrides = .false.
                 do b = 1, inherited
@@ -769,6 +782,8 @@
                             target_name_buf
                         context%derived_types(type_index)%binding_pass_names(b) = &
                             pass_name_buf
+                        context%derived_types(type_index)%binding_pass_args(b) = &
+                            pass_arg_buf
                         overrides = .true.
                         exit
                     end if
@@ -794,6 +809,8 @@
                         target_name_buf
                     context%derived_types(type_index)%binding_pass_names(slot) = &
                         pass_name_buf
+                    context%derived_types(type_index)%binding_pass_args(slot) = &
+                        pass_arg_buf
                     context%derived_types(type_index)%binding_count = slot
                 end if
             end select
@@ -874,6 +891,7 @@
         allocate(context%derived_types(type_index)%binding_method_names(pc))
         allocate(context%derived_types(type_index)%binding_target_names(pc))
         allocate(context%derived_types(type_index)%binding_pass_names(pc))
+        allocate(context%derived_types(type_index)%binding_pass_args(pc))
         do slot = 1, pc
             context%derived_types(type_index)%binding_method_names(slot) = &
                 context%derived_types(parent_index)%binding_method_names(slot)
@@ -881,6 +899,8 @@
                 context%derived_types(parent_index)%binding_target_names(slot)
             context%derived_types(type_index)%binding_pass_names(slot) = &
                 context%derived_types(parent_index)%binding_pass_names(slot)
+            context%derived_types(type_index)%binding_pass_args(slot) = &
+                context%derived_types(parent_index)%binding_pass_args(slot)
         end do
         context%derived_types(type_index)%binding_count = pc
     end subroutine inherit_parent_bindings
@@ -1418,7 +1438,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                   context)
         if (len_trim(error_msg) > 0) return
         select case (comp_kind)
-        case (VALUE_I32, VALUE_C_PTR)
+        case (VALUE_I32, VALUE_I64, VALUE_C_PTR)
             ! Scalar and fixed-size array components are both supported.
         case (VALUE_F64, VALUE_F32, VALUE_LOGICAL)
             ! Scalar and fixed-size array components are both supported; an

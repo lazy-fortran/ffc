@@ -10,6 +10,7 @@
         real(c_double) :: real_value
         real(c_float) :: real_value_f32
         integer :: symbol_index
+        integer :: external_index
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
 
@@ -280,6 +281,26 @@
                     call lower_print_logical_value(context, value, error_msg)
                     return
                 end if
+                external_index = external_procedure_index(context, node%name)
+                if (external_index > 0) then
+                    if (context%external_procedures(external_index)%return_value_kind == &
+                        VALUE_F64) then
+                        call lower_f64_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_liric_print_f64_value(context%session, &
+                                                             value, error_msg)) return
+                        return
+                    else if (context%external_procedures(external_index)% &
+                             return_value_kind == VALUE_F32) then
+                        call lower_f32_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_liric_print_f32_value(context%session, &
+                                                             value, error_msg)) return
+                        return
+                    end if
+                end if
             end if
             if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
@@ -327,6 +348,7 @@
         real(c_double) :: real_value
         real(c_float) :: real_value_f32
         integer :: symbol_index
+        integer :: external_index
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
 
@@ -613,6 +635,26 @@
                     call lower_print_logical_value(context, value, error_msg)
                     return
                 end if
+                external_index = external_procedure_index(context, node%name)
+                if (external_index > 0) then
+                    if (context%external_procedures(external_index)%return_value_kind == &
+                        VALUE_F64) then
+                        call lower_f64_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_liric_print_f64_value(context%session, &
+                                                             value, error_msg)) return
+                        return
+                    else if (context%external_procedures(external_index)% &
+                             return_value_kind == VALUE_F32) then
+                        call lower_f32_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_liric_print_f32_value(context%session, &
+                                                             value, error_msg)) return
+                        return
+                    end if
+                end if
             end if
             if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
                 call lower_f32_expression(arena, node_index, context, value, &
@@ -713,7 +755,7 @@
                                                      value, error_msg)) return
                 return
             end if
-            if (is_char_expr_call(arena, node_index)) then
+            if (is_char_expr_call(arena, node_index, context)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return
             end if

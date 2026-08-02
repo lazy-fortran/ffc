@@ -1,4 +1,7 @@
-    subroutine emit_module_fmod_artifacts(arena, context, output_path, error_msg)
+submodule(session_program_lowering) session_program_lowering_fmod_exporter
+    use session_program_lowering_fmod_order
+contains
+    module subroutine emit_module_fmod_artifacts(arena, context, output_path, error_msg)
         ! For each module compiled in this unit, write a sibling
         ! <dirname(output)>/<modulename>.fmod describing its exports.
         type(ast_arena_t), intent(in) :: arena
@@ -21,7 +24,7 @@
         end do
     end subroutine emit_module_fmod_artifacts
 
-    function path_dirname(path) result(dir)
+    module function path_dirname(path) result(dir)
         character(len=*), intent(in) :: path
         character(len=:), allocatable :: dir
         integer :: slash
@@ -34,7 +37,7 @@
         end if
     end function path_dirname
 
-    subroutine build_module_info(arena, context, export, info, error_msg)
+    module subroutine build_module_info(arena, context, export, info, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         type(module_exports_t), intent(in) :: export
@@ -78,7 +81,7 @@
                                  info%procedures, info%generics, error_msg)
     end subroutine build_module_info
 
-    subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
+    module subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: module_name
         type(fmod_procedure_t), allocatable, intent(in) :: procs(:)
@@ -108,7 +111,7 @@
         end do
     end subroutine build_fmod_generics
 
-    function generic_block_name(arena, node_index) result(name)
+    module function generic_block_name(arena, node_index) result(name)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=:), allocatable :: name
@@ -121,7 +124,7 @@
         end select
     end function generic_block_name
 
-    subroutine fmod_generic_specifics(arena, node_index, procs, module_name, &
+    module subroutine fmod_generic_specifics(arena, node_index, procs, module_name, &
                                       specifics)
         ! Space-joined specific names of a named generic interface, but only when
         ! every specific is an exportable procedure recorded in procs. An empty
@@ -186,7 +189,7 @@
         end select
     end subroutine fmod_generic_specifics
 
-    subroutine append_generic_specific(procs, name, specifics)
+    module subroutine append_generic_specific(procs, name, specifics)
         ! Append name to the space-joined specifics list only when it names an
         ! exportable procedure in procs; otherwise clear specifics to signal the
         ! generic cannot be exported.
@@ -219,7 +222,7 @@
         end if
     end subroutine append_generic_specific
 
-    subroutine grow_fmod_generics(arr, n)
+    module subroutine grow_fmod_generics(arr, n)
         type(fmod_generic_t), allocatable, intent(inout) :: arr(:)
         integer, intent(in) :: n
         type(fmod_generic_t), allocatable :: tmp(:)
@@ -230,7 +233,7 @@
         call move_alloc(tmp, arr)
     end subroutine grow_fmod_generics
 
-    subroutine build_fmod_procedures(arena, context, module_name, procs, &
+    module subroutine build_fmod_procedures(arena, context, module_name, procs, &
                                      error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
@@ -272,12 +275,10 @@
         end do
     end subroutine build_fmod_procedures
 
-    subroutine record_fmod_interface_procedures(arena, context, node_index, &
+    module subroutine record_fmod_interface_procedures(arena, context, node_index, &
                                                 mod_node, procs, count)
-        ! Record every deferred module-procedure interface body of one interface
-        ! block. A plain interface block declares an external procedure with no
-        ! module mangling, so only bodies written `module function` /
-        ! `module subroutine` are recorded (#297).
+        ! Record deferred module-procedure bodies and public plain-interface
+        ! procedures. The latter bind to their unmangled external symbol.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: node_index
@@ -285,6 +286,7 @@
         type(fmod_procedure_t), allocatable, intent(inout) :: procs(:)
         integer, intent(inout) :: count
         integer :: i
+        character(len=:), allocatable :: node_type
 
         if (.not. node_exists(arena, node_index)) return
         select type (block => arena%entries(node_index)%node)
@@ -292,17 +294,30 @@
             if (block%is_abstract) return
             if (.not. allocated(block%procedure_indices)) return
             do i = 1, size(block%procedure_indices)
-                if (.not. procedure_is_deferred_module_body(arena, &
-                        block%procedure_indices(i))) cycle
-                call record_fmod_procedure(arena, context, &
-                                           block%procedure_indices(i), &
-                                           mod_node, .true., procs, count)
+                if (procedure_is_deferred_module_body(arena, &
+                        block%procedure_indices(i))) then
+                    call record_fmod_procedure(arena, context, &
+                                               block%procedure_indices(i), &
+                                               mod_node, .true., procs, count)
+                    cycle
+                end if
+                node_type = get_node_type_at(arena, block%procedure_indices(i))
+                if (node_type == 'function_def_node' .or. &
+                    node_type == 'function_def' .or. &
+                    node_type == 'subroutine_def_node' .or. &
+                    node_type == 'subroutine_def') then
+                    call record_fmod_procedure(arena, context, &
+                                               block%procedure_indices(i), &
+                                               mod_node, .false., procs, count, &
+                                               .true.)
+                end if
             end do
         end select
     end subroutine record_fmod_interface_procedures
 
-    logical function procedure_is_deferred_module_body(arena, node_index) &
+    module function procedure_is_deferred_module_body(arena, node_index) &
             result(is_module_body)
+        logical :: is_module_body
         ! Whether an interface body is written `module function` /
         ! `module subroutine`, which makes it a module procedure of the
         ! enclosing module whose body a submodule supplies (F2018 15.6.2.5).
@@ -323,7 +338,8 @@
             is_module_body = prefix_has_module(sb_node%prefix_keywords)
     end function procedure_is_deferred_module_body
 
-    logical function prefix_has_module(prefix_keywords) result(has_module)
+    module function prefix_has_module(prefix_keywords) result(has_module)
+        logical :: has_module
         character(len=16), allocatable, intent(in) :: prefix_keywords(:)
         integer :: i
 
@@ -337,8 +353,9 @@
         end do
     end function prefix_has_module
 
-    subroutine record_fmod_procedure(arena, context, node_index, mod_node, &
-                                     deferred_body, procs, count)
+    module subroutine record_fmod_procedure(arena, context, node_index, mod_node, &
+                                     deferred_body, procs, count, &
+                                     external_binding)
         ! Append one exportable module procedure's signature record. The same
         ! record describes a procedure whose body this module contains and one
         ! whose body a submodule supplies; deferred_body only says which, since
@@ -350,14 +367,20 @@
         logical, intent(in) :: deferred_body
         type(fmod_procedure_t), allocatable, intent(inout) :: procs(:)
         integer, intent(inout) :: count
+        logical, intent(in), optional :: external_binding
         character(len=:), allocatable :: kind_text, arg_tokens
         character(len=:), allocatable :: rank_tokens, extent_tokens
         character(len=:), allocatable :: proc_name
         integer :: nargs
+        logical :: is_external
+
+        is_external = .false.
+        if (present(external_binding)) is_external = external_binding
 
         call fmod_procedure_signature(arena, context, node_index, mod_node, &
                                       kind_text, nargs, arg_tokens, &
-                                      rank_tokens, extent_tokens)
+                                      rank_tokens, extent_tokens, &
+                                      allow_runtime_array=is_external)
         if (len_trim(kind_text) == 0) then
             ! The procedure is still a public module export even when its call
             ! ABI is not supported by the direct session backend. Preserve its
@@ -370,6 +393,9 @@
             count = count + 1
             call grow_fmod_procs(procs, count)
             procs(count)%name = proc_name
+            procs(count)%external_name = ''
+            if (is_external) procs(count)%external_name = &
+                fmod_procedure_external_name(arena, node_index)
             procs(count)%kind = 'unsupported'
             procs(count)%arg_kinds = ''
             procs(count)%arg_names = ''
@@ -381,6 +407,7 @@
             procs(count)%arg_ranks = ''
             procs(count)%arg_extents = ''
             procs(count)%callable = .false.
+            procs(count)%external_binding = is_external
             procs(count)%deferred_body = deferred_body
             procs(count)%nargs = 0
             return
@@ -388,12 +415,16 @@
         count = count + 1
         call grow_fmod_procs(procs, count)
         procs(count)%name = procedure_fortran_name(arena, node_index)
+        procs(count)%external_name = ''
+        if (is_external) procs(count)%external_name = &
+            fmod_procedure_external_name(arena, node_index)
         procs(count)%kind = kind_text
         procs(count)%nargs = nargs
         procs(count)%arg_kinds = arg_tokens
         procs(count)%arg_ranks = rank_tokens
         procs(count)%arg_extents = extent_tokens
         procs(count)%callable = .true.
+        procs(count)%external_binding = is_external
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
         procs(count)%deferred_body = deferred_body
         call fmod_procedure_dummy_attributes(arena, node_index, &
@@ -405,7 +436,7 @@
                                    procs(count)%result_kind)
     end subroutine record_fmod_procedure
 
-    subroutine fmod_procedure_result(arena, node_index, kind_text, result_name, &
+    module subroutine fmod_procedure_result(arena, node_index, kind_text, result_name, &
                                      result_kind)
         ! The result-variable name and scalar kind token of an exported module
         ! function, so a using unit reconstructs the same result contract the
@@ -430,7 +461,7 @@
         result_kind = trim(kind_text)
     end subroutine fmod_procedure_result
 
-    subroutine fmod_procedure_dummy_attributes(arena, node_index, intents, &
+    module subroutine fmod_procedure_dummy_attributes(arena, node_index, intents, &
                                                optionals, values)
         ! The per-dummy INTENT, OPTIONAL, and VALUE contracts of an exported
         ! module procedure, space-joined one token per dummy. A separately
@@ -483,7 +514,7 @@
         end do
     end subroutine fmod_procedure_dummy_attributes
 
-    function flag_token(flag) result(token)
+    module function flag_token(flag) result(token)
         logical, intent(in) :: flag
         character(len=:), allocatable :: token
 
@@ -494,7 +525,7 @@
         end if
     end function flag_token
 
-    subroutine param_at_attributes(arena, param_indices, body_indices, pos, &
+    module subroutine param_at_attributes(arena, param_indices, body_indices, pos, &
                                    intent_token, is_optional, is_value)
         ! The declared INTENT ('in', 'out', 'inout', or 'none'), OPTIONAL, and
         ! VALUE attributes of the pos-th dummy, taken from its declaration in
@@ -537,7 +568,7 @@
     end subroutine param_at_attributes
 
 
-    function fmod_procedure_arg_names(arena, node_index) result(tokens)
+    module function fmod_procedure_arg_names(arena, node_index) result(tokens)
         ! Space-joined dummy-argument names of an exported module procedure, so
         ! a separately compiled caller can associate keyword actuals with it
         ! (#408). Empty when a name cannot be recovered.
@@ -566,7 +597,7 @@
         end do
     end function fmod_procedure_arg_names
 
-    subroutine grow_fmod_procs(arr, n)
+    module subroutine grow_fmod_procs(arr, n)
         type(fmod_procedure_t), allocatable, intent(inout) :: arr(:)
         integer, intent(in) :: n
         type(fmod_procedure_t), allocatable :: tmp(:)
@@ -577,7 +608,7 @@
         call move_alloc(tmp, arr)
     end subroutine grow_fmod_procs
 
-    function get_module_node_ptr(arena, module_index) result(mod_node)
+    module function get_module_node_ptr(arena, module_index) result(mod_node)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: module_index
         type(module_node), pointer :: mod_node
@@ -590,7 +621,7 @@
         end select
     end function get_module_node_ptr
 
-    function procedure_fortran_name(arena, node_index) result(name)
+    module function procedure_fortran_name(arena, node_index) result(name)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         character(len=:), allocatable :: name
@@ -609,12 +640,38 @@
         end if
     end function procedure_fortran_name
 
-    subroutine fmod_procedure_signature(arena, context, node_index, mod_node, &
+    module function fmod_procedure_external_name(arena, node_index) result(name)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: fortran_name
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        fortran_name = procedure_fortran_name(arena, node_index)
+        name = fortran_name
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            if (allocated(fn_node%bind_c_clause)) then
+                call bind_c_name(fn_node%bind_c_clause, fortran_name, name)
+            end if
+            return
+        end if
+        sb_node => get_node_as_subroutine_def(arena, node_index)
+        if (associated(sb_node)) then
+            if (allocated(sb_node%bind_c_clause)) then
+                call bind_c_name(sb_node%bind_c_clause, fortran_name, name)
+            end if
+        end if
+    end function fmod_procedure_external_name
+
+    module subroutine fmod_procedure_signature(arena, context, node_index, mod_node, &
                                         kind_text, nargs, arg_tokens, &
-                                        rank_tokens, extent_tokens)
-        ! Classify a module procedure for .fmod export. kind_text is 'integer'
-        ! for an integer function, 'subroutine' for a subroutine, and empty for
-        ! anything not exportable (private, non-integer result, unsupported or
+                                        rank_tokens, extent_tokens, &
+                                        allow_runtime_array)
+        ! Classify a module procedure for .fmod export. kind_text is a scalar
+        ! kind token for a function, 'subroutine' for a subroutine, and empty for
+        ! anything not exportable (private, unsupported or
         ! non-scalar argument, or a nested internal procedure). nargs is the
         ! argument count and arg_tokens the space-joined per-argument scalar-kind
         ! tokens for an exportable procedure (#284).
@@ -630,14 +687,19 @@
         character(len=:), allocatable, intent(out) :: arg_tokens
         character(len=:), allocatable, intent(out) :: rank_tokens
         character(len=:), allocatable, intent(out) :: extent_tokens
+        logical, intent(in), optional :: allow_runtime_array
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
+        integer :: value_kind
+        logical :: runtime_arrays_ok
 
         kind_text = ''
         nargs = 0
         arg_tokens = ''
         rank_tokens = ''
         extent_tokens = ''
+        runtime_arrays_ok = .false.
+        if (present(allow_runtime_array)) runtime_arrays_ok = allow_runtime_array
         if (.not. node_exists(arena, node_index)) return
         fn_node => get_node_as_function_def(arena, node_index)
         if (associated(fn_node)) then
@@ -646,12 +708,14 @@
                 if (module_symbol_is_private(arena, mod_node, fn_node%name)) return
             end if
             if (procedure_has_nested_contains(arena, fn_node%body_indices)) return
-            if (.not. fmod_function_result_is_integer(arena, fn_node)) return
+            value_kind = fmod_function_result_value_kind(arena, fn_node)
+            if (value_kind == 0) return
             if (.not. params_all_supported(arena, context, &
                                     fn_node%param_indices, fn_node%body_indices, &
                                     nargs, arg_tokens, rank_tokens, &
-                                    extent_tokens)) return
-            kind_text = 'integer'
+                                    extent_tokens, &
+                                    allow_runtime_array=runtime_arrays_ok)) return
+            kind_text = scalar_kind_token(value_kind)
             return
         end if
         sb_node => get_node_as_subroutine_def(arena, node_index)
@@ -664,26 +728,30 @@
             if (.not. params_all_supported(arena, context, &
                                     sb_node%param_indices, sb_node%body_indices, &
                                     nargs, arg_tokens, rank_tokens, &
-                                    extent_tokens)) return
+                                    extent_tokens, &
+                                    allow_runtime_array=runtime_arrays_ok)) return
             kind_text = 'subroutine'
         end if
     end subroutine fmod_procedure_signature
 
-    logical function fmod_function_result_is_integer(arena, fn_node) &
-            result(is_integer)
-        ! Whether a module function returns a default integer. A contained
-        ! function states its type in the header; a deferred module-procedure
-        ! interface body may instead declare its result variable in the
-        ! interface body, so that declaration is consulted too (#297).
+    module function fmod_function_result_value_kind(arena, fn_node) &
+            result(value_kind)
+        integer :: value_kind
+        ! Scalar result kind of an exported function. Interface bodies may
+        ! state it in the header or in a result declaration (#297).
         type(ast_arena_t), intent(in) :: arena
         type(function_def_node), intent(in) :: fn_node
         character(len=:), allocatable :: result_name, kind_err
-        integer :: value_kind, i
+        integer :: i
 
-        is_integer = return_type_is_integer(fn_node%return_type)
-        if (is_integer) return
+        value_kind = 0
         if (allocated(fn_node%return_type)) then
-            if (len_trim(fn_node%return_type) > 0) return
+            if (len_trim(fn_node%return_type) > 0) then
+                call type_name_value_kind(fn_node%return_type, 0, 0, &
+                                          value_kind, kind_err)
+                if (len_trim(kind_err) == 0) return
+                value_kind = 0
+            end if
         end if
         result_name = ''
         if (allocated(fn_node%result_variable)) result_name = &
@@ -701,34 +769,25 @@
                     trim(lowercase_text(result_name)))) cycle
                 call declaration_value_kind(decl, value_kind, kind_err)
                 if (len_trim(kind_err) > 0) return
-                is_integer = value_kind == VALUE_I32
                 return
             end select
         end do
-    end function fmod_function_result_is_integer
+    end function fmod_function_result_value_kind
 
-    logical function return_type_is_integer(return_type)
-        character(len=:), allocatable, intent(in) :: return_type
-        character(len=:), allocatable :: lowered
-
-        return_type_is_integer = .false.
-        if (.not. allocated(return_type)) return
-        lowered = lowercase_text(trim(return_type))
-        return_type_is_integer = lowered == 'integer'
-    end function return_type_is_integer
-
-    logical function params_all_supported(arena, context, param_indices, &
+    module function params_all_supported(arena, context, param_indices, &
                                           body_indices, nargs, arg_tokens, &
-                                          rank_tokens, extent_tokens) result(ok)
+                                          rank_tokens, extent_tokens, &
+                                          allow_runtime_array) result(ok)
+        logical :: ok
         ! Whether every dummy of a module procedure is one this ffc can pass
         ! across separate compilation: a scalar of a supported kind, or an
         ! explicit-shape array of such a scalar, which passes as the base
-        ! address of its contiguous storage. arg_tokens receives the per-dummy
+        ! address of its contiguous storage. Character dummies use the
+        ! canonical {data, length} descriptor ABI. arg_tokens receives the
         ! element-kind tokens, rank_tokens the per-dummy rank (0 for a scalar),
         ! and extent_tokens an array dummy's total element count. An assumed-
-        ! shape, assumed-rank, allocatable, character, or derived dummy still
-        ! disqualifies the procedure, so a using unit never miscompiles a call
-        ! (#284, #415).
+        ! shape, assumed-rank, allocatable, or derived dummy still disqualifies
+        ! the procedure, so a using unit never miscompiles a call (#284, #415).
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(in) :: context
         integer, allocatable, intent(in) :: param_indices(:)
@@ -737,14 +796,18 @@
         character(len=:), allocatable, intent(out) :: arg_tokens
         character(len=:), allocatable, intent(out) :: rank_tokens
         character(len=:), allocatable, intent(out) :: extent_tokens
+        logical, intent(in), optional :: allow_runtime_array
         integer :: i, value_kind, rank, extent
         character(len=:), allocatable :: token
+        logical :: runtime_arrays_ok
 
         ok = .false.
         nargs = 0
         arg_tokens = ''
         rank_tokens = ''
         extent_tokens = ''
+        runtime_arrays_ok = .false.
+        if (present(allow_runtime_array)) runtime_arrays_ok = allow_runtime_array
         if (.not. allocated(param_indices)) then
             ok = .true.
             return
@@ -758,7 +821,8 @@
             if (value_kind == 0) then
                 call param_at_array_shape(arena, context, param_indices, &
                                           body_indices, i, value_kind, rank, &
-                                          extent)
+                                          extent, &
+                                          allow_runtime_extent=runtime_arrays_ok)
                 if (rank <= 0) return
             end if
             token = scalar_kind_token(value_kind)
@@ -775,8 +839,9 @@
         ok = .true.
     end function params_all_supported
 
-    subroutine param_at_array_shape(arena, context, param_indices, &
-                                    body_indices, pos, value_kind, rank, extent)
+    module subroutine param_at_array_shape(arena, context, param_indices, &
+                                    body_indices, pos, value_kind, rank, extent, &
+                                    allow_runtime_extent)
         ! The element kind, rank, and total element count of an explicit-shape
         ! array dummy. rank stays 0 when the dummy is not an array this ffc can
         ! pass by base address (assumed shape, assumed rank, assumed size, or
@@ -789,14 +854,18 @@
         integer, intent(out) :: value_kind
         integer, intent(out) :: rank
         integer, intent(out) :: extent
+        logical, intent(in), optional :: allow_runtime_extent
         character(len=:), allocatable :: name, name_err, kind_err
         integer(c_int64_t) :: element_count
         logical :: known
         integer :: i
+        logical :: runtime_extent_ok
 
         value_kind = 0
         rank = 0
         extent = 0
+        runtime_extent_ok = .false.
+        if (present(allow_runtime_extent)) runtime_extent_ok = allow_runtime_extent
         if (.not. allocated(param_indices)) return
         if (pos < 1 .or. pos > size(param_indices)) return
         call parameter_name(arena, param_indices(pos), name, name_err)
@@ -820,7 +889,14 @@
                                                   name, element_count, known, &
                                                   kind_err)
                 if (len_trim(kind_err) > 0) return
-                if (.not. known) return
+                if (.not. known) then
+                    if (runtime_extent_ok .and. &
+                        .not. declaration_is_assumed_shape(decl, context) .and. &
+                        .not. declaration_is_assumed_rank(decl, context)) then
+                        rank = size(decl%dimension_indices)
+                    end if
+                    return
+                end if
                 if (element_count <= 0) return
                 rank = size(decl%dimension_indices)
                 extent = int(element_count)
@@ -829,67 +905,7 @@
         end do
     end subroutine param_at_array_shape
 
-    function integer_token(value) result(token)
-        integer, intent(in) :: value
-        character(len=:), allocatable :: token
-        character(len=32) :: buffer
-
-        write (buffer, '(I0)') value
-        token = trim(buffer)
-    end function integer_token
-
-    function scalar_kind_token(value_kind) result(token)
-        ! The .fmod token for a by-reference scalar dummy kind, or '' when the
-        ! kind is not exportable across separate compilation (#284).
-        integer, intent(in) :: value_kind
-        character(len=:), allocatable :: token
-
-        select case (value_kind)
-        case (VALUE_I32)
-            token = 'integer'
-        case (VALUE_I64)
-            token = 'integer8'
-        case (VALUE_I8)
-            token = 'integer1'
-        case (VALUE_I16)
-            token = 'integer2'
-        case (VALUE_F32)
-            token = 'real'
-        case (VALUE_F64)
-            token = 'real8'
-        case (VALUE_LOGICAL)
-            token = 'logical'
-        case default
-            token = ''
-        end select
-    end function scalar_kind_token
-
-    integer function value_kind_of_token(token) result(value_kind)
-        ! Inverse of scalar_kind_token: the value kind a .fmod scalar token
-        ! denotes, or 0 when unrecognised (#284).
-        character(len=*), intent(in) :: token
-
-        select case (trim(token))
-        case ('integer')
-            value_kind = VALUE_I32
-        case ('integer8')
-            value_kind = VALUE_I64
-        case ('integer1')
-            value_kind = VALUE_I8
-        case ('integer2')
-            value_kind = VALUE_I16
-        case ('real')
-            value_kind = VALUE_F32
-        case ('real8')
-            value_kind = VALUE_F64
-        case ('logical')
-            value_kind = VALUE_LOGICAL
-        case default
-            value_kind = 0
-        end select
-    end function value_kind_of_token
-
-    subroutine build_fmod_variable(arena, node_index, var, error_msg)
+    module subroutine build_fmod_variable(arena, node_index, var, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(fmod_variable_t), intent(out) :: var
@@ -932,7 +948,7 @@
         end if
     end subroutine build_fmod_variable
 
-    function fmod_variable_kind_token(type_name) result(token)
+    module function fmod_variable_kind_token(type_name) result(token)
         ! The precise .fmod kind token for a scalar module variable so a using
         ! unit imports it with the correct load/store kind (integer vs real,
         ! single vs double). A character or derived type keeps the broad token;
@@ -949,7 +965,7 @@
         token = fmod_kind_string(type_name)
     end function fmod_variable_kind_token
 
-    subroutine build_fmod_parameter(arena, node_index, param, error_msg)
+    module subroutine build_fmod_parameter(arena, node_index, param, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(fmod_parameter_t), intent(out) :: param
@@ -982,7 +998,33 @@
         end if
     end subroutine build_fmod_parameter
 
-    subroutine build_fmod_derived_type(arena, context, node_index, dtype, &
+    module function fmod_kind_string(type_name) result(kind_text)
+        ! Normalise a declaration type name to the .fmod kind token.
+        ! This remains here because lowercase_text is private to the parent
+        ! lowering module; moving it would require exporting that unrelated
+        ! parser utility or introducing a second string-normalisation API.
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable :: kind_text
+        character(len=:), allocatable :: lowered
+
+        lowered = lowercase_text(type_name)
+        if (index(lowered, 'character') == 1) then
+            kind_text = 'character'
+        else if (index(lowered, 'real') == 1 .or. &
+                 index(lowered, 'double precision') == 1) then
+            kind_text = 'real'
+        else if (index(lowered, 'logical') == 1) then
+            kind_text = 'logical'
+        else if (index(lowered, 'integer') == 1) then
+            kind_text = 'integer'
+        else if (index(lowered, 'type(') == 1) then
+            kind_text = trim(type_name)
+        else
+            kind_text = trim(type_name)
+        end if
+    end function fmod_kind_string
+
+    module subroutine build_fmod_derived_type(arena, context, node_index, dtype, &
                                        error_msg)
         ! Serialise the layout the lowering context already computed for this
         ! type, not a second description re-derived from the AST. The context
@@ -1047,7 +1089,7 @@
         end do
     end subroutine build_fmod_derived_type
 
-    function fmod_component_kind_token(context, type_index, comp_index) &
+    module function fmod_component_kind_token(context, type_index, comp_index) &
             result(token)
         ! The canonical .fmod token for a component's value kind. A nested
         ! derived component reports 'derived'; its type travels in type_name.
@@ -1072,7 +1114,8 @@
         end select
     end function fmod_component_kind_token
 
-    integer function fmod_component_value_kind(token) result(value_kind)
+    module function fmod_component_value_kind(token) result(value_kind)
+        integer :: value_kind
         ! Inverse of fmod_component_kind_token; 0 when the token names no kind
         ! this ffc can lay out.
         character(len=*), intent(in) :: token
@@ -1088,26 +1131,4 @@
             value_kind = value_kind_of_token(token)
         end select
     end function fmod_component_value_kind
-
-    function fmod_kind_string(type_name) result(kind_text)
-        ! Normalise a declaration type name to the .fmod kind token.
-        character(len=*), intent(in) :: type_name
-        character(len=:), allocatable :: kind_text
-        character(len=:), allocatable :: lowered
-
-        lowered = lowercase_text(type_name)
-        if (index(lowered, 'character') == 1) then
-            kind_text = 'character'
-        else if (index(lowered, 'real') == 1 .or. &
-                 index(lowered, 'double precision') == 1) then
-            kind_text = 'real'
-        else if (index(lowered, 'logical') == 1) then
-            kind_text = 'logical'
-        else if (index(lowered, 'integer') == 1) then
-            kind_text = 'integer'
-        else if (index(lowered, 'type(') == 1) then
-            kind_text = trim(type_name)
-        else
-            kind_text = trim(type_name)
-        end if
-    end function fmod_kind_string
+end submodule session_program_lowering_fmod_exporter

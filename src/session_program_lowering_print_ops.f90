@@ -1,4 +1,7 @@
-    subroutine lower_print(arena, node, context, error_msg)
+submodule(session_program_lowering) session_program_lowering_print_ops
+    use session_program_lowering_print_ops_order
+contains
+    module subroutine lower_print(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -91,7 +94,7 @@
         call set_empty(error_msg)
     end subroutine lower_print
 
-    subroutine lower_formatted_print(arena, node, context, error_msg)
+    module subroutine lower_formatted_print(arena, node, context, error_msg)
         ! Formatted print with an explicit literal format string. The compound
         ! lowerer walks every edit descriptor (data, control, string-literal),
         ! applies repeat counts, and reverts the format across records, so it is
@@ -117,7 +120,8 @@
         end if
     end subroutine lower_formatted_print
 
-    subroutine parse_single_edit_descriptor(spec, kind_char, printf_fmt, error_msg)
+    module subroutine parse_single_edit_descriptor(spec, kind_char, printf_fmt, &
+                                                    error_msg)
         ! Translate a single Fortran edit descriptor to a printf conversion.
         ! Iw -> %wd (I0 -> %d), A[w] -> %[w]s. Compound formats are rejected.
         character(len=*), intent(in) :: spec
@@ -163,8 +167,8 @@
         end select
     end subroutine parse_single_edit_descriptor
 
-    subroutine lower_compound_formatted_print(arena, node, context, format_body, &
-                                              error_msg)
+    module subroutine lower_compound_formatted_print(arena, node, context, &
+                                                     format_body, error_msg)
         ! Walk the compound format once per record. When the format is exhausted
         ! but data items remain (format reversion, F2018 13.4), terminate the
         ! record with a newline and restart the format from the beginning until
@@ -214,9 +218,10 @@
         call set_empty(error_msg)
     end subroutine lower_compound_formatted_print
 
-    recursive subroutine lower_next_compound_descriptor(arena, node, context, &
-                                              format_body, pos, item_index, &
-                                              exhausted, error_msg)
+    recursive module subroutine lower_next_compound_descriptor(arena, node, context, &
+                                                              format_body, pos, &
+                                                              item_index, exhausted, &
+                                                              error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -303,8 +308,15 @@
                                         exhausted, error_msg)
         case ('F')
             call parse_decimal_digits(format_body, pos, width)
-            if (len(width) == 0 .or. pos > len_trim(format_body) .or. &
-                format_body(pos:pos) /= '.') then
+            if (len(width) == 0) then
+                error_msg = 'F edit descriptor requires width and precision'
+                return
+            end if
+            if (pos > len_trim(format_body)) then
+                error_msg = 'F edit descriptor requires width and precision'
+                return
+            end if
+            if (format_body(pos:pos) /= '.') then
                 error_msg = 'F edit descriptor requires width and precision'
                 return
             end if
@@ -346,8 +358,15 @@
                 pos = pos + 1
             end if
             call parse_decimal_digits(format_body, pos, width)
-            if (len(width) == 0 .or. pos > len_trim(format_body) .or. &
-                format_body(pos:pos) /= '.') then
+            if (len(width) == 0) then
+                error_msg = 'E edit descriptor requires width and precision'
+                return
+            end if
+            if (pos > len_trim(format_body)) then
+                error_msg = 'E edit descriptor requires width and precision'
+                return
+            end if
+            if (format_body(pos:pos) /= '.') then
                 error_msg = 'E edit descriptor requires width and precision'
                 return
             end if
@@ -415,9 +434,9 @@
         end select
     end subroutine lower_next_compound_descriptor
 
-    recursive subroutine lower_compound_group(arena, node, context, format_body, &
-                                              pos, repeat_count, item_index, &
-                                              exhausted, error_msg)
+    recursive module subroutine lower_compound_group(arena, node, context, &
+                                                     format_body, pos, repeat_count, &
+                                                     item_index, exhausted, error_msg)
         ! Lower a parenthesized group r(...). pos points at the opening '('.
         ! On entry the group body is walked repeat_count times; each walk runs
         ! the same descriptor list, stopping when the data items are exhausted.
@@ -454,7 +473,7 @@
         end do
     end subroutine lower_compound_group
 
-    subroutine find_group_close(text, open_pos, close_pos, error_msg)
+    module subroutine find_group_close(text, open_pos, close_pos, error_msg)
         ! Find the ')' matching the '(' at open_pos, tracking nesting depth and
         ! skipping parentheses that appear inside quoted string descriptors.
         character(len=*), intent(in) :: text
@@ -501,7 +520,7 @@
         error_msg = 'unterminated group in compound format'
     end subroutine find_group_close
 
-    subroutine skip_dot_modifier(format_body, pos)
+    module subroutine skip_dot_modifier(format_body, pos)
         ! Skip a trailing ".m" modifier (e.g. I5.3) without consuming the next
         ! descriptor.
         character(len=*), intent(in) :: format_body
@@ -516,9 +535,9 @@
         end if
     end subroutine skip_dot_modifier
 
-    subroutine repeat_data_descriptor(arena, node, context, kind_char, &
-                                      printf_fmt, buffer_size, repeat_count, &
-                                      item_index, exhausted, error_msg)
+    module subroutine repeat_data_descriptor(arena, node, context, kind_char, &
+                                             printf_fmt, buffer_size, repeat_count, &
+                                             item_index, exhausted, error_msg)
         ! Apply one data edit descriptor to repeat_count consecutive items,
         ! stopping early when the item list runs out.
         type(ast_arena_t), intent(in) :: arena
@@ -544,7 +563,8 @@
         end do
     end subroutine repeat_data_descriptor
 
-    subroutine lower_format_string_literal(context, format_body, pos, error_msg)
+    module subroutine lower_format_string_literal(context, format_body, pos, &
+                                                  error_msg)
         ! Emit a quoted character-string edit descriptor. Fortran doubles the
         ! delimiter to embed it ('' inside '...'); collapse those to one.
         type(lowering_context_t), intent(inout) :: context
@@ -567,10 +587,12 @@
                 return
             end if
             if (format_body(pos:pos) == quote) then
-                if (pos < n .and. format_body(pos + 1:pos + 1) == quote) then
-                    text = text//quote
-                    pos = pos + 2
-                    cycle
+                if (pos < n) then
+                    if (format_body(pos + 1:pos + 1) == quote) then
+                        text = text//quote
+                        pos = pos + 2
+                        cycle
+                    end if
                 end if
                 pos = pos + 1
                 exit
@@ -586,7 +608,7 @@
                 error_msg)) return
     end subroutine lower_format_string_literal
 
-    function ffc_unit_global_name(context, kind_tag, counter) result(name)
+    module function ffc_unit_global_name(context, kind_tag, counter) result(name)
         ! Build a per-unit .ffc content-global symbol name. When the unit carries
         ! a symbol prefix (a separately compiled module object), the prefix is
         ! inserted after '.ffc.' so the counter-numbered global does not collide
@@ -607,8 +629,9 @@
         end if
     end function ffc_unit_global_name
 
-    subroutine lower_compound_logical_descriptor(arena, node, context, width, &
-                                                 item_index, exhausted, error_msg)
+    module subroutine lower_compound_logical_descriptor(arena, node, context, width, &
+                                                        item_index, exhausted, &
+                                                        error_msg)
         ! Lw output: width-1 leading blanks then T/F (gfortran right-justifies).
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
@@ -641,9 +664,9 @@
         item_index = item_index + 1
     end subroutine lower_compound_logical_descriptor
 
-    subroutine lower_compound_data_descriptor(arena, node, context, kind_char, &
-                                              printf_fmt, buffer_size, &
-                                              item_index, exhausted, error_msg)
+    module subroutine lower_compound_data_descriptor(arena, node, context, kind_char, &
+                                                     printf_fmt, buffer_size, &
+                                                     item_index, exhausted, error_msg)
         ! Encountering a data descriptor with no remaining item terminates the
         ! format (exhausted=.true.); it is not an error (F2018 13.4).
         type(ast_arena_t), intent(in) :: arena
@@ -693,9 +716,9 @@
         call set_empty(error_msg)
     end subroutine lower_compound_data_descriptor
 
-    subroutine repeat_e_en_descriptor(arena, node, context, mode, width, &
-                                      precision, repeat_count, item_index, &
-                                      exhausted, error_msg)
+    module subroutine repeat_e_en_descriptor(arena, node, context, mode, width, &
+                                             precision, repeat_count, item_index, &
+                                             exhausted, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -722,8 +745,8 @@
         call set_empty(error_msg)
     end subroutine repeat_e_en_descriptor
 
-    subroutine lower_formatted_real_item(arena, node_index, context, fmt_id, &
-                                         buffer_size, error_msg)
+    module subroutine lower_formatted_real_item(arena, node_index, context, fmt_id, &
+                                               buffer_size, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -759,8 +782,8 @@
         call set_empty(error_msg)
     end subroutine lower_formatted_real_item
 
-    subroutine lower_formatted_e_en_real_item(arena, node_index, context, mode, &
-                                             width, precision, error_msg)
+    module subroutine lower_formatted_e_en_real_item(arena, node_index, context, mode, &
+                                                     width, precision, error_msg)
         use liric_session_format_bindings, only: emit_e_en_format_call
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index, mode, width, precision
@@ -791,7 +814,7 @@
         call set_empty(error_msg)
     end subroutine lower_formatted_e_en_real_item
 
-    subroutine read_decimal_value(digits, value, error_msg)
+    module subroutine read_decimal_value(digits, value, error_msg)
         character(len=*), intent(in) :: digits
         integer, intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
@@ -805,7 +828,7 @@
         call set_empty(error_msg)
     end subroutine read_decimal_value
 
-    subroutine parse_decimal_digits(text, pos, digits)
+    module subroutine parse_decimal_digits(text, pos, digits)
         character(len=*), intent(in) :: text
         integer, intent(inout) :: pos
         character(len=:), allocatable, intent(out) :: digits
@@ -823,23 +846,23 @@
         end if
     end subroutine parse_decimal_digits
 
-    logical function is_decimal_digit(ch)
+    module function is_decimal_digit(ch)
         character, intent(in) :: ch
+        logical :: is_decimal_digit
 
         is_decimal_digit = ch >= '0' .and. ch <= '9'
     end function is_decimal_digit
 
-    subroutine skip_format_separators(text, pos)
+    module subroutine skip_format_separators(text, pos)
         character(len=*), intent(in) :: text
         integer, intent(inout) :: pos
-
         do while (pos <= len_trim(text))
             if (text(pos:pos) /= ',' .and. text(pos:pos) /= ' ') exit
             pos = pos + 1
         end do
     end subroutine skip_format_separators
 
-    subroutine normalize_format_body(spec, body)
+    module subroutine normalize_format_body(spec, body)
         character(len=*), intent(in) :: spec
         character(len=:), allocatable, intent(out) :: body
         character :: outer_quote
@@ -875,7 +898,7 @@
         body = trim(adjustl(body))
     end subroutine normalize_format_body
 
-    subroutine collapse_doubled_quote(text, quote)
+    module subroutine collapse_doubled_quote(text, quote)
         ! Replace every doubled quote (quote//quote) with a single quote.
         character(len=:), allocatable, intent(inout) :: text
         character, intent(in) :: quote
@@ -886,19 +909,21 @@
         out = ''
         i = 1
         do while (i <= n)
-            if (i < n .and. text(i:i) == quote .and. text(i + 1:i + 1) == quote) then
-                out = out//quote
-                i = i + 2
-            else
-                out = out//text(i:i)
-                i = i + 1
+            if (i < n) then
+                if (text(i:i) == quote .and. text(i + 1:i + 1) == quote) then
+                    out = out//quote
+                    i = i + 2
+                    cycle
+                end if
             end if
+            out = out//text(i:i)
+            i = i + 1
         end do
         text = out
     end subroutine collapse_doubled_quote
 
-    subroutine lower_formatted_int_item(arena, node_index, context, fmt_id, &
-                                        error_msg)
+    module subroutine lower_formatted_int_item(arena, node_index, context, fmt_id, &
+                                               error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -912,8 +937,8 @@
                                              error_msg)) return
     end subroutine lower_formatted_int_item
 
-    subroutine lower_formatted_char_item(arena, node_index, context, fmt_id, &
-                                         error_msg)
+    module subroutine lower_formatted_char_item(arena, node_index, context, fmt_id, &
+                                                error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
@@ -959,7 +984,7 @@
                 end if
             end if
         end if
-        if (is_char_expr_call(arena, node_index) .or. &
+        if (is_char_expr_call(arena, node_index, context) .or. &
             is_character_concat(arena, node_index, context)) then
             call char_expr_operands(arena, node_index, context, data_ptr, &
                                     length, error_msg)
@@ -971,12 +996,9 @@
         error_msg = 'unsupported character argument for the A edit descriptor'
     end subroutine lower_formatted_char_item
 
-    logical function char_print_item(arena, node_index, context) result(is_char)
+    module procedure char_print_item
         ! Whether a print item evaluates to a character value. Used to suppress
         ! the list-directed separator between two consecutive character values.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
         character(len=:), allocatable :: id_name, id_err
 
@@ -1034,9 +1056,12 @@
                     return
                 end if
             end if
-            is_char = is_char_expr_call(arena, node_index)
+            is_char = is_char_expr_call(arena, node_index, context)
         type is (component_access_node)
             is_char = derived_component_access_kind(arena, node, context) == &
                       VALUE_CHARACTER
+        class default
+            is_char = .false.
         end select
-    end function char_print_item
+    end procedure char_print_item
+end submodule session_program_lowering_print_ops

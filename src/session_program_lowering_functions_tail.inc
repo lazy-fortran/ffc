@@ -43,6 +43,7 @@
         call copy_internal_function_names(parent_context, context)
         call copy_derived_type_table(parent_context, context)
         call copy_module_exports(parent_context, context)
+        call copy_external_procedures(parent_context, context)
         call copy_declaration_registry(parent_context, context)
         if (present(procedure_node_index)) then
             context%current_proc_node_index = procedure_node_index
@@ -58,6 +59,7 @@
         context%in_internal_function = .true.
         context%in_internal_subroutine = .true.
         context%current_proc_name = trim(node%name)
+        context%current_proc_bind_c = has_bind_c(node%bind_c_clause)
 
         param_count = 0
         if (allocated(node%param_indices)) param_count = size(node%param_indices)
@@ -82,15 +84,21 @@
             emit_name = nested_procedure_emit_name(arena, &
                 context%current_proc_node_index, node%name, node%bind_c_clause)
         end if
-        if (.not. begin_void_subroutine(context%session, emit_name, &
-                visible_param_count + hidden_extent_count + hidden_altret_count, &
-                error_msg)) return
+        if (context%current_proc_bind_c) then
+            if (.not. begin_bind_c_procedure(arena, emit_name, 0, &
+                    node%param_indices, node%body_indices, context, error_msg)) return
+        else
+            if (.not. begin_void_subroutine(context%session, emit_name, &
+                    visible_param_count + hidden_extent_count + hidden_altret_count, &
+                    error_msg)) return
+        end if
 
         call materialize_host_character_globals(context, error_msg)
         if (len_trim(error_msg) > 0) return
 
         call define_reference_parameters(arena, node%param_indices, context, &
-                                         error_msg, node%body_indices)
+                                         error_msg, node%body_indices, &
+                                         external_abi=context%current_proc_bind_c)
         if (len_trim(error_msg) > 0) return
 
         ! Rebind every assumed-shape dummy from its descriptor parameter.
@@ -995,13 +1003,14 @@
                     '.'//trim(base_name)
     end function nested_procedure_emit_name
 
-    function procedure_module(arena, fortran_name) result(module_name)
+    function procedure_module(arena, fortran_name, bind_c_clause) result(module_name)
         ! The module a procedure belongs to for mangling, or empty if not
         ! module-defined. A submodule's module procedure is owned by the
         ! ancestor module named in its parent reference (#292), so the call site
         ! mangles to __<parent>_MOD_<name> just like the interface it implements.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
+        character(len=:), allocatable, intent(out), optional :: bind_c_clause
         character(len=:), allocatable :: module_name
         character(len=:), allocatable :: node_type, mod_name, parent_module, &
                                          ff_error
@@ -1009,6 +1018,7 @@
         integer :: n, p
 
         call set_empty(module_name)
+        if (present(bind_c_clause)) call set_empty(bind_c_clause)
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
@@ -1027,6 +1037,10 @@
             if (size(procedure_indices) == 0) cycle
             do p = 1, size(procedure_indices)
                 if (procedure_node_named(arena, procedure_indices(p), fortran_name)) then
+                    if (present(bind_c_clause)) then
+                        call procedure_node_bind_c_clause(arena, procedure_indices(p), &
+                                                          bind_c_clause)
+                    end if
                     if (node_type == 'submodule_node' .or. &
                         node_type == 'submodule') then
                         module_name = trim(parent_module)
@@ -1064,6 +1078,25 @@
         end if
     end function procedure_node_named
 
+    subroutine procedure_node_bind_c_clause(arena, node_index, bind_c_clause)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: bind_c_clause
+
+        call set_empty(bind_c_clause)
+        if (.not. node_exists(arena, node_index)) return
+        select type (procedure => arena%entries(node_index)%node)
+        type is (function_def_node)
+            if (allocated(procedure%bind_c_clause)) &
+                bind_c_clause = procedure%bind_c_clause
+        type is (subroutine_def_node)
+            if (allocated(procedure%bind_c_clause)) &
+                bind_c_clause = procedure%bind_c_clause
+        class default
+            return
+        end select
+    end subroutine procedure_node_bind_c_clause
+
     function module_procedure_mangled(module_name, proc_name) result(mangled)
         ! gfortran convention: __<module>_MOD_<procedure>.
         character(len=*), intent(in) :: module_name, proc_name
@@ -1080,7 +1113,7 @@
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: fortran_name
         type(lowering_context_t), intent(in), optional :: current_context
-        character(len=:), allocatable :: emit_name, module_name
+        character(len=:), allocatable :: emit_name, module_name, bind_c_clause
         character(len=:), allocatable :: node_type
         integer :: nested_node_index
         integer :: n
@@ -1122,9 +1155,13 @@
                 return
             end if
         end if
-        module_name = procedure_module(arena, fortran_name)
+        module_name = procedure_module(arena, fortran_name, bind_c_clause)
         if (len_trim(module_name) > 0) then
-            emit_name = module_procedure_mangled(module_name, fortran_name)
+            if (has_bind_c(bind_c_clause)) then
+                emit_name = procedure_emit_name(fortran_name, bind_c_clause)
+            else
+                emit_name = module_procedure_mangled(module_name, fortran_name)
+            end if
             return
         end if
         emit_name = trim(fortran_name)
@@ -1328,9 +1365,126 @@
         end if
     end function procedure_value_kind
 
+    logical function is_bind_c_scalar_result_kind(value_kind)
+        integer, intent(in) :: value_kind
+
+        is_bind_c_scalar_result_kind = value_kind == VALUE_I32 .or. &
+            value_kind == VALUE_I64 .or. value_kind == VALUE_F32 .or. &
+            value_kind == VALUE_F64 .or. value_kind == VALUE_I8 .or. &
+            value_kind == VALUE_I16 .or. value_kind == VALUE_LOGICAL
+    end function is_bind_c_scalar_result_kind
+
+    logical function is_bind_c_direct_value_kind(value_kind)
+        integer, intent(in) :: value_kind
+
+        is_bind_c_direct_value_kind = &
+            is_bind_c_scalar_result_kind(value_kind) .or. &
+            value_kind == VALUE_C_PTR .or. value_kind == VALUE_CHARACTER
+    end function is_bind_c_direct_value_kind
+
+    function bind_c_value_type(context, value_kind) result(value_type)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: value_kind
+        type(c_ptr) :: value_type
+
+        select case (value_kind)
+        case (VALUE_I64)
+            value_type = lr_type_i64_s(context%session%handle)
+        case (VALUE_F32)
+            value_type = lr_type_f32_s(context%session%handle)
+        case (VALUE_F64)
+            value_type = lr_type_f64_s(context%session%handle)
+        case (VALUE_I8, VALUE_CHARACTER)
+            value_type = lr_type_i8_s(context%session%handle)
+        case (VALUE_I16)
+            value_type = lr_type_i16_s(context%session%handle)
+        case (VALUE_C_PTR)
+            value_type = lr_type_ptr_s(context%session%handle)
+        case default
+            value_type = lr_type_i32_s(context%session%handle)
+        end select
+    end function bind_c_value_type
+
+    function bind_c_value_param(context, param_index, value_kind) result(value)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: param_index
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t) :: value
+        integer(c_int32_t) :: vreg
+
+        vreg = lr_session_param(context%session%handle, &
+            int(param_index, c_int32_t))
+        value%kind = LR_OP_KIND_VREG
+        value%payload = int(vreg, c_int64_t)
+        value%typ = bind_c_value_type(context, value_kind)
+        value%global_offset = 0_c_int64_t
+    end function bind_c_value_param
+
+    logical function begin_bind_c_procedure(arena, name, result_kind, &
+            param_indices, body_indices, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: result_kind
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(c_ptr), allocatable, target :: param_types(:)
+        type(c_ptr) :: result_type
+        character(len=:), allocatable :: intent_token, dummy_name, name_error
+        integer :: i, slot, count, value_kind
+        logical :: is_optional, is_value
+
+        begin_bind_c_procedure = .false.
+        call set_empty(error_msg)
+        if (result_kind == 0) then
+            result_type = lr_type_void_s(context%session%handle)
+        else
+            result_type = bind_c_value_type(context, result_kind)
+        end if
+        if (.not. c_associated(result_type)) then
+            error_msg = 'LIRIC did not return a BIND(C) result type'
+            return
+        end if
+
+        count = 0
+        if (allocated(param_indices)) then
+            do i = 1, size(param_indices)
+                if (.not. is_alternate_return_dummy(arena, param_indices(i))) &
+                    count = count + 1
+            end do
+        end if
+        allocate(param_types(count))
+        slot = 0
+        if (allocated(param_indices)) then
+            do i = 1, size(param_indices)
+                if (is_alternate_return_dummy(arena, param_indices(i))) cycle
+                slot = slot + 1
+                value_kind = param_at_value_kind(arena, param_indices, &
+                    body_indices, i, context)
+                if (value_kind == 0) value_kind = VALUE_I32
+                call parameter_name(arena, param_indices(i), dummy_name, name_error)
+                if (len_trim(name_error) > 0) then
+                    error_msg = name_error
+                    return
+                end if
+                call param_at_attributes(arena, param_indices, body_indices, i, &
+                    intent_token, is_optional, is_value)
+                if (is_value .and. is_bind_c_direct_value_kind(value_kind)) then
+                    param_types(slot) = bind_c_value_type(context, value_kind)
+                else
+                    param_types(slot) = lr_type_ptr_s(context%session%handle)
+                end if
+            end do
+        end if
+        begin_bind_c_procedure = begin_typed_function(context%session, name, &
+            result_type, param_types, error_msg, external_abi=.true.)
+    end function begin_bind_c_procedure
+
     subroutine define_reference_parameters(arena, param_indices, context, &
                                             error_msg, body_indices, &
-                                            param_offset, return_value_kind)
+                                            param_offset, return_value_kind, &
+                                            external_abi)
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: param_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -1338,12 +1492,16 @@
         integer, allocatable, intent(in), optional :: body_indices(:)
         integer, intent(in), optional :: param_offset
         integer, intent(in), optional :: return_value_kind
+        logical, intent(in), optional :: external_abi
         character(len=:), allocatable :: name
         integer :: offset
         integer :: i
         integer :: slot
         integer :: value_kind
         integer :: rvk
+        logical :: direct_value
+        logical :: is_optional, is_value
+        character(len=:), allocatable :: intent_token
 
         call set_empty(error_msg)
         offset = 0
@@ -1385,9 +1543,19 @@
                     end if
                 end if
             end if
+            direct_value = .false.
+            if (present(external_abi)) then
+                if (external_abi .and. present(body_indices)) then
+                    call param_at_attributes(arena, param_indices, body_indices, i, &
+                        intent_token, is_optional, is_value)
+                    direct_value = is_value .and. &
+                        is_bind_c_direct_value_kind(value_kind)
+                end if
+            end if
             call define_parameter_symbol(context, name, slot - 1 + offset, &
                                          value_kind, error_msg, &
-                                         parameter_node_index=param_indices(i))
+                                         parameter_node_index=param_indices(i), &
+                                         direct_value=direct_value)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine define_reference_parameters
@@ -1580,13 +1748,14 @@
     end subroutine parameter_name
 
     subroutine define_parameter_symbol(context, name, param_index, value_kind, &
-                                      error_msg, parameter_node_index)
+                                      error_msg, parameter_node_index, direct_value)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: param_index
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
         integer, intent(in), optional :: parameter_node_index
+        logical, intent(in), optional :: direct_value
         integer :: index
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: binding_error
@@ -1615,11 +1784,22 @@
         end if
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = value_kind
-        context%symbols(index)%address = ptr_param(context%session, param_index)
-        context%symbols(index)%has_address = .true.
-        context%symbols(index)%is_reference = .true.
+        if (present(direct_value) .and. direct_value) then
+            context%symbols(index)%value = bind_c_value_param( &
+                context, param_index, value_kind)
+            context%symbols(index)%has_address = .false.
+            context%symbols(index)%is_reference = .false.
+        else
+            context%symbols(index)%address = ptr_param(context%session, param_index)
+            context%symbols(index)%has_address = .true.
+            context%symbols(index)%is_reference = .true.
+        end if
         context%symbols(index)%is_dummy_argument = .true.
-        if (value_kind == VALUE_C4) then
+        if (present(direct_value) .and. direct_value) then
+            ! A C VALUE scalar already is the expression value. Keep the
+            ! ordinary address-based complex/reference handling below out of
+            ! this path; direct VALUE support is limited to primitive scalars.
+        else if (value_kind == VALUE_C4) then
             if (.not. emit_ptr_offset(context%session, &
                     context%symbols(index)%address, 4_c_int64_t, &
                     context%symbols(index)%element_address, error_msg)) return

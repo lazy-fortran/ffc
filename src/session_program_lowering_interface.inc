@@ -647,6 +647,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: ret_kind, n
         character(len=:), allocatable :: c_name
+        integer, allocatable :: arg_kinds(:), arg_intents(:), arg_ranks(:), &
+            arg_extents(:)
+        character(len=64), allocatable :: arg_names(:)
+        logical, allocatable :: arg_optionals(:), arg_values(:)
 
         if (.not. node_exists(arena, proc_index)) then
             error_msg = 'interface procedure index does not reference a node'
@@ -671,12 +675,6 @@
                                           context)
                 if (len_trim(error_msg) > 0) return
             end if
-            if (ret_kind /= VALUE_I32) then
-                call unsupported_feature_error('interface declaration', &
-                    proc%line, proc%column, 'only integer bind(c) interface '// &
-                    'functions are supported', error_msg)
-                return
-            end if
             call bind_c_name(proc%bind_c_clause, proc%name, c_name)
             n = 0
             if (allocated(proc%param_indices)) n = size(proc%param_indices)
@@ -684,7 +682,16 @@
                 error_msg = 'bind(c) interface has too many arguments'
                 return
             end if
-            call add_external_procedure(context, proc%name, c_name, VALUE_I32, n)
+            call interface_argument_metadata(arena, context, proc%param_indices, &
+                                              proc%body_indices, arg_kinds, &
+                                              arg_names, arg_optionals, arg_values, &
+                                              arg_intents, arg_ranks, arg_extents, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            call add_external_procedure(context, proc%name, c_name, ret_kind, n, &
+                                        .false., arg_kinds, arg_names, &
+                                        arg_optionals, arg_values, arg_intents, &
+                                        arg_ranks, arg_extents, is_bind_c=.true.)
         type is (subroutine_def_node)
             if (.not. has_bind_c(proc%bind_c_clause)) then
                 ! Plain explicit interface for an external/dummy subroutine:
@@ -701,8 +708,17 @@
                 error_msg = 'bind(c) interface has too many arguments'
                 return
             end if
+            call interface_argument_metadata(arena, context, proc%param_indices, &
+                                              proc%body_indices, arg_kinds, &
+                                              arg_names, arg_optionals, arg_values, &
+                                              arg_intents, arg_ranks, arg_extents, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
             call add_external_procedure(context, proc%name, c_name, &
-                                        VALUE_SUBROUTINE, n)
+                                        VALUE_SUBROUTINE, n, .false., arg_kinds, &
+                                        arg_names, arg_optionals, arg_values, &
+                                        arg_intents, arg_ranks, arg_extents, &
+                                        is_bind_c=.true.)
         class default
             call unsupported_feature_error('interface declaration', block%line, &
                 block%column, 'only bind(c) interface functions are supported', &
@@ -711,11 +727,119 @@
         call set_empty(error_msg)
     end subroutine register_interface_procedure
 
+    subroutine interface_argument_metadata(arena, context, param_indices, &
+                                           body_indices, arg_kinds, arg_names, &
+                                           arg_optionals, arg_values, arg_intents, &
+                                           arg_ranks, arg_extents, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable, intent(in) :: param_indices(:), body_indices(:)
+        integer, allocatable, intent(out) :: arg_kinds(:), arg_intents(:), &
+            arg_ranks(:), arg_extents(:)
+        character(len=64), allocatable, intent(out) :: arg_names(:)
+        logical, allocatable, intent(out) :: arg_optionals(:), arg_values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, name_err, intent_token
+        integer :: i, value_kind, rank, extent
+        logical :: is_optional, is_value
+
+        call set_empty(error_msg)
+        if (.not. allocated(param_indices)) then
+            allocate (arg_kinds(0), arg_names(0), arg_optionals(0), &
+                      arg_values(0), arg_intents(0), arg_ranks(0), arg_extents(0))
+            return
+        end if
+        allocate (arg_kinds(size(param_indices)), arg_names(size(param_indices)), &
+                  arg_optionals(size(param_indices)), arg_values(size(param_indices)), &
+                  arg_intents(size(param_indices)), arg_ranks(size(param_indices)), &
+                  arg_extents(size(param_indices)))
+        do i = 1, size(param_indices)
+            value_kind = param_at_value_kind(arena, param_indices, body_indices, i, &
+                                             context)
+            rank = 0
+            extent = 0
+            if (value_kind == 0) then
+                call param_at_array_shape(arena, context, param_indices, &
+                                          body_indices, i, value_kind, rank, extent)
+                if (value_kind == 0) then
+                    call bind_c_interface_array_shape(arena, context, param_indices, &
+                                                      body_indices, i, value_kind, &
+                                                      rank, extent)
+                end if
+            end if
+            if (value_kind == 0 .and. param_at_is_character(arena, param_indices, &
+                                                             body_indices, i)) then
+                value_kind = VALUE_CHARACTER
+            end if
+            if (value_kind == 0) then
+                error_msg = 'unsupported BIND(C) interface argument'
+                return
+            end if
+            call parameter_name(arena, param_indices(i), name, name_err)
+            if (len_trim(name_err) > 0) then
+                error_msg = name_err
+                return
+            end if
+            arg_kinds(i) = value_kind
+            arg_names(i) = trim(name)
+            call param_at_attributes(arena, param_indices, body_indices, i, &
+                                     intent_token, is_optional, is_value)
+            arg_optionals(i) = is_optional
+            arg_values(i) = is_value
+            arg_intents(i) = arg_intent_code(intent_token)
+            arg_ranks(i) = rank
+            arg_extents(i) = extent
+        end do
+    end subroutine interface_argument_metadata
+
+    subroutine bind_c_interface_array_shape(arena, context, param_indices, &
+                                            body_indices, pos, value_kind, rank, &
+                                            extent)
+        ! BIND(C) explicit-shape and assumed-size arrays need only their element
+        ! kind and rank at the call site. Their extent may be runtime-sized (b(n))
+        ! or intentionally omitted (b(*)); unlike a module fmod signature, the C
+        ! ABI does not require a compile-time element count.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable, intent(in) :: param_indices(:), body_indices(:)
+        integer, intent(in) :: pos
+        integer, intent(out) :: value_kind, rank, extent
+        character(len=:), allocatable :: name, name_err, kind_err
+        integer :: i
+
+        value_kind = 0
+        rank = 0
+        extent = 0
+        if (.not. allocated(param_indices)) return
+        if (pos < 1 .or. pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (decl%is_allocatable .or. decl%is_pointer) return
+                if (.not. declaration_declares_name(decl, &
+                    trim(lowercase_text(name)))) cycle
+                if (.not. allocated(decl%dimension_indices)) return
+                call declaration_value_kind(decl, value_kind, kind_err, context)
+                if (len_trim(kind_err) > 0) then
+                    value_kind = 0
+                    return
+                end if
+                rank = size(decl%dimension_indices)
+                return
+            end select
+        end do
+    end subroutine bind_c_interface_array_shape
+
     subroutine add_external_procedure(context, fortran_name, c_name, &
                                       return_kind, arg_count, by_reference, &
                                       arg_kinds, arg_names, arg_optionals, &
                                       arg_values, arg_intents, arg_ranks, &
-                                      arg_extents)
+                                      arg_extents, is_bind_c)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
@@ -727,8 +851,10 @@
         integer, intent(in), optional :: arg_intents(:)
         integer, intent(in), optional :: arg_ranks(:)
         integer, intent(in), optional :: arg_extents(:)
+        logical, intent(in), optional :: is_bind_c
         integer :: j
 
+        if (external_procedure_index(context, trim(fortran_name)) > 0) return
         call grow_external_procedures(context)
         context%external_procedure_count = context%external_procedure_count + 1
         associate (ep => context%external_procedures( &
@@ -739,6 +865,8 @@
             ep%arg_count = arg_count
             ep%by_reference = .false.
             if (present(by_reference)) ep%by_reference = by_reference
+            ep%is_bind_c = .false.
+            if (present(is_bind_c)) ep%is_bind_c = is_bind_c
             do j = 1, arg_count
                 ep%arg_value_kinds(j) = VALUE_I32
             end do
@@ -829,6 +957,48 @@
                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_module_proc_i32_call
+
+    subroutine lower_module_proc_f64_call(arena, node, ext_idx, context, value, &
+                                          error_msg, callee_name)
+        ! Lower a separately compiled real(8) function. Arguments use the
+        ! ordinary Fortran by-reference ABI, while the result is returned as
+        ! an f64 value.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: callee_name
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: resolved_name
+        integer :: empty_args(0)
+
+        resolved_name = trim(node%name)
+        if (present(callee_name)) resolved_name = trim(callee_name)
+        if (allocated(node%arg_indices)) then
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         resolved_name, node%arg_indices, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) return
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_F64, resolved_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         resolved_name, empty_args, error_msg)
+            if (len_trim(error_msg) > 0) return
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+        call pad_absent_optional_args(context, ext_idx, args, copyback_indices)
+        if (.not. emit_liric_f64_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, value, &
+                error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_module_proc_f64_call
 
     subroutine lower_module_proc_void_call(arena, node_index, ext_idx, context, &
                                            error_msg)
@@ -968,6 +1138,7 @@
         type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: n, i
+        type(lr_operand_desc_t) :: char_data, char_length
 
         n = 0
         if (allocated(arg_indices)) n = size(arg_indices)
@@ -978,6 +1149,15 @@
                 args(i)%payload = 0_c_int64_t
                 args(i)%typ = lr_type_ptr_s(context%session%handle)
                 args(i)%global_offset = 0_c_int64_t
+            else if (is_character_operand(arena, arg_indices(i), context)) then
+                ! A scalar CHARACTER(len=1) dummy in a BIND(C) interface is
+                ! passed as the address of its character storage, not as the
+                ! internal character descriptor.  This also handles a
+                ! temporary expression such as `s // c_null_char` (#584).
+                call char_expr_operands(arena, arg_indices(i), context, &
+                                        char_data, char_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+                args(i) = char_data
             else
                 call lower_i32_expression(arena, arg_indices(i), context, &
                                           args(i), error_msg)
@@ -999,11 +1179,101 @@
         is_c_null_ptr_arg = same_name(id_name, 'c_null_ptr')
     end function is_c_null_ptr_arg
 
+    subroutine prepare_bind_c_args(arena, actual_indices, ext_idx, context, args, &
+                                   copyback_indices, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: actual_indices(:)
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
+        integer, allocatable, intent(out) :: copyback_indices(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: mapped(:)
+        integer :: p, actual, arg_count, value_kind, actual_kind
+        type(lr_operand_desc_t) :: value, complex_value, char_length
+        character(len=:), allocatable :: callee_name
+
+        call set_empty(error_msg)
+        callee_name = trim(context%external_procedures(ext_idx)%fortran_name)
+        call check_module_call_arity(arena, context, ext_idx, callee_name, &
+                                     actual_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call resolve_keyword_actuals(arena, context, actual_indices, callee_name, &
+                                     0, mapped, error_msg)
+        if (len_trim(error_msg) > 0) return
+        arg_count = context%external_procedures(ext_idx)%arg_count
+        allocate (args(arg_count), copyback_indices(arg_count))
+        copyback_indices = 0
+        do p = 1, arg_count
+            actual = 0
+            if (p <= size(mapped)) actual = mapped(p)
+            if (actual <= 0) then
+                args(p) = absent_optional_operand(context)
+                cycle
+            end if
+            value_kind = context%external_procedures(ext_idx)%arg_value_kinds(p)
+            if (context%external_procedures(ext_idx)%arg_is_value(p)) then
+                if (value_kind == VALUE_CHARACTER) then
+                    error_msg = 'BIND(C), VALUE character arguments are not lowered'
+                    return
+                else if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+                    call prepare_reference_arg(arena, actual, context, value_kind, &
+                                               args(p), copyback_indices(p), &
+                                               error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_complex_value_load(context%session, args(p), &
+                            value_kind == VALUE_C8, complex_value, error_msg)) return
+                    args(p) = complex_value
+                    copyback_indices(p) = 0
+                else
+                    ! The direct-session representation uses i64 for default
+                    ! integers, while a BIND(C), VALUE c_int dummy is i32.
+                    ! Convert at this ABI boundary instead of weakening the
+                    ! scalar expression evaluators globally.
+                    actual_kind = expression_value_kind(arena, actual, context, &
+                                                        value_kind)
+                    if (value_kind == VALUE_I32 .and. &
+                        actual_kind == VALUE_I64) then
+                        call lower_i64_expression(arena, actual, context, value, &
+                                                  error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_liric_i64_to_i32(context%session, value, &
+                                                       args(p), error_msg)) return
+                    else
+                        call lower_expression_by_kind(arena, actual, context, &
+                                                      value_kind, value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        args(p) = value
+                    end if
+                end if
+            else if (value_kind == VALUE_CHARACTER) then
+                call char_expr_operands(arena, actual, context, args(p), &
+                                        char_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (context%external_procedures(ext_idx)%arg_ranks(p) > 0) then
+                if (actual_is_whole_array(arena, actual, context)) then
+                    call whole_array_actual_address(arena, actual, context, args(p), &
+                                                    error_msg)
+                else if (actual_is_array_expression(arena, actual, context)) then
+                    call array_expression_actual_address(arena, actual, context, &
+                        callee_name, p, value_kind, args(p), error_msg)
+                else if (actual_is_contiguous_section(arena, actual, context)) then
+                    call section_actual_address(arena, actual, context, args(p), &
+                                                error_msg)
+                else
+                    error_msg = 'BIND(C) array actual is not contiguous'
+                end if
+                if (len_trim(error_msg) > 0) return
+            else
+                call prepare_reference_arg(arena, actual, context, value_kind, &
+                                           args(p), copyback_indices(p), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        end do
+    end subroutine prepare_bind_c_args
+
     subroutine lower_external_i32_call(arena, node, ext_idx, context, value, &
                                        error_msg)
-        ! Lower a call to a registered bind(c) integer function: each argument
-        ! is passed by value (bind(c) value semantics) and the call targets the
-        ! C symbol name.
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         integer, intent(in) :: ext_idx
@@ -1011,24 +1281,21 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
-        integer :: n
+        integer, allocatable :: copyback_indices(:)
+        integer :: empty_args(0)
 
-        n = 0
-        if (allocated(node%arg_indices)) n = size(node%arg_indices)
-        if (n /= context%external_procedures(ext_idx)%arg_count) then
-            call unsupported_feature_error('external function call', node%line, &
-                node%column, 'argument count does not match the bind(c) '// &
-                'interface for '//trim(node%name), error_msg)
-            return
+        if (allocated(node%arg_indices)) then
+            call prepare_bind_c_args(arena, node%arg_indices, ext_idx, context, &
+                                     args, copyback_indices, error_msg)
+        else
+            call prepare_bind_c_args(arena, empty_args, ext_idx, context, args, &
+                                     copyback_indices, error_msg)
         end if
-
-        call prepare_external_args(arena, node%arg_indices, context, args, &
-                                   error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_call(context%session, &
+        if (.not. emit_c_i32_call(context%session, &
                 trim(context%external_procedures(ext_idx)%c_name), args, value, &
                 error_msg)) return
-        call set_empty(error_msg)
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_external_i32_call
 
     subroutine lower_external_void_call(arena, node_index, ext_idx, context, &
@@ -1041,24 +1308,56 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer, allocatable :: arg_indices(:)
         type(lr_operand_desc_t), allocatable :: args(:)
-        integer :: n
+        type(lr_operand_desc_t) :: value
+        integer, allocatable :: copyback_indices(:)
+        integer :: n, empty_args(0)
 
         call get_subroutine_call_arg_indices(arena, node_index, arg_indices, &
                                              error_msg)
         if (len_trim(error_msg) > 0) return
         n = 0
         if (allocated(arg_indices)) n = size(arg_indices)
-        if (n /= context%external_procedures(ext_idx)%arg_count) then
-            error_msg = 'argument count does not match the bind(c) interface'
-            return
+        if (n > 0) then
+            call prepare_bind_c_args(arena, arg_indices, ext_idx, context, args, &
+                                     copyback_indices, error_msg)
+        else
+            call prepare_bind_c_args(arena, empty_args, ext_idx, context, args, &
+                                     copyback_indices, error_msg)
         end if
-        call prepare_external_args(arena, arg_indices, context, args, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_void_call(context%session, &
+        if (.not. emit_c_void_call(context%session, &
                 trim(context%external_procedures(ext_idx)%c_name), args, &
                 error_msg)) return
-        call set_empty(error_msg)
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_external_void_call
+
+    subroutine lower_external_complex_call(arena, node, ext_idx, context, &
+                                           is_double, re_value, im_value, &
+                                           error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: is_double
+        type(lr_operand_desc_t), intent(out) :: re_value, im_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: empty_args(0)
+
+        if (allocated(node%arg_indices)) then
+            call prepare_bind_c_args(arena, node%arg_indices, ext_idx, context, &
+                                     args, copyback_indices, error_msg)
+        else
+            call prepare_bind_c_args(arena, empty_args, ext_idx, context, args, &
+                                     copyback_indices, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_c_complex_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, &
+                is_double, re_value, im_value, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_external_complex_call
 
     integer function external_procedure_index(context, name) result(idx)
         type(lowering_context_t), intent(in) :: context
@@ -1088,6 +1387,24 @@
         allocate (context%external_procedures(2 * size(old)))
         context%external_procedures(1:size(old)) = old
     end subroutine grow_external_procedures
+
+    subroutine copy_external_procedures(source, destination)
+        ! Procedure bodies lower in a child context, but USE-associated .fmod
+        ! calls remain part of the translation-unit contract. Preserve those
+        ! callable identities and ABI records across that context boundary
+        ! (#584).
+        type(lowering_context_t), intent(in) :: source
+        type(lowering_context_t), intent(inout) :: destination
+        integer :: capacity
+
+        destination%external_procedure_count = 0
+        if (source%external_procedure_count <= 0) return
+        capacity = max(8, source%external_procedure_count)
+        allocate (destination%external_procedures(capacity))
+        destination%external_procedure_count = source%external_procedure_count
+        destination%external_procedures(1:source%external_procedure_count) = &
+            source%external_procedures(1:source%external_procedure_count)
+    end subroutine copy_external_procedures
 
  function degeneric_call_name(context, name, call_arg_count, call_arg_kinds, &
                                 call_arg_ranks) &

@@ -107,6 +107,185 @@ module liric_session_real_print_bindings
         end function lr_type_void_s
     end interface
 
+    interface
+    module function synthesize_get_arg_helper(session, error_msg)
+            logical :: synthesize_get_arg_helper
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function synthesize_get_arg_helper
+    module function emit_get_arg_call(session, index_op, argv_op, dest_op, &
+                                       destlen_op, error_msg)
+            logical :: emit_get_arg_call
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: index_op, argv_op, dest_op
+        type(lr_operand_desc_t), intent(in) :: destlen_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_get_arg_call
+    module function typed_param(session, index, typ) result(operand)
+            type(lr_operand_desc_t) :: operand
+        type(liric_session_t), intent(in) :: session
+        integer, intent(in) :: index
+        type(c_ptr), intent(in) :: typ
+        end function typed_param
+    module function emit_call6(session, callee_name, head_args, tail_arg, error_msg)
+            logical :: emit_call6
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: callee_name
+        type(lr_operand_desc_t), intent(in) :: head_args(5)
+        type(lr_operand_desc_t), intent(in) :: tail_arg
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_call6
+    module function emit_cast(session, op, src, dst_typ, result, error_msg)
+            logical :: emit_cast
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int), intent(in) :: op
+        type(lr_operand_desc_t), intent(in) :: src
+        type(c_ptr), intent(in) :: dst_typ
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_cast
+    module function gep_index(session, base, index_op, elem_typ, result, error_msg)
+            logical :: gep_index
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base, index_op
+        type(c_ptr), intent(in) :: elem_typ
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function gep_index
+    module function load_typed(session, addr, typ, result, error_msg)
+            logical :: load_typed
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: addr
+        type(c_ptr), intent(in) :: typ
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function load_typed
+    module function emit_snprintf(session, args, error_msg)
+            logical :: emit_snprintf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_snprintf
+    module function emit_sscanf(session, args, error_msg)
+            logical :: emit_sscanf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_sscanf
+    module function emit_scanf(session, args, error_msg)
+            logical :: emit_scanf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_scanf
+    module function emit_fscanf(session, args, error_msg)
+            logical :: emit_fscanf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_fscanf
+    module function emit_fscanf_count(session, args, result, error_msg)
+            logical :: emit_fscanf_count
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_fscanf_count
+    module function emit_fprintf(session, args, error_msg)
+            logical :: emit_fprintf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_fprintf
+    module function emit_dprintf(session, args, error_msg)
+            logical :: emit_dprintf
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_dprintf
+    module function emit_getchar(session, result, error_msg)
+            logical :: emit_getchar
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_getchar
+    module function emit_exit(session, code, error_msg)
+            logical :: emit_exit
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: code
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_exit
+    module function emit_call(session, callee_name, args, ret_typ, fixed_args, &
+                               vararg, vreg, error_msg)
+            logical :: emit_call
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: callee_name
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(c_ptr), intent(in) :: ret_typ
+        integer(c_int32_t), intent(in) :: fixed_args
+        logical(c_bool), intent(in) :: vararg
+        integer(c_int32_t), intent(out) :: vreg
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_call
+    module function gep_byte(session, base, offset, result, error_msg)
+            logical :: gep_byte
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: base
+        integer(c_int64_t), intent(in) :: offset
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function gep_byte
+    module function store_zero_byte(session, addr, error_msg)
+            logical :: store_zero_byte
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function store_zero_byte
+    module function make_callee(session, name, operand, error_msg)
+            logical :: make_callee
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(lr_operand_desc_t), intent(out) :: operand
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function make_callee
+    module function declare_libc(session, error_msg)
+            logical :: declare_libc
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function declare_libc
+    module function declare_one(session, name, ret, params, n, vararg, error_msg)
+            logical :: declare_one
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        type(c_ptr), intent(in) :: ret
+        type(c_ptr), intent(in) :: params
+        integer(c_int32_t), intent(in) :: n
+        logical(c_bool), intent(in) :: vararg
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function declare_one
+    module function create_cstring(session, name, text, operand, error_msg)
+            logical :: create_cstring
+        type(liric_session_t), intent(inout) :: session
+        character(len=*), intent(in) :: name
+        character(len=*), intent(in) :: text
+        type(lr_operand_desc_t), intent(out) :: operand
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function create_cstring
+    module function begin_real8_printer(session, param_vreg, entry_block, &
+                                         error_msg)
+            logical :: begin_real8_printer
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int32_t), intent(out) :: param_vreg
+        integer(c_int32_t), intent(out) :: entry_block
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function begin_real8_printer
+    module function emit_ret_void_local(session, error_msg)
+            logical :: emit_ret_void_local
+        type(liric_session_t), intent(inout) :: session
+        character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_ret_void_local
+    end interface
+
 contains
 
     logical function synthesize_real8_printer(session, error_msg)
@@ -848,6 +1027,5 @@ contains
             c_true, vreg, error_msg)
     end function emit_exp_format_r4
 
-    include 'liric_session_real_print_bindings_tail.inc'
 
 end module liric_session_real_print_bindings

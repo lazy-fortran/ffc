@@ -746,6 +746,13 @@
         end if
         handled = .false.
 
+        if (compare_vk == VALUE_C4 .or. compare_vk == VALUE_C8) then
+            call try_complex_array_mask_reduction(arena, context, op, lsym, &
+                rsym, lflat, rflat, lscalar, rscalar, extent, is_all, handled, &
+                value, error_msg)
+            return
+        end if
+
         select case (compare_vk)
         case (VALUE_F32, VALUE_F64)
             call real_compare_predicate(op, predicate, error_msg)
@@ -793,6 +800,148 @@
         handled = .true.
         call set_empty(error_msg)
     end subroutine try_array_mask_reduction
+
+    subroutine try_complex_array_mask_reduction(arena, context, op, lsym, &
+                                                rsym, lflat, rflat, lscalar, &
+                                                rscalar, extent, is_all, &
+                                                handled, value, error_msg)
+        ! ANY/ALL over complex equality is defined componentwise: equality is
+        ! (re==re .and. im==im), while inequality is the negation. Fortran does
+        ! not define ordering comparisons for complex values.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: op
+        integer, intent(in) :: lsym, rsym, lscalar, rscalar, extent
+        integer, allocatable, intent(in) :: lflat(:), rflat(:)
+        logical, intent(in) :: is_all
+        logical, intent(out) :: handled
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lre, lim, rre, rim, re_cond, im_cond
+        type(lr_operand_desc_t) :: condition, accumulator, next_acc
+        integer(c_int) :: predicate
+        integer :: i
+        logical :: is_equal
+
+        handled = .false.
+        call set_empty(error_msg)
+        is_equal = trim(op) == '==' .or. trim(op) == '=' .or. &
+                   trim(op) == '.eq.'
+        if (.not. is_equal .and. trim(op) /= '/=' .and. trim(op) /= '!=' .and. &
+            trim(op) /= '.ne.') return
+        if (is_equal) then
+            call real_compare_predicate('==', predicate, error_msg)
+        else
+            call real_compare_predicate('/=', predicate, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        if (is_all) then
+            accumulator = i32_immediate(context%session, 1_c_int64_t)
+        else
+            accumulator = i32_immediate(context%session, 0_c_int64_t)
+        end if
+        do i = 0, extent - 1
+            call reduction_complex_side_element(arena, context, lsym, lflat, &
+                lscalar, i, context_complex_compare_kind(context, lsym, rsym), &
+                lre, lim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call reduction_complex_side_element(arena, context, rsym, rflat, &
+                rscalar, i, context_complex_compare_kind(context, lsym, rsym), &
+                rre, rim, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (context_complex_compare_kind(context, lsym, rsym) == VALUE_C4) then
+                if (.not. emit_liric_f32_fcmp(context%session, predicate, lre, rre, &
+                                              re_cond, error_msg)) return
+                if (.not. emit_liric_f32_fcmp(context%session, predicate, lim, rim, &
+                                              im_cond, error_msg)) return
+            else
+                if (.not. emit_liric_f64_fcmp(context%session, predicate, lre, rre, &
+                                              re_cond, error_msg)) return
+                if (.not. emit_liric_f64_fcmp(context%session, predicate, lim, rim, &
+                                              im_cond, error_msg)) return
+            end if
+            if (is_equal) then
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, re_cond, &
+                                          im_cond, condition, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, re_cond, &
+                                          im_cond, condition, error_msg)) return
+            end if
+            if (is_all) then
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, accumulator, &
+                                          condition, next_acc, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, accumulator, &
+                                          condition, next_acc, error_msg)) return
+            end if
+            accumulator = next_acc
+        end do
+        value = accumulator
+        handled = .true.
+    end subroutine try_complex_array_mask_reduction
+
+    integer function context_complex_compare_kind(context, lsym, rsym) result(vk)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: lsym, rsym
+
+        vk = VALUE_C4
+        if ((lsym > 0 .and. context%symbols(lsym)%value_kind == VALUE_C8) .or. &
+            (rsym > 0 .and. context%symbols(rsym)%value_kind == VALUE_C8)) then
+            vk = VALUE_C8
+        end if
+    end function context_complex_compare_kind
+
+    subroutine reduction_complex_side_element(arena, context, sym, flat, &
+                                              scalar_idx, i, compare_vk, re, im, &
+                                              error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym, scalar_idx, i, compare_vk
+        integer, allocatable, intent(in) :: flat(:)
+        type(lr_operand_desc_t), intent(out) :: re, im
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: re_addr, im_addr, narrow_re, narrow_im
+        integer :: expr_idx, native_vk
+
+        call set_empty(error_msg)
+        if (sym > 0) then
+            native_vk = context%symbols(sym)%value_kind
+            call complex_array_linear_addresses(context, sym, i, native_vk, &
+                                                re_addr, im_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (native_vk == VALUE_C4) then
+                if (.not. emit_liric_f32_load(context%session, re_addr, narrow_re, &
+                                              error_msg)) return
+                if (.not. emit_liric_f32_load(context%session, im_addr, narrow_im, &
+                                              error_msg)) return
+                if (compare_vk == VALUE_C8) then
+                    if (.not. emit_liric_f32_to_f64(context%session, narrow_re, re, &
+                                                   error_msg)) return
+                    if (.not. emit_liric_f32_to_f64(context%session, narrow_im, im, &
+                                                   error_msg)) return
+                else
+                    re = narrow_re
+                    im = narrow_im
+                end if
+            else
+                if (.not. emit_liric_f64_load(context%session, re_addr, re, &
+                                              error_msg)) return
+                if (.not. emit_liric_f64_load(context%session, im_addr, im, &
+                                              error_msg)) return
+            end if
+            return
+        end if
+        if (allocated(flat)) then
+            expr_idx = flat(i + 1)
+        else
+            expr_idx = scalar_idx
+        end if
+        if (compare_vk == VALUE_C4) then
+            call eval_c4_rhs(arena, expr_idx, context, re, im, error_msg)
+        else
+            call eval_c8_rhs(arena, expr_idx, context, re, im, error_msg)
+        end if
+    end subroutine reduction_complex_side_element
 
     subroutine try_derived_array_component_mask_reduction(arena, node, context, &
             is_all, handled, value, error_msg)
@@ -1070,8 +1219,8 @@
         end if
     end function array_symbol_extent
 
-    ! Comparison kind: real(8) if any array operand is f64, else real(4) if any
-    ! is f32, else integer. ok=.false. for array kinds outside {i32, f32, f64}.
+    ! Comparison kind: complex(8) if any array operand is c8, then c4, real(8),
+    ! real(4), or integer. ok=.false. for unsupported array kinds.
     subroutine reduction_compare_kind(context, lsym, rsym, compare_vk, ok)
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: lsym, rsym
@@ -1096,12 +1245,17 @@
             array_kind_is(context, rsym, VALUE_F32)) compare_vk = VALUE_F32
         if (array_kind_is(context, lsym, VALUE_F64) .or. &
             array_kind_is(context, rsym, VALUE_F64)) compare_vk = VALUE_F64
+        if (array_kind_is(context, lsym, VALUE_C4) .or. &
+            array_kind_is(context, rsym, VALUE_C4)) compare_vk = VALUE_C4
+        if (array_kind_is(context, lsym, VALUE_C8) .or. &
+            array_kind_is(context, rsym, VALUE_C8)) compare_vk = VALUE_C8
     end subroutine reduction_compare_kind
 
     logical function supported_reduction_kind(vk) result(ok)
         integer, intent(in) :: vk
 
-        ok = vk == VALUE_I32 .or. vk == VALUE_F32 .or. vk == VALUE_F64
+        ok = vk == VALUE_I32 .or. vk == VALUE_F32 .or. vk == VALUE_F64 .or. &
+             vk == VALUE_C4 .or. vk == VALUE_C8
     end function supported_reduction_kind
 
     logical function array_kind_is(context, sym, vk) result(match)

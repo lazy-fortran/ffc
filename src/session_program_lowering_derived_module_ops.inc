@@ -529,12 +529,13 @@
 
     subroutine import_fmod_procedure(use_node, module_name, proc, context, &
                                      error_msg, force)
-        ! Register a separately compiled module procedure so a call resolves to
-        ! its mangled symbol __<module>_MOD_<name> and links against the module
-        ! object (#284). The procedure passes arguments by reference; integer
-        ! functions and subroutines whose arguments are all supported scalars are
-        ! recorded in the .fmod, carrying each argument's kind so the by-reference
-        ! call materialises the actual with the right type. force=.true. imports
+        ! Register a separately compiled procedure from a .fmod. Module
+        ! procedures use __<module>_MOD_<name>; public plain INTERFACE
+        ! procedures retain their unmangled external symbol (#284). The
+        ! procedure passes arguments by reference; scalar functions and
+        ! subroutines whose arguments are all supported are recorded in the
+        ! .fmod, carrying each argument's kind so the call materialises the
+        ! actual with the right type. force=.true. imports
         ! the specific of a use-associated generic even when it is not named in
         ! the only-list.
         type(use_statement_node), intent(in) :: use_node
@@ -572,6 +573,20 @@
             return_kind = VALUE_SUBROUTINE
         else if (trim(proc%kind) == 'integer') then
             return_kind = VALUE_I32
+        else if (trim(proc%kind) == 'integer8') then
+            return_kind = VALUE_I64
+        else if (trim(proc%kind) == 'integer1') then
+            return_kind = VALUE_I8
+        else if (trim(proc%kind) == 'integer2') then
+            return_kind = VALUE_I16
+        else if (trim(proc%kind) == 'real') then
+            return_kind = VALUE_F32
+        else if (trim(proc%kind) == 'real8') then
+            return_kind = VALUE_F64
+        else if (trim(proc%kind) == 'complex') then
+            return_kind = VALUE_C4
+        else if (trim(proc%kind) == 'complex8') then
+            return_kind = VALUE_C8
         else
             return
         end if
@@ -583,11 +598,22 @@
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
-        mangled = module_procedure_mangled(module_name, trim(proc%name))
+        if (proc%external_binding) then
+            if (allocated(proc%external_name) .and. &
+                len_trim(proc%external_name) > 0) then
+                mangled = trim(proc%external_name)
+            else
+                mangled = trim(proc%name)
+            end if
+        else
+            mangled = module_procedure_mangled(module_name, trim(proc%name))
+        end if
         call add_external_procedure(context, trim(local_name), mangled, &
-                                    return_kind, proc%nargs, .true., arg_kinds, &
+                                    return_kind, proc%nargs, .not. proc%external_binding, &
+                                    arg_kinds, &
                                     arg_names, arg_optionals, arg_values, &
-                                    arg_intents, arg_ranks, arg_extents)
+                                    arg_intents, arg_ranks, arg_extents, &
+                                    is_bind_c=proc%external_binding)
     end subroutine import_fmod_procedure
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
@@ -836,6 +862,13 @@
         ! Only integer named constants are importable today.
         if (.not. allocated(param%kind)) return
         if (trim(param%kind) /= 'integer') return
+        ! A parameter whose initializer was not representable in the current
+        ! .fmod schema is emitted with an empty value.  It remains a valid
+        ! exported name, but there is no constant to bind in the using unit;
+        ! defer that unsupported value instead of rejecting an otherwise
+        ! independent USE list (#584).
+        if (.not. allocated(param%value)) return
+        if (len_trim(param%value) == 0) return
         read (param%value, *, iostat=io_stat) constant_value
         if (io_stat /= 0) then
             error_msg = 'malformed integer value in .fmod for parameter '// &
@@ -1663,6 +1696,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
         integer :: param_idx
+        integer :: symbol_idx
         integer :: value_kind
         integer(c_int64_t) :: constant_value
         integer :: init_index
@@ -1686,39 +1720,44 @@
             line = get_node_line(arena, param_idx)
             column = get_node_column(arena, param_idx)
             call type_name_value_kind(decl_type_name, line, column, value_kind, &
-                                      error_msg)
+                                      error_msg, context, param_idx)
             if (len_trim(error_msg) > 0) return
-            if (value_kind /= VALUE_I32) then
-                call unsupported_feature_error('parameter declaration', line, &
-                                               column, 'direct LIRIC session '// &
-                                               'only supports integer scalar '// &
-                                               'parameters', error_msg)
-                return
-            end if
             if (.not. get_declaration_has_initializer(arena, param_idx)) then
-                error_msg = 'integer parameter requires a compile-time '// &
-                            'initializer: '//trim(decl_name)
+                error_msg = 'parameter requires a compile-time initializer: '// &
+                            trim(decl_name)
                 return
             end if
             init_index = get_declaration_initializer_index(arena, param_idx)
             if (init_index <= 0) then
-                error_msg = 'integer parameter requires a compile-time '// &
-                            'initializer: '//trim(decl_name)
+                error_msg = 'parameter requires a compile-time initializer: '// &
+                            trim(decl_name)
                 return
+            end if
+            if (value_kind /= VALUE_I32) then
+                select type (decl_node => arena%entries(param_idx)%node)
+                type is (declaration_node)
+                    call lower_nonint_constant_declaration(decl_node, context, &
+                                                           value_kind, error_msg)
+                class default
+                    error_msg = 'module parameter declaration is not a declaration: '// &
+                                trim(decl_name)
+                end select
+                if (len_trim(error_msg) > 0) return
+                cycle
             end if
             call eval_i32_constant(context%arena, init_index, context, &
                                    constant_value, error_msg)
             if (len_trim(error_msg) > 0) return
             call grow_symbols(context)
-            param_idx = context%symbol_count + 1
-            context%symbols(param_idx)%name = trim(decl_name)
-            context%symbols(param_idx)%value_kind = VALUE_I32
-            context%symbols(param_idx)%value = i32_immediate(context%session, &
-                                                             constant_value)
-            context%symbols(param_idx)%is_parameter = .true.
-            context%symbols(param_idx)%has_i32_constant = .true.
-            context%symbols(param_idx)%i32_constant = constant_value
-            context%symbol_count = param_idx
+            symbol_idx = context%symbol_count + 1
+            context%symbols(symbol_idx)%name = trim(decl_name)
+            context%symbols(symbol_idx)%value_kind = VALUE_I32
+            context%symbols(symbol_idx)%value = i32_immediate(context%session, &
+                                                              constant_value)
+            context%symbols(symbol_idx)%is_parameter = .true.
+            context%symbols(symbol_idx)%has_i32_constant = .true.
+            context%symbols(symbol_idx)%i32_constant = constant_value
+            context%symbol_count = symbol_idx
         end do
     end subroutine import_module_constants
 

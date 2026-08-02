@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_checks
+    use session_program_lowering_reject_checks_order
+    implicit none
+contains
     ! Semantic rejection checks for invalid programs that lower cleanly but are
     ! not conforming Fortran. Each check sets error_msg to a non-empty diagnostic
     ! so the driver exits nonzero. Checks fire only on statically certain
@@ -10,11 +14,7 @@
     ! kind. Any argument whose type/kind/rank cannot be resolved statically, or
     ! any array argument (where rank could distinguish), leaves the pair unflagged
     ! so a valid generic is never rejected.
-    subroutine check_generic_ambiguity(arena, context, generic_idx, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: generic_idx
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_generic_ambiguity
         integer :: sc, i, j
         character(len=:), allocatable :: name_i, name_j
 
@@ -32,12 +32,9 @@
                 end if
             end do
         end do
-    end subroutine check_generic_ambiguity
+    end procedure check_generic_ambiguity
 
-    logical function specifics_indistinguishable(arena, name_a, name_b) &
-            result(same)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name_a, name_b
+    module procedure specifics_indistinguishable
         integer :: count_a, count_b, pos
         integer :: kind_a, kind_b, rank_a, rank_b
         logical :: known_a, known_b, proc_a, proc_b, any_a, any_b
@@ -70,23 +67,13 @@
             end if
         end do
         same = .true.
-    end function specifics_indistinguishable
+    end procedure specifics_indistinguishable
 
     ! Type, kind and rank facts about the pos-th dummy argument of the
     ! procedure proc_name, as needed by the generic-ambiguity rule. known is
     ! false whenever the procedure or the dummy position cannot be resolved
     ! statically; callers must then claim no ambiguity.
-    subroutine dummy_signature(arena, proc_name, pos, known, base_name, &
-                               kind_value, rank, is_proc, is_any)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: proc_name
-        integer, intent(in) :: pos
-        logical, intent(out) :: known
-        character(len=:), allocatable, intent(out) :: base_name
-        integer, intent(out) :: kind_value
-        integer, intent(out) :: rank
-        logical, intent(out) :: is_proc
-        logical, intent(out) :: is_any
+    module procedure dummy_signature
         integer :: n
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
@@ -129,16 +116,11 @@
                 return
             end if
         end do
-    end subroutine dummy_signature
+    end procedure dummy_signature
 
     ! Fill in rank and kind from the lowerer's own dummy queries when the
     ! declaration node did not carry them.
-    subroutine refine_dummy_signature(arena, proc_name, pos, kind_value, rank)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: proc_name
-        integer, intent(in) :: pos
-        integer, intent(inout) :: kind_value
-        integer, intent(inout) :: rank
+    module procedure refine_dummy_signature
 
         if (rank == 0) then
             if (callee_dummy_is_array(arena, proc_name, pos)) rank = 1
@@ -146,21 +128,9 @@
         if (kind_value == 0) then
             kind_value = callee_dummy_value_kind(arena, proc_name, pos)
         end if
-    end subroutine refine_dummy_signature
+    end procedure refine_dummy_signature
 
-    subroutine dummy_signature_at(arena, param_indices, body_indices, pos, &
-                                  known, base_name, kind_value, rank, &
-                                  is_proc, is_any)
-        type(ast_arena_t), intent(in) :: arena
-        integer, allocatable, intent(in) :: param_indices(:)
-        integer, allocatable, intent(in) :: body_indices(:)
-        integer, intent(in) :: pos
-        logical, intent(out) :: known
-        character(len=:), allocatable, intent(out) :: base_name
-        integer, intent(out) :: kind_value
-        integer, intent(out) :: rank
-        logical, intent(out) :: is_proc
-        logical, intent(out) :: is_any
+    module procedure dummy_signature_at
         character(len=:), allocatable :: name, name_err
         logical :: unresolved
 
@@ -221,18 +191,14 @@
         ! default type for its initial letter.
         base_name = implicit_base_type(name)
         known = len_trim(base_name) > 0
-    end subroutine dummy_signature_at
+    end procedure dummy_signature_at
 
     ! The rank a dummy is given by its own declaration in the specification
     ! part, or 0 when no declaration in body_indices names it as an array of
     ! statically known rank. Used where the parameter node itself carries no
     ! shape, so that a rank-1 and a rank-2 specific of the same element kind
     ! stay distinguishable (F2018 C1514, #595).
-    integer function dummy_declared_rank(arena, body_indices, param_name) &
-            result(rank)
-        type(ast_arena_t), intent(in) :: arena
-        integer, allocatable, intent(in) :: body_indices(:)
-        character(len=*), intent(in) :: param_name
+    module procedure dummy_declared_rank
         integer :: i
 
         rank = 0
@@ -251,23 +217,11 @@
                 end if
             end select
         end do
-    end function dummy_declared_rank
+    end procedure dummy_declared_rank
 
     ! unresolved reports a KIND selector that is not a literal - the declared
     ! kind is then unknown, and no distinguishability claim may rest on it.
-    subroutine dummy_decl_signature(arena, body_indices, param_name, found, &
-                                    base_name, kind_value, rank, is_proc, &
-                                    is_any, unresolved)
-        type(ast_arena_t), intent(in) :: arena
-        integer, allocatable, intent(in) :: body_indices(:)
-        character(len=*), intent(in) :: param_name
-        logical, intent(out) :: found
-        character(len=:), allocatable, intent(out) :: base_name
-        integer, intent(out) :: kind_value
-        integer, intent(out) :: rank
-        logical, intent(out) :: is_proc
-        logical, intent(out) :: is_any
-        logical, intent(out) :: unresolved
+    module procedure dummy_decl_signature
         integer :: i, k
         logical :: names_it
 
@@ -317,58 +271,18 @@
             end select
         end do
         if (is_proc) found = .true.
-    end subroutine dummy_decl_signature
+    end procedure dummy_decl_signature
 
     ! Collapse a declared type string to the form that decides generic
     ! distinguishability. CLASS(T) and TYPE(T) name the same declared type; the
     ! kind selector is kept, because two specifics of the same type but
     ! different kind are distinguishable.
-    function normalized_base_type(type_name) result(base)
-        character(len=*), intent(in) :: type_name
-        character(len=:), allocatable :: base
-
-        base = squeeze_blanks(lowercase_text(trim(adjustl(type_name))))
-        if (base == 'class(*)') return
-        if (len(base) > 6) then
-            if (base(1:6) == 'class(') base = 'type('//base(7:)
-        end if
-    end function normalized_base_type
 
     ! The type name without its kind or length selector.
-    function base_type_root(base) result(root)
-        character(len=*), intent(in) :: base
-        character(len=:), allocatable :: root
-        integer :: lp
-
-        root = trim(base)
-        if (root == 'class(*)') return
-        if (len(root) > 5) then
-            if (root(1:5) == 'type(') return
-        end if
-        lp = index(root, '(')
-        if (lp > 1) root = root(1:lp - 1)
-    end function base_type_root
 
     ! Default implicit type of a name: integer for I-N, real otherwise.
-    function implicit_base_type(name) result(base)
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable :: base
-        character(len=1) :: first
 
-        base = ''
-        if (len_trim(name) == 0) return
-        first = lowercase_text(name(1:1))
-        if (first < 'a' .or. first > 'z') return
-        if (first >= 'i' .and. first <= 'n') then
-            base = 'integer'
-        else
-            base = 'real'
-        end if
-    end function implicit_base_type
-
-    integer function arena_proc_param_count(arena, proc_name) result(count)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: proc_name
+    module procedure arena_proc_param_count
         integer :: n
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
@@ -404,7 +318,7 @@
                 return
             end if
         end do
-    end function arena_proc_param_count
+    end procedure arena_proc_param_count
 
     ! A typed array constructor [T :: ...] whose type-spec T is an intrinsic
     ! numeric, character, or logical type requires every element to convert to
@@ -417,9 +331,7 @@
     ! left unclassified so a valid constructor is never rejected. Nested
     ! constructors flatten into the outer type-spec, so their literal leaves are
     ! checked against the same class.
-    subroutine check_array_constructor_type_specs(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_array_constructor_type_specs
         integer :: n
 
         call set_empty(error_msg)
@@ -428,12 +340,9 @@
             call check_one_array_constructor(arena, n, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_array_constructor_type_specs
+    end procedure check_array_constructor_type_specs
 
-    subroutine check_one_array_constructor(arena, node_index, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_one_array_constructor
         integer :: spec_class
 
         call set_empty(error_msg)
@@ -447,15 +356,9 @@
             call check_array_ctor_elements(arena, nd%element_indices, &
                 spec_class, nd%type_spec, nd%line, nd%column, error_msg)
         end select
-    end subroutine check_one_array_constructor
+    end procedure check_one_array_constructor
 
-    recursive subroutine check_array_ctor_elements(arena, elems, spec_class, &
-                                                   spec_text, line, col, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: elems(:)
-        integer, intent(in) :: spec_class, line, col
-        character(len=*), intent(in) :: spec_text
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_array_ctor_elements
         integer :: i, ei, elem_class
         character(len=64) :: location
 
@@ -487,10 +390,9 @@
                 return
             end if
         end do
-    end subroutine check_array_ctor_elements
+    end procedure check_array_ctor_elements
 
-    integer function array_ctor_typespec_class(type_spec) result(cls)
-        character(len=*), intent(in) :: type_spec
+    module procedure array_ctor_typespec_class
         character(len=:), allocatable :: spec_lc
 
         spec_lc = trim(adjustl(lowercase_text(type_spec)))
@@ -506,26 +408,10 @@
         else
             cls = CMP_CLASS_UNKNOWN
         end if
-    end function array_ctor_typespec_class
+    end procedure array_ctor_typespec_class
 
-    logical function starts_with_word(text, word) result(matches)
-        character(len=*), intent(in) :: text, word
-        integer :: nw
 
-        nw = len(word)
-        matches = .false.
-        if (len(text) < nw) return
-        if (text(1:nw) /= word) return
-        if (len(text) == nw) then
-            matches = .true.
-        else
-            matches = scan(text(nw + 1:nw + 1), 'abcdefghijklmnopqrstuvwxyz_') == 0
-        end if
-    end function starts_with_word
-
-    integer function array_ctor_literal_class(arena, node_index) result(cls)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
+    module procedure array_ctor_literal_class
         character(len=:), allocatable :: value, literal_type, err
 
         cls = CMP_CLASS_UNKNOWN
@@ -538,11 +424,9 @@
         else
             cls = CMP_CLASS_NUMERIC
         end if
-    end function array_ctor_literal_class
+    end procedure array_ctor_literal_class
 
-    function cmp_class_name(cls) result(name)
-        integer, intent(in) :: cls
-        character(len=:), allocatable :: name
+    module procedure cmp_class_name
 
         select case (cls)
         case (CMP_CLASS_NUMERIC)
@@ -554,11 +438,9 @@
         case default
             name = 'unknown'
         end select
-    end function cmp_class_name
+    end procedure cmp_class_name
 
-    subroutine check_gcc_calling_convention_assignments(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_gcc_calling_convention_assignments
         integer, parameter :: max_attrs = 128
         character(len=64) :: names(max_attrs)
         character(len=16) :: conventions(max_attrs)
@@ -613,11 +495,9 @@
                 end if
             end select
         end do
-    end subroutine check_gcc_calling_convention_assignments
+    end procedure check_gcc_calling_convention_assignments
 
-    subroutine parse_gcc_calling_convention_comment(text, name, convention)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: name, convention
+    module procedure parse_gcc_calling_convention_comment
         character(len=:), allocatable :: line, rest, list_text, items(:)
         integer :: sep, item_count
 
@@ -653,14 +533,9 @@
         end if
         name = leading_identifier(items(1))
         if (len_trim(name) == 0) call set_empty(convention)
-    end subroutine parse_gcc_calling_convention_comment
+    end procedure parse_gcc_calling_convention_comment
 
-    subroutine add_gcc_calling_convention(names, conventions, attr_count, &
-                                          name, convention)
-        character(len=64), intent(inout) :: names(:)
-        character(len=16), intent(inout) :: conventions(:)
-        integer, intent(inout) :: attr_count
-        character(len=*), intent(in) :: name, convention
+    module procedure add_gcc_calling_convention
         integer :: i
 
         do i = 1, attr_count
@@ -673,15 +548,9 @@
         attr_count = attr_count + 1
         names(attr_count) = trim(name)
         conventions(attr_count) = trim(convention)
-    end subroutine add_gcc_calling_convention
+    end procedure add_gcc_calling_convention
 
-    function gcc_calling_convention_for_name(names, conventions, attr_count, &
-                                             name) result(convention)
-        character(len=64), intent(in) :: names(:)
-        character(len=16), intent(in) :: conventions(:)
-        integer, intent(in) :: attr_count
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable :: convention
+    module procedure gcc_calling_convention_for_name
         integer :: i
 
         call set_empty(convention)
@@ -691,11 +560,9 @@
                 return
             end if
         end do
-    end function gcc_calling_convention_for_name
+    end procedure gcc_calling_convention_for_name
 
-    function leading_identifier(text) result(name)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable :: name
+    module procedure leading_identifier
         integer :: i, start_pos, end_pos
 
         call set_empty(name)
@@ -707,13 +574,12 @@
             end_pos = i
         end do
         if (end_pos >= start_pos) name = text(start_pos:end_pos)
-    end function leading_identifier
+    end procedure leading_identifier
 
-    logical function is_fortran_identifier_char(ch) result(ok)
-        character(len=1), intent(in) :: ch
+    module procedure is_fortran_identifier_char
 
         ok = scan(ch, 'abcdefghijklmnopqrstuvwxyz0123456789_') > 0
-    end function is_fortran_identifier_char
+    end procedure is_fortran_identifier_char
 
     ! A BOZ-literal-constant is not one of the ac-value forms an array
     ! constructor may hold: it is only valid as a DATA-statement constant, an
@@ -722,9 +588,7 @@
     ! constructor element whose literal spelling is a BOZ constant, whether
     ! or not the constructor carries a type-spec (both forms are rejected by
     ! gfortran).
-    subroutine check_boz_in_array_constructors(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_boz_in_array_constructors
         integer :: n
 
         call set_empty(error_msg)
@@ -738,12 +602,9 @@
                 if (len_trim(error_msg) > 0) return
             end select
         end do
-    end subroutine check_boz_in_array_constructors
+    end procedure check_boz_in_array_constructors
 
-    recursive subroutine check_boz_ctor_elements(arena, elems, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: elems(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_boz_ctor_elements
         integer :: i, ei
         character(len=:), allocatable :: value, literal_type, err
         character(len=64) :: location
@@ -770,7 +631,7 @@
                 ' cannot appear in an array constructor'
             return
         end do
-    end subroutine check_boz_ctor_elements
+    end procedure check_boz_ctor_elements
 
     ! A BOZ-literal-constant has no type of its own (F2018 7.7.1): it is a
     ! bit pattern that borrows the type of the context it appears in. The only
@@ -780,9 +641,7 @@
     ! variable. Everything else has no type to lend it: an unlimited
     ! polymorphic or otherwise non-numeric assignment target, an ASSOCIATE
     ! selector, or a structure-constructor component.
-    subroutine check_boz_literal_contexts(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_boz_literal_contexts
         integer :: n, i
         character(len=:), allocatable :: callee
         character(len=64) :: location
@@ -829,27 +688,24 @@
                 return
             end select
         end do
-    end subroutine check_boz_literal_contexts
+    end procedure check_boz_literal_contexts
 
     ! The intrinsics whose defining interface accepts a typeless BOZ actual
     ! argument and gives it a type (F2018 16.9): the conversion family, plus
     ! the legacy FLOAT/DFLOAT/DCMPLX spellings gfortran maps onto it.
-    logical function boz_argument_intrinsic(name) result(ok)
-        character(len=*), intent(in) :: name
+    module procedure boz_argument_intrinsic
         character(len=:), allocatable :: low
 
         low = trim(lowercase_text(name))
         ok = low == 'int' .or. low == 'real' .or. low == 'dble' .or. &
              low == 'cmplx' .or. low == 'dcmplx' .or. low == 'float' .or. &
              low == 'dfloat'
-    end function boz_argument_intrinsic
+    end procedure boz_argument_intrinsic
 
     ! True when the assignment target can lend a BOZ right-hand side a type:
     ! an integer or real variable. A target with no visible declaration is
     ! left alone - lazy-fortran infers its type from the assignment itself.
-    logical function boz_assignment_target_typed(arena, target_index) result(ok)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: target_index
+    module procedure boz_assignment_target_typed
         character(len=:), allocatable :: name, err, type_name
 
         ok = .true.
@@ -862,10 +718,9 @@
         if (.not. allocated(type_name)) return
         if (len_trim(type_name) == 0) return
         ok = boz_compatible_type(type_name)
-    end function boz_assignment_target_typed
+    end procedure boz_assignment_target_typed
 
-    logical function boz_compatible_type(type_name) result(ok)
-        character(len=*), intent(in) :: type_name
+    module procedure boz_compatible_type
         character(len=:), allocatable :: low
 
         low = trim(lowercase_text(type_name))
@@ -879,14 +734,11 @@
         if (len(low) >= 6) then
             if (low(1:6) == 'double') ok = .true.
         end if
-    end function boz_compatible_type
+    end procedure boz_compatible_type
 
     ! Declared type spelling of a named entity, searched across every
     ! declaration in the arena. Empty when the name has no declaration.
-    subroutine declared_type_name_of(arena, name, type_name)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable, intent(out) :: type_name
+    module procedure declared_type_name_of
         integer :: n, i
 
         call set_empty(type_name)
@@ -909,7 +761,7 @@
                 end do
             end select
         end do
-    end subroutine declared_type_name_of
+    end procedure declared_type_name_of
 
     ! An assumed-size specifier (*) is only well-formed as the extent of the
     ! LAST array dimension; a bare asterisk anywhere earlier is not a valid
@@ -924,9 +776,7 @@
     ! inline dims); a standalone DIMENSION statement on an otherwise
     ! untyped dummy does not carry its array-spec into either node, so that
     ! spelling is not visible here.
-    subroutine check_assumed_size_dimension_order(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_assumed_size_dimension_order
         integer :: n
 
         call set_empty(error_msg)
@@ -946,14 +796,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_assumed_size_dimension_order
+    end procedure check_assumed_size_dimension_order
 
-    subroutine check_dims_assumed_size_order(arena, dimension_indices, line, &
-                                             column, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: dimension_indices(:)
-        integer, intent(in) :: line, column
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_dims_assumed_size_order
         integer :: dim_count, i
         character(len=64) :: location
 
@@ -968,7 +813,7 @@
                 'an assumed size (*) specifier'
             return
         end do
-    end subroutine check_dims_assumed_size_order
+    end procedure check_dims_assumed_size_order
 
     ! A name shall not appear in both an EXTERNAL and an INTRINSIC statement
     ! in the same scoping unit (F2018 8.10 note 12, gfortran: "EXTERNAL
@@ -976,9 +821,7 @@
     ! statement and a bare EXTERNAL statement lower as no-ops (#291), so
     ! nothing else notices the same name spelled both ways; this scans every
     ! INTRINSIC name against every bare-EXTERNAL declaration in the program.
-    subroutine check_intrinsic_external_conflict(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_intrinsic_external_conflict
         integer :: n
 
         call set_empty(error_msg)
@@ -1012,12 +855,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_intrinsic_external_conflict
+    end procedure check_intrinsic_external_conflict
 
-    subroutine check_intrinsic_external_scope(arena, scope_indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: scope_indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_intrinsic_external_scope
         integer :: i
         character(len=:), allocatable :: intr_name, ext_name
 
@@ -1044,14 +884,9 @@
                 end block
             end select
         end do
-    end subroutine check_intrinsic_external_scope
+    end procedure check_intrinsic_external_scope
 
-    subroutine find_bare_external_name(arena, scope_indices, target_name, &
-                                       found_name)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: scope_indices(:)
-        character(len=*), intent(in) :: target_name
-        character(len=:), allocatable, intent(out) :: found_name
+    module procedure find_bare_external_name
         integer :: n, i
 
         call set_empty(found_name)
@@ -1076,7 +911,7 @@
                 end if
             end select
         end do
-    end subroutine find_bare_external_name
+    end procedure find_bare_external_name
 
     ! A function RESULT variable never carries the SAVE attribute (gfortran:
     ! "RESULT attribute conflicts with SAVE attribute", PR20856). The result
@@ -1084,9 +919,7 @@
     ! used, so this only fires on that explicit form: scan each function's
     ! own body declarations for one that both names the result variable and
     ! sets is_save.
-    subroutine check_function_result_save(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_function_result_save
         integer :: n
 
         call set_empty(error_msg)
@@ -1102,14 +935,9 @@
                 if (len_trim(error_msg) > 0) return
             end select
         end do
-    end subroutine check_function_result_save
+    end procedure check_function_result_save
 
-    subroutine check_result_save_in_body(arena, result_name, body_indices, &
-                                         error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: result_name
-        integer, intent(in) :: body_indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_result_save_in_body
         integer :: i, j
         character(len=64) :: location
 
@@ -1142,7 +970,7 @@
                 end if
             end select
         end do
-    end subroutine check_result_save_in_body
+    end procedure check_result_save_in_body
 
     ! Two procedures sharing one name in the same CONTAINS section are not
     ! distinguishable at the call site (gfortran: "Procedure ... is already
@@ -1151,9 +979,7 @@
     ! different scopes (two separate modules each defining their own "bah")
     ! is ordinary Fortran and stays untouched since each scope is checked on
     ! its own index list.
-    subroutine check_duplicate_contained_procedures(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_duplicate_contained_procedures
         integer :: n
 
         call set_empty(error_msg)
@@ -1175,12 +1001,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_duplicate_contained_procedures
+    end procedure check_duplicate_contained_procedures
 
-    subroutine check_procedure_names_unique(arena, indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_procedure_names_unique
         integer :: i, j
         character(len=:), allocatable :: name_i, name_j
         character(len=64) :: location
@@ -1201,12 +1024,9 @@
                 return
             end do
         end do
-    end subroutine check_procedure_names_unique
+    end procedure check_procedure_names_unique
 
-    subroutine procedure_def_name(arena, node_index, name)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        character(len=:), allocatable, intent(out) :: name
+    module procedure procedure_def_name
 
         call set_empty(name)
         if (.not. node_exists(arena, node_index)) return
@@ -1216,7 +1036,7 @@
         type is (subroutine_def_node)
             if (allocated(nd%name)) name = trim(nd%name)
         end select
-    end subroutine procedure_def_name
+    end procedure procedure_def_name
 
     ! The bit-model intrinsics constrain their bit-position and length
     ! arguments to be nonnegative (F2018 16.9.x): BTEST/IBSET/IBCLR take a
@@ -1228,9 +1048,7 @@
     ! unflagged; a user procedure shadowing the intrinsic name (found by
     ! arena_proc_param_count) also disqualifies the call so a valid program is
     ! never rejected.
-    subroutine check_bit_intrinsic_arg_ranges(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_bit_intrinsic_arg_ranges
         integer :: n
         integer, allocatable :: call_args(:)
         character(len=:), allocatable :: call_name, sub_err
@@ -1259,15 +1077,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_bit_intrinsic_arg_ranges
+    end procedure check_bit_intrinsic_arg_ranges
 
-    subroutine check_bit_intrinsic_call(arena, name, arg_indices, line, col, &
-                                        error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
-        integer, intent(in) :: arg_indices(:)
-        integer, intent(in) :: line, col
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_bit_intrinsic_call
         character(len=:), allocatable :: lname
         integer :: nargs, nn, k, ai, nonneg(3)
         integer(c_int64_t) :: val
@@ -1309,7 +1121,7 @@
                 return
             end if
         end do
-    end subroutine check_bit_intrinsic_call
+    end procedure check_bit_intrinsic_call
 
     ! Fold an argument expression to a compile-time i64 value when it is built
     ! solely from integer literals and +, -, * operators. Anything else
@@ -1317,11 +1129,7 @@
     ! so callers treat the value as statically unknown. This never consults the
     ! symbol table, so it is safe from validate_program, which has no lowering
     ! context.
-    recursive subroutine try_const_int64(arena, node_index, value, ok)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        integer(c_int64_t), intent(out) :: value
-        logical, intent(out) :: ok
+    module procedure try_const_int64
         integer(c_int64_t) :: lv, rv
         integer :: li, ri, ln, cl, ios
         character(len=:), allocatable :: op, lit_value, lit_type, err
@@ -1361,10 +1169,9 @@
             read (lit_value, *, iostat=ios) value
             if (ios == 0) ok = .true.
         end if
-    end subroutine try_const_int64
+    end procedure try_const_int64
 
-    logical function is_integer_text(text) result(is_int)
-        character(len=*), intent(in) :: text
+    module procedure is_integer_text
         character(len=:), allocatable :: trimmed
         integer :: i
 
@@ -1375,7 +1182,7 @@
             if (scan(trimmed(i:i), '0123456789') == 0) return
         end do
         is_int = .true.
-    end function is_integer_text
+    end procedure is_integer_text
 
     ! An array declared at main-program or module scope must have constant
     ! bounds (F2018 8.5.8.2, C1101): its shape is fixed at compile time because
@@ -1388,9 +1195,7 @@
     ! where it is illegal. A procedure-local automatic array (bound from a dummy)
     ! is left untouched: its declaration lives in a procedure body, never in a
     ! program body or a module declaration list.
-    subroutine check_scope_nonconstant_bounds(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_scope_nonconstant_bounds
         integer :: n
 
         call set_empty(error_msg)
@@ -1408,12 +1213,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_scope_nonconstant_bounds
+    end procedure check_scope_nonconstant_bounds
 
-    subroutine check_decls_nonconstant_bounds(arena, indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_decls_nonconstant_bounds
         integer :: i, d
         character(len=64) :: location
 
@@ -1435,16 +1237,13 @@
                 end do
             end select
         end do
-    end subroutine check_decls_nonconstant_bounds
+    end procedure check_decls_nonconstant_bounds
 
     ! True when a bound expression contains a function call that cannot be a
     ! constant: a call to a user function defined in this program, or the
     ! intrinsic command_argument_count(). Constant-expression intrinsics such as
     ! size/kind/len never match, so a legal constant bound is not flagged.
-    recursive function expr_has_illegal_call(arena, idx) result(found)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: idx
-        logical :: found
+    module procedure expr_has_illegal_call
         integer :: i, li, ri, ln, cl
         character(len=:), allocatable :: op, err, cname
 
@@ -1481,11 +1280,9 @@
                     expr_has_illegal_call(arena, nd%end_index) .or. &
                     expr_has_illegal_call(arena, nd%stride_index)
         end select
-    end function expr_has_illegal_call
+    end procedure expr_has_illegal_call
 
-    logical function arena_has_function_def_named(arena, name) result(found)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
+    module procedure arena_has_function_def_named
         integer :: n
 
         found = .false.
@@ -1500,11 +1297,9 @@
                 end if
             end select
         end do
-    end function arena_has_function_def_named
+    end procedure arena_has_function_def_named
 
-    subroutine check_derived_type_names_not_intrinsic(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_derived_type_names_not_intrinsic
         integer :: n
         character(len=64) :: location
 
@@ -1524,11 +1319,9 @@
                 return
             end select
         end do
-    end subroutine check_derived_type_names_not_intrinsic
+    end procedure check_derived_type_names_not_intrinsic
 
-    subroutine check_intrinsic_type_stmt_source(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_intrinsic_type_stmt_source
         character(len=:), allocatable :: source, line, name
         logical :: found
         integer :: pos, line_no, next_nl, col
@@ -1557,12 +1350,9 @@
             end if
             line_no = line_no + 1
         end do
-    end subroutine check_intrinsic_type_stmt_source
+    end procedure check_intrinsic_type_stmt_source
 
-    subroutine intrinsic_type_stmt_name(line, name, column)
-        character(len=*), intent(in) :: line
-        character(len=:), allocatable, intent(out) :: name
-        integer, intent(out) :: column
+    module procedure intrinsic_type_stmt_name
         character(len=:), allocatable :: lower, rest, word
         integer :: comment_pos, word_len, i, first_nonblank, name_start, dc_pos
 
@@ -1617,10 +1407,9 @@
         if (.not. derived_type_name_is_intrinsic(word)) return
         name = word
         column = name_start
-    end subroutine intrinsic_type_stmt_name
+    end procedure intrinsic_type_stmt_name
 
-    logical function derived_type_name_is_intrinsic(name) result(is_intrinsic)
-        character(len=*), intent(in) :: name
+    module procedure derived_type_name_is_intrinsic
         character(len=:), allocatable :: lowered
 
         lowered = trim(lowercase_text(name))
@@ -1631,16 +1420,14 @@
         case default
             is_intrinsic = .false.
         end select
-    end function derived_type_name_is_intrinsic
+    end procedure derived_type_name_is_intrinsic
 
     ! A polymorphic (CLASS) entity that is neither a dummy argument nor
     ! allocatable nor a pointer has no way to take on a dynamic type, so the
     ! standard forbids it (gfortran: "must be dummy, allocatable or pointer",
     ! F2018 C708). At main-program and module scope there are no dummy arguments,
     ! so any non-allocatable non-pointer CLASS entity there is invalid.
-    subroutine check_scope_class_declarations(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_scope_class_declarations
         integer :: n
 
         call set_empty(error_msg)
@@ -1656,12 +1443,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_scope_class_declarations
+    end procedure check_scope_class_declarations
 
-    subroutine check_decls_class(arena, indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_decls_class
         integer :: i
         character(len=:), allocatable :: low, name
         character(len=64) :: location
@@ -1685,7 +1469,7 @@
                 return
             end select
         end do
-    end subroutine check_decls_class
+    end procedure check_decls_class
 
     ! An automatic array - one whose bounds depend on a dummy argument, so its
     ! size is known only at run time - has no static storage. It can appear
@@ -1695,9 +1479,7 @@
     ! path lowers such arrays as dynamic allocations, correct for a plain local
     ! but wrong once storage association is required; this rejects the two
     ! storage-association contexts. Constant-bound arrays (x(8)) are untouched.
-    subroutine check_automatic_storage_association(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_automatic_storage_association
         integer :: n
 
         call set_empty(error_msg)
@@ -1717,14 +1499,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_automatic_storage_association
+    end procedure check_automatic_storage_association
 
-    subroutine check_proc_automatic_assoc(arena, param_indices, body_indices, &
-                                          error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: param_indices(:)
-        integer, intent(in) :: body_indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_proc_automatic_assoc
         integer :: i
         character(len=:), allocatable :: aname
         character(len=64) :: location
@@ -1753,13 +1530,9 @@
                 end if
             end select
         end do
-    end subroutine check_proc_automatic_assoc
+    end procedure check_proc_automatic_assoc
 
-    logical function decl_bound_refs_param(arena, decl, param_indices) &
-            result(refs)
-        type(ast_arena_t), intent(in) :: arena
-        type(declaration_node), intent(in) :: decl
-        integer, intent(in) :: param_indices(:)
+    module procedure decl_bound_refs_param
         integer :: d, p
         character(len=:), allocatable :: pname
 
@@ -1780,13 +1553,9 @@
                 end select
             end do
         end do
-    end function decl_bound_refs_param
+    end procedure decl_bound_refs_param
 
-    recursive function expr_refs_name(arena, idx, name) result(found)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: idx
-        character(len=*), intent(in) :: name
-        logical :: found
+    module procedure expr_refs_name
         integer :: i, li, ri, ln, cl
         character(len=:), allocatable :: op, err
 
@@ -1817,12 +1586,9 @@
                     expr_refs_name(arena, nd%end_index, name) .or. &
                     expr_refs_name(arena, nd%stride_index, name)
         end select
-    end function expr_refs_name
+    end procedure expr_refs_name
 
-    logical function name_in_common(arena, body_indices, name) result(found)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: body_indices(:)
-        character(len=*), intent(in) :: name
+    module procedure name_in_common
         integer :: i, k
 
         found = .false.
@@ -1840,12 +1606,9 @@
                 end do
             end select
         end do
-    end function name_in_common
+    end procedure name_in_common
 
-    logical function name_in_equivalence(arena, body_indices, name) result(found)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: body_indices(:)
-        character(len=*), intent(in) :: name
+    module procedure name_in_equivalence
         character(len=:), allocatable :: group, err, members(:)
         integer :: i, k, member_count
 
@@ -1866,7 +1629,7 @@
                 end do
             end select
         end do
-    end function name_in_equivalence
+    end procedure name_in_equivalence
 
     ! DATA forms the parser cannot represent (#383). Two invalid families
     ! never reach the typed AST: a DATA statement whose initializer is not a
@@ -1876,9 +1639,7 @@
     ! would otherwise be silently dropped and the objects left uninitialised,
     ! so they are rejected from the source text, the only layer that still
     ! holds them.
-    subroutine check_data_source_forms(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_data_source_forms
         character(len=:), allocatable :: source, line
         integer :: pos, next_nl, line_no, data_lines, first_data_line
         character(len=64) :: location
@@ -1917,10 +1678,9 @@
         if (data_lines <= count_data_statement_nodes(arena)) return
         write (location, '(" at line ",I0)') first_data_line
         error_msg = 'invalid initializer in DATA statement'//trim(location)
-    end subroutine check_data_source_forms
+    end procedure check_data_source_forms
 
-    integer function count_data_statement_nodes(arena) result(total)
-        type(ast_arena_t), intent(in) :: arena
+    module procedure count_data_statement_nodes
         integer :: n
 
         total = 0
@@ -1931,11 +1691,9 @@
                 total = total + 1
             end select
         end do
-    end function count_data_statement_nodes
+    end procedure count_data_statement_nodes
 
-    function strip_data_source_comment(line) result(code)
-        character(len=*), intent(in) :: line
-        character(len=:), allocatable :: code
+    module procedure strip_data_source_comment
         integer :: i
         logical :: in_single, in_double
 
@@ -1958,10 +1716,9 @@
                 end if
             end if
         end do
-    end function strip_data_source_comment
+    end procedure strip_data_source_comment
 
-    logical function is_data_statement_line(line) result(is_data)
-        character(len=*), intent(in) :: line
+    module procedure is_data_statement_line
         character(len=:), allocatable :: low
 
         is_data = .false.
@@ -1970,10 +1727,9 @@
         if (low(1:5) /= 'data ') return
         if (index(low, '/') == 0) return
         is_data = .true.
-    end function is_data_statement_line
+    end procedure is_data_statement_line
 
-    logical function is_old_style_init_line(line) result(is_old)
-        character(len=*), intent(in) :: line
+    module procedure is_old_style_init_line
         character(len=:), allocatable :: low
         integer :: slash
 
@@ -1985,10 +1741,9 @@
         if (slash == 0) return
         if (.not. starts_with_type_keyword(low)) return
         is_old = .true.
-    end function is_old_style_init_line
+    end procedure is_old_style_init_line
 
-    logical function starts_with_type_keyword(low) result(is_type)
-        character(len=*), intent(in) :: low
+    module procedure starts_with_type_keyword
         character(len=16), parameter :: keywords(6) = &
             [character(len=16) :: 'integer', 'real', 'logical', 'complex', &
              'character', 'double precision']
@@ -2006,16 +1761,14 @@
                 return
             end if
         end do
-    end function starts_with_type_keyword
+    end procedure starts_with_type_keyword
 
     ! A format specification is a parenthesised list of edit descriptors, and a
     ! format tag that is not a label must be a default character entity.
     ! FortFront parses these forms but keeps the descriptor text uninterpreted,
     ! so this is the earliest layer with both the typed IO node and the literal
     ! text needed to reject malformed formats (#391).
-    subroutine check_format_specifications(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_format_specifications
         type(io_statement_query_t) :: query
         integer :: n
 
@@ -2039,16 +1792,13 @@
             if (len_trim(error_msg) > 0) return
         end do
         call check_concatenated_format_source(arena, error_msg)
-    end subroutine check_format_specifications
+    end procedure check_format_specifications
 
     ! The format tag of a data transfer statement is either a label, an
     ! asterisk, a literal format specification, or the name of a default
     ! character entity. A named constant of any other type is invalid
     ! (gfortran: "Invalid expression in the FORMAT tag").
-    subroutine check_format_tag(arena, query, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(io_statement_query_t), intent(in) :: query
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_format_tag
         character(len=:), allocatable :: text, type_name
         character(len=64) :: location
         logical :: found
@@ -2072,14 +1822,12 @@
             query%line, query%column
         error_msg = 'Invalid expression in the FORMAT tag'//trim(location)// &
             ': '''//text//''' is of type '''//type_name//''''
-    end subroutine check_format_tag
+    end procedure check_format_tag
 
     ! ASYNCHRONOUS= in a data transfer statement must be an initialization
     ! expression, so a reference to a non-intrinsic function is invalid
     ! (gfortran: "must be an intrinsic function").
-    subroutine check_asynchronous_specifier(query, error_msg)
-        type(io_statement_query_t), intent(in) :: query
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_asynchronous_specifier
         character(len=:), allocatable :: value, name, tail
         character(len=64) :: location
         integer :: i, rest
@@ -2106,10 +1854,9 @@
                 ' must be an intrinsic function'
             return
         end do
-    end subroutine check_asynchronous_specifier
+    end procedure check_asynchronous_specifier
 
-    logical function is_character_intrinsic_name(name) result(is_intrinsic)
-        character(len=*), intent(in) :: name
+    module procedure is_character_intrinsic_name
 
         select case (trim(name))
         case ('trim', 'adjustl', 'adjustr', 'repeat', 'char', 'achar', &
@@ -2118,13 +1865,9 @@
         case default
             is_intrinsic = .false.
         end select
-    end function is_character_intrinsic_name
+    end procedure is_character_intrinsic_name
 
-    subroutine declared_type_of_name(arena, name, type_name, found)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable, intent(out) :: type_name
-        logical, intent(out) :: found
+    module procedure declared_type_of_name
         integer :: n, k
 
         found = .false.
@@ -2151,16 +1894,12 @@
                 end do
             end select
         end do
-    end subroutine declared_type_of_name
+    end procedure declared_type_of_name
 
     ! Validate the text of a format specification: parentheses must balance,
     ! and a zero repeat specification is only well formed as the scale factor
     ! of a P edit descriptor.
-    subroutine check_format_text(text, line, column, error_msg)
-        character(len=*), intent(in) :: text
-        integer, intent(in) :: line
-        integer, intent(in) :: column
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_format_text
         character(len=64) :: location
         character(len=1) :: ch, quote
         integer :: i, depth, run_start
@@ -2235,17 +1974,12 @@
             error_msg = 'Unexpected end of format string'//trim(location)// &
                 ': unbalanced parenthesis in '''//trim(text)//''''
         end if
-    end subroutine check_format_text
+    end procedure check_format_text
 
     ! A digit run in repeat-specification position whose value is zero is only
     ! legal as the scale factor of a P edit descriptor: r in an r-repeated
     ! descriptor must be positive.
-    subroutine check_zero_repeat(text, run_start, run_end, location, error_msg)
-        character(len=*), intent(in) :: text
-        integer, intent(in) :: run_start
-        integer, intent(in) :: run_end
-        character(len=*), intent(in) :: location
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_zero_repeat
         integer :: i
 
         call set_empty(error_msg)
@@ -2260,17 +1994,15 @@
         end if
         error_msg = 'Expected P edit descriptor'//trim(location)// &
             ': zero repeat specification in '''//trim(text)//''''
-    end subroutine check_zero_repeat
+    end procedure check_zero_repeat
 
     ! A format written as a concatenation of character literals is still a
     ! complete format specification. FortFront drops a data transfer statement
     ! whose parenthesised format expression never closes, so the concatenated
     ! literal text is checked from the source (gfortran: "Unexpected end of
     ! format string").
-    subroutine check_concatenated_format_source(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
+    module procedure check_concatenated_format_source
         character(len=:), allocatable :: source, line, logical_line
-        character(len=:), allocatable, intent(out) :: error_msg
         logical :: found
         integer :: pos, line_no, next_nl, first_line_no
 
@@ -2303,13 +2035,12 @@
             call check_transfer_line_format(logical_line, first_line_no, &
                                             error_msg)
         end if
-    end subroutine check_concatenated_format_source
+    end procedure check_concatenated_format_source
 
     ! Free-form continuation: a trailing '&' joins the next line, whose own
     ! leading '&' (if any) is not part of the statement text. The check runs on
     ! the joined logical line so a continued format specification is seen whole.
-    logical function ends_with_continuation(text)
-        character(len=*), intent(in) :: text
+    module procedure ends_with_continuation
         character(len=:), allocatable :: code
 
         ends_with_continuation = .false.
@@ -2317,11 +2048,9 @@
         code = trim(code)
         if (len(code) == 0) return
         ends_with_continuation = code(len(code):len(code)) == '&'
-    end function ends_with_continuation
+    end procedure ends_with_continuation
 
-    subroutine append_continuation_line(logical_line, line)
-        character(len=:), allocatable, intent(inout) :: logical_line
-        character(len=*), intent(in) :: line
+    module procedure append_continuation_line
         character(len=:), allocatable :: piece
 
         if (len(logical_line) == 0) then
@@ -2335,12 +2064,9 @@
             if (piece(1:1) == '&') piece = piece(2:)
         end if
         logical_line = logical_line//piece
-    end subroutine append_continuation_line
+    end procedure append_continuation_line
 
-    subroutine check_transfer_line_format(line, line_no, error_msg)
-        character(len=*), intent(in) :: line
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_transfer_line_format
         character(len=:), allocatable :: text, keyword, format_text, joined
         integer :: start_pos, split_pos, label_end
         logical :: literal_only
@@ -2378,16 +2104,13 @@
         if (len_trim(joined) == 0) return
         if (joined(1:1) /= '(') return
         call check_format_text(joined, line_no, 1, error_msg)
-    end subroutine check_transfer_line_format
+    end procedure check_transfer_line_format
 
     ! The ASYNCHRONOUS= value of a data transfer statement must be an
     ! initialization expression; FortFront drops a whole bare main program that
     ! carries such a statement, so the specifier is also checked from the
     ! source text.
-    subroutine check_asynchronous_source(text, line_no, error_msg)
-        character(len=*), intent(in) :: text
-        integer, intent(in) :: line_no
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_asynchronous_source
         character(len=:), allocatable :: lowered, value, name, tail
         character(len=64) :: location
         integer :: at, rest
@@ -2414,13 +2137,11 @@
         error_msg = 'Function '''//trim(name)// &
             ''' in the ASYNCHRONOUS= specifier'//trim(location)// &
             ' must be an intrinsic function'
-    end subroutine check_asynchronous_source
+    end procedure check_asynchronous_source
 
     ! Drop a trailing comment so the statement text can be scanned for the
     ! literal tokens of its format expression.
-    subroutine strip_line_comment(line, stripped)
-        character(len=*), intent(in) :: line
-        character(len=:), allocatable, intent(out) :: stripped
+    module procedure strip_line_comment
         character(len=1) :: ch, quote
         integer :: i
         logical :: in_string
@@ -2444,14 +2165,11 @@
                 return
             end if
         end do
-    end subroutine strip_line_comment
+    end procedure strip_line_comment
 
     ! The format expression of a data transfer statement written without a
     ! control list ends at the first comma outside parentheses and quotes.
-    subroutine format_expression_text(text, format_text, split_pos)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: format_text
-        integer, intent(out) :: split_pos
+    module procedure format_expression_text
         character(len=1) :: ch, quote
         integer :: i, depth
         logical :: in_string
@@ -2483,15 +2201,12 @@
         else
             format_text = text
         end if
-    end subroutine format_expression_text
+    end procedure format_expression_text
 
     ! Join the character literals of an expression built only from literals,
     ! concatenation operators, parentheses and blanks. Any other token means
     ! the text is not a compile-time known format.
-    subroutine concatenated_literal_text(text, joined, literal_only)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: joined
-        logical, intent(out) :: literal_only
+    module procedure concatenated_literal_text
         character(len=1) :: ch, quote
         integer :: i
 
@@ -2521,7 +2236,7 @@
             end if
             i = i + 1
         end do
-    end subroutine concatenated_literal_text
+    end procedure concatenated_literal_text
 
     ! ---------------------------------------------------------------------
     ! Derived-type definition and component-access constraints (#390).
@@ -2541,9 +2256,7 @@
     !     (gfortran: "CLASS variable ... must be dummy, allocatable or
     !     pointer").
     ! ---------------------------------------------------------------------
-    subroutine check_private_component_access(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_private_component_access
         integer :: n, module_idx
         character(len=:), allocatable :: type_name, comp_name
 
@@ -2570,26 +2283,18 @@
                 return
             end select
         end do
-    end subroutine check_private_component_access
+    end procedure check_private_component_access
 
-    function private_component_message(arena, node_index, comp_name, type_name) &
-        result(message)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        character(len=*), intent(in) :: comp_name, type_name
-        character(len=:), allocatable :: message
+    module procedure private_component_message
         character(len=64) :: location
 
         write (location, '(" at line ",I0,", column ",I0)') &
             get_node_line(arena, node_index), get_node_column(arena, node_index)
         message = 'component '''//trim(comp_name)//''' is a PRIVATE '// &
             'component of '''//trim(type_name)//''''//trim(location)
-    end function private_component_message
+    end procedure private_component_message
 
-    logical function component_is_private(arena, type_name, comp_name, module_idx)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: type_name, comp_name
-        integer, intent(out) :: module_idx
+    module procedure component_is_private
         integer :: decl, type_idx
 
         module_idx = 0
@@ -2606,16 +2311,12 @@
         module_idx = enclosing_module_index(arena, type_idx)
         if (module_idx <= 0) return
         component_is_private = .true.
-    end function component_is_private
+    end procedure component_is_private
 
-    subroutine first_private_component(arena, type_name, comp_name, module_idx)
+    module procedure first_private_component
         !! Name of the first PRIVATE component of the named derived type, and
         !! the module that defines the type. Empty when the name is not a
         !! module derived type or has no private component.
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: type_name
-        character(len=:), allocatable, intent(out) :: comp_name
-        integer, intent(out) :: module_idx
         integer :: type_idx, i, comp
 
         call set_empty(comp_name)
@@ -2640,11 +2341,9 @@
                 end select
             end do
         end select
-    end subroutine first_private_component
+    end procedure first_private_component
 
-    integer function derived_type_node_index(arena, type_name) result(type_idx)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: type_name
+    module procedure derived_type_node_index
         integer :: n
         character(len=:), allocatable :: wanted
 
@@ -2661,13 +2360,9 @@
                 return
             end select
         end do
-    end function derived_type_node_index
+    end procedure derived_type_node_index
 
-    integer function derived_component_decl(arena, type_name, comp_name, type_idx) &
-        result(decl)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: type_name, comp_name
-        integer, intent(out) :: type_idx
+    module procedure derived_component_decl
         integer :: i, comp
         character(len=:), allocatable :: wanted
 
@@ -2690,11 +2385,9 @@
                 end select
             end do
         end select
-    end function derived_component_decl
+    end procedure derived_component_decl
 
-    integer function enclosing_module_index(arena, node_index) result(module_idx)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
+    module procedure enclosing_module_index
         integer :: cur, guard
 
         module_idx = 0
@@ -2711,11 +2404,9 @@
             end select
             cur = arena%entries(cur)%parent_index
         end do
-    end function enclosing_module_index
+    end procedure enclosing_module_index
 
-    logical function node_within(arena, node_index, ancestor) result(within)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index, ancestor
+    module procedure node_within
         integer :: cur, guard
 
         within = .false.
@@ -2732,15 +2423,12 @@
             if (.not. node_exists(arena, cur)) return
             cur = arena%entries(cur)%parent_index
         end do
-    end function node_within
+    end procedure node_within
 
-    recursive subroutine designator_type_name(arena, idx, type_name)
+    module procedure designator_type_name
         !! Declared derived-type name of a designator (identifier, array
         !! element, or component reference). Empty when it is not a derived
         !! type entity or cannot be resolved from declarations alone.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: idx
-        character(len=:), allocatable, intent(out) :: type_name
         character(len=:), allocatable :: base_type
         integer :: decl, comp, type_idx
 
@@ -2771,13 +2459,10 @@
             if (decl <= 0) return
             call declared_derived_type_name(arena, decl, type_name)
         end select
-    end subroutine designator_type_name
+    end procedure designator_type_name
 
-    subroutine declared_derived_type_name(arena, decl, type_name)
+    module procedure declared_derived_type_name
         !! 'type(t)' / 'class(t)' spelled on a declaration reduced to 't'.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: decl
-        character(len=:), allocatable, intent(out) :: type_name
         character(len=:), allocatable :: spec
         integer :: open_paren, close_paren
 
@@ -2800,11 +2485,9 @@
         case default
             call set_empty(type_name)
         end select
-    end subroutine declared_derived_type_name
+    end procedure declared_derived_type_name
 
-    subroutine check_data_allocatable_components(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_data_allocatable_components
         integer :: n, i
 
         call set_empty(error_msg)
@@ -2820,12 +2503,9 @@
                 end do
             end select
         end do
-    end subroutine check_data_allocatable_components
+    end procedure check_data_allocatable_components
 
-    recursive subroutine check_data_object_components(arena, idx, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: idx
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_data_object_components
         character(len=:), allocatable :: base_type
         character(len=64) :: location
         integer :: j, comp, type_idx
@@ -2864,4 +2544,5 @@
                 ''' of '''//trim(base_type)//''' cannot appear in a DATA '// &
                 'statement'//trim(location)
         end select
-    end subroutine check_data_object_components
+    end procedure check_data_object_components
+end submodule session_program_lowering_reject_checks

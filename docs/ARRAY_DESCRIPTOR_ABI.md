@@ -1,9 +1,18 @@
 # Array Descriptor ABI
 
-`array_descriptor_t` is the canonical array descriptor for new runtime
-interfaces. Existing lowering paths still use the ad hoc representations in
-`RUNTIME_ABI.md`; each migration issue moves one path onto this layout and
+`array_descriptor_t` is the canonical array descriptor for all migrated array
+runtime interfaces. Some older lowering paths still use ad hoc
+representations; each migration issue moves one path onto this layout and
 removes its old representation rather than running both.
+
+## Migration gate
+
+The descriptor is an architecture boundary, not an adapter target. New code
+must use this layout for storage, sections, assumed-shape dummies, pointers,
+allocatables, character arrays, and polymorphic views. The remaining migration
+work is tracked by ffc #337, #338, #339, #348, and #643. A migration is not
+complete until its old convention is deleted, its ownership/view lifetime is
+tested, and both positive and negative behavioral cases pass.
 
 ## Layout
 

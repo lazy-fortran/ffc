@@ -1,4 +1,8 @@
-    logical function real_intrinsic_is_f64(arena, node, context) result(is_f64)
+submodule (session_program_lowering) session_program_lowering_literal_utils
+    use session_program_lowering_literal_utils_order
+contains
+
+    module procedure real_intrinsic_is_f64
         !! Result kind of a REAL(A [,KIND]) conversion (F2018 16.9.160). With a
         !! KIND selector the width follows KIND; a literal 8 is f64 and a literal
         !! 4 is f32, while an unfoldable selector (named constant, kind() inquiry)
@@ -6,9 +10,6 @@
         !! the result is default real (f32) for integer or real A, and keeps the
         !! argument kind only when A is complex, so real(z) on a complex(8) is the
         !! one no-KIND case that is f64.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
         integer(c_int64_t) :: kind_value
         character(len=:), allocatable :: kind_error
 
@@ -25,22 +26,19 @@
             return
         end if
         is_f64 = is_complex_valued(arena, node%arg_indices(1), context, VALUE_C8)
-    end function real_intrinsic_is_f64
+    end procedure real_intrinsic_is_f64
 
-    logical function real_conversion_intrinsic(name) result(is_conversion)
+    module procedure real_conversion_intrinsic
         !! True for the AINT/ANINT real conversions, which accept an optional
         !! KIND selector that fixes the result width.
-        character(len=*), intent(in) :: name
 
         is_conversion = same_name(name, 'aint') .or. same_name(name, 'anint')
-    end function real_conversion_intrinsic
+    end procedure real_conversion_intrinsic
 
-    logical function real_conversion_kind_is_f64(arena, kind_index) result(is_f64)
+    module procedure real_conversion_kind_is_f64
         !! Result width of an AINT/ANINT KIND selector. A foldable 8 selects
         !! f64; anything unfoldable keeps the conservative wide result, matching
         !! how REAL(A, KIND) treats named constants.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: kind_index
         integer(c_int64_t) :: kind_value
         character(len=:), allocatable :: kind_error
 
@@ -51,15 +49,11 @@
         else
             is_f64 = kind_value == 8_c_int64_t
         end if
-    end function real_conversion_kind_is_f64
+    end procedure real_conversion_kind_is_f64
 
-    logical function is_real_array_reduction(arena, node, context, vk) result(ok)
+    module procedure is_real_array_reduction
         !! True when node is a sum/product/maxval/minval/norm2 call whose first
         !! argument is a fixed-size array of value kind vk.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: vk
         character(len=:), allocatable :: arg_name, err
         integer :: sym, elem_kind, rank, extent
         logical :: alloc_ok
@@ -116,12 +110,11 @@
         ok = (context%symbols(sym)%is_array .or. &
               context%symbols(sym)%is_allocatable) .and. &
              context%symbols(sym)%value_kind == vk
-    end function is_real_array_reduction
+    end procedure is_real_array_reduction
 
-    logical function is_real_inquiry_intrinsic(name) result(ok)
+    module procedure is_real_inquiry_intrinsic
         !! True for the real numeric-model inquiry intrinsics whose result is a
         !! scalar real constant determined solely by the argument's kind.
-        character(len=*), intent(in) :: name
 
         select case (trim(name))
         case ('tiny', 'huge', 'epsilon')
@@ -129,15 +122,12 @@
         case default
             ok = .false.
         end select
-    end function is_real_inquiry_intrinsic
+    end procedure is_real_inquiry_intrinsic
 
-    integer function inquiry_arg_real_kind(arena, node, context) result(kind_num)
+    module procedure inquiry_arg_real_kind
         !! Real kind (4 or 8) of a tiny/huge/epsilon argument, or -1 when the
         !! argument is not a real literal, real array constructor, or real
         !! variable of a supported kind.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
         integer :: arg_idx, sym
         character(len=:), allocatable :: id_name, err, lv, lt, le
 
@@ -174,15 +164,11 @@
                 kind_num = 8
             end select
         end if
-    end function inquiry_arg_real_kind
+    end procedure inquiry_arg_real_kind
 
-    logical function is_real_dot_product(arena, node, context, vk) result(ok)
+    module procedure is_real_dot_product
         !! True when node is a dot_product call whose two arguments are
         !! rank-1 arrays of value kind vk.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in) :: vk
         character(len=:), allocatable :: a_name, b_name, err
         integer :: a_sym, b_sym
 
@@ -204,14 +190,9 @@
              context%symbols(b_sym)%is_array .and. &
              context%symbols(b_sym)%array_rank == 1 .and. &
              context%symbols(b_sym)%value_kind == vk
-    end function is_real_dot_product
+    end procedure is_real_dot_product
 
-    subroutine real_opcode(source_op, line, column, opcode, error_msg)
-        character(len=*), intent(in) :: source_op
-        integer, intent(in) :: line
-        integer, intent(in) :: column
-        integer, intent(out) :: opcode
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure real_opcode
 
         call set_empty(error_msg)
         select case (trim(source_op))
@@ -229,11 +210,9 @@
                                            '+, -, *, and / for real expressions', &
                                            error_msg)
         end select
-    end subroutine real_opcode
+    end procedure real_opcode
 
-    logical function is_real_literal(arena, node_index)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
+    module procedure is_real_literal
         character(len=:), allocatable :: value, literal_type, err
 
         is_real_literal = .false.
@@ -250,12 +229,11 @@
         is_real_literal = trim(literal_type) == 'real' .or. &
                           index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
                           index(value, 'E') > 0
-    end function is_real_literal
+    end procedure is_real_literal
 
-    logical function is_boz_literal_text(text) result(is_boz)
+    module procedure is_boz_literal_text
         !! True when text is a BOZ-literal-constant spelling: a b/o/z/x radix
         !! designator adjacent to a quoted digit string, prefix or postfix.
-        character(len=*), intent(in) :: text
         character(len=:), allocatable :: trimmed, lo
         integer :: n
 
@@ -270,13 +248,11 @@
             is_boz = is_boz_designator(lo(1:1)) .and. &
                      (trimmed(2:2) == "'" .or. trimmed(2:2) == '"')
         end if
-    end function is_boz_literal_text
+    end procedure is_boz_literal_text
 
-    logical function node_is_boz_literal(arena, node_index) result(is_boz)
+    module procedure node_is_boz_literal
         !! True when the arena node is a literal whose spelling is a
         !! BOZ-literal-constant. Non-literal nodes and missing nodes are not.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
         character(len=:), allocatable :: value, literal_type, err
 
         is_boz = .false.
@@ -285,19 +261,17 @@
         call get_literal_info(arena, node_index, value, literal_type, err)
         if (len_trim(err) > 0) return
         is_boz = is_boz_literal_text(value)
-    end function node_is_boz_literal
+    end procedure node_is_boz_literal
 
-    logical function is_boz_designator(c)
-        character(len=1), intent(in) :: c
+    module procedure is_boz_designator
 
         is_boz_designator = c == 'b' .or. c == 'o' .or. c == 'z' .or. c == 'x'
-    end function is_boz_designator
+    end procedure is_boz_designator
 
-    integer(c_int32_t) function boz_bits_i32(v) result(bits)
+    module procedure boz_bits_i32
         !! Two's-complement-safe narrowing of an i64 bit pattern to its low
         !! 32 bits, for reinterpreting a BOZ literal's magnitude as the raw
         !! bits of an f32 value (REAL()'s BOZ-argument bit-transfer rule).
-        integer(c_int64_t), intent(in) :: v
         integer(c_int64_t) :: masked
         integer(c_int64_t), parameter :: mask32 = int(z'00000000FFFFFFFF', c_int64_t)
         integer(c_int64_t), parameter :: sign_bit = int(z'0000000080000000', c_int64_t)
@@ -306,22 +280,14 @@
         masked = iand(v, mask32)
         if (masked >= sign_bit) masked = masked - wrap
         bits = int(masked, c_int32_t)
-    end function boz_bits_i32
+    end procedure boz_bits_i32
 
-    subroutine lower_boz_real_bits(arena, node_index, context, want_f64, &
-                                   value, handled, error_msg)
+    module procedure lower_boz_real_bits
         !! REAL()/DBLE() reinterpret a BOZ-literal-constant argument's bit
         !! pattern directly as the result kind's representation (F2008
         !! 13.7.128-129), unlike an ordinary integer argument which converts
         !! numerically. handled is false (with no error) for any other
         !! argument form, so the caller falls back to normal lowering.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
-        logical, intent(in) :: want_f64
-        type(lr_operand_desc_t), intent(out) :: value
-        logical, intent(out) :: handled
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: lit_value, lit_type
         integer(c_int64_t) :: raw_bits
 
@@ -346,11 +312,9 @@
                 transfer(boz_bits_i32(raw_bits), 1.0_c_float))
         end if
         handled = .true.
-    end subroutine lower_boz_real_bits
+    end procedure lower_boz_real_bits
 
-    logical function is_character_literal(arena, node_index)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
+    module procedure is_character_literal
         character(len=:), allocatable :: value, literal_type, err
 
         is_character_literal = .false.
@@ -358,11 +322,9 @@
         if (len_trim(err) > 0) return
         is_character_literal = trim(literal_type) == 'character' .or. &
                                starts_with_quote(value)
-    end function is_character_literal
+    end procedure is_character_literal
 
-    logical function is_logical_literal(arena, node_index)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
+    module procedure is_logical_literal
         character(len=:), allocatable :: value, literal_type, err
         character(len=:), allocatable :: lowered_value
 
@@ -377,21 +339,18 @@
                              lowered_value == 'true' .or. &
                              lowered_value == 'false' .or. &
                              trim(literal_type) == 'logical'
-    end function is_logical_literal
+    end procedure is_logical_literal
 
-    logical function starts_with_quote(text)
-        character(len=*), intent(in) :: text
+    module procedure starts_with_quote
 
         ! .and. does not short-circuit, so the length guard cannot protect the
         ! substring reference in the same expression.
         starts_with_quote = .false.
         if (len_trim(text) < 2) return
         starts_with_quote = text(1:1) == '"' .or. text(1:1) == "'"
-    end function starts_with_quote
+    end procedure starts_with_quote
 
-    subroutine strip_literal_quotes(text, value)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: value
+    module procedure strip_literal_quotes
         integer :: text_len
 
         ! .and. does not short-circuit, so the length guard is a separate test:
@@ -404,10 +363,9 @@
         else if (text(1:1) == "'" .and. text(text_len:text_len) == "'") then
             value = text(2:text_len - 1)
         end if
-    end subroutine strip_literal_quotes
+    end procedure strip_literal_quotes
 
-    integer(c_int64_t) function logical_i32_value(text) result(value)
-        character(len=*), intent(in) :: text
+    module procedure logical_i32_value
         character(len=:), allocatable :: lowered
 
         lowered = lowercase_text(trim(adjustl(text)))
@@ -417,9 +375,9 @@
         else
             value = 0_c_int64_t
         end if
-    end function logical_i32_value
+    end procedure logical_i32_value
 
-    logical function literal_is_f64(text, context, reference_index)
+    module procedure literal_is_f64
         ! Returns true when a real literal is explicitly f64 — i.e. its numeric
         ! part carries a 'd'/'D' exponent, or it carries a _8 / _real64 /
         ! _c_double / _c_long_double kind suffix, or a suffix naming a
@@ -429,9 +387,6 @@
         ! check is scoped to the numeric part so a suffix that merely contains
         ! the letter 'd' (e.g. a BOZ digit string reaching this function by
         ! mistake) cannot misfire.
-        character(len=*), intent(in) :: text
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: lo, numeric_part, suffix
         integer :: uscore
 
@@ -464,13 +419,9 @@
             literal_is_f64 = named_kind_suffix_is_f64(suffix, context, &
                                                       reference_index)
         end select
-    end function literal_is_f64
+    end procedure literal_is_f64
 
-    logical function named_kind_suffix_is_f64(suffix, context, reference_index) &
-        result(is_f64)
-        character(len=*), intent(in) :: suffix
-        type(lowering_context_t), intent(in) :: context
-        integer, intent(in), optional :: reference_index
+    module procedure named_kind_suffix_is_f64
         integer :: sym
         integer(c_int64_t) :: folded
         character(len=:), allocatable :: fold_error
@@ -501,14 +452,9 @@
         case default
             is_f64 = .false.
         end select
-    end function named_kind_suffix_is_f64
+    end procedure named_kind_suffix_is_f64
 
-    subroutine parse_f64_literal(text, context, value, error_msg, reference_index)
-        character(len=*), intent(in) :: text
-        type(lowering_context_t), intent(in) :: context
-        real(c_double), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
-        integer, intent(in), optional :: reference_index
+    module procedure parse_f64_literal
         character(len=:), allocatable :: clean
         integer :: io_stat, uscore
         integer(c_int64_t) :: int_value
@@ -551,4 +497,6 @@
 
         error_msg = 'invalid real literal for direct LIRIC session: '// &
                     trim(text)
-    end subroutine parse_f64_literal
+    end procedure parse_f64_literal
+
+end submodule session_program_lowering_literal_utils

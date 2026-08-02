@@ -1,65 +1,12 @@
-    ! Typed scalar expression kind engine (#447).
-    !
-    ! One authority answers "what real kind does this scalar expression have?".
-    ! Before this engine the answer was computed by two mirror-image boolean
-    ! predicates (is_f32_expression / is_f64_expression) plus a third for
-    ! intrinsic calls, each re-deriving the mixed-kind rule independently. Every
-    ! caller now asks scalar_real_expr_kind once and compares the result.
-    !
-    ! The engine reports SCALAR_REAL_NONE for an expression that is not a real
-    ! scalar (integer, logical, character, complex, derived, unresolved). It
-    ! never guesses: an unresolved symbol or an unrecognized construct yields
-    ! SCALAR_REAL_NONE rather than a default width.
+submodule (session_program_lowering) session_program_lowering_scalar_expr_kind
+    use session_program_lowering_scalar_expr_kind_order
+    use session_program_lowering_scalar_kind, only: real_value_kind_of, &
+        wider_real_kind, real_kind_from_kind_number
+contains
 
-    integer function real_value_kind_of(kind_code) result(vk)
-        !! Narrow an arbitrary VALUE_* code to the real kinds this engine
-        !! reports. Complex, integer, logical and derived codes are not real
-        !! scalars and map to SCALAR_REAL_NONE.
-        integer, intent(in) :: kind_code
-
-        if (kind_code == VALUE_F32 .or. kind_code == VALUE_F64) then
-            vk = kind_code
-        else
-            vk = SCALAR_REAL_NONE
-        end if
-    end function real_value_kind_of
-
-    integer function wider_real_kind(left_kind, right_kind) result(vk)
-        !! Combine two operand kinds under F2018 10.1.5.2.1: mixed-kind
-        !! arithmetic takes the widest operand kind. f64 dominates f32, which
-        !! dominates "not a real operand", so "2.0*x" with x real(8) is f64.
-        integer, intent(in) :: left_kind, right_kind
-
-        if (left_kind == VALUE_F64 .or. right_kind == VALUE_F64) then
-            vk = VALUE_F64
-        else if (left_kind == VALUE_F32 .or. right_kind == VALUE_F32) then
-            vk = VALUE_F32
-        else
-            vk = SCALAR_REAL_NONE
-        end if
-    end function wider_real_kind
-
-    integer function real_kind_from_kind_number(kind_number) result(vk)
-        !! Map a resolved numeric KIND selector (4 or 8) onto a value kind.
-        integer, intent(in) :: kind_number
-
-        select case (kind_number)
-        case (4)
-            vk = VALUE_F32
-        case (8)
-            vk = VALUE_F64
-        case default
-            vk = SCALAR_REAL_NONE
-        end select
-    end function real_kind_from_kind_number
-
-    recursive integer function scalar_real_expr_kind(arena, node_index, context) &
-        result(vk)
+    module procedure scalar_real_expr_kind
         !! The real kind of a scalar expression, or SCALAR_REAL_NONE when the
         !! expression is not a real scalar.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
@@ -109,18 +56,15 @@
         type is (call_or_subscript_node)
             vk = scalar_real_call_kind(arena, node, context)
         end select
-    end function scalar_real_expr_kind
+    end procedure scalar_real_expr_kind
 
-    recursive integer function scalar_real_call_kind(arena, node, context) &
-        result(vk)
+    module procedure scalar_real_call_kind
         !! The real kind of a call, subscript, or component reference.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
         integer :: symbol_index
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
+        integer :: external_index
 
         vk = SCALAR_REAL_NONE
 
@@ -168,6 +112,14 @@
             return
         end if
 
+        ! Legacy double-precision intrinsics are not part of the generic f64
+        ! intrinsic table, but their result kind is fixed by the spelling.
+        if (same_name(node%name, 'dabs') .or. &
+            same_name(node%name, 'dmin1')) then
+            vk = VALUE_F64
+            return
+        end if
+
         if (f64_intrinsic_id(node%name) /= F64_INTRINSIC_NONE) then
             vk = scalar_real_intrinsic_kind(arena, node, context)
             return
@@ -188,6 +140,13 @@
             return
         end if
 
+        external_index = external_procedure_index(context, node%name)
+        if (external_index > 0) then
+            vk = real_value_kind_of(context%external_procedures( &
+                external_index)%return_value_kind)
+            if (vk /= SCALAR_REAL_NONE) return
+        end if
+
         call call_argument_kinds(arena, node, context, VALUE_I32, &
                                  call_arg_count, call_arg_kinds)
         call call_argument_ranks(arena, node, context, call_arg_count, &
@@ -205,17 +164,13 @@
         else if (is_real_dot_product(arena, node, context, VALUE_F32)) then
             vk = VALUE_F32
         end if
-    end function scalar_real_call_kind
+    end procedure scalar_real_call_kind
 
-    recursive integer function scalar_real_intrinsic_kind(arena, node, context) &
-        result(vk)
+    module procedure scalar_real_intrinsic_kind
         !! Result kind of a real-valued elemental or conversion intrinsic.
         !! REAL(A[,KIND]) and AINT/ANINT(A[,KIND]) take their kind from the
         !! selector; every other intrinsic in the table is kind-preserving and
         !! takes the widest kind among its arguments.
-        type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
         integer :: i
 
         vk = SCALAR_REAL_NONE
@@ -259,4 +214,6 @@
             vk = wider_real_kind(vk, &
                  scalar_real_expr_kind(arena, node%arg_indices(i), context))
         end do
-    end function scalar_real_intrinsic_kind
+    end procedure scalar_real_intrinsic_kind
+
+end submodule session_program_lowering_scalar_expr_kind

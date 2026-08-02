@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `f10437f` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `cf9e8fc` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -42,9 +42,9 @@ explicit decision.
   parameter TRANSPOSE initialization, mixed-kind integer MIN/MAX lowering, and
   legacy typed MIN aliases, and legacy typed MAX aliases,
   with
-  sampled manifest dispositions through seed 1037). FortFront `4948ec2a`.
+  sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 428/428 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -146,8 +146,40 @@ explicit decision.
   `XFAIL=0`, `XPASS=0`, and `FAIL=0`; typed `MIN0`, `AMIN0`, `MIN1`, `AMIN1`,
   and `DMIN1` reuse the scalar min/max engines. `minmax_01.f90` also passes
   with `PASS=3`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; legacy `MAX0` and `MAX1`
-  now share the same typed path. The next XFAIL-first case is `minpack_01.f90`;
-  keep the sample count at 900.
+  now share the same typed path. The bounded XFAIL work since this snapshot
+  promoted `minpack_01.f90`, `minpack_03.f90`, `module_array_init.f90`,
+  `module_function_with_nopass.f90`, `module_function_without_nopass.f90`,
+  `modules_03.f90`, `modules_05.f90`, `modules_08.f90`, `modules_09.f90`,
+  and `modules_20.f90` after independent gfortran/runtime checks. Paired
+  module cases are normal named `PASS` runs; module-only companions are
+  checked as compile-only/no-reference units where they have no main program.
+  The promoted runs are `XFAIL=0`, `XPASS=0`, and `FAIL=0`; keep the sample
+  count at 900.
+- The BIND(C) XFAIL tranche is now green: the exact named run of
+  `modules_15.f90`, `modules_18.f90`/`modules_18b.f90`, and
+  `modules_19.f90`/`modules_19b.f90` reports `PASS=5`, `XFAIL=0`, `XPASS=0`,
+  `FAIL=0`, and `NOREF=2` under the normal manifest. `modules_15` also matches
+  the independent gfortran executable output exactly. ffc now emits typed
+  VALUE parameters for BIND(C) bodies, marks those bodies with the C ABI, and
+  keeps BIND(C) interface calls on the C argument path; the `modules_15` XFAIL
+  row was removed only after both no-manifest and normal-manifest runs passed.
+- The next module-identity tranche is green: exact named runs of
+  `modules_22.f90` and `modules_22_module.f90` report `PASS=2`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0` under both the normal and no-manifest configurations
+  (`NOREF=1` for the module-only companion). Derived `integer(8)` components
+  now use their two-slot layout and i64 load/store path; the XFAIL rows were
+  removed only after the focused independent regression passed.
+- Architecture migration has its first verified seams: diagnostics and
+  constant-folding are real module/submodule units, the scalar-kind helpers
+  and scalar-expression engine are real module/submodule units, FMod token
+  helpers are a real module, literal-utils is a real submodule, and the unused
+  `session_program_lowering_text.inc` fragment is gone. A clean sequential
+  `fo build` and nine named behavior tests pass. The remaining rejection and
+  other host-coupled fragments stay live until their dependencies are extracted
+  safely.
+- The `modules_15b.f90` module-interface companion compiles with ffc and
+  gfortran as an explicit `NOREF=compile-only` case. Its runnable companion is
+  now covered by the verified BIND(C) ABI tranche above.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
@@ -167,6 +199,38 @@ until the current in-scope XFAIL tranche is at zero. The final conformance gate
 requires zero in-scope XFAILs across every declared suite. Classification is
 not a substitute for fixing the behavior.
 
+## Active task list (2026-08-02)
+
+1. Completed: promote `module_array_init.f90`,
+   `module_function_with_nopass.f90`, `module_function_without_nopass.f90`,
+   `modules_03.f90`, `modules_05.f90`, `modules_08.f90`, `modules_09.f90`,
+   and `modules_20.f90` only after independent gfortran behavioral oracles
+   and bounded named runs reached `XFAIL=0`, `XPASS=0`, and `FAIL=0`.
+2. Completed: promote the BIND(C) tranche consisting of `modules_15.f90`,
+   `modules_18.f90`/`modules_18b.f90`, and `modules_19.f90`/`modules_19b.f90`
+   only after the exact C-plus-gfortran oracle and normal-manifest run were
+   both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair is now
+   green; the next XFAIL-first target is `modules_23.f90`/`modules_23_module.f90`,
+   being audited in a separate Luna worktree.
+3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
+   Fortran modules/submodules in dependency order. The first verified seams
+   are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
+   and FMod token support; next extract literal-utils support, then the
+   host-coupled rejection checks. Remove each include only after a sequential
+   `fo build` plus focused behavioral checks are green. This architecture
+   migration runs alongside the named XFAIL work and never authorizes a
+   whole-corpus run.
+4. Audit and remap stale manifest owners before the next sampling gate. The
+   historical owners `ffc#375`, `ffc#447`, `ffc#448`, `ffc#350`, `ffc#457`,
+   `ffc#328`, `ffc#342`, and `ffc#412` are closed; their named XFAIL rows stay
+   until the corresponding behavior is independently green, but no new work
+   is assigned to those issues. The live architecture/corpus gates are
+   `ffc#584`, `ffc#609`, `ffc#576`, and `ffc#663`, followed by the open
+   descriptor/storage issues in the blocker order below.
+5. After the active XFAIL tranche and owner audit are clean, repeat bounded
+   900-file subsets. Only repeated clean subsets can authorize the roadmap's
+   next sample increase.
+
 ## Architecture-first blocker order
 
 1. Binding identity and scope ownership: ffc #584. FortFront #2883, #2924,
@@ -182,6 +246,26 @@ Every issue must preserve its stated invariant, use the shared representation,
 include positive and negative behavioral cases, and run its focused `fo test`
 plus `fo`. A manifest classification may record a known gap. It cannot replace
 the implementation or turn wrong code into `XFAIL`.
+
+Architecture migration map:
+
+- Binding identity: consume one FortFront binding graph in
+  `src/ffc_fortfront_queries.f90`, `src/session_symbol_table.f90`, the
+  ASSOCIATE/interface collectors, and module/submodule lowering. Text-name
+  lookup and inferred fallback must not remain as a second implementation.
+- Descriptor/storage ABI: migrate the array, section, pointer, allocatable,
+  assumed-shape, character-array, and polymorphic paths through
+  `src/ffc_array_descriptor.f90`, the descriptor helpers, and
+  `runtime/ffc_runtime.c`. The canonical layout and ownership/view lifetime
+  rules in `docs/ARRAY_DESCRIPTOR_ABI.md` are the gate.
+- Module and callable identity: keep `.fmod` authoritative through
+  `src/ffc_module_artefact.f90`, `src/session_program_lowering_fmod.inc`,
+  `src/session_program_lowering_submodules.inc`, procedure-dummy,
+  polymorphic, and Lazy-specialization lowering. LIRIC changes only when the
+  public generated-call ABI must change.
+- Shared engines: route array expressions, reductions, constructors,
+  defined assignment, WHERE/FORALL, control flow, and I/O through one typed
+  representation; delete superseded handlers after behavioral proof.
 
 ## Path to standard Fortran conformance
 
@@ -219,10 +303,12 @@ closed. They were split into the atomic issues that now carry the work. Do not
 cite them as the live plan.
 
 The live work order is the chunk sequence in the workspace plan: freeze the
-public compiler graph, centralize typed lowering, stabilize the
-descriptor/runtime/backend ABIs, make module artifacts authoritative, route
-arrays and I/O through shared engines, then close corpus breadth. Each chunk
-names its own atomic issues.
+public compiler graph, freeze the canonical descriptor/storage contract,
+stabilize module artifacts and runtime/backend ABIs, complete typed dispatch,
+route arrays and I/O through shared engines, then close corpus breadth. Scalar
+typed-lowering infrastructure may proceed while the binding graph is being
+completed, but descriptor-dependent dispatch and corpus work do not bypass
+these gates. Each chunk names its own atomic issues.
 
 Neither external corpus is a 100% target as a whole. `gfortran.dg` contains
 error-detection, deprecated, and vendor-extension tests. The `lfortran`

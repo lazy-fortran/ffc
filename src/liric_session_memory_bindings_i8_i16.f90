@@ -1,34 +1,26 @@
-    ! -- i8 (integer(1)) helpers -----------------------------------------
+submodule (liric_session_memory_bindings) liric_session_memory_bindings_i8_i16
+contains
 
-    function i8_vreg_op(session, vreg) result(operand)
+    module procedure i8_vreg_op
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(in) :: session
-        integer(c_int32_t), intent(in) :: vreg
-        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(vreg, c_int64_t)
         operand%typ = lr_type_i8_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end function i8_vreg_op
+    end procedure i8_vreg_op
 
-    function i8_immediate(session, value) result(operand)
+    module procedure i8_immediate
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(in) :: session
-        integer(c_int64_t), intent(in) :: value
-        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_IMM_I64
         operand%payload = value
         operand%typ = lr_type_i8_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end function i8_immediate
+    end procedure i8_immediate
 
-    logical function emit_i8_alloca(session, address, error_msg)
+    module procedure emit_i8_alloca
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
@@ -39,14 +31,10 @@
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i8_alloca = .true.
-    end function emit_i8_alloca
+    end procedure emit_i8_alloca
 
-    logical function emit_i8_load(session, address, value, error_msg)
+    module procedure emit_i8_load
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
@@ -58,13 +46,9 @@
         value = i8_vreg_op(session, vreg)
         call set_empty(error_msg)
         emit_i8_load = .true.
-    end function emit_i8_load
+    end procedure emit_i8_load
 
-    logical function emit_i8_store(session, value, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(in) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_i8_store
         type(lr_error_t) :: error
         integer(c_int32_t) :: unused_vreg
 
@@ -74,16 +58,10 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_i8_store = .true.
-    end function emit_i8_store
+    end procedure emit_i8_store
 
-    logical function emit_i8_binary(session, opcode, lhs, rhs, result, error_msg)
+    module procedure emit_i8_binary
         use liric_session_bindings, only: lr_type_i8_s, lr_session_emit
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int), intent(in) :: opcode
-        type(lr_operand_desc_t), intent(in) :: lhs
-        type(lr_operand_desc_t), intent(in) :: rhs
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
@@ -111,39 +89,28 @@
         result = i8_vreg_op(session, vreg)
         call set_empty(error_msg)
         emit_i8_binary = .true.
-    end function emit_i8_binary
+    end procedure emit_i8_binary
 
-    ! -- i16 (integer(2)) helpers ----------------------------------------
-
-    function i16_vreg_op(session, vreg) result(operand)
+    module procedure i16_vreg_op
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(in) :: session
-        integer(c_int32_t), intent(in) :: vreg
-        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(vreg, c_int64_t)
         operand%typ = lr_type_i16_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end function i16_vreg_op
+    end procedure i16_vreg_op
 
-    function i16_immediate(session, value) result(operand)
+    module procedure i16_immediate
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(in) :: session
-        integer(c_int64_t), intent(in) :: value
-        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_IMM_I64
         operand%payload = value
         operand%typ = lr_type_i16_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end function i16_immediate
+    end procedure i16_immediate
 
-    logical function emit_i16_alloca(session, address, error_msg)
+    module procedure emit_i16_alloca
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
@@ -154,14 +121,10 @@
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i16_alloca = .true.
-    end function emit_i16_alloca
+    end procedure emit_i16_alloca
 
-    logical function emit_i16_load(session, address, value, error_msg)
+    module procedure emit_i16_load
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: address
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
@@ -173,13 +136,9 @@
         value = i16_vreg_op(session, vreg)
         call set_empty(error_msg)
         emit_i16_load = .true.
-    end function emit_i16_load
+    end procedure emit_i16_load
 
-    logical function emit_i16_store(session, value, address, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: value
-        type(lr_operand_desc_t), intent(in) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_i16_store
         type(lr_error_t) :: error
         integer(c_int32_t) :: unused_vreg
 
@@ -189,16 +148,10 @@
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_i16_store = .true.
-    end function emit_i16_store
+    end procedure emit_i16_store
 
-    logical function emit_i16_binary(session, opcode, lhs, rhs, result, error_msg)
+    module procedure emit_i16_binary
         use liric_session_bindings, only: lr_type_i16_s, lr_session_emit
-        type(liric_session_t), intent(inout) :: session
-        integer(c_int), intent(in) :: opcode
-        type(lr_operand_desc_t), intent(in) :: lhs
-        type(lr_operand_desc_t), intent(in) :: rhs
-        type(lr_operand_desc_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
@@ -226,4 +179,7 @@
         result = i16_vreg_op(session, vreg)
         call set_empty(error_msg)
         emit_i16_binary = .true.
-    end function emit_i16_binary
+    end procedure emit_i16_binary
+
+end submodule liric_session_memory_bindings_i8_i16
+

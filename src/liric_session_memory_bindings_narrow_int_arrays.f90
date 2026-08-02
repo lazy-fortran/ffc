@@ -1,13 +1,11 @@
+submodule (liric_session_memory_bindings) liric_session_memory_bindings_narrow_int_arrays
+contains
+
     ! Fixed-size array alloca/GEP for narrow integer element kinds:
     ! integer(8)/(1)/(2). Mirrors the f64/f32 array helpers above, one
     ! element type per block.
 
-    logical function emit_i64_array_alloca(session, array_size, address, &
-            error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_i64_array_alloca
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         integer(c_int32_t) :: vreg
@@ -47,17 +45,9 @@
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i64_array_alloca = .true.
-    end function emit_i64_array_alloca
+    end procedure emit_i64_array_alloca
 
-    logical function emit_i64_array_element_addr(session, array_size, &
-            base_ptr, index_0based, &
-            element_addr, error_msg)
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(in) :: base_ptr
-        type(lr_operand_desc_t), intent(in) :: index_0based
-        type(lr_operand_desc_t), intent(out) :: element_addr
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure emit_i64_array_element_addr
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         type(lr_operand_desc_t), target :: operands(3)
@@ -105,15 +95,10 @@
         element_addr = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i64_array_element_addr = .true.
-    end function emit_i64_array_element_addr
+    end procedure emit_i64_array_element_addr
 
-    logical function emit_i8_array_alloca(session, array_size, address, &
-            error_msg)
+    module procedure emit_i8_array_alloca
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         integer(c_int32_t) :: vreg
@@ -153,18 +138,10 @@
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i8_array_alloca = .true.
-    end function emit_i8_array_alloca
+    end procedure emit_i8_array_alloca
 
-    logical function emit_i8_array_element_addr(session, array_size, &
-            base_ptr, index_0based, &
-            element_addr, error_msg)
+    module procedure emit_i8_array_element_addr
         use liric_session_bindings, only: lr_type_i8_s
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(in) :: base_ptr
-        type(lr_operand_desc_t), intent(in) :: index_0based
-        type(lr_operand_desc_t), intent(out) :: element_addr
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         type(lr_operand_desc_t), target :: operands(3)
@@ -212,15 +189,10 @@
         element_addr = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i8_array_element_addr = .true.
-    end function emit_i8_array_element_addr
+    end procedure emit_i8_array_element_addr
 
-    logical function emit_i16_array_alloca(session, array_size, address, &
-            error_msg)
+    module procedure emit_i16_array_alloca
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(out) :: address
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         integer(c_int32_t) :: vreg
@@ -260,18 +232,10 @@
         address = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i16_array_alloca = .true.
-    end function emit_i16_array_alloca
+    end procedure emit_i16_array_alloca
 
-    logical function emit_i16_array_element_addr(session, array_size, &
-            base_ptr, index_0based, &
-            element_addr, error_msg)
+    module procedure emit_i16_array_element_addr
         use liric_session_bindings, only: lr_type_i16_s
-        type(liric_session_t), intent(inout) :: session
-        integer, intent(in) :: array_size
-        type(lr_operand_desc_t), intent(in) :: base_ptr
-        type(lr_operand_desc_t), intent(in) :: index_0based
-        type(lr_operand_desc_t), intent(out) :: element_addr
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         type(c_ptr) :: array_type
         type(lr_operand_desc_t), target :: operands(3)
@@ -319,4 +283,7 @@
         element_addr = ptr_vreg(session, vreg)
         call set_empty(error_msg)
         emit_i16_array_element_addr = .true.
-    end function emit_i16_array_element_addr
+    end procedure emit_i16_array_element_addr
+
+end submodule liric_session_memory_bindings_narrow_int_arrays
+

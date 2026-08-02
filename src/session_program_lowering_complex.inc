@@ -219,7 +219,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: lre, lim, rre, rim
         character(len=:), allocatable :: op, name
-        integer :: li, ri, opc, ln, cl, sym, ci
+        integer :: li, ri, opc, ln, cl, sym, ci, ext_idx
 
         call set_empty(error_msg)
         if (cmplx_call_args(arena, rhs_index, li, ri)) then
@@ -281,6 +281,25 @@
         type is (call_or_subscript_node)
             sym = 0
             if (allocated(rhs%name)) sym = find_symbol_compat(context, rhs%name)
+            ext_idx = 0
+            if (allocated(rhs%name)) ext_idx = external_procedure_index(context, &
+                                                                         rhs%name)
+            if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
+                    return_value_kind == VALUE_C4) then
+                call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                    .false., re_val, im_val, error_msg)
+                return
+            else if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
+                    return_value_kind == VALUE_C8) then
+                call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                    .true., lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_f32(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f64_to_f32(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
             if (sym > 0) then
                 if (context%symbols(sym)%is_array .and. &
                     context%symbols(sym)%value_kind == VALUE_C4) then
@@ -333,7 +352,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: lre, lim, rre, rim
         character(len=:), allocatable :: op, name
-        integer :: li, ri, opc, ln, cl, sym, ci
+        integer :: li, ri, opc, ln, cl, sym, ci, ext_idx
 
         call set_empty(error_msg)
         if (cmplx_call_args(arena, rhs_index, li, ri)) then
@@ -394,6 +413,25 @@
         type is (call_or_subscript_node)
             sym = 0
             if (allocated(rhs%name)) sym = find_symbol_compat(context, rhs%name)
+            ext_idx = 0
+            if (allocated(rhs%name)) ext_idx = external_procedure_index(context, &
+                                                                         rhs%name)
+            if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
+                    return_value_kind == VALUE_C8) then
+                call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                    .true., re_val, im_val, error_msg)
+                return
+            else if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
+                    return_value_kind == VALUE_C4) then
+                call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                    .false., lre, lim, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_to_f64(context%session, lre, re_val, &
+                                                error_msg)) return
+                if (.not. emit_liric_f32_to_f64(context%session, lim, im_val, &
+                                                error_msg)) return
+                return
+            end if
             if (sym > 0) then
                 if (context%symbols(sym)%is_array .and. &
                     context%symbols(sym)%value_kind == VALUE_C8) then

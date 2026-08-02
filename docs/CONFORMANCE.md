@@ -165,6 +165,21 @@ summary reports the margin next to the rate, and the report carries
 dashboard validator rejects it outright, so `test/conformance/parity_dashboard.tsv`
 stays a full, provenance-verified run.
 
+### XFAIL-first sampling gate
+
+Sampling is a safety and progress instrument, not permission to widen the
+work queue. Each cycle selects one owned in-scope XFAIL tranche, fixes the
+implementation or its independent behavioral oracle, and removes the manifest
+entry only after the named case passes with `XFAIL=0`, `XPASS=0`, and `FAIL=0`.
+Do not move to another corpus area or increase the sample count while that
+tranche is nonzero. `XFAIL`, `NOREF`, and `SKIP` are classifications, not
+behavioral passes; a clean sample with those dispositions does not claim full
+parity.
+
+Compiler jobs remain sequential and bounded. A sampled command that exceeds
+the memory or timeout budget is a failed measurement and must be reduced or
+fixed before the sample is increased.
+
 `--ref-cache DIR` caches the gfortran reference outcome (compile status, exit
 status, stdout) keyed by the source content, the sibling sources compiled with
 it, and the gfortran version. Roughly half a run is spent producing those

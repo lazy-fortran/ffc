@@ -31,12 +31,19 @@
                         return
                     end if
                     if (runtime_character_length(context, node)) then
-                        call resolve_len_of_character_length(context, node, &
-                            source_index)
-                        if (source_index > 0) then
-                            call capture_runtime_fixed_character_length(context, &
-                                existing_index, source_index, error_msg)
+                        if (character_length_is_len_trim(node)) then
+                            call capture_runtime_len_trim_length(context, node, &
+                                existing_index, error_msg)
                             if (len_trim(error_msg) > 0) return
+                        else
+                            call resolve_len_of_character_length(context, node, &
+                                source_index)
+                            if (source_index > 0) then
+                                call capture_runtime_fixed_character_length( &
+                                    context, existing_index, source_index, &
+                                    error_msg)
+                                if (len_trim(error_msg) > 0) return
+                            end if
                         end if
                         call set_empty(error_msg)
                     end if
@@ -100,6 +107,62 @@
         end if
         call define_character_symbol(context, name, character_length, error_msg)
     end subroutine define_declared_character_symbol
+
+    logical function character_length_is_len_trim(node)
+        type(declaration_node), intent(in) :: node
+        character(len=:), allocatable :: expression
+
+        character_length_is_len_trim = .false.
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        expression = lowercase_text(trim(adjustl(node%character_length_expr)))
+        if (len(expression) <= len('len_trim(')) return
+        if (expression(1:len('len_trim(')) /= 'len_trim(') return
+        character_length_is_len_trim = &
+            expression(len(expression):len(expression)) == ')'
+    end function character_length_is_len_trim
+
+    subroutine capture_runtime_len_trim_length(context, node, symbol_index, &
+                                                error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: expression, inner
+        integer :: source_index
+        type(lr_operand_desc_t) :: source_data, source_length
+        type(lr_operand_desc_t) :: trimmed_length, trimmed_length_i64
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%character_length_expr)) return
+        expression = trim(adjustl(node%character_length_expr))
+        inner = trim(adjustl(expression(len('len_trim(') + 1:len(expression) - 1)))
+        if (len(inner) == 0) return
+        if (verify(inner, &
+            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+        source_index = find_symbol_compat(context, inner)
+        if (source_index <= 0) return
+        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) return
+
+        ! The result descriptor is the destination, not the source of its own
+        ! specification expression. Compute LEN_TRIM from the referenced
+        ! character before any result bytes are assigned, so the result's
+        ! {data,length} ABI is initialized with the actual width (#350).
+        call char_length_operands(context, source_index, source_data, &
+                                  source_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call compute_len_trim(context, source_data, source_length, &
+                              trimmed_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, trimmed_length, &
+                                        trimmed_length_i64, error_msg)) return
+        if (.not. emit_i64_store(context%session, trimmed_length_i64, &
+                                 context%symbols(symbol_index)%deferred_length, &
+                                 error_msg)) return
+        context%symbols(symbol_index)%is_runtime_fixed_character = .true.
+        call set_empty(error_msg)
+    end subroutine capture_runtime_len_trim_length
 
     subroutine define_runtime_length_character_local(context, name, &
                                                       source_index, error_msg)
@@ -488,7 +551,7 @@
 
        ! Check for deferred character function call result or trim() result
         if (context%symbols(symbol_index)%is_deferred_character) then
-            if (is_char_expr_call(arena, node%value_index)) then
+            if (is_char_expr_call(arena, node%value_index, context)) then
                 call lower_deferred_trim_assignment(arena, node%value_index, &
                     context, symbol_index, error_msg)
                 return
@@ -599,7 +662,7 @@
             if (len_trim(error_msg) > 0) return
             call strip_literal_quotes(lit_value, literal_text)
         else if (is_identifier(arena, node%value_index) .or. &
-                 is_char_expr_call(arena, node%value_index) .or. &
+                 is_char_expr_call(arena, node%value_index, context) .or. &
                  is_character_substring(arena, node%value_index, context)) then
             ! A character variable, a substring view, or a
             ! trim()/adjustl()/adjustr()/achar()/repeat() result assigned to a
@@ -1326,16 +1389,20 @@
                                 value, error_msg)
     end subroutine lower_i32_len_intrinsic
 
-    logical function is_trim_call(arena, node_index)
+    logical function is_trim_call(arena, node_index, context)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
 
         is_trim_call = .false.
         if (.not. node_exists(arena, node_index)) return
         select type (n => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (.not. n%is_array_access .and. allocated(n%name)) &
-                is_trim_call = same_name(n%name, 'trim')
+            if (.not. n%is_array_access .and. allocated(n%name)) then
+                is_trim_call = same_name(n%name, 'trim') .and. &
+                               .not. is_contained_char_result_call( &
+                                   arena, node_index, context)
+            end if
         end select
     end function is_trim_call
 
@@ -1387,7 +1454,7 @@
                                       length, error_msg)
             return
         end if
-        if (is_trim_call(arena, node_index)) then
+        if (is_trim_call(arena, node_index, context)) then
             select type (n => arena%entries(node_index)%node)
             type is (call_or_subscript_node)
                 call lower_trim_deferred(arena, n, context, data_ptr, length, &
@@ -1475,6 +1542,16 @@
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
             if (len_trim(error_msg) > 0) return
+            ! C_NULL_CHAR is a named ISO_C_BINDING constant, but its semantic
+            ! value is a single zero byte rather than a regular character
+            ! variable in the lowering symbol table.  Materialising an empty
+            ! literal gives the same pointer-to-terminator representation and
+            ! lets concatenation build the required C string (#584).
+            if (same_name(id_name, 'c_null_char')) then
+                call char_literal_operands(context, '""', data_ptr, length, &
+                                           error_msg)
+                return
+            end if
             symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index <= 0 .or. &
                 context%symbols(max(symbol_index, 1))%value_kind /= &
@@ -1594,6 +1671,45 @@
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_deferred_char_view_assignment
+
+    subroutine lower_character_substring_assignment(arena, node, context, error_msg)
+        ! Assign a scalar character expression to s(l:u).  FortFront uses the
+        ! array_slice_node representation for both array sections and
+        ! substrings; the assignment dispatcher selects this path after the
+        ! scalar-character test.  Evaluate the RHS into a private buffer before
+        ! blank-filling the target so overlapping views retain Fortran's
+        ! evaluate-before-store semantics.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: target_data, target_len
+        type(lr_operand_desc_t) :: source_data, source_len
+        type(lr_operand_desc_t) :: source_copy, copy_len, copy_len64, fits
+
+        call substring_operands(arena, node%target_index, context, target_data, &
+                                target_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call char_expr_operands(arena, node%value_index, context, source_data, &
+                                source_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call materialize_character_view(context, source_data, source_len, &
+                                        source_copy, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call fill_spaces(context, target_data, target_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, source_len, &
+                target_len, fits, error_msg)) return
+        call select_value(context, fits, source_len, target_len, copy_len, &
+                          error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_len, copy_len64, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, target_data, source_copy, &
+                copy_len64, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_character_substring_assignment
 
     subroutine materialize_character_view(context, data_ptr, length, buf, &
                                           error_msg)
@@ -1859,17 +1975,93 @@
         end select
     end function is_contained_char_result_call
 
-    logical function is_char_expr_call(arena, node_index)
+    recursive logical function is_character_concat_actual(arena, node_index, &
+                                                          context) result(is_char)
+        ! Character actuals are recognized by the argument path through
+        ! is_char_expr_call().  Keep this classifier separate from
+        ! is_character_concat(), whose operand walk calls is_char_expr_call()
+        ! and would therefore recurse if it were used here directly.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: op, op_error
+        integer :: left_index, right_index, line, column
+
+        is_char = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, op, left_index, right_index, &
+                                line, column, op_error)
+        if (len_trim(op_error) > 0) return
+        if (trim(op) /= '//') return
+        if (.not. is_direct_character_operand(arena, left_index, context)) return
+        is_char = is_direct_character_operand(arena, right_index, context)
+    end function is_character_concat_actual
+
+    recursive logical function is_direct_character_operand(arena, node_index, &
+                                                            context) result(is_char)
+        ! A deliberately non-general operand test for the actual-argument
+        ! bridge above.  It recognizes the scalar character values that
+        ! char_expr_operands() can materialize, including C_NULL_CHAR.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, name_error
+        integer :: symbol_index
+
+        is_char = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_character_literal(arena, node_index)) then
+            is_char = .true.
+            return
+        end if
+        if (is_character_concat_actual(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_character_substring(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_contained_char_result_call(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
+        if (is_named_char_call(arena, node_index, 'achar') .or. &
+            is_named_char_call(arena, node_index, 'char') .or. &
+            is_named_char_call(arena, node_index, 'adjustl') .or. &
+            is_named_char_call(arena, node_index, 'adjustr') .or. &
+            is_named_char_call(arena, node_index, 'repeat')) then
+            is_char = .true.
+            return
+        end if
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, name_error)
+        if (len_trim(name_error) > 0) return
+        if (same_name(name, 'c_null_char')) then
+            is_char = .true.
+            return
+        end if
+        symbol_index = resolve_symbol_at_node(context, node_index, name)
+        if (symbol_index > 0) is_char = &
+            context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
+    end function is_direct_character_operand
+
+    logical function is_char_expr_call(arena, node_index, context)
         ! A call that produces a character value usable in print/assign/len.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
 
-        is_char_expr_call = is_trim_call(arena, node_index) .or. &
+        is_char_expr_call = is_contained_char_result_call(arena, node_index, &
+                                                          context) .or. &
+                            is_trim_call(arena, node_index, context) .or. &
                             is_named_char_call(arena, node_index, 'achar') .or. &
                             is_named_char_call(arena, node_index, 'char') .or. &
                             is_named_char_call(arena, node_index, 'adjustl') .or. &
                             is_named_char_call(arena, node_index, 'adjustr') .or. &
-                            is_named_char_call(arena, node_index, 'repeat')
+                            is_named_char_call(arena, node_index, 'repeat') .or. &
+                            is_character_concat_actual(arena, node_index, context)
     end function is_char_expr_call
 
     recursive logical function is_character_concat(arena, node_index, context) &
@@ -1909,7 +2101,7 @@
             is_char = is_character_literal(arena, node_index)
             return
         end if
-        if (is_char_expr_call(arena, node_index)) then
+        if (is_char_expr_call(arena, node_index, context)) then
             is_char = .true.
             return
         end if

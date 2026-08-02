@@ -62,7 +62,8 @@
         if (.not. allocated(context%derived_types(type_index)% &
                             component_value_kind)) return
         if (context%derived_types(type_index)%component_value_kind(comp_index) == &
-            VALUE_F64) component_slot_width = 2
+            VALUE_F64 .or. context%derived_types(type_index)% &
+            component_value_kind(comp_index) == VALUE_I64) component_slot_width = 2
         ! A procedure-pointer component holds an 8-byte callee address (#372).
         if (context%derived_types(type_index)%component_value_kind(comp_index) == &
             VALUE_PROC_PTR) component_slot_width = 2
@@ -1763,17 +1764,24 @@
         end do
     end subroutine method_call_info
 
-    integer function impl_pass_position(arena, impl_name, pass_name) result(pos)
+    integer function impl_pass_position(arena, impl_name, pass_name, pass_arg) &
+            result(pos)
         ! 1-based position of the dummy named pass_name in impl's parameter
-        ! list; 1 (the default pass position) when pass_name is empty or absent.
+        ! list; 1 (the default pass position) when pass_name is empty. NOPASS
+        ! has no implicit receiver and therefore returns zero.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: impl_name
         character(len=*), intent(in) :: pass_name
+        logical, intent(in) :: pass_arg
         integer :: n, p
         integer, allocatable :: params(:)
         character(len=:), allocatable :: pname, perr
 
         pos = 1
+        if (.not. pass_arg) then
+            pos = 0
+            return
+        end if
         if (len_trim(pass_name) == 0) return
         call impl_param_indices(arena, impl_name, params)
         if (.not. allocated(params)) return
@@ -1837,6 +1845,11 @@
 
         n = 0
         if (allocated(node%arg_indices)) n = size(node%arg_indices)
+        if (position <= 0) then
+            allocate (combined(n))
+            if (n > 0) combined = node%arg_indices
+            return
+        end if
         allocate (combined(n + 1))
         pos = position
         if (pos < 1 .or. pos > n + 1) pos = 1
@@ -1867,6 +1880,7 @@
         character(len=:), allocatable :: var_name, method_name, impl_name
         character(len=:), allocatable :: pass_name
         integer :: pct, symbol_index, type_index, b, n, position, i, k, slot
+        logical :: pass_arg
         type(lr_operand_desc_t), allocatable :: method_args(:), all_args(:)
         type(lr_operand_desc_t) :: callee_ptr
         integer, allocatable :: copyback_indices(:)
@@ -1887,6 +1901,7 @@
         type_index = context%symbols(symbol_index)%derived_type_index
         call set_empty(impl_name)
         call set_empty(pass_name)
+        pass_arg = .true.
         do b = 1, context%derived_types(type_index)%binding_count
             if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
                 method_name) then
@@ -1895,6 +1910,8 @@
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))
+                if (allocated(context%derived_types(type_index)%binding_pass_args)) &
+                    pass_arg = context%derived_types(type_index)%binding_pass_args(b)
                 exit
             end if
         end do
@@ -1903,7 +1920,7 @@
             return
         end if
 
-        position = impl_pass_position(arena, impl_name, pass_name)
+        position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
         if (allocated(arg_indices)) then
             call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                         impl_name, method_args, copyback_indices, &
@@ -1914,22 +1931,27 @@
             allocate (copyback_indices(0))
         end if
         n = size(method_args)
-        allocate (all_args(n + 1))
-        if (position < 1 .or. position > n + 1) position = 1
-        call class_receiver_argument(context, arena, impl_name, position, &
-                                     symbol_index, all_args(position), error_msg)
-        if (len_trim(error_msg) > 0) return
-        k = 0
-        do i = 1, n + 1
-            if (i == position) cycle
-            k = k + 1
-            all_args(i) = method_args(k)
-        end do
+        if (position > 0) then
+            allocate (all_args(n + 1))
+            if (position > n + 1) position = 1
+            call class_receiver_argument(context, arena, impl_name, position, &
+                                         symbol_index, all_args(position), error_msg)
+            if (len_trim(error_msg) > 0) return
+            k = 0
+            do i = 1, n + 1
+                if (i == position) cycle
+                k = k + 1
+                all_args(i) = method_args(k)
+            end do
+        else
+            allocate (all_args(n))
+            if (n > 0) all_args = method_args
+        end if
         ! A receiver that carries a runtime type identity dispatches through
         ! its dynamic type's vtable, so an override of the most-derived type is
         ! reached instead of the declared type's implementation (#420).
         slot = type_binding_slot(context, type_index, method_name)
-        if (slot > 0 .and. &
+        if (pass_arg .and. slot > 0 .and. &
             class_receiver_dispatches_dynamically(context, symbol_index)) then
             call class_dispatch_callee(context, symbol_index, slot, callee_ptr, &
                                        error_msg)
@@ -1953,7 +1975,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: base_var_index, position, receiver_symbol, slot
         character(len=:), allocatable :: impl_name, pass_name
-        logical :: found
+        logical :: found, pass_arg
         integer, allocatable :: combined(:)
         type(lr_operand_desc_t), allocatable :: args(:)
         type(lr_operand_desc_t) :: callee_ptr
@@ -1966,12 +1988,18 @@
             error_msg = 'not a type-bound method call'
             return
         end if
-        position = impl_pass_position(arena, impl_name, pass_name)
+        pass_arg = .true.
+        if (allocated(context%derived_types(context%symbols(receiver_symbol)% &
+                derived_type_index)%binding_pass_args)) then
+            pass_arg = context%derived_types(context%symbols(receiver_symbol)% &
+                derived_type_index)%binding_pass_args(slot)
+        end if
+        position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
         call method_call_arg_indices(node, base_var_index, position, combined)
         call prepare_reference_args(arena, combined, context, VALUE_I32, &
                                     impl_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (slot > 0 .and. &
+        if (pass_arg .and. slot > 0 .and. &
             class_receiver_dispatches_dynamically(context, receiver_symbol)) then
             call class_dispatch_callee(context, receiver_symbol, slot, &
                                        callee_ptr, error_msg)
@@ -2995,6 +3023,8 @@
             return
         end if
         select case (comp_kind)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, value_index, context, value, error_msg)
         case (VALUE_F64)
             call lower_f64_expression(arena, value_index, context, value, error_msg)
         case (VALUE_F32)
@@ -3996,6 +4026,8 @@
             return
         end if
         select case (comp_kind)
+        case (VALUE_I64)
+            ok = emit_i64_store(context%session, value, addr, error_msg)
         case (VALUE_F64)
             ok = emit_liric_f64_store(context%session, value, addr, error_msg)
         case (VALUE_F32)
@@ -4021,6 +4053,8 @@
             return
         end if
         select case (comp_kind)
+        case (VALUE_I64)
+            ok = emit_i64_load(context%session, addr, value, error_msg)
         case (VALUE_F64)
             ok = emit_liric_f64_load(context%session, addr, value, error_msg)
         case (VALUE_F32)
