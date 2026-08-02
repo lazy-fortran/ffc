@@ -1182,9 +1182,10 @@
     end subroutine resolve_result_decl_kind
 
     logical function result_var_is_fixed_array(node, context) result(is_fixed)
-        ! True when the function result variable is declared as a rank-1
-        ! fixed-size (compile-time extent) array in the body. Assumed-shape and
-        ! allocatable results stay out of scope and keep their later diagnostic.
+        ! True when the function result variable is declared as a rank-1 or
+        ! rank-2 explicit-shape array in the body. Runtime bounds are still
+        ! valid here: the caller supplies the sret storage and the callee's
+        ! runtime shape operands drive element addressing.
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable :: result_name
@@ -1203,14 +1204,14 @@
             type is (declaration_node)
                 if (allocated(decl%var_name)) then
                     if (trim(decl%var_name) == result_name) then
-                        if (declaration_is_fixed_rank1(decl)) is_fixed = .true.
+                        if (declaration_is_fixed_array(decl)) is_fixed = .true.
                         if (is_fixed) return
                     end if
                 end if
                 if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
                     do k = 1, size(decl%var_names)
                         if (trim(decl%var_names(k)) == result_name) then
-                            if (declaration_is_fixed_rank1(decl)) is_fixed = .true.
+                            if (declaration_is_fixed_array(decl)) is_fixed = .true.
                             if (is_fixed) return
                         end if
                     end do
@@ -1282,6 +1283,21 @@
         if (size(decl%dimension_indices) /= 1) return
         is_fixed = .true.
     end function declaration_is_fixed_rank1
+
+    logical function declaration_is_fixed_array(decl) result(is_fixed)
+        ! An explicit-shape intrinsic array declaration eligible for the raw
+        ! sret array-result ABI. The result body may use runtime bounds; those
+        ! are rebound to runtime dimension operands by array lowering.
+        type(declaration_node), intent(in) :: decl
+
+        is_fixed = .false.
+        if (.not. decl%is_array) return
+        if (decl%is_allocatable) return
+        if (.not. allocated(decl%dimension_indices)) return
+        if (size(decl%dimension_indices) < 1 .or. &
+            size(decl%dimension_indices) > 2) return
+        is_fixed = .true.
+    end function declaration_is_fixed_array
 
     logical function result_var_is_alloc_array(node, context) result(is_alloc)
         ! True when the function result variable is declared as an allocatable

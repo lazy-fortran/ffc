@@ -2198,6 +2198,7 @@
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: binding_error
         type(lr_operand_desc_t) :: param_base
+        type(lr_operand_desc_t) :: runtime_extent
 
         is_assumed = present(assumed_extents)
 
@@ -2309,18 +2310,36 @@
 
         ! An array function result whose extent is a dummy-argument value (e.g.
         ! `real, dimension(n) :: seq`) has no compile-time size. The result is
-        ! bound to the caller's sret buffer (param 0), so element addressing GEPs
-        ! the runtime subscript with the element stride and the array-type extent
-        ! is irrelevant. Skip folding and keep array_size as the sentinel 0; the
-        ! caller-side destination supplies the real storage and the do-loop bound
-        ! n drives the element count at run time.
+        ! bound to the caller's sret buffer (param 0), so element addressing uses
+        ! runtime dimension operands and the contiguous element stride.
         if (context%symbols(index)%is_array_result .and. &
             declaration_is_runtime_rank1(node, context)) then
             context%symbols(index)%array_lower_bound = 1
-            context%symbols(index)%array_dim_lowers(1) = 1
-            context%symbols(index)%array_dim_sizes(1) = 0
+            do i = 1, dim_count
+                context%symbols(index)%array_dim_lowers(i) = 1
+                context%symbols(index)%array_dim_sizes(i) = 0
+                dim_index = node%dimension_indices(i)
+                select type (dim_node => context%arena%entries(dim_index)%node)
+                type is (range_expression_node)
+                    if (dim_node%end_index <= 0) then
+                        error_msg = 'runtime array result bound is missing'
+                        return
+                    end if
+                    call lower_i32_expression(context%arena, dim_node%end_index, &
+                                               context, runtime_extent, error_msg)
+                class default
+                    call lower_i32_expression(context%arena, dim_index, context, &
+                                               runtime_extent, error_msg)
+                end select
+                if (len_trim(error_msg) > 0) return
+                context%symbols(index)%has_runtime_dim_size(i) = .true.
+                context%symbols(index)%runtime_dim_size(i) = runtime_extent
+            end do
             context%symbols(index)%array_size = 0
             context%symbols(index)%element_address = param_base
+            context%symbols(index)%has_runtime_array_stride = .true.
+            context%symbols(index)%runtime_array_stride_bytes = &
+                i64_immediate(context%session, allocatable_elem_size(value_kind))
             call set_empty(error_msg)
             return
         end if
@@ -4063,6 +4082,7 @@
         integer(c_int64_t) :: b_row_base
         integer(c_int64_t) :: b_col_base
         logical :: a_is_alloc_result, b_is_alloc_result
+        logical :: a_is_array_result, b_is_array_result
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -4078,8 +4098,15 @@
                 rhs%arg_indices(1), context)
             b_is_alloc_result = is_alloc_array_result_call(arena, &
                 rhs%arg_indices(2), context)
+            a_is_array_result = is_array_result_call(arena, rhs%arg_indices(1), &
+                                                     context)
+            b_is_array_result = is_array_result_call(arena, rhs%arg_indices(2), &
+                                                     context)
             if (a_is_alloc_result) then
                 call materialize_matmul_alloc_result(arena, rhs%arg_indices(1), &
+                    context, a_index, error_msg)
+            else if (a_is_array_result) then
+                call materialize_matmul_array_result(arena, rhs%arg_indices(1), &
                     context, a_index, error_msg)
             else
                 call resolve_i32_array_argument(arena, rhs, 1, context, 'matmul', &
@@ -4088,6 +4115,9 @@
             if (len_trim(error_msg) > 0) return
             if (b_is_alloc_result) then
                 call materialize_matmul_alloc_result(arena, rhs%arg_indices(2), &
+                    context, b_index, error_msg)
+            else if (b_is_array_result) then
+                call materialize_matmul_array_result(arena, rhs%arg_indices(2), &
                     context, b_index, error_msg)
             else
                 call resolve_i32_array_argument(arena, rhs, 2, context, 'matmul', &
@@ -4236,6 +4266,218 @@
         call lower_alloc_array_result_assignment(arena, value_index, symbol_index, &
                                                  context, error_msg)
     end subroutine materialize_matmul_alloc_result
+
+    subroutine materialize_matmul_array_result(arena, value_index, context, &
+                                                symbol_index, error_msg)
+        ! Materialize a fixed/raw-sret array function result into a bounded
+        ! temporary so MATMUL can consume it as an ordinary rank-1/2 array.
+        ! The result shape is recovered from size(dummy) bounds and the actual
+        ! call argument's known shape; dynamic caller-only shapes remain an
+        ! explicit diagnostic rather than an unbounded compiler allocation.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: call_node
+        character(len=:), allocatable :: function_name
+        character(len=64) :: temporary_name
+        integer :: element_kind, rank, extents(2), total, i, node_index
+        integer(c_int64_t) :: byte_count
+        type(function_def_node), pointer :: fn_node
+        logical :: ok
+
+        call set_empty(error_msg)
+        symbol_index = 0
+        select type (v => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            call_node = v
+            function_name = v%name
+        class default
+            error_msg = 'matmul array result operand is not a function call'
+            return
+        end select
+
+        node_index = 0
+        do i = 1, context%function_count
+            if (same_name(context%function_names(i), function_name)) then
+                node_index = context%function_node_indices(i)
+                exit
+            end if
+        end do
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (.not. associated(fn_node)) then
+            error_msg = 'matmul array result function was not found'
+            return
+        end if
+        call matmul_array_result_decl_shape(arena, fn_node, call_node, context, &
+                                            element_kind, rank, extents, ok, &
+                                            error_msg)
+        if (.not. ok .or. len_trim(error_msg) > 0) return
+        total = 1
+        do i = 1, rank
+            if (extents(i) <= 0) then
+                error_msg = 'matmul array result has a non-positive extent'
+                return
+            end if
+            total = total * extents(i)
+        end do
+
+        call grow_symbols(context)
+        symbol_index = context%symbol_count + 1
+        context%symbols(symbol_index) = symbol_t()
+        write (temporary_name, '("__ffc.matmul.arg.",I0)') symbol_index
+        context%symbols(symbol_index)%name = trim(temporary_name)
+        context%symbols(symbol_index)%value_kind = element_kind
+        context%symbols(symbol_index)%is_array = .true.
+        context%symbols(symbol_index)%array_rank = rank
+        context%symbols(symbol_index)%array_size = total
+        context%symbols(symbol_index)%array_lower_bound = 1
+        do i = 1, rank
+            context%symbols(symbol_index)%array_dim_lowers(i) = 1
+            context%symbols(symbol_index)%array_dim_sizes(i) = extents(i)
+        end do
+        byte_count = int(total, c_int64_t) * allocatable_elem_size(element_kind)
+        if (.not. emit_alloca_bytes(context%session, i64_immediate(context%session, &
+                byte_count), context%symbols(symbol_index)%element_address, &
+                error_msg)) return
+        context%symbol_count = symbol_index
+        call lower_array_result_call(arena, value_index, symbol_index, context, &
+                                     error_msg)
+    end subroutine materialize_matmul_array_result
+
+    subroutine matmul_array_result_decl_shape(arena, fn_node, call_node, context, &
+                                               element_kind, rank, extents, ok, &
+                                               error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: fn_node
+        type(call_or_subscript_node), intent(in) :: call_node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: element_kind, rank, extents(2)
+        logical, intent(out) :: ok
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: result_name
+        integer :: i, k, decl_index
+        logical :: found
+
+        call set_empty(error_msg)
+        element_kind = VALUE_I32
+        rank = 0
+        extents = 0
+        ok = .false.
+        result_name = trim(fn_node%name)
+        if (allocated(fn_node%result_variable)) then
+            if (len_trim(fn_node%result_variable) > 0) &
+                result_name = trim(fn_node%result_variable)
+        end if
+        if (.not. allocated(fn_node%body_indices)) then
+            error_msg = 'matmul array result declaration was not found'
+            return
+        end if
+        do i = 1, size(fn_node%body_indices)
+            decl_index = fn_node%body_indices(i)
+            if (.not. node_exists(arena, decl_index)) cycle
+            select type (decl => arena%entries(decl_index)%node)
+            type is (declaration_node)
+                found = .false.
+                if (allocated(decl%var_name)) found = &
+                    same_name(decl%var_name, result_name)
+                if (.not. found .and. decl%is_multi_declaration .and. &
+                    allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (same_name(decl%var_names(k), result_name)) found = .true.
+                    end do
+                end if
+                if (.not. found) cycle
+                if (.not. declaration_is_fixed_array(decl)) then
+                    error_msg = 'matmul array result is not an explicit array'
+                    return
+                end if
+                rank = size(decl%dimension_indices)
+                if (rank < 1 .or. rank > 2) then
+                    error_msg = 'matmul array result rank is unsupported'
+                    return
+                end if
+                call declaration_value_kind(decl, element_kind, error_msg, context, &
+                                            decl_index)
+                if (len_trim(error_msg) > 0) return
+                do k = 1, rank
+                    call matmul_array_result_extent(arena, fn_node, call_node, &
+                        decl%dimension_indices(k), context, extents(k), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                ok = .true.
+                return
+            end select
+        end do
+        error_msg = 'matmul array result declaration was not found'
+    end subroutine matmul_array_result_decl_shape
+
+    subroutine matmul_array_result_extent(arena, fn_node, call_node, expr_index, &
+                                           context, extent, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: fn_node
+        type(call_or_subscript_node), intent(in) :: call_node
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: folded
+        character(len=:), allocatable :: dummy_name, name_error
+        integer :: param_pos, actual_index, actual_symbol
+
+        extent = 0
+        call eval_i32_constant(arena, expr_index, context, folded, error_msg)
+        if (len_trim(error_msg) == 0) then
+            extent = int(folded)
+            return
+        end if
+        call set_empty(error_msg)
+        select type (size_call => arena%entries(expr_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(size_call%name) .or. &
+                .not. same_name(size_call%name, 'size') .or. &
+                .not. allocated(size_call%arg_indices) .or. &
+                size(size_call%arg_indices) /= 1) then
+                error_msg = 'matmul array result extent is not compile-time known'
+                return
+            end if
+            call get_identifier_name(arena, size_call%arg_indices(1), dummy_name, &
+                                     name_error)
+            if (len_trim(name_error) > 0) then
+                error_msg = 'matmul array result SIZE argument is not a dummy'
+                return
+            end if
+            param_pos = proc_param_position(arena, fn_node%name, dummy_name)
+            if (.not. allocated(call_node%arg_indices) .or. param_pos <= 0 .or. &
+                param_pos > size(call_node%arg_indices)) then
+                error_msg = 'matmul array result dummy has no actual argument'
+                return
+            end if
+            actual_index = call_node%arg_indices(param_pos)
+            if (.not. is_identifier(arena, actual_index)) then
+                error_msg = 'matmul array result actual shape is not static'
+                return
+            end if
+            call get_identifier_name(arena, actual_index, dummy_name, name_error)
+            if (len_trim(name_error) > 0) then
+                error_msg = 'matmul array result actual has no name'
+                return
+            end if
+            actual_symbol = find_symbol_compat(context, dummy_name)
+            if (actual_symbol <= 0 .or. .not. context%symbols(actual_symbol)%is_array) then
+                error_msg = 'matmul array result actual is not an array'
+                return
+            end if
+            extent = context%symbols(actual_symbol)%array_dim_sizes(1)
+            if (extent <= 0) then
+                error_msg = 'matmul array result actual shape is dynamic'
+                return
+            end if
+        class default
+            error_msg = 'matmul array result extent is not compile-time known'
+        end select
+    end subroutine matmul_array_result_extent
 
     subroutine release_matmul_alloc_result(symbol_index, context, error_msg)
         integer, intent(in) :: symbol_index

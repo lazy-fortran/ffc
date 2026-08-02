@@ -2115,7 +2115,6 @@ list_test_04_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar e
 list_test_06_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_08_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_09_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-matmul_06.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 matrix_01_transpose.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 matrix_03_transpose_param.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 max_02.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
