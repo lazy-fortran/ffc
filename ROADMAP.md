@@ -25,9 +25,11 @@ The retired MLIR/HLFIR experiment lives only in git history. Reference it
 by commit hash if you need to look back, but do not revive it without an
 explicit decision.
 
-## Current status (2026-08-02)
+## Current status (2026-08-03)
 
-- Main: `08e8c16` (modules31/modules33 separate-compilation support:
+- Main: `d508687` (modules34/modules35 XFAIL closure, schema-10 `.fmod`
+  compatibility, and strict sampled conformance gating, on top of the
+  modules31/modules33 separate-compilation support:
   one-specific and multi-specific generic type-bound bindings, serialized
   type-bound bindings in `.fmod` schema 11,
   imported vtable ownership and module-mangled type-bound calls, and rank-1
@@ -270,9 +272,19 @@ explicit decision.
   schema-11 `.fmod` files, resolves imported generic calls, and handles scalar
   nested receivers without contaminating later derived layouts. The positive
   direct-session generic dispatch regression and the batched five-target
-  focused test pass. The next XFAIL-first tranche is the modules34 sibling
-  family: `modules_34_module1a` is an XPASS candidate and
-  `modules_34_module3` still exposes the transitive-USE export gap.
+  focused test pass. The modules34 XFAIL-first tranche is now green: exact
+  normal and XFAIL-disabled runs report `PASS=5`, `XFAIL=0`, `XPASS=0`,
+  `FAIL=0`, and `NOREF=4`; independent ffc and gfortran module-chain
+  compile/link/run oracles both print `running modules_34 program`. FFC now
+  re-exports public derived types imported through `USE`, and both stale
+  modules34 XFAIL rows were removed only after the named behavioral evidence.
+  The modules35 XFAIL is green too: `modules_35.f90` reports `PASS=1`,
+  `XFAIL=0`, `XPASS=0`, and `FAIL=0` against the gfortran oracle. The fix
+  handles character allocatable-array descriptor passing, bounded rank-1 slot
+  copies, and zero-length constructor assignment. Schema-10 `.fmod` reads are
+  covered by a literal binding fixture while writers remain on schema 11.
+  `sync_all_01.f90` and `sync_memory_01.f90` are explicitly classified as
+  out-of-scope coarray/image-control cases.
 - The focused constant-expression rejection regression is green again:
   `test_session_reject_const_01_compiler` passes after `HUGE` bounds stop being
   misclassified as runtime extents. The constant-overflow checker is now a real
@@ -293,8 +305,12 @@ module-only siblings legitimately produce `NOREF`. For every tranche and
 random sample, inspect the summary and require zero `FAIL`, `XPASS`, `XFAIL`,
 timeouts, and OOMs; treat every `NOREF`/`SKIP` as an explicit reviewed
 classification, never as a behavioral pass. Keep each invocation isolated
-with `TMPDIR=$(mktemp -d)` and a private `--ref-cache`. Until the harness has
-a strict pass-only mode, this summary check is mandatory.
+with `TMPDIR=$(mktemp -d)` and a private `--ref-cache`. The opt-in
+`--require-pass-only --sample N` mode now filters XFAIL/SKIP/NOREF entries,
+avoids standalone module-only files without an executable oracle, uses an
+isolated scratch directory, and fails unless every selected record is a
+behavioral PASS. Use it for random progress checks; keep `N=900` until
+repeated fresh seeds are clean.
 
 ## XFAIL-zero work gate
 
@@ -399,7 +415,7 @@ progress measurement. The fast path is: zero the owned XFAIL tranche, prove it
 with an independent oracle, repeat clean random subsets, then widen the
 sample modestly.
 
-## Active task list (2026-08-02)
+## Active task list (2026-08-03)
 
 1. Completed: promote `module_array_init.f90`,
    `module_function_with_nopass.f90`, `module_function_without_nopass.f90`,
@@ -422,17 +438,17 @@ sample modestly.
    (`modules_30.f90` and `modules_30_module2.f90`) is also green after exact
    normal/no-XFAIL checks and the independent gfortran module-chain oracle;
    its two XFAIL rows are removed. The modules31 and modules33 families are
-   complete as recorded above. Select the next smallest owned XFAIL tranche
-   from the manifest: modules34 as a sibling closure, with module1a's XPASS
-   promotion and module3's transitive-USE export failure handled before any
-   sample increase.
+   complete as recorded above. The modules34 and modules35 XFAIL tranches are
+   complete. Select the next smallest owned XFAIL tranche from the manifest,
+   starting with `modules_36.f90` (#417), before any sample increase.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
    and FMod token support; literal-utils, declaration-conflict, generic,
    result, array-constructor, purity, and pointer rejection are now real
    submodules. Next extract the remaining host-coupled rejection fragments.
-   Remove each include only after a sequential
+   The modules35 fix necessarily touched two existing lowering fragments but
+   introduced no new include. Remove each remaining include only after a sequential
    `fo build` plus focused behavioral checks are green. This architecture
    migration runs alongside the named XFAIL work and never authorizes a
    whole-corpus run.
