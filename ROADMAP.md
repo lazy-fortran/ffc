@@ -27,10 +27,10 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `3159f36` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `4fd0388` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT, and
-  integer-to-logical scalar casts, with sampled manifest dispositions through
-  seed 1037).
+  scalar logical/integer casts, with sampled manifest dispositions through seed
+  1037).
   FortFront `0f49d25c`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -62,6 +62,10 @@ explicit decision.
   arithmetic integer expressions, converts nonzero values through an i1-to-i32
   zero-extension, and their XFAIL entries were removed only after the named
   no-manifest run passed.
+- The reverse scalar/array cast is green too: `logical_to_integer_cast.f90`
+  passes against the same behavioral oracle with `PASS=1`, `XFAIL=0`, `XPASS=0`,
+  and `FAIL=0`. Integer lowering now accepts logical literals and scalar
+  logical identifiers, while whole logical arrays reuse their i32 storage.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
