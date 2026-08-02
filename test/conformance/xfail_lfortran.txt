@@ -2116,7 +2116,6 @@ list_test_06_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar e
 list_test_08_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_test_09_.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 merge_str_01.f90 # owner=lazy-fortran/ffc#424; reason=lower PACK UNPACK MERGE and SPREAD
-modules_27_module2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 modules_28.f90 # owner=lazy-fortran/ffc#328; reason=map USE bindings to module exports
 modules_28_module1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 modules_28_module2.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering

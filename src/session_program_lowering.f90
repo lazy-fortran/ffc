@@ -2250,6 +2250,8 @@ contains
         integer :: derived_type_index
         integer :: i
         integer :: value_kind
+        integer :: pointer_symbol
+        logical :: complex_dummy_pointer
 
         if (declaration_is_bare_dimension(node_in)) then
             call set_empty(error_msg)
@@ -2319,9 +2321,18 @@ contains
             call declaration_value_kind(node, value_kind, error_msg, context, &
                 node_index)
             if (len_trim(error_msg) > 0) return
+            complex_dummy_pointer = .false.
+            if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. &
+                allocated(node%var_name)) then
+                pointer_symbol = find_symbol_compat(context, node%var_name)
+                if (pointer_symbol > 0) then
+                    complex_dummy_pointer = &
+                        context%symbols(pointer_symbol)%is_dummy_argument
+                end if
+            end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
                 value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
-                value_kind /= VALUE_CHARACTER) then
+                value_kind /= VALUE_CHARACTER .and. .not. complex_dummy_pointer) then
                 call unsupported_feature_error('pointer/target declaration', &
                     node%line, node%column, &
                     'direct LIRIC session supports scalar integer, real, logical, '// &
