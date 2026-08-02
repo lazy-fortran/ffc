@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `98f6be0` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `e704502` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -41,11 +41,11 @@ explicit decision.
   integer/real/double/complex/logical TRANSPOSE lowering, compile-time
   parameter TRANSPOSE initialization, mixed-kind integer MIN/MAX lowering, and
   legacy typed MIN aliases, legacy typed MAX aliases, and mixed opaque module
-  dummy metadata,
+  dummy metadata, and corrected constant HUGE array-bound classification,
   with
   sampled manifest dispositions through seed 1037). FortFront `98666075`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 442/442 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 443/443 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -249,6 +249,11 @@ explicit decision.
   keeping supported character dummies callable while unsupported derived
   dummies retain the opaque path. The two XFAIL rows were removed only after
   these checks. The next smallest XFAIL-first tranche is modules31.
+- The focused constant-expression rejection regression is green again:
+  `test_session_reject_const_01_compiler` passes after `HUGE` bounds stop being
+  misclassified as runtime extents. The constant-overflow checker is now a real
+  `session_program_lowering_reject_const_overflow` submodule with an explicit
+  build-order unit; its focused behavioral oracle remains green.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
