@@ -1844,6 +1844,258 @@ module session_program_lowering
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_data_object_components
     end interface
+    interface
+        module subroutine check_generic_interface_forms(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_generic_interface_forms
+        module subroutine generic_source_lines(source, lines, count)
+        character(len=*), intent(in) :: source
+        character(len=512), allocatable, intent(out) :: lines(:)
+        integer, intent(out) :: count
+        end subroutine generic_source_lines
+        module function stmt_starts(line, kw) result(yes)
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: kw
+        logical :: yes
+        end function stmt_starts
+        module function identifier_after(text, from) result(name)
+        character(len=:), allocatable :: name
+        character(len=*), intent(in) :: text
+        integer, intent(in) :: from
+        end function identifier_after
+        module subroutine append_owned_name(tab, owners, n, name, owner)
+        character(len=64), intent(inout) :: tab(:)
+        integer, intent(inout) :: owners(:)
+        integer, intent(inout) :: n
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: owner
+        end subroutine append_owned_name
+        module function owned_name_present(tab, owners, n, name, owner) result(yes)
+        character(len=64), intent(in) :: tab(:)
+        integer, intent(in) :: owners(:)
+        integer, intent(in) :: n
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: owner
+        logical :: yes
+        end function owned_name_present
+        module subroutine interface_regions(lines, count, depth, iface_name)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        integer, allocatable, intent(out) :: depth(:)
+        character(len=64), allocatable, intent(out) :: iface_name(:)
+        end subroutine interface_regions
+        module function is_plain_generic_name(name) result(yes)
+        character(len=*), intent(in) :: name
+        logical :: yes
+        end function is_plain_generic_name
+        module subroutine check_generic_binding_syntax(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_generic_binding_syntax
+        module subroutine interface_body_header(text, name, signature, ok)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable, intent(out) :: signature
+        logical, intent(out) :: ok
+        end subroutine interface_body_header
+        module subroutine check_implicit_interface_ambiguity(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_implicit_interface_ambiguity
+        module subroutine append_name_list(tab, owners, n, rest, owner)
+        character(len=64), intent(inout) :: tab(:)
+        integer, intent(inout) :: owners(:)
+        integer, intent(inout) :: n
+        character(len=*), intent(in) :: rest
+        integer, intent(in) :: owner
+        end subroutine append_name_list
+        module subroutine program_unit_ids(lines, count, ids)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        integer, allocatable, intent(out) :: ids(:)
+        end subroutine program_unit_ids
+        module subroutine collect_procedure_tables(lines, count, defs, def_owner, ndef, &
+        bodies, body_owner, nbody, gens, &
+        gen_owner, ngen, exts, ext_owner, next)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=64), intent(inout) :: defs(:), bodies(:), gens(:), exts(:)
+        integer, intent(inout) :: def_owner(:), body_owner(:), gen_owner(:), &
+        ext_owner(:)
+        integer, intent(out) :: ndef, nbody, ngen, next
+        end subroutine collect_procedure_tables
+        module subroutine check_module_procedure_targets(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_module_procedure_targets
+        module subroutine generic_block_specifics(lines, count, header_line, specs, nspec)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        integer, intent(in) :: header_line
+        character(len=64), intent(inout) :: specs(:)
+        integer, intent(out) :: nspec
+        integer :: owners(size(specs))
+        end subroutine generic_block_specifics
+        module subroutine check_generic_name_collisions(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_generic_name_collisions
+        module subroutine module_export_table(lines, count, mods, nmod, names, owner, nname)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=64), intent(inout) :: mods(:)
+        integer, intent(out) :: nmod
+        character(len=64), intent(inout) :: names(:)
+        integer, intent(inout) :: owner(:)
+        integer, intent(out) :: nname
+        end subroutine module_export_table
+        module function used_module_index(text, mods, nmod) result(idx)
+        character(len=*), intent(in) :: text
+        character(len=64), intent(in) :: mods(:)
+        integer, intent(in) :: nmod
+        integer :: idx
+        end function used_module_index
+        module subroutine check_use_shadows_program_unit(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_use_shadows_program_unit
+        module function use_makes_name_accessible(text, name) result(yes)
+        character(len=*), intent(in) :: text
+        character(len=*), intent(in) :: name
+        logical :: yes
+        end function use_makes_name_accessible
+        module function line_references_name(line, name) result(yes)
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: name
+        logical :: yes
+        end function line_references_name
+        module function preceded_by_component_selector(line, pos) result(yes)
+        character(len=*), intent(in) :: line
+        integer, intent(in) :: pos
+        logical :: yes
+        end function preceded_by_component_selector
+        module subroutine check_ambiguous_use_association(lines, count, error_msg)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_ambiguous_use_association
+        module function generic_extends_own_name(lines, count, mods, midx, name) result(yes)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=64), intent(in) :: mods(:)
+        integer, intent(in) :: midx
+        character(len=*), intent(in) :: name
+        logical :: yes
+        end function generic_extends_own_name
+        module subroutine ambiguous_reference_line(lines, first, last, name, found_line)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: first, last
+        character(len=*), intent(in) :: name
+        integer, intent(out) :: found_line
+        end subroutine ambiguous_reference_line
+        module subroutine scoping_regions(lines, count, depth, region)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        integer, intent(in) :: depth(:)
+        integer, allocatable, intent(out) :: region(:)
+        end subroutine scoping_regions
+        module subroutine check_typebound_generic_inheritance(arena, lines, count, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_typebound_generic_inheritance
+        module function bindings_indistinguishable(arena, name_a, name_b, tname, tparent, nt) result(same)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name_a, name_b
+        character(len=64), intent(in) :: tname(:), tparent(:)
+        integer, intent(in) :: nt
+        logical :: same
+        end function bindings_indistinguishable
+        module function base_types_related(base_a, base_b, tname, tparent, nt) result(related)
+        character(len=*), intent(in) :: base_a, base_b
+        character(len=64), intent(in) :: tname(:), tparent(:)
+        integer, intent(in) :: nt
+        logical :: related
+        end function base_types_related
+        module function declared_type_index(base, tname, nt) result(idx)
+        character(len=*), intent(in) :: base
+        character(len=64), intent(in) :: tname(:)
+        integer, intent(in) :: nt
+        integer :: idx
+        end function declared_type_index
+        module subroutine collect_type_generics(lines, count, tname, tparent, nt, gspec, &
+        gtarget, gtype, gline, ng)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=64), intent(inout) :: tname(:), tparent(:)
+        integer, intent(out) :: nt
+        character(len=64), intent(inout) :: gspec(:), gtarget(:)
+        integer, intent(inout) :: gtype(:), gline(:)
+        integer, intent(out) :: ng
+        end subroutine collect_type_generics
+        module function squeeze_blanks(text) result(packed)
+        character(len=:), allocatable :: packed
+        character(len=*), intent(in) :: text
+        end function squeeze_blanks
+        recursive module function type_extends_type(tname, tparent, nt, child, ancestor) result(yes)
+        character(len=64), intent(in) :: tname(:), tparent(:)
+        integer, intent(in) :: nt, child, ancestor
+        logical :: yes
+        end function type_extends_type
+        module subroutine check_intrinsic_assignment_redefinition(arena, lines, count, &
+        error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_intrinsic_assignment_redefinition
+        module function intrinsic_assignment_defined(base_l, base_r) result(yes)
+        character(len=*), intent(in) :: base_l, base_r
+        logical :: yes
+        end function intrinsic_assignment_defined
+        module function is_numeric_base_type(base) result(yes)
+        character(len=*), intent(in) :: base
+        logical :: yes
+        end function is_numeric_base_type
+        module subroutine check_generic_call_resolves(arena, lines, count, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_generic_call_resolves
+        module subroutine generic_union_specifics(lines, count, name, specs, nspec)
+        character(len=512), intent(in) :: lines(:)
+        integer, intent(in) :: count
+        character(len=*), intent(in) :: name
+        character(len=64), intent(inout) :: specs(:)
+        integer, intent(out) :: nspec
+        end subroutine generic_union_specifics
+        module subroutine literal_actual_types(text, actuals, nactual)
+        character(len=*), intent(in) :: text
+        character(len=64), intent(inout) :: actuals(:)
+        integer, intent(out) :: nactual
+        end subroutine literal_actual_types
+        module function literal_base_type(item) result(base)
+        character(len=:), allocatable :: base
+        character(len=*), intent(in) :: item
+        end function literal_base_type
+        module subroutine generic_call_matches(arena, specs, nspec, actuals, nactual, &
+        matched, resolvable)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=64), intent(in) :: specs(:)
+        integer, intent(in) :: nspec
+        character(len=64), intent(in) :: actuals(:)
+        integer, intent(in) :: nactual
+        logical, intent(out) :: matched, resolvable
+        end subroutine generic_call_matches
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -4434,5 +4686,4 @@ contains
     include 'session_program_lowering_reject_purity.inc'
     include 'session_program_lowering_reject_const_overflow.inc'
     include 'session_program_lowering_reject_result.inc'
-    include 'session_program_lowering_reject_generic.inc'
 end module session_program_lowering

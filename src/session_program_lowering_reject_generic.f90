@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_generic
+    use session_program_lowering_reject_generic_order
+    implicit none
+contains
     ! Malformed and ambiguous generic interfaces (#378).
     !
     ! FortFront keeps a generic interface block in the typed AST only when
@@ -9,9 +13,7 @@
     ! referenced name ambiguous - so the source text is the earliest layer that
     ! still holds enough information. Type, kind and rank questions are still
     ! answered from the typed AST through dummy_signature.
-    subroutine check_generic_interface_forms(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_generic_interface_forms
         character(len=:), allocatable :: source
         character(len=512), allocatable :: lines(:)
         integer :: count
@@ -41,13 +43,10 @@
                                                     error_msg)
         if (len_trim(error_msg) > 0) return
         call check_generic_call_resolves(arena, lines, count, error_msg)
-    end subroutine check_generic_interface_forms
+    end procedure check_generic_interface_forms
 
     ! Source text split into comment-stripped, lowercased, left-adjusted lines.
-    subroutine generic_source_lines(source, lines, count)
-        character(len=*), intent(in) :: source
-        character(len=512), allocatable, intent(out) :: lines(:)
-        integer, intent(out) :: count
+    module procedure generic_source_lines
         character(len=:), allocatable :: raw, stripped
         integer :: pos, nl, total, i
 
@@ -73,12 +72,10 @@
             count = count + 1
             lines(count) = adjustl(lowercase_text(stripped))
         end do
-    end subroutine generic_source_lines
+    end procedure generic_source_lines
 
     ! True when the statement text opens with the keyword kw as a whole word.
-    logical function stmt_starts(line, kw) result(yes)
-        character(len=*), intent(in) :: line
-        character(len=*), intent(in) :: kw
+    module procedure stmt_starts
         character(len=:), allocatable :: text
 
         yes = .false.
@@ -90,13 +87,10 @@
             return
         end if
         yes = .not. is_fortran_identifier_char(text(len(kw) + 1:len(kw) + 1))
-    end function stmt_starts
+    end procedure stmt_starts
 
     ! The first identifier in text at or after position from.
-    function identifier_after(text, from) result(name)
-        character(len=*), intent(in) :: text
-        integer, intent(in) :: from
-        character(len=:), allocatable :: name
+    module procedure identifier_after
         integer :: i, s, e
 
         name = ''
@@ -114,29 +108,19 @@
             e = i
         end do
         name = text(s:e)
-    end function identifier_after
+    end procedure identifier_after
 
-    subroutine append_owned_name(tab, owners, n, name, owner)
-        character(len=64), intent(inout) :: tab(:)
-        integer, intent(inout) :: owners(:)
-        integer, intent(inout) :: n
-        character(len=*), intent(in) :: name
-        integer, intent(in) :: owner
+    module procedure append_owned_name
 
         if (len_trim(name) == 0) return
         if (n >= size(tab)) return
         n = n + 1
         tab(n) = name
         owners(n) = owner
-    end subroutine append_owned_name
+    end procedure append_owned_name
 
     ! Whether name appears in tab; owner < 0 matches any owner.
-    logical function owned_name_present(tab, owners, n, name, owner) result(yes)
-        character(len=64), intent(in) :: tab(:)
-        integer, intent(in) :: owners(:)
-        integer, intent(in) :: n
-        character(len=*), intent(in) :: name
-        integer, intent(in) :: owner
+    module procedure owned_name_present
         integer :: i
 
         yes = .false.
@@ -148,14 +132,10 @@
             yes = .true.
             return
         end do
-    end function owned_name_present
+    end procedure owned_name_present
 
     ! Interface nesting depth and enclosing named-generic name per line.
-    subroutine interface_regions(lines, count, depth, iface_name)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        integer, allocatable, intent(out) :: depth(:)
-        character(len=64), allocatable, intent(out) :: iface_name(:)
+    module procedure interface_regions
         integer :: i, level
         character(len=64) :: current
         character(len=:), allocatable :: text, word
@@ -184,12 +164,11 @@
             depth(i) = level
             iface_name(i) = current
         end do
-    end subroutine interface_regions
+    end procedure interface_regions
 
     ! A generic interface name proper: OPERATOR and ASSIGNMENT specifications
     ! are handled by their own rules.
-    logical function is_plain_generic_name(name) result(yes)
-        character(len=*), intent(in) :: name
+    module procedure is_plain_generic_name
 
         yes = len_trim(name) > 0
         if (.not. yes) return
@@ -197,15 +176,12 @@
         if (trim(name) == 'assignment') yes = .false.
         if (trim(name) == 'read') yes = .false.
         if (trim(name) == 'write') yes = .false.
-    end function is_plain_generic_name
+    end procedure is_plain_generic_name
 
     ! F2018 R749: a generic binding is GENERIC [, access-spec] ::
     ! generic-spec => binding-name-list. A binding with no specification or no
     ! binding list names nothing and cannot be resolved.
-    subroutine check_generic_binding_syntax(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_generic_binding_syntax
         character(len=:), allocatable :: text, rest, spec
         character(len=64) :: location
         integer :: i, p
@@ -240,15 +216,11 @@
                 return
             end if
         end do
-    end subroutine check_generic_binding_syntax
+    end procedure check_generic_binding_syntax
 
     ! The procedure name and implicit-typing signature of an interface body
     ! header. ok is false when the line is not a procedure header.
-    subroutine interface_body_header(text, name, signature, ok)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: name
-        character(len=:), allocatable, intent(out) :: signature
-        logical, intent(out) :: ok
+    module procedure interface_body_header
         character(len=:), allocatable :: args, item
         integer :: p, lp, rp, start, i
 
@@ -287,16 +259,13 @@
             end if
             start = i + 1
         end do
-    end subroutine interface_body_header
+    end procedure interface_body_header
 
     ! Two interface bodies of the same generic whose dummy arguments are all
     ! implicitly typed are distinguished by nothing when their implicit types
     ! agree position by position (F2018 C1514). Such bodies carry no
     ! specification part, so the typed AST cannot tell them apart either.
-    subroutine check_implicit_interface_ambiguity(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_implicit_interface_ambiguity
         integer, parameter :: MAXB = 128
         character(len=64) :: bname(MAXB), bsig(MAXB), bgen(MAXB)
         integer :: bline(MAXB)
@@ -345,15 +314,10 @@
                 return
             end do
         end do
-    end subroutine check_implicit_interface_ambiguity
+    end procedure check_implicit_interface_ambiguity
 
     ! Append every comma-separated identifier of rest to the table.
-    subroutine append_name_list(tab, owners, n, rest, owner)
-        character(len=64), intent(inout) :: tab(:)
-        integer, intent(inout) :: owners(:)
-        integer, intent(inout) :: n
-        character(len=*), intent(in) :: rest
-        integer, intent(in) :: owner
+    module procedure append_name_list
         character(len=:), allocatable :: item
         integer :: i, start
 
@@ -366,13 +330,10 @@
             call append_owned_name(tab, owners, n, item, owner)
             start = i + 1
         end do
-    end subroutine append_name_list
+    end procedure append_name_list
 
     ! Program-unit index per line: MODULE and PROGRAM units partition the file.
-    subroutine program_unit_ids(lines, count, ids)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        integer, allocatable, intent(out) :: ids(:)
+    module procedure program_unit_ids
         character(len=:), allocatable :: text, word
         integer :: i, unit
 
@@ -396,19 +357,11 @@
                     word == 'submodule') unit = unit + 1
             end if
         end do
-    end subroutine program_unit_ids
+    end procedure program_unit_ids
 
     ! Collect the procedure definitions, interface bodies, generic names and
     ! EXTERNAL declarations of the whole file, tagged by program unit.
-    subroutine collect_procedure_tables(lines, count, defs, def_owner, ndef, &
-                                        bodies, body_owner, nbody, gens, &
-                                        gen_owner, ngen, exts, ext_owner, next)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=64), intent(inout) :: defs(:), bodies(:), gens(:), exts(:)
-        integer, intent(inout) :: def_owner(:), body_owner(:), gen_owner(:), &
-                                  ext_owner(:)
-        integer, intent(out) :: ndef, nbody, ngen, next
+    module procedure collect_procedure_tables
         integer, allocatable :: depth(:), ids(:)
         character(len=64), allocatable :: iface_name(:)
         character(len=:), allocatable :: text, name, signature
@@ -444,15 +397,12 @@
                 call append_owned_name(defs, def_owner, ndef, name, ids(i))
             end if
         end do
-    end subroutine collect_procedure_tables
+    end procedure collect_procedure_tables
 
     ! F2018 C1507: a MODULE PROCEDURE statement in a generic interface may only
     ! name a module procedure. A name that the file declares EXTERNAL, declares
     ! through an interface body, or uses as a generic name is not one.
-    subroutine check_module_procedure_targets(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_module_procedure_targets
         integer, parameter :: MAXN = 512
         character(len=64) :: defs(MAXN), bodies(MAXN), gens(MAXN), exts(MAXN)
         integer :: def_owner(MAXN), body_owner(MAXN), gen_owner(MAXN), &
@@ -496,16 +446,11 @@
                 return
             end do
         end do
-    end subroutine check_module_procedure_targets
+    end procedure check_module_procedure_targets
 
     ! Specific procedure names listed by the generic interface block whose
     ! header is at line header_line.
-    subroutine generic_block_specifics(lines, count, header_line, specs, nspec)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        integer, intent(in) :: header_line
-        character(len=64), intent(inout) :: specs(:)
-        integer, intent(out) :: nspec
+    module procedure generic_block_specifics
         integer :: owners(size(specs))
         character(len=:), allocatable :: text, name, signature
         integer :: i
@@ -527,15 +472,12 @@
             call interface_body_header(text, name, signature, ok)
             if (ok) call append_owned_name(specs, owners, nspec, name, 0)
         end do
-    end subroutine generic_block_specifics
+    end procedure generic_block_specifics
 
     ! A generic name and a procedure defined in the same scoping unit may only
     ! share a name when that procedure is one of the generic's own specifics
     ! (F2018 15.4.3.4.1). Otherwise the name is already defined as a generic.
-    subroutine check_generic_name_collisions(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_generic_name_collisions
         integer, parameter :: MAXN = 512
         character(len=64) :: defs(MAXN), bodies(MAXN), gens(MAXN), exts(MAXN)
         integer :: def_owner(MAXN), body_owner(MAXN), gen_owner(MAXN), &
@@ -570,18 +512,11 @@
                 'scoping unit'//trim(location)
             return
         end do
-    end subroutine check_generic_name_collisions
+    end procedure check_generic_name_collisions
 
     ! Names a module in this file makes accessible: its generic names, its
     ! interface bodies, and the procedures it defines.
-    subroutine module_export_table(lines, count, mods, nmod, names, owner, nname)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=64), intent(inout) :: mods(:)
-        integer, intent(out) :: nmod
-        character(len=64), intent(inout) :: names(:)
-        integer, intent(inout) :: owner(:)
-        integer, intent(out) :: nname
+    module procedure module_export_table
         integer, allocatable :: depth(:)
         character(len=64), allocatable :: iface_name(:)
         character(len=:), allocatable :: text, name, signature, word
@@ -641,13 +576,10 @@
                 if (depth(i) == 0) in_proc = .true.
             end if
         end do
-    end subroutine module_export_table
+    end procedure module_export_table
 
     ! The module index of a USE statement's module, or 0.
-    integer function used_module_index(text, mods, nmod) result(idx)
-        character(len=*), intent(in) :: text
-        character(len=64), intent(in) :: mods(:)
-        integer, intent(in) :: nmod
+    module procedure used_module_index
         character(len=:), allocatable :: name
         integer :: i
 
@@ -659,16 +591,13 @@
                 return
             end if
         end do
-    end function used_module_index
+    end procedure used_module_index
 
     ! A USE statement must not make accessible a name that is also the name of
     ! the current program unit; the two entities then collide in the same
     ! scope. The enclosing unit is the nearest preceding unit header, since a
     ! USE statement stands at the head of the specification part.
-    subroutine check_use_shadows_program_unit(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_use_shadows_program_unit
         integer, parameter :: MAXN = 512
         character(len=64) :: mods(MAXN), names(MAXN)
         integer :: owner(MAXN)
@@ -709,15 +638,13 @@
                 ' is also the name of the current program unit'//trim(location)
             return
         end do
-    end subroutine check_use_shadows_program_unit
+    end procedure check_use_shadows_program_unit
 
     ! Whether a USE statement makes name accessible under that same name. A
     ! rename moves the module entity to a different local name, and an ONLY
     ! clause admits nothing that it does not list, so in both cases the name
     ! itself never enters the local scope (F2018 14.2.2).
-    logical function use_makes_name_accessible(text, name) result(yes)
-        character(len=*), intent(in) :: text
-        character(len=*), intent(in) :: name
+    module procedure use_makes_name_accessible
         character(len=:), allocatable :: tail, item, use_name
         logical :: only_form
         integer :: comma, p, start, i
@@ -756,12 +683,10 @@
             if (.not. only_form) cycle
             if (item == trim(name)) yes = .true.
         end do
-    end function use_makes_name_accessible
+    end procedure use_makes_name_accessible
 
     ! True when name occurs as a whole word on the line.
-    logical function line_references_name(line, name) result(yes)
-        character(len=*), intent(in) :: line
-        character(len=*), intent(in) :: name
+    module procedure line_references_name
         integer :: p, base
 
         yes = .false.
@@ -788,12 +713,10 @@
             yes = .true.
             return
         end do
-    end function line_references_name
+    end procedure line_references_name
 
     ! Whether the identifier starting at pos is preceded by a % selector.
-    logical function preceded_by_component_selector(line, pos) result(yes)
-        character(len=*), intent(in) :: line
-        integer, intent(in) :: pos
+    module procedure preceded_by_component_selector
         integer :: i
 
         yes = .false.
@@ -802,14 +725,11 @@
             yes = line(i:i) == '%'
             return
         end do
-    end function preceded_by_component_selector
+    end procedure preceded_by_component_selector
 
     ! Two modules that make the same name accessible to one scoping unit leave
     ! that name ambiguous; referencing it is an error (F2018 19.5.1.4).
-    subroutine check_ambiguous_use_association(lines, count, error_msg)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_ambiguous_use_association
         integer, parameter :: MAXN = 512
         character(len=64) :: mods(MAXN), names(MAXN)
         integer :: owner(MAXN)
@@ -870,19 +790,13 @@
             end if
             first = last + 1
         end do
-    end subroutine check_ambiguous_use_association
+    end procedure check_ambiguous_use_association
 
     ! True when the module makes name generic through an interface block that
     ! lists name itself as a specific. The generic then extends the very entity
     ! of that name it inherits, so USE of both modules names one generic
     ! (F2018 15.4.3.4.1) rather than two conflicting entities.
-    logical function generic_extends_own_name(lines, count, mods, midx, name) &
-        result(yes)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=64), intent(in) :: mods(:)
-        integer, intent(in) :: midx
-        character(len=*), intent(in) :: name
+    module procedure generic_extends_own_name
         character(len=64) :: specs(128)
         character(len=:), allocatable :: text, word
         integer :: i, k, nspec
@@ -912,15 +826,11 @@
                 end if
             end do
         end do
-    end function generic_extends_own_name
+    end procedure generic_extends_own_name
 
     ! The first line of the region that references name outside a USE
     ! statement, or 0.
-    subroutine ambiguous_reference_line(lines, first, last, name, found_line)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: first, last
-        character(len=*), intent(in) :: name
-        integer, intent(out) :: found_line
+    module procedure ambiguous_reference_line
         integer :: i
         character(len=:), allocatable :: text
 
@@ -932,15 +842,11 @@
             found_line = i
             return
         end do
-    end subroutine ambiguous_reference_line
+    end procedure ambiguous_reference_line
 
     ! Region index per line: a new region starts at every program unit header
     ! and after every unit END statement, so each scoping unit gets its own.
-    subroutine scoping_regions(lines, count, depth, region)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        integer, intent(in) :: depth(:)
-        integer, allocatable, intent(out) :: region(:)
+    module procedure scoping_regions
         character(len=:), allocatable :: text, name, signature
         integer :: i, current
         logical :: ok
@@ -963,16 +869,12 @@
                 current = current + 1
             end if
         end do
-    end subroutine scoping_regions
+    end procedure scoping_regions
 
     ! A derived type that extends another must not bind the same generic
     ! operator when the inherited and the new specific are not distinguishable:
     ! an actual of the extension type matches both (F2018 C1514).
-    subroutine check_typebound_generic_inheritance(arena, lines, count, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_typebound_generic_inheritance
         integer, parameter :: MAXT = 128
         character(len=64) :: tname(MAXT), tparent(MAXT)
         character(len=64) :: gspec(MAXT), gtarget(MAXT)
@@ -1001,17 +903,12 @@
                 return
             end do
         end do
-    end subroutine check_typebound_generic_inheritance
+    end procedure check_typebound_generic_inheritance
 
     ! Like specifics_indistinguishable, but a declared type and any of its
     ! extensions do not distinguish two bindings: an actual of the extension
     ! type is type compatible with both dummies.
-    logical function bindings_indistinguishable(arena, name_a, name_b, tname, &
-                                                tparent, nt) result(same)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: name_a, name_b
-        character(len=64), intent(in) :: tname(:), tparent(:)
-        integer, intent(in) :: nt
+    module procedure bindings_indistinguishable
         integer :: count_a, count_b, pos
         integer :: kind_a, kind_b, rank_a, rank_b
         logical :: known_a, known_b, proc_a, proc_b, any_a, any_b
@@ -1038,14 +935,10 @@
                 return
         end do
         same = .true.
-    end function bindings_indistinguishable
+    end procedure bindings_indistinguishable
 
     ! Whether two declared derived types are related by type extension.
-    logical function base_types_related(base_a, base_b, tname, tparent, nt) &
-            result(related)
-        character(len=*), intent(in) :: base_a, base_b
-        character(len=64), intent(in) :: tname(:), tparent(:)
-        integer, intent(in) :: nt
+    module procedure base_types_related
         integer :: ia, ib
 
         related = .false.
@@ -1056,13 +949,10 @@
         if (.not. related) then
             related = type_extends_type(tname, tparent, nt, ib, ia)
         end if
-    end function base_types_related
+    end procedure base_types_related
 
     ! Index in the collected type table of the declared type spec type(x).
-    integer function declared_type_index(base, tname, nt) result(idx)
-        character(len=*), intent(in) :: base
-        character(len=64), intent(in) :: tname(:)
-        integer, intent(in) :: nt
+    module procedure declared_type_index
         character(len=:), allocatable :: name
         integer :: i
 
@@ -1075,17 +965,9 @@
             idx = i
             return
         end do
-    end function declared_type_index
+    end procedure declared_type_index
 
-    subroutine collect_type_generics(lines, count, tname, tparent, nt, gspec, &
-                                     gtarget, gtype, gline, ng)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=64), intent(inout) :: tname(:), tparent(:)
-        integer, intent(out) :: nt
-        character(len=64), intent(inout) :: gspec(:), gtarget(:)
-        integer, intent(inout) :: gtype(:), gline(:)
-        integer, intent(out) :: ng
+    module procedure collect_type_generics
         character(len=:), allocatable :: text, spec
         integer :: i, p, current
 
@@ -1124,11 +1006,9 @@
             gtype(ng) = current
             gline(ng) = i
         end do
-    end subroutine collect_type_generics
+    end procedure collect_type_generics
 
-    function squeeze_blanks(text) result(packed)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable :: packed
+    module procedure squeeze_blanks
         integer :: i
 
         packed = ''
@@ -1136,13 +1016,10 @@
             if (text(i:i) == ' ') cycle
             packed = packed//text(i:i)
         end do
-    end function squeeze_blanks
+    end procedure squeeze_blanks
 
     ! Whether type child is an extension of type ancestor.
-    recursive logical function type_extends_type(tname, tparent, nt, child, &
-                                                 ancestor) result(yes)
-        character(len=64), intent(in) :: tname(:), tparent(:)
-        integer, intent(in) :: nt, child, ancestor
+    module procedure type_extends_type
         integer :: i
 
         yes = .false.
@@ -1157,16 +1034,11 @@
             yes = type_extends_type(tname, tparent, nt, i, ancestor)
             return
         end do
-    end function type_extends_type
+    end procedure type_extends_type
 
     ! F2018 C1503: a defined assignment must not redefine an assignment that
     ! is already defined intrinsically for its two operands.
-    subroutine check_intrinsic_assignment_redefinition(arena, lines, count, &
-                                                       error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_intrinsic_assignment_redefinition
         integer, parameter :: MAXN = 64
         character(len=64) :: specs(MAXN)
         character(len=:), allocatable :: text, base_l, base_r
@@ -1199,10 +1071,9 @@
                 return
             end do
         end do
-    end subroutine check_intrinsic_assignment_redefinition
+    end procedure check_intrinsic_assignment_redefinition
 
-    logical function intrinsic_assignment_defined(base_l, base_r) result(yes)
-        character(len=*), intent(in) :: base_l, base_r
+    module procedure intrinsic_assignment_defined
 
         yes = .false.
         if (is_numeric_base_type(base_l) .and. is_numeric_base_type(base_r)) then
@@ -1211,22 +1082,17 @@
         end if
         if (base_l == 'character' .and. base_r == 'character') yes = .true.
         if (base_l == 'logical' .and. base_r == 'logical') yes = .true.
-    end function intrinsic_assignment_defined
+    end procedure intrinsic_assignment_defined
 
-    logical function is_numeric_base_type(base) result(yes)
-        character(len=*), intent(in) :: base
+    module procedure is_numeric_base_type
 
         yes = base == 'integer' .or. base == 'real' .or. base == 'complex'
-    end function is_numeric_base_type
+    end procedure is_numeric_base_type
 
     ! A reference to a generic name must match one of its specific procedures
     ! (F2018 15.5.5). Only calls whose actual arguments are all literal
     ! constants are judged, so a mismatch is beyond doubt.
-    subroutine check_generic_call_resolves(arena, lines, count, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_generic_call_resolves
         integer, parameter :: MAXN = 64
         character(len=64) :: specs(MAXN), actuals(MAXN)
         character(len=:), allocatable :: text, callee
@@ -1253,19 +1119,14 @@
                 trim(callee)//' matches this reference'//trim(location)
             return
         end do
-    end subroutine check_generic_call_resolves
+    end procedure check_generic_call_resolves
 
     ! The union of the specific procedures of every generic interface block
     ! that declares name. One reference may see several of them at once: a
     ! generic can be extended by host association and by USE association in
     ! the same scope (F2018 15.4.3.4.1), so judging a call against a single
     ! block would reject valid references.
-    subroutine generic_union_specifics(lines, count, name, specs, nspec)
-        character(len=512), intent(in) :: lines(:)
-        integer, intent(in) :: count
-        character(len=*), intent(in) :: name
-        character(len=64), intent(inout) :: specs(:)
-        integer, intent(out) :: nspec
+    module procedure generic_union_specifics
         character(len=64) :: block_specs(64)
         character(len=:), allocatable :: text
         integer :: i, j, k, nblock
@@ -1291,14 +1152,11 @@
                 specs(nspec) = block_specs(k)
             end do
         end do
-    end subroutine generic_union_specifics
+    end procedure generic_union_specifics
 
     ! Base types of a call's actual arguments when every one is a literal
     ! constant; nactual is -1 otherwise.
-    subroutine literal_actual_types(text, actuals, nactual)
-        character(len=*), intent(in) :: text
-        character(len=64), intent(inout) :: actuals(:)
-        integer, intent(out) :: nactual
+    module procedure literal_actual_types
         character(len=:), allocatable :: args, item, base
         integer :: lp, rp, i, start
 
@@ -1329,11 +1187,9 @@
             actuals(nactual) = base
             start = i + 1
         end do
-    end subroutine literal_actual_types
+    end procedure literal_actual_types
 
-    function literal_base_type(item) result(base)
-        character(len=*), intent(in) :: item
-        character(len=:), allocatable :: base
+    module procedure literal_base_type
         integer :: i
         logical :: has_digit, has_dot, has_other
 
@@ -1369,16 +1225,9 @@
         else
             base = 'integer'
         end if
-    end function literal_base_type
+    end procedure literal_base_type
 
-    subroutine generic_call_matches(arena, specs, nspec, actuals, nactual, &
-                                    matched, resolvable)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=64), intent(in) :: specs(:)
-        integer, intent(in) :: nspec
-        character(len=64), intent(in) :: actuals(:)
-        integer, intent(in) :: nactual
-        logical, intent(out) :: matched, resolvable
+    module procedure generic_call_matches
         character(len=:), allocatable :: base
         integer :: k, pos, params, kind_value, rank
         logical :: known, is_proc, is_any, fits
@@ -1411,4 +1260,6 @@
                 return
             end if
         end do
-    end subroutine generic_call_matches
+    end procedure generic_call_matches
+
+end submodule session_program_lowering_reject_generic
