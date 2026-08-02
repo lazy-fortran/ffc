@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `eecbb6e` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `9863398` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -35,8 +35,9 @@ explicit decision.
   nested LOGICAL conversion-kind inquiries, allocatable logical NOT masks, and
   formatted character file writes, runtime rank-2 allocatable MATMUL and
   runtime array-expression reductions, `CPU_TIME` widening, and explicit-shape
-  whole-array dummy aliasing, with sampled manifest dispositions through seed
-  1037). FortFront `4948ec2a`. LIRIC `5436e5c`.
+  whole-array dummy aliasing, explicit-lower-bound assumed-shape descriptors,
+  mixed-rank runtime section expressions, with sampled manifest dispositions
+  through seed 1037). FortFront `4948ec2a`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
@@ -112,13 +113,16 @@ explicit decision.
   and `FAIL=0`; file-unit formatted writes now accept character expressions
   such as `TRIM`, and the independent IOSTAT/IOMSG regression verifies a
   scratch-file character-write/logical-read round trip. The dynamic MATMUL
-  tranche is green too: `matmul_01.f90` passes in the LFortran suite with
-  `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Runtime rank-2 allocatable
-  MATMUL, runtime array-expression reduction, `CPU_TIME` widening, and
-  explicit-shape whole-array dummy aliasing now share the corrected lowering
-  paths; the continuation-boundary regression and focused multi-declaration
-  compiler test also pass. The next XFAIL-first case is `matmul_02.f90`.
-  The sample count remains 900.
+  tranche is green too: `matmul_01.f90` and `matmul_02.f90` pass in the
+  LFortran suite with `PASS=2`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Runtime
+  rank-2 allocatable MATMUL, runtime array-expression reduction, `CPU_TIME`
+  widening, explicit-shape whole-array dummy aliasing, explicit lower-bound
+  assumed-shape descriptors, and mixed-rank runtime section expressions now
+  share the corrected lowering paths. The direct generated `matmul_02`
+  executable reports zero error for both kernels, and the focused array-section,
+  multi-declaration, and diagnostic tests pass. The next XFAIL-first tranche is
+  `matmul_03.f90`, `matmul_04.f90`, and `matmul_05.f90`; keep the sample count
+  at 900 until all three reach zero XFAIL.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
