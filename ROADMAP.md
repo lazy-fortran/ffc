@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `cf6abc8` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `98f6be0` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -40,7 +40,8 @@ explicit decision.
   matrix-vector lowering, rank-2 automatic array-result materialisation, typed
   integer/real/double/complex/logical TRANSPOSE lowering, compile-time
   parameter TRANSPOSE initialization, mixed-kind integer MIN/MAX lowering, and
-  legacy typed MIN aliases, and legacy typed MAX aliases,
+  legacy typed MIN aliases, legacy typed MAX aliases, and mixed opaque module
+  dummy metadata,
   with
   sampled manifest dispositions through seed 1037). FortFront `98666075`.
   LIRIC `5436e5c`.
@@ -240,6 +241,14 @@ explicit decision.
   in `.fmod`; FortFront `98666075` correctly treats `error` as a contextual
   identifier. The three stale modules29 XFAIL rows were removed only after
   these checks.
+- The modules30 family is green: exact normal and XFAIL-disabled runs of
+  `modules_30.f90` and `modules_30_module2.f90` report `PASS=2`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0` (`NOREF=1` for the module-only companion). The
+  independent gfortran four-module-chain compile/link/run oracle passes.
+  FFC now preserves per-dummy kinds in opaque public procedure interfaces,
+  keeping supported character dummies callable while unsupported derived
+  dummies retain the opaque path. The two XFAIL rows were removed only after
+  these checks. The next smallest XFAIL-first tranche is modules31.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
@@ -368,9 +377,11 @@ sample modestly.
    no-manifest runs. The modules29 family (`modules_29.f90`,
    `modules_29_module2.f90`, and `modules_29_module3.f90`) is now green after
    the exact normal/no-XFAIL checks and independent gfortran module-chain
-   oracle. Its stale XFAIL rows are removed. The next smallest tranche is
-   modules30 (`modules_30.f90` and `modules_30_module2.f90`); do not start it
-   until the current named modules29 gate remains green.
+   oracle. Its stale XFAIL rows are removed. The modules30 family
+   (`modules_30.f90` and `modules_30_module2.f90`) is also green after exact
+   normal/no-XFAIL checks and the independent gfortran module-chain oracle;
+   its two XFAIL rows are removed. The next smallest tranche is modules31
+   (`modules_31.f90`, `modules_31_module1.f90`, and `modules_31_module2.f90`).
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
