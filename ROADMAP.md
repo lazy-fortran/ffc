@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `079ad12` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `cf6abc8` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -42,7 +42,7 @@ explicit decision.
   parameter TRANSPOSE initialization, mixed-kind integer MIN/MAX lowering, and
   legacy typed MIN aliases, and legacy typed MAX aliases,
   with
-  sampled manifest dispositions through seed 1037). FortFront `d556f5b0`.
+  sampled manifest dispositions through seed 1037). FortFront `98666075`.
   LIRIC `5436e5c`.
 - `fo build` passes for ffc 442/442 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -230,6 +230,16 @@ explicit decision.
 - The `modules_15b.f90` module-interface companion compiles with ffc and
   gfortran as an explicit `NOREF=compile-only` case. Its runnable companion is
   now covered by the verified BIND(C) ABI tranche above.
+- The modules29 separate-compilation family is green: exact named runs of
+  `modules_29.f90`, `modules_29_module2.f90`, and `modules_29_module3.f90`
+  report `PASS=3`, `XFAIL=0`, `XPASS=0`, and `FAIL=0` in both normal and
+  no-XFAIL modes (`NOREF=2` for the two module-only companions). The
+  independent gfortran module-chain compile/link/run oracle passes, and a
+  bounded unit sample at seed 1729 passed `10/10`. FFC now exports direct USE
+  dependencies recursively and preserves opaque public subroutine interfaces
+  in `.fmod`; FortFront `98666075` correctly treats `error` as a contextual
+  identifier. The three stale modules29 XFAIL rows were removed only after
+  these checks.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
@@ -253,6 +263,12 @@ not a substitute for fixing the behavior.
 
 The normal development loop is one bounded XFAIL/FAIL tranche, not a full
 pipeline or a full corpus run:
+
+Before editing, record the clean `main` baseline for the exact tranche and one
+small random unit-test sample. This separates a pre-existing FAIL from a
+regression and prevents spending a full build on unrelated work. After the
+patch, rerun the same named tranche and sample with `--no-build` wherever the
+binary is unchanged.
 
 1. Select the smallest owned tranche from the XFAIL/FAIL manifests. Read the
    exact source, owner/reason, prerequisite sources, and existing focused
@@ -291,6 +307,10 @@ pipeline or a full corpus run:
    Use `--files-from <tranche-list>` for a multi-file module family. Give each
    run a unique report/TMPDIR when invoking runners directly; use one stable
    reference cache per worktree so unchanged gfortran results are not rebuilt.
+   For a module family, select the runnable file together with its sibling
+   modules so the harness resolves the dependency closure. Do not add a
+   standalone `compile-only` NOREF row for a source that needs sibling `.fmod`
+   files; that bypasses the dependency setup and creates a false failure.
 5. Promote an XFAIL only after the named case has an independent oracle match,
    the no-XFAIL run is `PASS`, the normal run reports the expected `XPASS`, and
    the focused compiler tests are green. Remove only that exact manifest row,
@@ -317,6 +337,12 @@ pipeline or a full corpus run:
    separate worktrees do not make RAM free. Merge one green patch at a time,
    rebase it on `main`, and rerun the focused build/check before pushing.
 
+The efficient order is therefore: one baseline, one implementation build, one
+focused test, two exact corpus checks, then one or more bounded random samples.
+The only safe parallel work is disjoint analysis or code in separate
+worktrees; heavy builds and gauntlets remain sequential because worktrees do
+not reduce RAM use.
+
 The final whole-corpus run is a release/provenance gate after all declared
 XFAIL/XPASS/FAIL work and manifest ownership are resolved. It is not a routine
 progress measurement. The fast path is: zero the owned XFAIL tranche, prove it
@@ -339,8 +365,12 @@ sample modestly.
    after bounded normal and no-manifest runs. `modules_27_module2.f90` (#457)
    and the modules28 family (`modules_28.f90`, `modules_28_module1.f90`, and
    `modules_28_module2.f90`) are now green after bounded normal and
-   no-manifest runs. The next XFAIL-first tranche is the modules29 family:
-   `modules_29.f90`, `modules_29_module2.f90`, and `modules_29_module3.f90`.
+   no-manifest runs. The modules29 family (`modules_29.f90`,
+   `modules_29_module2.f90`, and `modules_29_module3.f90`) is now green after
+   the exact normal/no-XFAIL checks and independent gfortran module-chain
+   oracle. Its stale XFAIL rows are removed. The next smallest tranche is
+   modules30 (`modules_30.f90` and `modules_30_module2.f90`); do not start it
+   until the current named modules29 gate remains green.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
