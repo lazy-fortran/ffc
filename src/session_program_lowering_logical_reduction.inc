@@ -41,6 +41,11 @@
             call set_empty(error_msg)
             return
         end if
+        if (trim(adjustl(lowercase_text(op))) == '.not.') then
+            call try_bare_mask_reduction(arena, node, context, accumulate, &
+                                         handled, value, error_msg)
+            return
+        end if
         is_equiv = is_equivalence_operator(op)
         if (.not. is_relational_operator(op) .and. .not. is_equiv) return
 
@@ -130,10 +135,9 @@
         call set_empty(error_msg)
         call classify_mask_side(arena, context, node%arg_indices(1), side, ok)
         if (.not. ok) return
-        ! Only an array constructor of logical/comparison scalars is handled
-        ! here; a whole array stays on the existing dedicated handler, and a
-        ! bare section (all/any masks are always logical) is left to decline.
-        if (side%mode /= 3) return
+        ! Array constructors and elementwise logical expressions are handled
+        ! here; a bare identifier stays on the dedicated whole-array path.
+        if (side%mode /= 3 .and. side%mode /= 4) return
         if (side%extent <= 0) return
 
         call mask_accumulator_seed(context, accumulate, acc)

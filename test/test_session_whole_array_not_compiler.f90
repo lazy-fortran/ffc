@@ -7,6 +7,8 @@ program test_session_whole_array_not_compiler
     if (.not. test_rank1_logical_not()) stop 1
     if (.not. test_rank2_logical_not()) stop 1
     if (.not. test_not_of_comparison_mask()) stop 1
+    if (.not. test_not_of_allocatable_real_mask()) stop 1
+    if (.not. test_any_of_logical_not()) stop 1
     if (.not. test_real_division_scalar_broadcast()) stop 1
     print *, 'PASS: whole-array .not., elementwise division, and scalar '// &
         'broadcast lower through direct LIRIC'
@@ -57,6 +59,34 @@ contains
             source, ' T T F T'//new_line('a'), &
             '/tmp/ffc_wa_not_compare_test')
     end function test_not_of_comparison_mask
+
+    logical function test_not_of_allocatable_real_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  logical :: a(3)'//new_line('a')// &
+            '  real, allocatable :: b(:)'//new_line('a')// &
+            '  allocate(b(3))'//new_line('a')// &
+            '  b = [0.0, 1.0, 0.0]'//new_line('a')// &
+            '  a = .not. (b > 0.0)'//new_line('a')// &
+            '  print *, a'//new_line('a')// &
+            'end program main'
+
+        test_not_of_allocatable_real_mask = expect_output( &
+            source, ' T F T'//new_line('a'), &
+            '/tmp/ffc_wa_not_alloc_real_compare_test')
+    end function test_not_of_allocatable_real_mask
+
+    logical function test_any_of_logical_not()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  logical :: a(3)'//new_line('a')// &
+            '  a = [.true., .false., .true.]'//new_line('a')// &
+            '  print *, any(.not. a), any(a)'//new_line('a')// &
+            'end program main'
+
+        test_any_of_logical_not = expect_output( &
+            source, ' T T'//new_line('a'), '/tmp/ffc_wa_any_not_test')
+    end function test_any_of_logical_not
 
     logical function test_real_division_scalar_broadcast()
         ! Scalar-broadcast on the left of an elementwise divide (10.0 / b),

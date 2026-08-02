@@ -502,7 +502,7 @@
             sym = 0
             return
         end if
-        if (.not. context%symbols(sym)%is_array) sym = 0
+        if (.not. is_elementwise_array_operand(context, sym)) sym = 0
     end function where_array_operand_symbol
 
     subroutine lower_where_operand_element(arena, node_index, value_kind, &

@@ -662,7 +662,7 @@
         constructor_extent = whole_array_expr_constructor_extent(arena, expr_index)
         logical_expr = whole_array_expr_is_logical(arena, expr_index)
         if (sym > 0) then
-            n = int(context%symbols(sym)%array_size, c_int64_t)
+            n = int(effective_array_extent(context, sym), c_int64_t)
         else
             if (constructor_extent <= 0) return
             n = int(constructor_extent, c_int64_t)
