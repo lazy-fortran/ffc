@@ -27,8 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `493b611` (modules31 separate-compilation support: one-specific generic
-  type-bound aliases, serialized type-bound bindings in `.fmod` schema 10,
+- Main: `08e8c16` (modules31/modules33 separate-compilation support:
+  one-specific and multi-specific generic type-bound bindings, serialized
+  type-bound bindings in `.fmod` schema 11,
   imported vtable ownership and module-mangled type-bound calls, and rank-1
   fixed-length allocatable character-component declaration/layout metadata;
   runtime character-array element access remains intentionally unsupported;
