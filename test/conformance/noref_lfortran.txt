@@ -4,4 +4,5 @@ max_02.f90 # noref=undefined-runtime-value; reason=MAX reads an uninitialized in
 min_02.f90 # noref=undefined-runtime-value; reason=MIN reads an uninitialized integer(8) variable
 modules_15b.f90 # noref=compile-only; reason=module interface companion has no program unit
 modules_25_module.f90 # noref=compile-only; reason=module interface companion has no program unit
+modules_25_module1.f90 # noref=compile-only; reason=module interface companion has no program unit
 minpack_01_func.f90 # noref=compile-only; reason=EXTRAFILES companion is linked into minpack_01 rather than a standalone test
