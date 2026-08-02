@@ -2112,6 +2112,12 @@ module session_program_lowering
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_result_and_entry_rules
     end interface
+    interface
+        module subroutine check_array_shape_expressions(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_array_shape_expressions
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -4728,7 +4734,6 @@ contains
     end function lowercase_text
 
     include 'session_program_lowering_select.inc'
-    include 'session_program_lowering_reject_array_shape.inc'
     include 'session_program_lowering_reject_pointer.inc'
     include 'session_program_lowering_reject_const_init.inc'
     include 'session_program_lowering_reject_storage.inc'
