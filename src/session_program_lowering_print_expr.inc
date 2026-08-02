@@ -704,6 +704,15 @@
                     return
                 end if
             end if
+            if (is_i64_minmax_call(arena, node_index, context)) then
+                call lower_i64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_i64_value(context%session, &
+                                                     context%i64_print_format_id, &
+                                                     value, error_msg)) return
+                return
+            end if
             if (is_char_expr_call(arena, node_index)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return

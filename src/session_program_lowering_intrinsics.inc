@@ -1197,6 +1197,37 @@
         end do
     end subroutine lower_i32_minmax_intrinsic
 
+    subroutine lower_i64_minmax_intrinsic(arena, node, predicate, context, &
+                                          value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer(c_int), intent(in) :: predicate
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: candidate
+        type(lr_operand_desc_t) :: condition
+        type(lr_operand_desc_t) :: selected
+        integer :: i
+
+        if (.not. require_intrinsic_arg_count(node, 2, 64, error_msg)) return
+
+        call lower_i64_expression(arena, node%arg_indices(1), context, value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        do i = 2, size(node%arg_indices)
+            call lower_i64_expression(arena, node%arg_indices(i), context, &
+                                      candidate, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_icmp(context%session, predicate, value, &
+                                          candidate, condition, error_msg)) return
+            call select_value(context, condition, value, candidate, selected, &
+                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = selected
+        end do
+    end subroutine lower_i64_minmax_intrinsic
+
     subroutine lower_f64_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)
         type(ast_arena_t), intent(in) :: arena

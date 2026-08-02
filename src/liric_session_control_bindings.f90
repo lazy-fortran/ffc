@@ -38,6 +38,7 @@ module liric_session_control_bindings
     public :: emit_liric_f32_fcmp
     public :: emit_liric_f64_fcmp
     public :: emit_liric_i32_icmp
+    public :: emit_liric_i64_icmp
     public :: emit_liric_condbr
     public :: emit_liric_phi
     public :: emit_liric_i32_phi
@@ -140,6 +141,28 @@ contains
         call set_empty(error_msg)
         emit_liric_i32_icmp = .true.
     end function emit_liric_i32_icmp
+
+    logical function emit_liric_i64_icmp(session, pred, lhs, rhs, result, &
+            error_msg)
+        type(liric_session_t), intent(inout) :: session
+        integer(c_int), intent(in) :: pred
+        type(lr_operand_desc_t), intent(in) :: lhs
+        type(lr_operand_desc_t), intent(in) :: rhs
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_i64_icmp = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_icmp(session%handle, pred, lhs, rhs, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i1_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_liric_i64_icmp = .true.
+    end function emit_liric_i64_icmp
 
     logical function emit_liric_f32_fcmp(session, pred, lhs, rhs, result, &
             error_msg)

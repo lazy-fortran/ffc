@@ -1076,6 +1076,34 @@
             operand_has_value_kind(arena, bin_right, context, VALUE_I64)
     end function is_i64_binary_op
 
+    logical function is_i64_minmax_call(arena, node_index, context)
+        ! MAX/MIN return the widest integer kind of their arguments. Detect an
+        ! integer(8) actual so print lowering selects the i64 expression path.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+
+        is_i64_minmax_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index > 0 .or. &
+                is_contained_function_reference(node, context)) return
+            if (.not. allocated(node%name) .or. &
+                (.not. same_name(node%name, 'max') .and. &
+                 .not. same_name(node%name, 'min'))) return
+            if (.not. allocated(node%arg_indices)) return
+            do i = 1, size(node%arg_indices)
+                if (operand_has_value_kind(arena, node%arg_indices(i), context, &
+                                           VALUE_I64)) then
+                    is_i64_minmax_call = .true.
+                    return
+                end if
+            end do
+        end select
+    end function is_i64_minmax_call
+
     recursive subroutine lower_i64_expression(arena, node_index, context, &
                                                value, error_msg)
         ! Lower an expression expected to produce an integer(8)/i64 result.
@@ -1186,6 +1214,18 @@
                 return
             end if
             if (node%base_expr_index <= 0 .and. allocated(node%name)) then
+                if (.not. is_contained_function_reference(node, context) .and. &
+                    same_name(node%name, 'max')) then
+                    call lower_i64_minmax_intrinsic(arena, node, LR_CMP_SGE, &
+                                                    context, value, error_msg)
+                    return
+                end if
+                if (.not. is_contained_function_reference(node, context) .and. &
+                    same_name(node%name, 'min')) then
+                    call lower_i64_minmax_intrinsic(arena, node, LR_CMP_SLE, &
+                                                    context, value, error_msg)
+                    return
+                end if
                 if (contained_function_kind(context, node%name) == VALUE_I64) then
                     call lower_i64_call(arena, node, context, value, error_msg)
                     return
