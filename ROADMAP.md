@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `32e79ad` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `2e84b19` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, with sampled manifest dispositions through seed 1037). FortFront
@@ -80,6 +80,12 @@ explicit decision.
   preserve scalar integer and logical kind widths. The independent inquiry
   compiler test and runtime-link contract test also pass. The sample count
   remains 900.
+- The logical kind transfer tranche is green: `logical_kind_02.f90` passes in
+  the LFortran suite with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`.
+  `TRANSFER` now preserves canonical logical truth and zero padding when a
+  scalar logical kind is transferred into a same-width integer byte array.
+  The independent logical-transfer compiler test also passes. The sample
+  count remains 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
