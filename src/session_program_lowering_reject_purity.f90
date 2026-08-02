@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_purity
+    use session_program_lowering_reject_purity_order
+    implicit none
+contains
     ! PURE and ELEMENTAL attribute restrictions (#578).
     !
     ! Rules enforced:
@@ -16,9 +20,7 @@
     ! statement whose first line already shows the violation, so a
     ! continuation can only make a check silent, never wrong.
 
-    subroutine check_purity_attribute_restrictions(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_purity_attribute_restrictions
         character(len=256), allocatable :: lines(:)
         character(len=64) :: elemental_names(256)
         integer :: line_count, elemental_count
@@ -31,7 +33,7 @@
                                                elemental_names, elemental_count)
         call scan_purity_statements(lines, line_count, elemental_names, &
                                     elemental_count, error_msg)
-    end subroutine check_purity_attribute_restrictions
+    end procedure check_purity_attribute_restrictions
 
     ! Names of every procedure declared with an ELEMENTAL prefix anywhere in
     ! the unit, including interface bodies. Used to decide whether a
@@ -469,3 +471,4 @@
         write (buffer, '(" at line ",I0)') line_no
         location = trim(buffer)
     end function purity_at_line
+end submodule session_program_lowering_reject_purity

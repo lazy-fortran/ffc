@@ -2118,6 +2118,12 @@ module session_program_lowering
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_array_shape_expressions
     end interface
+    interface
+        module subroutine check_purity_attribute_restrictions(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_purity_attribute_restrictions
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -4737,6 +4743,5 @@ contains
     include 'session_program_lowering_reject_pointer.inc'
     include 'session_program_lowering_reject_const_init.inc'
     include 'session_program_lowering_reject_storage.inc'
-    include 'session_program_lowering_reject_purity.inc'
     include 'session_program_lowering_reject_const_overflow.inc'
 end module session_program_lowering
