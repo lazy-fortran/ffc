@@ -53,11 +53,11 @@ contains
             'end module consts'//new_line('a')// &
             'program main'//new_line('a')// &
             '  use consts'//new_line('a')// &
-            '  stop 1'//new_line('a')// &
+            '  stop PI'//new_line('a')// &
             'end program main'
 
         test_module_parameter_real_still_diagnosed = expect_error_contains( &
-            source, 'only supports integer scalar parameters', &
+            source, 'integer expression used non-integer identifier', &
             '/tmp/ffc_session_module_const_real_test')
     end function test_module_parameter_real_still_diagnosed
 

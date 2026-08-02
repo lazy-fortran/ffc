@@ -1,4 +1,5 @@
 submodule(session_program_lowering) session_program_lowering_fmod_exporter
+    use ast_arena_source_text, only: get_source_line
     use session_program_lowering_fmod_order
 contains
     module subroutine emit_module_fmod_artifacts(arena, context, output_path, error_msg)
@@ -43,7 +44,7 @@ contains
         type(module_exports_t), intent(in) :: export
         type(module_info_t), intent(out) :: info
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, j, module_index, derived_count
+        integer :: i, j, module_index, derived_count, use_count
         integer, allocatable :: derived_indices(:)
 
         call set_empty(error_msg)
@@ -70,6 +71,40 @@ contains
                         export%module_name)) module_index = i
             end select
         end do
+        use_count = 0
+        if (module_index > 0) then
+            select type (module => arena%entries(module_index)%node)
+            type is (module_node)
+                if (allocated(module%declaration_indices)) then
+                    do i = 1, size(module%declaration_indices)
+                        if (.not. node_exists(arena, module%declaration_indices(i))) cycle
+                        select type (use_node => arena%entries( &
+                                module%declaration_indices(i))%node)
+                        type is (use_statement_node)
+                            if (allocated(use_node%module_name)) use_count = &
+                                use_count + 1
+                        end select
+                    end do
+                end if
+            end select
+        end if
+        allocate (info%uses(use_count))
+        if (use_count > 0) then
+            j = 0
+            select type (module => arena%entries(module_index)%node)
+            type is (module_node)
+                do i = 1, size(module%declaration_indices)
+                    if (.not. node_exists(arena, module%declaration_indices(i))) cycle
+                    select type (use_node => arena%entries( &
+                            module%declaration_indices(i))%node)
+                    type is (use_statement_node)
+                        if (.not. allocated(use_node%module_name)) cycle
+                        j = j + 1
+                        info%uses(j)%name = trim(use_node%module_name)
+                    end select
+                end do
+            end select
+        end if
         derived_count = 0
         if (module_index > 0) then
             do i = 1, arena%size
@@ -409,8 +444,11 @@ contains
         character(len=:), allocatable :: kind_text, arg_tokens
         character(len=:), allocatable :: rank_tokens, extent_tokens
         character(len=:), allocatable :: proc_name
-        integer :: nargs
-        logical :: is_external
+        character(len=:), allocatable :: arg_names
+        integer, allocatable :: param_indices(:)
+        integer :: nargs, i
+        logical :: is_external, opaque_subroutine
+        type(subroutine_def_node), pointer :: sb_node
 
         is_external = .false.
         if (present(external_binding)) is_external = external_binding
@@ -420,6 +458,76 @@ contains
                                       rank_tokens, extent_tokens, &
                                       allow_runtime_array=is_external)
         if (len_trim(kind_text) == 0) then
+            ! A public subroutine can still be useful as interface metadata
+            ! when one or more dummies are outside the lowering ABI. Keep a
+            ! scalar placeholder for each dummy so a using unit can validate
+            ! its call shape; the actual Fortran dummy contract remains in the
+            ! separate attribute fields below (#584).
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            opaque_subroutine = associated(sb_node)
+            if (opaque_subroutine) then
+                if (.not. allocated(sb_node%name)) then
+                    opaque_subroutine = .false.
+                else if (module_symbol_is_private(arena, mod_node, sb_node%name)) then
+                    opaque_subroutine = .false.
+                else if (allocated(sb_node%param_indices)) then
+                    param_indices = sb_node%param_indices
+                end if
+            end if
+            if (opaque_subroutine) then
+                count = count + 1
+                call grow_fmod_procs(procs, count)
+                procs(count)%name = trim(sb_node%name)
+                procs(count)%external_name = ''
+                if (is_external) procs(count)%external_name = &
+                    fmod_procedure_external_name(arena, node_index)
+                procs(count)%kind = 'subroutine'
+                procs(count)%nargs = 0
+                procs(count)%arg_kinds = ''
+                arg_names = fmod_procedure_arg_names(arena, node_index)
+                procs(count)%arg_names = arg_names
+                procs(count)%arg_intents = ''
+                procs(count)%arg_optionals = ''
+                procs(count)%arg_values = ''
+                procs(count)%result_name = ''
+                procs(count)%result_kind = ''
+                procs(count)%arg_ranks = ''
+                procs(count)%arg_extents = ''
+                procs(count)%opaque = .true.
+                procs(count)%callable = .true.
+                procs(count)%external_binding = is_external
+                procs(count)%deferred_body = deferred_body
+                if (allocated(param_indices)) then
+                    nargs = size(param_indices)
+                    call fmod_procedure_name_count(arg_names, nargs)
+                    procs(count)%nargs = nargs
+                    do i = 1, nargs
+                        if (i > 1) then
+                            procs(count)%arg_kinds = &
+                                procs(count)%arg_kinds//' '
+                            procs(count)%arg_ranks = &
+                                procs(count)%arg_ranks//' '
+                            procs(count)%arg_extents = &
+                                procs(count)%arg_extents//' '
+                        end if
+                        ! Opaque carries no scalar ABI claim. The importer must
+                        ! select a dedicated lowering path.
+                        procs(count)%arg_kinds = &
+                            procs(count)%arg_kinds//'opaque'
+                        procs(count)%arg_ranks = procs(count)%arg_ranks//'0'
+                        procs(count)%arg_extents = procs(count)%arg_extents//'0'
+                    end do
+                end if
+                call fmod_procedure_dummy_attributes(arena, node_index, &
+                                                     procs(count)%arg_intents, &
+                                                     procs(count)%arg_optionals, &
+                                                     procs(count)%arg_values)
+                call pad_fmod_dummy_attributes(procs(count)%nargs, &
+                                               procs(count)%arg_intents, &
+                                               procs(count)%arg_optionals, &
+                                               procs(count)%arg_values)
+                return
+            end if
             ! The procedure is still a public module export even when its call
             ! ABI is not supported by the direct session backend. Preserve its
             ! name in the .fmod so USE ONLY validates against the real module
@@ -633,7 +741,101 @@ contains
             if (i > 1) tokens = tokens//' '
             tokens = tokens//trim(names(i))
         end do
+        call prefer_source_procedure_arg_names(arena, node_index, tokens)
     end function fmod_procedure_arg_names
+
+    module subroutine fmod_procedure_name_count(arg_names, count)
+        character(len=*), intent(in) :: arg_names
+        integer, intent(inout) :: count
+        integer :: n, i
+
+        n = 0
+        do i = 1, len_trim(arg_names)
+            if (i == 1 .or. arg_names(i - 1:i - 1) == ' ') then
+                if (arg_names(i:i) /= ' ') n = n + 1
+            end if
+        end do
+        if (n > count) count = n
+    end subroutine fmod_procedure_name_count
+
+    module subroutine prefer_source_procedure_arg_names(arena, node_index, tokens)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(inout) :: tokens
+        character(len=:), allocatable :: line, source_names
+        logical :: found
+        integer :: line_number
+
+        line_number = get_node_line(arena, node_index)
+        call get_source_line(arena, line_number, line, found)
+        if (.not. found) return
+        source_names = procedure_header_names(line)
+        if (len_trim(source_names) == 0) return
+        if (fmod_name_count(source_names) >= fmod_name_count(tokens)) tokens = &
+            source_names
+    end subroutine prefer_source_procedure_arg_names
+
+    module function fmod_name_count(tokens) result(count)
+        character(len=*), intent(in) :: tokens
+        integer :: count, i
+
+        count = 0
+        do i = 1, len_trim(tokens)
+            if (i == 1 .or. tokens(i - 1:i - 1) == ' ') then
+                if (tokens(i:i) /= ' ') count = count + 1
+            end if
+        end do
+    end function fmod_name_count
+
+    module function procedure_header_names(line) result(names)
+        character(len=*), intent(in) :: line
+        character(len=:), allocatable :: names
+        character(len=:), allocatable :: lowered, inside, token
+        integer :: open_pos, close_pos, start_pos, comma_pos
+
+        names = ''
+        lowered = lowercase_text(line)
+        open_pos = index(lowered, '(')
+        if (open_pos <= 0) return
+        close_pos = index(lowered(open_pos + 1:), ')')
+        if (close_pos <= 0) return
+        close_pos = open_pos + close_pos
+        if (close_pos <= open_pos + 1) return
+        inside = line(open_pos + 1:close_pos - 1)
+        start_pos = 1
+        do while (start_pos <= len_trim(inside))
+            comma_pos = index(inside(start_pos:), ',')
+            if (comma_pos == 0) then
+                token = adjustl(inside(start_pos:))
+                start_pos = len_trim(inside) + 1
+            else
+                token = adjustl(inside(start_pos:start_pos + comma_pos - 2))
+                start_pos = start_pos + comma_pos
+            end if
+            if (len_trim(token) == 0) cycle
+            if (lowercase_text(trim(token)) == 'ffc_error') token = 'error'
+            if (len_trim(names) > 0) names = names//' '
+            names = names//trim(token)
+        end do
+    end function procedure_header_names
+
+    module subroutine pad_fmod_dummy_attributes(nargs, intents, optionals, values)
+        integer, intent(in) :: nargs
+        character(len=:), allocatable, intent(inout) :: intents, optionals, values
+
+        do while (fmod_name_count(intents) < nargs)
+            if (len_trim(intents) > 0) intents = intents//' '
+            intents = intents//'none'
+        end do
+        do while (fmod_name_count(optionals) < nargs)
+            if (len_trim(optionals) > 0) optionals = optionals//' '
+            optionals = optionals//'0'
+        end do
+        do while (fmod_name_count(values) < nargs)
+            if (len_trim(values) > 0) values = values//' '
+            values = values//'0'
+        end do
+    end subroutine pad_fmod_dummy_attributes
 
     module subroutine grow_fmod_procs(arr, n)
         type(fmod_procedure_t), allocatable, intent(inout) :: arr(:)

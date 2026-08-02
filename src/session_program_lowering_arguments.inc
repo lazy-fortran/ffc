@@ -239,6 +239,17 @@
                 call whole_array_actual_address(arena, arg_indices(i), context, &
                                                  args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
+            else if (external_dummy_is_opaque(context, callee_name, &
+                                              call_arg_param_pos(i, sp)) .and. &
+                     actual_is_allocatable_component(arena, arg_indices(i), &
+                                                     context)) then
+                ! An opaque imported dummy has no scalar kind or local AST
+                ! contract. An allocatable component still has a precise,
+                ! reusable descriptor ABI; pass that descriptor rather than
+                ! inventing a scalar placeholder type.
+                call alloc_array_component_descriptor(arena, arg_indices(i), &
+                    context, args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
             else if (callee_dummy_is_array_ctx(arena, context, callee_name, &
                                                call_arg_param_pos(i, sp)) .and. &
                      callee_dummy_assumed_shape_dims(arena, callee_name, &
@@ -283,6 +294,35 @@
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    logical function external_dummy_is_opaque(context, callee_name, param_pos)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: idx
+
+        external_dummy_is_opaque = .false.
+        if (param_pos < 1) return
+        idx = external_procedure_index(context, callee_name)
+        if (idx <= 0) return
+        if (param_pos > context%external_procedures(idx)%arg_count) return
+        external_dummy_is_opaque = &
+            context%external_procedures(idx)%arg_is_opaque(param_pos)
+    end function external_dummy_is_opaque
+
+    logical function actual_is_allocatable_component(arena, node_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        actual_is_allocatable_component = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (component_access_node)
+            actual_is_allocatable_component = &
+                component_access_is_alloc_array(arena, node, context)
+        end select
+    end function actual_is_allocatable_component
 
     recursive logical function actual_is_array_expression(arena, node_index, context) &
             result(is_array)

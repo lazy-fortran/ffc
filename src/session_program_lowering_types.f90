@@ -609,6 +609,9 @@ module session_program_lowering_types
         ! ABI because the artefact said the dummy is an array (#415).
         integer :: arg_ranks(MAX_PROC_ARGS) = 0
         integer :: arg_extents(MAX_PROC_ARGS) = 0
+        ! An opaque imported dummy has no scalar kind claim. Its actual is
+        ! accepted only by a dedicated ABI lowering path.
+        logical :: arg_is_opaque(MAX_PROC_ARGS) = .false.
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32

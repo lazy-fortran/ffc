@@ -268,7 +268,7 @@
         call import_use_renames(arena, export_idx, use_node, context, error_msg)
     end subroutine import_module_derived_types
 
-    subroutine import_module_from_fmod(use_node, context, error_msg)
+    recursive subroutine import_module_from_fmod(use_node, context, error_msg)
         ! Resolve `use <module>` against a .fmod on the include path. Intrinsic
         ! modules are a no-op; an unresolved non-intrinsic module is an error.
         type(use_statement_node), intent(in) :: use_node
@@ -277,6 +277,7 @@
         type(module_info_t) :: info
         character(len=:), allocatable :: name, path
         integer :: i
+        type(use_statement_node) :: dependency_use
 
         call set_empty(error_msg)
         if (.not. allocated(use_node%module_name)) return
@@ -296,6 +297,19 @@
         if (len_trim(error_msg) > 0) return
         call validate_fmod_use_names(use_node, info, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        ! A public derived type may contain a type imported from another
+        ! module. Reconstruct those transitive layouts before the public
+        ! module's own layouts (#328/#447).
+        if (allocated(info%uses)) then
+            do i = 1, size(info%uses)
+                if (.not. allocated(info%uses(i)%name)) cycle
+                if (len_trim(info%uses(i)%name) == 0) cycle
+                dependency_use%module_name = trim(info%uses(i)%name)
+                call import_module_from_fmod(dependency_use, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
 
         ! Derived types come first: a later component or variable may name one,
         ! and a nested component must find its inner type already registered.
@@ -583,6 +597,7 @@
         integer, allocatable :: arg_kinds(:)
         character(len=64), allocatable :: arg_names(:)
         logical, allocatable :: arg_optionals(:), arg_values(:)
+        logical, allocatable :: arg_opaque(:)
         integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
         logical :: forced, imported
@@ -629,6 +644,8 @@
         call parse_fmod_arg_names(proc, arg_names)
         call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
         call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
+        allocate (arg_opaque(max(proc%nargs, 0)))
+        arg_opaque = proc%opaque
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
@@ -647,7 +664,8 @@
                                     arg_kinds, &
                                     arg_names, arg_optionals, arg_values, &
                                     arg_intents, arg_ranks, arg_extents, &
-                                    is_bind_c=proc%external_binding)
+                                    is_bind_c=proc%external_binding, &
+                                    arg_opaque=arg_opaque)
     end subroutine import_fmod_procedure
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
@@ -803,8 +821,12 @@
                 token = rest(1:sep - 1)
                 rest = adjustl(rest(sep + 1:))
             end if
-            value_kind = value_kind_of_token(token)
-            if (value_kind == 0) then
+            if (trim(token) == 'opaque') then
+                value_kind = 0
+            else
+                value_kind = value_kind_of_token(token)
+            end if
+            if (value_kind == 0 .and. trim(token) /= 'opaque') then
                 error_msg = 'unrecognised argument kind "'//trim(token)// &
                     '" for module procedure '//trim(proc%name)
                 return

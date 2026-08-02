@@ -24,7 +24,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 7
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 9
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -107,6 +107,10 @@ module ffc_module_artefact
         ! call resolves one by the declared ranks (#415).
         character(len=:), allocatable :: arg_ranks
         character(len=:), allocatable :: arg_extents
+        ! True when the exporter preserved a public procedure whose dummy
+        ! contracts are outside the scalar lowering ABI. Such arguments must
+        ! be lowered only through explicit opaque-argument paths (#584).
+        logical :: opaque = .false.
         ! False means the export is known to exist but its call ABI is outside
         ! the direct-session backend. It remains visible to USE validation.
         logical :: callable = .true.
@@ -131,8 +135,13 @@ module ffc_module_artefact
         character(len=:), allocatable :: specifics
     end type fmod_generic_t
 
+    type :: fmod_use_t
+        character(len=:), allocatable :: name
+    end type fmod_use_t
+
     type :: module_info_t
         character(len=:), allocatable :: name
+        type(fmod_use_t), allocatable :: uses(:)
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
         type(fmod_variable_t), allocatable :: variables(:)
@@ -160,6 +169,14 @@ contains
         write (unit, '(A)') 'name = "'//mod_name(info)//'"'
         write (unit, '(A)') 'ffc_version = "'//FFC_FMOD_VERSION//'"'
         write (unit, '(A,I0)') 'fmod_schema = ', FMOD_SCHEMA_VERSION
+
+        if (allocated(info%uses)) then
+            do i = 1, size(info%uses)
+                write (unit, '(A)') ''
+                write (unit, '(A)') '[[use]]'
+                write (unit, '(A)') 'name = "'//field(info%uses(i)%name)//'"'
+            end do
+        end if
 
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
@@ -232,6 +249,8 @@ contains
                     field(info%procedures(i)%arg_ranks)//'"'
                 write (unit, '(A)') 'arg_extents = "'// &
                     field(info%procedures(i)%arg_extents)//'"'
+                write (unit, '(A)') 'opaque = '// &
+                    bool_text(info%procedures(i)%opaque)
                 write (unit, '(A)') 'callable = '// &
                     bool_text(info%procedures(i)%callable)
                 write (unit, '(A)') 'external_binding = '// &
@@ -268,23 +287,26 @@ contains
         character(len=1024) :: raw
         character(len=:), allocatable :: line, key, val
         character(len=:), allocatable :: section
+        type(fmod_use_t), allocatable :: uses(:)
         type(fmod_parameter_t), allocatable :: params(:)
         type(fmod_derived_type_t), allocatable :: dtypes(:)
         type(fmod_component_t), allocatable :: comps(:)
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
-        integer :: nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
+        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
         integer :: schema
 
         allocate (character(len=0) :: error_msg)
         info%name = ''
+        allocate (uses(0))
         allocate (params(0))
         allocate (dtypes(0))
         allocate (comps(0))
         allocate (vars(0))
         allocate (procs(0))
         allocate (gens(0))
+        nuse = 0
         nparam = 0
         ndtype = 0
         ncomp = 0
@@ -307,6 +329,13 @@ contains
             if (len_trim(line) == 0) cycle
             if (line == '[module]') then
                 section = 'module'
+                cycle
+            else if (line == '[[use]]') then
+                call flush_component(comps, ncomp, dtypes, ndtype)
+                section = 'use'
+                nuse = nuse + 1
+                call grow_uses(uses, nuse)
+                uses(nuse)%name = ''
                 cycle
             else if (line == '[[parameter]]') then
                 call flush_component(comps, ncomp, dtypes, ndtype)
@@ -383,6 +412,8 @@ contains
                     read (val, *, iostat=io_read) schema
                     if (io_read /= 0) schema = 0
                 end if
+            case ('use')
+                if (key == 'name') uses(nuse)%name = unquote(val)
             case ('parameter')
                 if (key == 'name') params(nparam)%name = unquote(val)
                 if (key == 'kind') params(nparam)%kind = unquote(val)
@@ -414,6 +445,8 @@ contains
                 if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
                 if (key == 'arg_extents') &
                     procs(nproc)%arg_extents = unquote(val)
+                if (key == 'opaque') &
+                    procs(nproc)%opaque = unquote(val) == '1'
                 if (key == 'callable') &
                     procs(nproc)%callable = unquote(val) == '1'
                 if (key == 'external_binding') &
@@ -432,6 +465,7 @@ contains
         close (unit)
         call flush_component(comps, ncomp, dtypes, ndtype)
 
+        info%uses = uses(1:nuse)
         info%parameters = params
         info%derived_types = dtypes
         info%variables = vars(1:nvar)
@@ -450,6 +484,20 @@ contains
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
+
+    subroutine grow_uses(uses, needed)
+        type(fmod_use_t), allocatable, intent(inout) :: uses(:)
+        integer, intent(in) :: needed
+        type(fmod_use_t), allocatable :: old(:)
+        integer :: old_size, new_size
+
+        if (size(uses) >= needed) return
+        old_size = size(uses)
+        new_size = max(needed, max(1, 2 * old_size))
+        call move_alloc(uses, old)
+        allocate (uses(new_size))
+        if (old_size > 0) uses(1:old_size) = old
+    end subroutine grow_uses
 
     function schema_text(schema) result(text)
         ! The schema version as it appears in a diagnostic; an artefact with no
