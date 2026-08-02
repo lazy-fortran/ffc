@@ -8,7 +8,8 @@
     ! --- spec-text helpers ---------------------------------------------------
 
     subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                file_quoted, status_str, sign_str, &
+                                file_quoted, status_str, form_str, access_str, &
+                                sign_str, &
                                 iostat_var, iomsg_var, error_msg)
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
@@ -18,6 +19,8 @@
         character(len=:), allocatable, intent(out) :: file_path
         logical, intent(out) :: file_quoted
         character(len=:), allocatable, intent(out) :: status_str
+        character(len=:), allocatable, intent(out) :: form_str
+        character(len=:), allocatable, intent(out) :: access_str
         character(len=:), allocatable, intent(out) :: sign_str
         character(len=:), allocatable, intent(out) :: iostat_var
         character(len=:), allocatable, intent(out) :: iomsg_var
@@ -33,6 +36,8 @@
         file_path = ''
         file_quoted = .false.
         status_str = ''
+        form_str = ''
+        access_str = ''
         sign_str = ''
         iostat_var = ''
         iomsg_var = ''
@@ -104,6 +109,10 @@
                 file_quoted = val_quoted
             case ('status')
                 status_str = spec_lower(trim(val))
+            case ('form')
+                form_str = spec_lower(trim(val))
+            case ('access')
+                access_str = spec_lower(trim(val))
             case ('sign')
                 sign_str = spec_lower(trim(val))
             case ('iostat')
@@ -141,11 +150,12 @@
         type(open_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: ustr, nuvar, fpath, sstr, signstr
+        character(len=:), allocatable :: ustr, nuvar, fpath, sstr, formstr, accessstr
+        character(len=:), allocatable :: signstr
         character(len=:), allocatable :: iostat_var, iomsg_var
         type(lr_operand_desc_t) :: unit_op, args(4), status_op
         integer :: sym, ios, unit_number
-        logical :: file_quoted
+        logical :: file_quoted, unformatted
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -155,8 +165,13 @@
         end if
 
         call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, file_quoted, &
-                              sstr, signstr, iostat_var, iomsg_var, error_msg)
+                              sstr, formstr, accessstr, signstr, iostat_var, &
+                              iomsg_var, error_msg)
         if (len_trim(error_msg) > 0) return
+        unformatted = trim(formstr) == 'unformatted' .or. &
+                      (len_trim(formstr) == 0 .and. &
+                       (trim(accessstr) == 'stream' .or. &
+                        trim(accessstr) == 'direct'))
 
         ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
         ! STATUS='SCRATCH'; without either there is nothing to connect to.
@@ -178,6 +193,8 @@
         if (len_trim(nuvar) > 0) then
             call allocate_newunit(context, nuvar, unit_op, error_msg)
             if (len_trim(error_msg) > 0) return
+            call set_unit_form(context, nuvar, unformatted, error_msg)
+            if (len_trim(error_msg) > 0) return
         else if (len_trim(ustr) > 0) then
             call unit_number_operand(ustr, context, unit_op, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -185,6 +202,10 @@
             if (ios == 0) then
                 call mark_unit_symbol(context, file_unit_pseudo_name(unit_number), &
                                       error_msg)
+                if (len_trim(error_msg) == 0) then
+                    call set_unit_form(context, file_unit_pseudo_name(unit_number), &
+                                       unformatted, error_msg)
+                end if
             else
                 sym = find_symbol_compat(context, trim(ustr))
                 if (sym <= 0) then
@@ -192,12 +213,17 @@
                     return
                 end if
                 context%symbols(sym)%is_file_unit = .true.
+                context%symbols(sym)%is_unformatted = unformatted
                 ! References by literal number reach the same connection,
                 ! because both resolve to the same runtime unit number.
                 if (context%symbols(sym)%has_unit_const) then
                     call mark_unit_symbol(context, &
                         file_unit_pseudo_name(context%symbols(sym)%unit_const), &
                         error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call set_unit_form(context, &
+                                       file_unit_pseudo_name(context%symbols(sym)%unit_const), &
+                                       unformatted, error_msg)
                     if (len_trim(error_msg) > 0) return
                 end if
             end if
@@ -330,6 +356,22 @@
         end if
         if (sym > 0) context%symbols(sym)%is_file_unit = .true.
     end subroutine mark_unit_symbol
+
+    subroutine set_unit_form(context, name, unformatted, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        logical, intent(in) :: unformatted
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, trim(name))
+        if (sym <= 0) then
+            error_msg = 'open unit was not declared: '//trim(name)
+            return
+        end if
+        context%symbols(sym)%is_unformatted = unformatted
+    end subroutine set_unit_form
 
 
 
@@ -578,13 +620,29 @@
                              context%symbols(sym)%has_unit_const
     end function is_file_unit_write
 
+    logical function unit_is_unformatted(node, context)
+        type(write_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer :: sym, unit_number, ios
+
+        unit_is_unformatted = .false.
+        if (.not. allocated(node%unit_spec)) return
+        read (node%unit_spec, *, iostat=ios) unit_number
+        if (ios == 0) then
+            sym = find_symbol_compat(context, file_unit_pseudo_name(unit_number))
+        else
+            sym = find_symbol_compat(context, trim(node%unit_spec))
+        end if
+        if (sym > 0) unit_is_unformatted = context%symbols(sym)%is_unformatted
+    end function unit_is_unformatted
+
     subroutine lower_write_file(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(write_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: fp
-        logical :: list_dir
+        logical :: list_dir, unformatted
         integer :: i
 
         call set_empty(error_msg)
@@ -597,16 +655,16 @@
             return
         end if
 
-        ! A write to a connected unit always succeeds here; iostat = 0.
-        call store_write_iostat_success(node, context, error_msg)
-        if (len_trim(error_msg) > 0) return
-
         list_dir = .not. allocated(node%format_spec)
         if (allocated(node%format_spec)) then
             if (trim(node%format_spec) == '*') list_dir = .true.
         end if
 
-        if (list_dir) then
+        unformatted = list_dir .and. unit_is_unformatted(node, context)
+        if (unformatted) then
+            call lower_file_write_unformatted(arena, node, fp, context, &
+                                              error_msg)
+        else if (list_dir) then
             if (.not. allocated(node%arg_indices)) return
             do i = 1, size(node%arg_indices)
                 call lower_file_write_item(arena, node%arg_indices(i), fp, &
@@ -617,7 +675,124 @@
         else
             call lower_file_write_formatted(arena, node, fp, context, error_msg)
         end if
+        if (len_trim(error_msg) > 0) return
+        call store_write_iostat_success(node, context, error_msg)
     end subroutine lower_write_file
+
+    subroutine lower_file_write_unformatted(arena, node, fp, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(write_statement_node), intent(in) :: node
+        type(lr_operand_desc_t), intent(in) :: fp
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) return
+        do i = 1, size(node%arg_indices)
+            call lower_file_write_unformatted_item(arena, node%arg_indices(i), &
+                                                    fp, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_file_write_unformatted
+
+    subroutine lower_file_write_unformatted_item(arena, node_index, fp, context, &
+                                                 error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lr_operand_desc_t), intent(in) :: fp
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, status, args(2)
+        type(lr_operand_desc_t) :: narrow_value
+        integer :: vk
+        integer :: logical_bytes
+
+        call set_empty(error_msg)
+        vk = file_write_value_kind(arena, node_index, context)
+        select case (vk)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I32, VALUE_LOGICAL)
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, value, error_msg)
+        case default
+            call unsupported_feature_error('unformatted write', &
+                get_node_line(arena, node_index), get_node_column(arena, node_index), &
+                'only integer and logical scalar values are supported', &
+                error_msg)
+            return
+        end select
+        if (len_trim(error_msg) > 0) return
+
+        args(1) = fp
+        args(2) = value
+        select case (vk)
+        case (VALUE_I8)
+            if (.not. emit_i32_call(context%session, &
+                    '_ffc_write_unformatted_i8', args, status, error_msg)) return
+        case (VALUE_I16)
+            if (.not. emit_i32_call(context%session, &
+                    '_ffc_write_unformatted_i16', args, status, error_msg)) return
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (vk == VALUE_LOGICAL) then
+                logical_bytes = logical_write_kind_bytes(arena, node_index, context)
+                select case (logical_bytes)
+                case (1)
+                    if (.not. emit_liric_i32_to_i8(context%session, value, &
+                                                   narrow_value, error_msg)) return
+                    args(2) = narrow_value
+                    if (.not. emit_i32_call(context%session, &
+                            '_ffc_write_unformatted_i8', args, status, error_msg)) return
+                case (2)
+                    if (.not. emit_liric_i32_to_i16(context%session, value, &
+                                                    narrow_value, error_msg)) return
+                    args(2) = narrow_value
+                    if (.not. emit_i32_call(context%session, &
+                            '_ffc_write_unformatted_i16', args, status, error_msg)) return
+                case (8)
+                    if (.not. emit_liric_i32_to_i64(context%session, value, &
+                                                   narrow_value, error_msg)) return
+                    args(2) = narrow_value
+                    if (.not. emit_i32_call(context%session, &
+                            '_ffc_write_unformatted_i64', args, status, error_msg)) return
+                case default
+                    args(2) = value
+                    if (.not. emit_i32_call(context%session, &
+                            '_ffc_write_unformatted_i32', args, status, error_msg)) return
+                end select
+            else
+                args(2) = value
+                if (.not. emit_i32_call(context%session, &
+                        '_ffc_write_unformatted_i32', args, status, error_msg)) return
+            end if
+        case (VALUE_I64)
+            args(2) = value
+            if (.not. emit_i32_call(context%session, &
+                    '_ffc_write_unformatted_i64', args, status, error_msg)) return
+        end select
+    end subroutine lower_file_write_unformatted_item
+
+    integer function logical_write_kind_bytes(arena, node_index, context) result(bytes)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, name_error
+        integer :: symbol_index
+
+        bytes = 4
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, name_error)
+        if (len_trim(name_error) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, name)
+        if (symbol_index <= 0) return
+        if (context%symbols(symbol_index)%logical_kind_bytes > 0) then
+            bytes = context%symbols(symbol_index)%logical_kind_bytes
+        end if
+    end function logical_write_kind_bytes
 
     subroutine store_write_iostat_success(node, context, error_msg)
         ! Report a file WRITE's outcome. The status comes from the runtime's

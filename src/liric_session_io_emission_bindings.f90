@@ -43,6 +43,8 @@ module liric_session_io_emission_bindings
     public :: emit_liric_f64_to_f32
     public :: emit_liric_f64_binary
     public :: emit_liric_i32_to_f64
+    public :: emit_liric_i32_to_i8
+    public :: emit_liric_i32_to_i16
     public :: emit_liric_i1_to_i32
     public :: emit_liric_f64_to_i32
     public :: emit_liric_char_byte_zext
@@ -1035,6 +1037,59 @@ contains
         call set_empty(error_msg)
         emit_liric_i32_to_i64 = .true.
     end function emit_liric_i32_to_i64
+
+    logical function emit_liric_i32_to_i8(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+
+        emit_liric_i32_to_i8 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        operands(1) = source
+        inst%op = LR_OP_TRUNC
+        inst%typ = lr_type_i8_s(session%handle)
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        result = i8_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_liric_i32_to_i8 = .true.
+    end function emit_liric_i32_to_i8
+
+    logical function emit_liric_i32_to_i16(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+        integer(c_int32_t) :: vreg
+
+        emit_liric_i32_to_i16 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        operands(1) = source
+        inst%op = LR_OP_TRUNC
+        inst%typ = lr_type_i16_s(session%handle)
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        result%kind = LR_OP_KIND_VREG
+        result%payload = int(vreg, c_int64_t)
+        result%typ = lr_type_i16_s(session%handle)
+        result%global_offset = 0_c_int64_t
+        call set_empty(error_msg)
+        emit_liric_i32_to_i16 = .true.
+    end function emit_liric_i32_to_i16
 
     logical function emit_liric_i1_to_i32(session, source, result, error_msg)
         ! Logical values are stored in i32 slots even though comparisons yield

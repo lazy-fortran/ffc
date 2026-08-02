@@ -147,6 +147,8 @@ contains
             '#include <stdlib.h>'//NL
         text = text// &
             '#include <string.h>'//NL
+        text = text// &
+            '#include <sys/stat.h>'//NL
         text = text//NL
         text = text// &
             '#define FFC_PATH_MAX 4096'//NL
@@ -583,6 +585,79 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
+            '/* Returns the byte size of a named file, or -1 when the file'//NL
+        text = text// &
+            ' * cannot be inspected. The compiler maps this to'//NL
+        text = text// &
+            ' * INQUIRE(SIZE=). */'//NL
+        text = text// &
+            'long long _ffc_inquire_file_size(const char *path) {'//NL
+        text = text// &
+            '    struct stat info;'//NL
+        text = text// &
+            '    if (path == NULL || stat(path, &info) != 0 ||'//NL
+        text = text// &
+            '        info.st_size < 0) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return (long long) info.st_size;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Returns the current size of a connected unit without changing'//NL
+        text = text// &
+            ' * its position, or -1 when the unit has no seekable stream. */'//NL
+        text = text// &
+            'long long _ffc_inquire_unit_size(int unit) {'//NL
+        text = text// &
+            '    FILE *fp;'//NL
+        text = text// &
+            '    long current;'//NL
+        text = text// &
+            '    long end;'//NL
+        text = text//NL
+        text = text// &
+            '    if (!ffc_unit_valid(unit) || !ffc_units[unit].connected) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    fp = ffc_units[unit].fp;'//NL
+        text = text// &
+            '    if (fp == NULL || fflush(fp) != 0) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    current = ftell(fp);'//NL
+        text = text// &
+            '    if (current < 0 || fseek(fp, 0L, SEEK_END) != 0) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    end = ftell(fp);'//NL
+        text = text// &
+            '    if (fseek(fp, current, SEEK_SET) != 0 || end < 0) {'//NL
+        text = text// &
+            '        return -1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '    return (long long) end;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
             '/* ---- RANDOM_SEED (issue #588) ---------------------------- */'//NL
         text = text//NL
         text = text// &
@@ -781,6 +856,59 @@ contains
             '    }'//NL
         text = text// &
             '    return ffc_write_failed(fputs(text, fp));'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Unformatted scalar transfer writes memory without list-directed'//NL
+        text = text// &
+            ' * separators or a record terminator. */'//NL
+        text = text// &
+            'static int ffc_write_unformatted_value('//NL
+        text = text// &
+            '    FILE *fp, const void *value, size_t size) {'//NL
+        text = text// &
+            '    if (fp == NULL || value == NULL ||'//NL
+        text = text// &
+            '        fwrite(value, size, 1, fp) != 1) {'//NL
+        text = text// &
+            '        ffc_unit_last_status = FFC_IOSTAT_WRITE;'//NL
+        text = text// &
+            '        return FFC_IOSTAT_WRITE;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    ffc_unit_last_status = 0;'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_unformatted_i8(FILE *fp, signed char value) {'//NL
+        text = text// &
+            '    return ffc_write_unformatted_value(fp, &value, sizeof value);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_unformatted_i16(FILE *fp, short value) {'//NL
+        text = text// &
+            '    return ffc_write_unformatted_value(fp, &value, sizeof value);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_unformatted_i32(FILE *fp, int value) {'//NL
+        text = text// &
+            '    return ffc_write_unformatted_value(fp, &value, sizeof value);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_write_unformatted_i64(FILE *fp, long long value) {'//NL
+        text = text// &
+            '    return ffc_write_unformatted_value(fp, &value, sizeof value);'//NL
         text = text// &
             '}'//NL
         text = text//NL

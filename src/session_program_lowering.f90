@@ -174,6 +174,8 @@ module session_program_lowering
         emit_liric_f64_to_i32, &
         emit_liric_char_byte_zext, &
         emit_liric_i32_to_i64, &
+        emit_liric_i32_to_i8, &
+        emit_liric_i32_to_i16, &
         emit_liric_i64_to_i32, &
         emit_liric_store_char_byte, &
         emit_liric_print_f64, &
@@ -1006,7 +1008,27 @@ contains
         else
             call define_symbol(context, name, value_kind, error_msg)
         end if
+        if (len_trim(error_msg) == 0 .and. value_kind == VALUE_LOGICAL) then
+            call set_declared_logical_kind(context, name, node%resolved_kind_value)
+        end if
     end subroutine define_declared_symbol
+
+    subroutine set_declared_logical_kind(context, name, kind_value)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        integer, intent(in) :: kind_value
+        integer :: index
+
+        index = find_symbol_compat(context, name)
+        if (index <= 0) return
+        select case (kind_value)
+        case (1, 2, 4, 8)
+            context%symbols(index)%logical_kind_bytes = kind_value
+        case default
+            ! The default logical representation in this lowering is i32.
+            context%symbols(index)%logical_kind_bytes = 4
+        end select
+    end subroutine set_declared_logical_kind
 
     subroutine define_declared_class_star_symbol(context, name, error_msg)
         ! A class(*) dummy: the parameter pointer addresses a 16-byte

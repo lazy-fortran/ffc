@@ -63,6 +63,7 @@ int _ffc_runtime_probe(void) {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #define FFC_PATH_MAX 4096
 #define FFC_UNIT_MIN 0
@@ -289,6 +290,44 @@ int _ffc_unit_close(int unit) {
     return 0;
 }
 
+/* Returns the byte size of a named file, or -1 when the file
+ * cannot be inspected. The compiler maps this to
+ * INQUIRE(SIZE=). */
+long long _ffc_inquire_file_size(const char *path) {
+    struct stat info;
+    if (path == NULL || stat(path, &info) != 0 ||
+        info.st_size < 0) {
+        return -1;
+    }
+    return (long long) info.st_size;
+}
+
+/* Returns the current size of a connected unit without changing
+ * its position, or -1 when the unit has no seekable stream. */
+long long _ffc_inquire_unit_size(int unit) {
+    FILE *fp;
+    long current;
+    long end;
+
+    if (!ffc_unit_valid(unit) || !ffc_units[unit].connected) {
+        return -1;
+    }
+    fp = ffc_units[unit].fp;
+    if (fp == NULL || fflush(fp) != 0) {
+        return -1;
+    }
+    current = ftell(fp);
+    if (current < 0 || fseek(fp, 0L, SEEK_END) != 0) {
+        return -1;
+    }
+    end = ftell(fp);
+    if (fseek(fp, current, SEEK_SET) != 0 || end < 0) {
+        return -1;
+    }
+    ffc_unit_last_status = 0;
+    return (long long) end;
+}
+
 /* ---- RANDOM_SEED (issue #588) ---------------------------- */
 
 /* RANDOM_NUMBER draws from glibc's random(), whose state is
@@ -396,6 +435,35 @@ int _ffc_write_text(int unit, const char *text) {
         return ffc_unit_last_status;
     }
     return ffc_write_failed(fputs(text, fp));
+}
+
+/* Unformatted scalar transfer writes memory without list-directed
+ * separators or a record terminator. */
+static int ffc_write_unformatted_value(
+    FILE *fp, const void *value, size_t size) {
+    if (fp == NULL || value == NULL ||
+        fwrite(value, size, 1, fp) != 1) {
+        ffc_unit_last_status = FFC_IOSTAT_WRITE;
+        return FFC_IOSTAT_WRITE;
+    }
+    ffc_unit_last_status = 0;
+    return 0;
+}
+
+int _ffc_write_unformatted_i8(FILE *fp, signed char value) {
+    return ffc_write_unformatted_value(fp, &value, sizeof value);
+}
+
+int _ffc_write_unformatted_i16(FILE *fp, short value) {
+    return ffc_write_unformatted_value(fp, &value, sizeof value);
+}
+
+int _ffc_write_unformatted_i32(FILE *fp, int value) {
+    return ffc_write_unformatted_value(fp, &value, sizeof value);
+}
+
+int _ffc_write_unformatted_i64(FILE *fp, long long value) {
+    return ffc_write_unformatted_value(fp, &value, sizeof value);
 }
 
 /* ---- IOSTAT and IOMSG (issue #427) ------------------------ */

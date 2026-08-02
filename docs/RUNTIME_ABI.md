@@ -677,6 +677,8 @@ The complete runtime ABI. Adding an entry point means editing
 | `_ffc_unit_file` | `FILE *_ffc_unit_file(int unit)` | The stream behind a unit, connecting an unopened numeric unit to `fort.<N>` on first use. NULL only when the unit is unusable. |
 | `_ffc_unit_rewind` | `int _ffc_unit_rewind(int unit)` | Repositions to the first record. |
 | `_ffc_unit_close` | `int _ffc_unit_close(int unit)` | Disconnects the unit. Succeeds on a unit that is not connected. |
+| `_ffc_inquire_file_size` | `long long _ffc_inquire_file_size(const char *path)` | Returns the filesystem byte size, or -1 when `path` cannot be stat'ed. |
+| `_ffc_inquire_unit_size` | `long long _ffc_inquire_unit_size(int unit)` | Flushes and returns the connected stream's byte size while restoring its position, or -1 when the unit is unusable or not seekable. |
 | `_ffc_unit_status` | `int _ffc_unit_status(void)` | Status of the most recent unit operation. |
 | `_ffc_random_seed_size` | `int _ffc_random_seed_size(void)` | Size of the seed array `RANDOM_SEED(SIZE=)` reports. The generator behind `RANDOM_NUMBER` has one integer of state, so this is 1. |
 | `_ffc_random_seed_put` | `void _ffc_random_seed_put(const int *seed)` | `RANDOM_SEED(PUT=)`. Restarts the generator from `seed[0]`, so an identical PUT replays an identical sequence. Null is ignored. |
@@ -734,6 +736,21 @@ conversion fails.
 `printf`. Logical and character scalars use `_ffc_write_i32` and
 `_ffc_write_str`. Complex output, list-directed input, NAMELIST, and internal
 I/O still use their established paths; they are named by their own issues.
+
+### Scalar unformatted output
+
+A stream-opened unit may use list-directed syntax to write scalar integer or
+logical values as unformatted bytes. The compiler selects the entry point from
+the declared kind, and each function writes exactly one value with `fwrite`.
+
+| Symbol | Signature |
+|---|---|
+| `_ffc_write_unformatted_i8` | `int _ffc_write_unformatted_i8(FILE *fp, signed char value)` |
+| `_ffc_write_unformatted_i16` | `int _ffc_write_unformatted_i16(FILE *fp, short value)` |
+| `_ffc_write_unformatted_i32` | `int _ffc_write_unformatted_i32(FILE *fp, int value)` |
+| `_ffc_write_unformatted_i64` | `int _ffc_write_unformatted_i64(FILE *fp, long long value)` |
+
+The functions return 0 on success and update the runtime I/O status on failure.
 
 ### Preconnected units
 

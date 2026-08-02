@@ -1,7 +1,8 @@
-    ! Minimal INQUIRE lowering (I/O cluster W10): exist=, opened=, and
+    ! INQUIRE lowering (I/O cluster W10): exist=, opened=, size=, and
     ! iostat= by file= or unit=. opened= reads the compile-time is_file_unit
-    ! flag set by a preceding OPEN in the same control-flow path; exist= on a
-    ! file= form asks the C library with access(2).
+    ! flag set by a preceding OPEN in the same control-flow path; size= is
+    ! delegated to the runtime so closed files and connected units share one
+    ! byte-size contract.
 
     subroutine parse_inquire_spec(spec, unit_str, file_path, exist_var, &
                                   opened_var, size_var, iostat_var, error_msg)
@@ -113,21 +114,15 @@
                                 error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (len_trim(size_var) > 0) then
-            call unsupported_feature_error('inquire statement', node%line, &
-                node%column, 'size= is not supported (#247)', error_msg)
-            return
-        end if
-
         if (len_trim(file_path) > 0) then
             call lower_inquire_by_file(node, context, file_path, exist_var, &
-                                       iostat_var, error_msg)
+                                       size_var, iostat_var, error_msg)
             return
         end if
 
         if (len_trim(unit_str) > 0) then
             call lower_inquire_by_unit(node, context, unit_str, opened_var, &
-                                       exist_var, iostat_var, error_msg)
+                                       exist_var, size_var, iostat_var, error_msg)
             return
         end if
 
@@ -163,24 +158,60 @@
         call assign_i32_to_symbol(context, sym, value, error_msg)
     end subroutine store_inquire_logical
 
+    subroutine store_inquire_size(context, node, var_name, value, error_msg)
+        ! SIZE= is a default integer in ordinary code, but accepting integer(8)
+        ! here also covers the common large-file spelling without losing the
+        ! runtime's 64-bit result before storage.
+        type(lowering_context_t), intent(inout) :: context
+        type(inquire_statement_node), intent(in) :: node
+        character(len=*), intent(in) :: var_name
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: converted_value
+        integer :: sym
+
+        call set_empty(error_msg)
+        sym = find_symbol_compat(context, var_name)
+        if (sym <= 0) then
+            error_msg = 'inquire size= target was not declared: '//trim(var_name)
+            return
+        end if
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32)
+            if (.not. emit_liric_i64_to_i32(context%session, value, converted_value, &
+                                            error_msg)) return
+            call assign_i32_to_symbol(context, sym, converted_value, error_msg)
+        case (VALUE_I64)
+            context%symbols(sym)%value = value
+            if (.not. context%symbols(sym)%has_address) then
+                if (.not. emit_i64_alloca(context%session, &
+                                          context%symbols(sym)%address, &
+                                          error_msg)) return
+                context%symbols(sym)%has_address = .true.
+                context%symbols(sym)%is_reference = .true.
+            end if
+            if (.not. emit_i64_store(context%session, value, &
+                                     context%symbols(sym)%address, error_msg)) return
+        case default
+            call unsupported_feature_error('inquire statement', node%line, &
+                node%column, 'size= target must be an integer scalar', error_msg)
+        end select
+    end subroutine store_inquire_size
+
     subroutine lower_inquire_by_file(node, context, file_path, exist_var, &
-                                     iostat_var, error_msg)
+                                     size_var, iostat_var, error_msg)
         ! exist= probes the filesystem with a guarded fopen(path, "r")/fclose
-        ! rather than access(2): repeated OPEN statements already prove fopen
-        ! is safe to call more than once per program. The exists/not-exists
-        ! outcome is decided by branching on the fopen result and storing a
-        ! literal 1/0 constant on each side (store_inquire_bool_via_branch's
-        ! pattern): storing the icmp result to a symbol directly, repeated
-        ! across two inquire statements, collapses onto one shared comparison
-        ! result in the LIRIC backend.
+        ! rather than access(2). size= uses the runtime stat query so it also
+        ! reports the standard -1 sentinel for a missing file.
         type(inquire_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: file_path, exist_var, iostat_var
+        character(len=*), intent(in) :: file_path, exist_var, size_var, iostat_var
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: path_id, mode_id
         character(len=64) :: path_name, mode_name
         type(lr_operand_desc_t) :: path_ptr, mode_ptr, fp, is_open
         type(lr_operand_desc_t) :: args(2)
+        type(lr_operand_desc_t) :: size_value
         integer(c_int32_t) :: close_block, false_block, done_block
         integer :: sym
 
@@ -255,6 +286,14 @@
             if (len_trim(error_msg) > 0) return
         end if
 
+        if (len_trim(size_var) > 0) then
+            if (.not. emit_i64_call(context%session, '_ffc_inquire_file_size', &
+                                    [path_ptr], size_value, error_msg)) return
+            call store_inquire_size(context, node, size_var, size_value, &
+                                    error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+
         if (len_trim(iostat_var) > 0) then
             call store_inquire_logical(context, node, iostat_var, 'iostat', &
                 i32_immediate(context%session, 0_c_int64_t), error_msg)
@@ -264,27 +303,36 @@
     end subroutine lower_inquire_by_file
 
     subroutine lower_inquire_by_unit(node, context, unit_str, opened_var, &
-                                     exist_var, iostat_var, error_msg)
+                                     exist_var, size_var, iostat_var, error_msg)
         type(inquire_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: unit_str, opened_var, exist_var
+        character(len=*), intent(in) :: unit_str, opened_var, exist_var, size_var
         character(len=*), intent(in) :: iostat_var
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: unit_args(1), opened_op
+        type(lr_operand_desc_t) :: unit_args(1), opened_op, size_value
 
         call set_empty(error_msg)
 
-        if (len_trim(opened_var) > 0) then
+        if (len_trim(opened_var) > 0 .or. len_trim(size_var) > 0) then
             ! Ask the runtime, which owns the connection, instead of reading a
             ! compile-time flag that could not see a unit opened elsewhere in
             ! the program (#396).
             call unit_number_operand(unit_str, context, unit_args(1), error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_call(context%session, '_ffc_unit_is_open', &
-                                    unit_args, opened_op, error_msg)) return
-            call store_inquire_logical(context, node, opened_var, 'opened', &
-                                       opened_op, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len_trim(opened_var) > 0) then
+                if (.not. emit_i32_call(context%session, '_ffc_unit_is_open', &
+                                        unit_args, opened_op, error_msg)) return
+                call store_inquire_logical(context, node, opened_var, 'opened', &
+                                           opened_op, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (len_trim(size_var) > 0) then
+                if (.not. emit_i64_call(context%session, '_ffc_inquire_unit_size', &
+                                        unit_args, size_value, error_msg)) return
+                call store_inquire_size(context, node, size_var, size_value, &
+                                        error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         end if
 
         if (len_trim(exist_var) > 0) then

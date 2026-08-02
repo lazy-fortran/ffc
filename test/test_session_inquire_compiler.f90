@@ -11,6 +11,7 @@ program test_session_inquire_compiler
     if (.not. test_inquire_file_exist()) all_passed = .false.
     if (.not. test_inquire_two_files_exist()) all_passed = .false.
     if (.not. test_inquire_unit_opened()) all_passed = .false.
+    if (.not. test_inquire_size_and_unformatted()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: inquire lowers through direct LIRIC session'
@@ -79,5 +80,25 @@ contains
         test_inquire_unit_opened = expect_output( &
             source, ' F T'//new_line('a'), '/tmp/ffc_session_inquire_unit')
     end function test_inquire_unit_opened
+
+    logical function test_inquire_size_and_unformatted()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: u, from_unit, from_file, value'//new_line('a')// &
+            '  value = 42'//new_line('a')// &
+            "  open(unit=77, file='/tmp/ffc_inquire_size.dat', status='replace', access='stream')"// &
+            new_line('a')// &
+            '  write(77) value'//new_line('a')// &
+            '  inquire(unit=77, size=from_unit)'//new_line('a')// &
+            '  close(77)'//new_line('a')// &
+            "  inquire(file='/tmp/ffc_inquire_size.dat', size=from_file)"// &
+            new_line('a')// &
+            '  print *, from_unit, from_file'//new_line('a')// &
+            'end program main'
+
+        test_inquire_size_and_unformatted = expect_output( &
+            source, '           4           4'//new_line('a'), &
+            '/tmp/ffc_session_inquire_size')
+    end function test_inquire_size_and_unformatted
 
 end program test_session_inquire_compiler
