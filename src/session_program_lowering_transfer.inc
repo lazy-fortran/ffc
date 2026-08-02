@@ -1,5 +1,6 @@
     ! TRANSFER(source, mold) for scalar intrinsic types of matching byte size:
-    ! integer(4)<->real(4) and integer(8)<->real(8). The result reinterprets
+    ! integer(4)<->real(4), integer(8)<->real(8), and canonical logical
+    ! values. The result reinterprets
     ! source's bit pattern as mold's type, done here by storing through a
     ! typed stack slot and loading the same address back with the other
     ! type - the same memory-punning trick EQUIVALENCE already relies on.
@@ -75,6 +76,8 @@
 
         select case (source_kind)
         case (VALUE_I32)
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_LOGICAL)
             call lower_i32_expression(arena, node_index, context, value, error_msg)
         case (VALUE_I64)
             call lower_i64_expression(arena, node_index, context, value, error_msg)
@@ -172,6 +175,44 @@
         end select
     end function transfer_operand_kind
 
+    integer function transfer_operand_bytes(arena, node_index, value_kind, &
+                                            context) result(bytes)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, value_kind
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index
+        character(len=:), allocatable :: name, name_error
+
+        bytes = transfer_kind_bytes(value_kind)
+        if (value_kind /= VALUE_LOGICAL) return
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, name_error)
+        if (len_trim(name_error) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%logical_kind_bytes > 0) then
+                bytes = context%symbols(symbol_index)%logical_kind_bytes
+            end if
+        end if
+    end function transfer_operand_bytes
+
+    integer function transfer_kind_bytes(value_kind) result(bytes)
+        integer, intent(in) :: value_kind
+
+        select case (value_kind)
+        case (VALUE_I8)
+            bytes = 1
+        case (VALUE_I16)
+            bytes = 2
+        case (VALUE_I32, VALUE_LOGICAL, VALUE_F32)
+            bytes = 4
+        case (VALUE_I64, VALUE_F64)
+            bytes = 8
+        case default
+            bytes = 0
+        end select
+    end function transfer_kind_bytes
+
     logical function transfer_pair_supported(source_kind, target_kind) &
             result(ok)
         integer, intent(in) :: source_kind, target_kind
@@ -264,6 +305,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: source_kind, target_kind, source_symbol
+        integer :: source_bytes, target_bytes
         integer :: arg_count, source_count, result_count, i
         integer(c_int64_t) :: size_value
         type(lr_operand_desc_t) :: element, converted, address
@@ -290,17 +332,38 @@
                             'entity of a supported intrinsic type'
                 return
             end if
-            if (.not. transfer_pair_supported(source_kind, target_kind)) then
+            source_symbol = transfer_array_source_symbol(arena, rhs%arg_indices(1), &
+                                                         context)
+            source_bytes = transfer_operand_bytes(arena, rhs%arg_indices(1), &
+                                                   source_kind, context)
+            target_bytes = transfer_kind_bytes(target_kind)
+            if (source_kind == VALUE_LOGICAL) then
+                if (target_kind /= VALUE_I8 .and. target_kind /= VALUE_I16 .and. &
+                    target_kind /= VALUE_I32 .and. target_kind /= VALUE_I64) then
+                    error_msg = 'logical transfer target must be an integer'
+                    return
+                end if
+                if (target_bytes <= 0 .or. source_bytes < target_bytes .or. &
+                    mod(source_bytes, target_bytes) /= 0) then
+                    error_msg = 'transfer requires source and result element kinds '// &
+                                'of the same byte size'
+                    return
+                end if
+                if (source_symbol > 0 .and. target_bytes /= source_bytes) then
+                    error_msg = 'array logical transfer requires matching element size'
+                    return
+                end if
+            else if (.not. transfer_pair_supported(source_kind, target_kind)) then
                 error_msg = 'transfer requires source and result element kinds '// &
                             'of the same byte size'
                 return
             end if
-
-            source_symbol = transfer_array_source_symbol(arena, rhs%arg_indices(1), &
-                                                         context)
             source_count = 1
-            if (source_symbol > 0) &
+            if (source_symbol > 0) then
                 source_count = context%symbols(source_symbol)%array_size
+            else if (source_kind == VALUE_LOGICAL) then
+                source_count = source_bytes / target_bytes
+            end if
 
             result_count = context%symbols(symbol_index)%array_size
             if (arg_count == 3) then
@@ -325,7 +388,7 @@
                 return
             end if
 
-            needs_pun = source_kind /= target_kind
+            needs_pun = source_kind /= target_kind .and. source_kind /= VALUE_LOGICAL
             if (needs_pun) then
                 if (.not. transfer_alloca(context, source_kind, address, &
                                           error_msg)) return
@@ -338,7 +401,27 @@
                                                    error_msg)
                 if (len_trim(error_msg) > 0) return
                 converted = element
-                if (needs_pun) then
+                if (source_kind == VALUE_LOGICAL) then
+                    ! FFC normalizes logical truth to one in its i32 semantic
+                    ! slot. For a scalar logical transferred into narrower
+                    ! integer elements, only the low byte is nonzero.
+                    if (source_symbol == 0 .and. i > 0) then
+                        element = i32_immediate(context%session, 0_c_int64_t)
+                    end if
+                    select case (target_kind)
+                    case (VALUE_I8)
+                        if (.not. emit_liric_i32_to_i8(context%session, element, &
+                                                       converted, error_msg)) return
+                    case (VALUE_I16)
+                        if (.not. emit_liric_i32_to_i16(context%session, element, &
+                                                        converted, error_msg)) return
+                    case (VALUE_I64)
+                        if (.not. emit_liric_i32_to_i64(context%session, element, &
+                                                        converted, error_msg)) return
+                    case default
+                        converted = element
+                    end select
+                else if (needs_pun) then
                     if (.not. transfer_store(context, source_kind, element, &
                                              address, error_msg)) return
                     if (.not. transfer_load(context, target_kind, address, &
