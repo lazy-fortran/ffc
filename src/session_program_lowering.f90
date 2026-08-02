@@ -2566,7 +2566,8 @@ contains
     logical function is_logical_connective(op)
         character(len=*), intent(in) :: op
         select case (trim(adjustl(lowercase_text(op))))
-        case ('.and.', '.or.', '.eqv.', '.neqv.', '.xor.')
+        case ('.and.', 'and', '.or.', 'or', '.eqv.', 'eqv', '.neqv.', 'neqv', &
+              '.xor.', 'xor')
             is_logical_connective = .true.
         case default
             is_logical_connective = .false.
@@ -2590,15 +2591,15 @@ contains
         call lower_i1_condition(arena, right_index, context, rhs, error_msg)
         if (len_trim(error_msg) > 0) return
         select case (trim(adjustl(lowercase_text(op))))
-        case ('.and.')
+        case ('.and.', 'and')
             opcode = LR_OP_AND
-        case ('.or.')
+        case ('.or.', 'or')
             opcode = LR_OP_OR
-        case ('.neqv.')
+        case ('.neqv.', 'neqv')
             opcode = LR_OP_XOR
-        case ('.xor.')
+        case ('.xor.', 'xor')
             opcode = LR_OP_XOR
-        case ('.eqv.')
+        case ('.eqv.', 'eqv')
             ! a .eqv. b is .not. (a .neqv. b): xor then invert the i1.
             if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, rhs, &
                 xor_value, error_msg)) return

@@ -426,8 +426,8 @@ module session_program_lowering_types
     ! One operand of an all/any/count comparison mask (or a bare mask), used
     ! by the general scalar-result reduction path. mode selects the storage:
     ! 0 scalar broadcast, 1 whole stored array, 2 array section, 3 array
-    ! constructor of scalar elements. extent is the element count for an
-    ! array-shaped operand and -1 for a scalar.
+    ! constructor of scalar elements, 4 nested whole-array expression. extent
+    ! is the element count for an array-shaped operand and -1 for a scalar.
     type, public :: reduction_operand_t
         integer :: mode = 0
         integer :: sym = 0

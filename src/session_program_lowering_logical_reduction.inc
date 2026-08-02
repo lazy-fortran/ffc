@@ -51,6 +51,16 @@
 
         call mask_reduction_extent(left, right, extent)
         if (extent <= 0) return
+        if (left%mode == 4) then
+            call create_array_expression_temp(context, VALUE_LOGICAL, &
+                                              left%extent, 0, left%sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (right%mode == 4) then
+            call create_array_expression_temp(context, VALUE_LOGICAL, &
+                                              right%extent, 0, right%sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         call mask_reduction_compare_vk(left, right, is_equiv, compare_vk, handled)
         if (.not. handled) return
         handled = .false.
@@ -69,7 +79,6 @@
             call set_empty(error_msg)
             return
         end if
-
         call mask_accumulator_seed(context, accumulate, acc)
         do i = 0, extent - 1
             call mask_side_element(arena, context, left, i, compare_vk, &
@@ -215,7 +224,10 @@
         type(reduction_operand_t), intent(out) :: side
         logical, intent(out) :: ok
         character(len=:), allocatable :: name, name_err, sec_err, flat_err
-        integer :: s
+        character(len=:), allocatable :: bin_op
+        integer :: s, bin_left, bin_right, bin_line, bin_col
+        type(reduction_operand_t) :: left_side, right_side
+        logical :: lok, rok
 
         ok = .false.
         side%mode = 0
@@ -225,6 +237,51 @@
         side%extent = -1
         side%apply_abs = .false.
         if (.not. node_exists(arena, idx)) return
+
+        if (is_binary_op(arena, idx)) then
+            call get_binary_op_info(arena, idx, bin_op, bin_left, bin_right, &
+                                    bin_line, bin_col, name_err)
+            if (len_trim(name_err) > 0) return
+            if (trim(adjustl(lowercase_text(bin_op))) == '.not.') then
+                call classify_mask_side(arena, context, bin_right, right_side, ok)
+                if (.not. ok) return
+                if (right_side%extent > 0) then
+                    side%mode = 4
+                    side%sym = right_side%sym
+                    side%vk = VALUE_LOGICAL
+                    side%extent = right_side%extent
+                else
+                    side%mode = 0
+                    side%scalar_idx = idx
+                    side%vk = VALUE_LOGICAL
+                    side%extent = -1
+                end if
+                ok = .true.
+                return
+            end if
+            if (is_logical_connective(bin_op) .or. &
+                is_relational_operator(bin_op)) then
+                call classify_mask_side(arena, context, bin_left, left_side, lok)
+                call classify_mask_side(arena, context, bin_right, right_side, rok)
+                if (.not. lok .or. .not. rok) return
+                if (left_side%extent > 0 .and. right_side%extent > 0 .and. &
+                    left_side%extent /= right_side%extent) return
+                if (max(left_side%extent, right_side%extent) > 0) then
+                    side%mode = 4
+                    side%sym = left_side%sym
+                    if (side%sym <= 0) side%sym = right_side%sym
+                    side%vk = VALUE_LOGICAL
+                    side%extent = max(left_side%extent, right_side%extent)
+                else
+                    side%mode = 0
+                    side%scalar_idx = idx
+                    side%vk = VALUE_LOGICAL
+                    side%extent = -1
+                end if
+                ok = .true.
+                return
+            end if
+        end if
 
         select type (n => arena%entries(idx)%node)
         type is (array_slice_node)
@@ -254,7 +311,15 @@
             ok = .true.
             return
         type is (call_or_subscript_node)
-            if (is_contained_function_reference(n, context)) return
+            if (is_contained_function_reference(n, context)) then
+                if (contained_function_kind(context, n%name) /= VALUE_LOGICAL) return
+                side%mode = 0
+                side%scalar_idx = idx
+                side%vk = VALUE_LOGICAL
+                side%extent = -1
+                ok = .true.
+                return
+            end if
             if (.not. n%is_intrinsic) return
             if (.not. allocated(n%name)) return
             if (.not. same_name(n%name, 'abs')) return
@@ -411,6 +476,9 @@
             expr_idx = side%flat(i + 1)
             call mask_scalar_element(arena, expr_idx, context, compare_vk, &
                                      is_equiv, value, error_msg)
+        case (4)
+            call lower_array_elementwise_value(arena, side%scalar_idx, side%sym, &
+                                               i, context, value, error_msg)
         case default
             call mask_scalar_element(arena, side%scalar_idx, context, &
                                      compare_vk, is_equiv, value, error_msg)
@@ -646,7 +714,6 @@
         call try_general_mask_reduction(arena, node, context, accumulate, &
                                         handled, value, error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
-
         if (.not. allocated(node%arg_indices)) return
         if (size(node%arg_indices) /= 1) return
         arg_index = node%arg_indices(1)

@@ -650,23 +650,46 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
         integer :: sym
+        integer :: target_sym
+        integer :: constructor_extent
         integer :: vk
         integer(c_int64_t) :: k, n
+        logical :: logical_expr
 
         handled = .false.
         call set_empty(error_msg)
         sym = whole_array_expr_shape_symbol(arena, expr_index, context)
-        if (sym <= 0) return
-        vk = context%symbols(sym)%value_kind
+        constructor_extent = whole_array_expr_constructor_extent(arena, expr_index)
+        logical_expr = whole_array_expr_is_logical(arena, expr_index)
+        if (sym > 0) then
+            n = int(context%symbols(sym)%array_size, c_int64_t)
+        else
+            if (constructor_extent <= 0) return
+            n = int(constructor_extent, c_int64_t)
+        end if
+        if (n <= 0) return
+
+        target_sym = sym
+        if (logical_expr) then
+            if (target_sym <= 0 .or. &
+                context%symbols(target_sym)%value_kind /= VALUE_LOGICAL) then
+                call create_array_expression_temp(context, VALUE_LOGICAL, int(n), &
+                                                   0, target_sym, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        else if (target_sym <= 0) then
+            return
+        end if
+
+        vk = context%symbols(target_sym)%value_kind
         if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
             vk /= VALUE_LOGICAL .and. vk /= VALUE_I64 .and. vk /= VALUE_I8 .and. &
             vk /= VALUE_I16) return
 
         handled = .true.
-        n = int(context%symbols(sym)%array_size, c_int64_t)
         do k = 0_c_int64_t, n - 1_c_int64_t
             if (.not. emit_liric_print_space(context%session, error_msg)) return
-            call lower_array_elementwise_value(arena, expr_index, sym, &
+            call lower_array_elementwise_value(arena, expr_index, target_sym, &
                                                int(k), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
             call emit_typed_array_print_value(context, vk, value, error_msg)
@@ -733,6 +756,66 @@
             sym = whole_array_expr_shape_symbol(arena, bin_right, context)
         end if
     end function whole_array_expr_shape_symbol
+
+    recursive integer function whole_array_expr_constructor_extent(arena, &
+                                                                    expr_index) &
+        result(extent)
+        !! Return the flattened extent contributed by array constructors in an
+        !! expression. A zero result means that the expression has no constructor
+        !! that can establish an array shape on its own.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: error_msg, bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+
+        extent = 0
+        if (.not. node_exists(arena, expr_index)) return
+
+        select type (literal_node => arena%entries(expr_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(literal_node%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, literal_node%element_indices, &
+                                              flat, error_msg)
+            if (len_trim(error_msg) > 0) return
+            extent = size(flat)
+            return
+        end select
+
+        if (.not. is_binary_op(arena, expr_index)) return
+        call get_binary_op_info(arena, expr_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (trim(adjustl(lowercase_text(bin_op))) == '.not.' .or. &
+            trim(adjustl(lowercase_text(bin_op))) == 'not') then
+            extent = whole_array_expr_constructor_extent(arena, bin_right)
+        else
+            extent = max(whole_array_expr_constructor_extent(arena, bin_left), &
+                         whole_array_expr_constructor_extent(arena, bin_right))
+        end if
+    end function whole_array_expr_constructor_extent
+
+    recursive logical function whole_array_expr_is_logical(arena, expr_index) &
+        result(is_logical)
+        !! Identify a non-scalar expression whose element type is logical. The
+        !! caller uses this to give comparisons and logical connectives a logical
+        !! target even when their only array-shaped operand is numeric.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        character(len=:), allocatable :: bin_op, error_msg
+        integer :: bin_left, bin_right, bin_line, bin_col
+
+        is_logical = .false.
+        if (.not. is_binary_op(arena, expr_index)) return
+        call get_binary_op_info(arena, expr_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        is_logical = is_logical_connective(bin_op) .or. &
+                     is_comparison_operator(bin_op) .or. &
+                     trim(adjustl(lowercase_text(bin_op))) == '.not.' .or. &
+                     trim(adjustl(lowercase_text(bin_op))) == 'not'
+    end function whole_array_expr_is_logical
 
     subroutine emit_array_literal_print_items(arena, expr_index, context, &
                                               handled, error_msg)
@@ -1127,6 +1210,8 @@
         character(len=:), allocatable :: id_name
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
+        type(lr_operand_desc_t) :: logical_xor
+        type(lr_operand_desc_t) :: logical_cond
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'whole-array expression index does not reference an AST node'
@@ -1240,6 +1325,20 @@
             return
         end if
 
+        select type (logical_call => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (allocated(logical_call%name) .and. &
+                is_contained_logical_function(context, logical_call%name)) then
+                ! A scalar logical function broadcasts across the array. It is
+                ! deliberately separate from the elemental user-call path,
+                ! which handles numeric function results.
+                call lower_elementwise_scalar_operand(arena, node_index, &
+                                                      target_symbol_index, context, &
+                                                      value, error_msg)
+                return
+            end if
+        end select
+
         if (is_elemental_user_call(arena, node_index, context)) then
             call lower_elementwise_user_call(arena, node_index, &
                                              target_symbol_index, linear_index, &
@@ -1251,7 +1350,8 @@
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (trim(adjustl(lowercase_text(bin_op))) == '.not.') then
+            if (trim(adjustl(lowercase_text(bin_op))) == '.not.' .or. &
+                trim(adjustl(lowercase_text(bin_op))) == 'not') then
                 call lower_array_not_element(arena, bin_right, &
                                              target_symbol_index, linear_index, &
                                              context, value, error_msg)
@@ -1262,6 +1362,41 @@
                 call lower_array_compare_element(arena, node_index, &
                                                  linear_index, context, value, &
                                                  error_msg)
+                return
+            end if
+            if (context%symbols(target_symbol_index)%value_kind == &
+                    VALUE_LOGICAL .and. is_logical_connective(bin_op)) then
+                call lower_array_elementwise_value(arena, bin_left, &
+                                                   target_symbol_index, linear_index, &
+                                                   context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_array_elementwise_value(arena, bin_right, &
+                                                   target_symbol_index, linear_index, &
+                                                   context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                select case (trim(adjustl(lowercase_text(bin_op))))
+                case ('.and.', 'and')
+                    if (.not. emit_i32_binary(context%session, LR_OP_AND, lhs, &
+                                              rhs, value, error_msg)) return
+                case ('.or.', 'or')
+                    if (.not. emit_i32_binary(context%session, LR_OP_OR, lhs, &
+                                              rhs, value, error_msg)) return
+                case ('.neqv.', 'neqv', '.xor.', 'xor')
+                    if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, &
+                                              rhs, value, error_msg)) return
+                case ('.eqv.', 'eqv')
+                    if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, &
+                                              rhs, logical_xor, error_msg)) return
+                    if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, &
+                            logical_xor, i32_immediate(context%session, &
+                                                       0_c_int64_t), logical_cond, &
+                            error_msg)) return
+                    if (.not. emit_liric_i1_to_i32(context%session, logical_cond, &
+                                                  value, error_msg)) return
+                case default
+                    error_msg = 'unsupported logical connective in whole-array expression: '// &
+                                trim(bin_op)
+                end select
                 return
             end if
             call lower_array_elementwise_value(arena, bin_left, &
@@ -1400,6 +1535,14 @@
         type(lr_operand_desc_t) :: cond, true_val, false_val
 
         call set_empty(error_msg)
+        if (whole_array_expr_shape_symbol(arena, node_index, context) <= 0 .and. &
+            whole_array_expr_constructor_extent(arena, node_index) <= 0) then
+            call lower_i1_condition(arena, node_index, context, cond, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i1_to_i32(context%session, cond, value, &
+                                           error_msg)) return
+            return
+        end if
         call lower_where_mask_element(arena, node_index, linear_index, context, &
                                       cond, error_msg)
         if (len_trim(error_msg) > 0) return
