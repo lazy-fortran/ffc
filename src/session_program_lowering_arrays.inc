@@ -3398,8 +3398,17 @@
             return
         end if
         if (context%symbols(source_index)%is_allocatable) then
-            if (nargs /= 1) then
-                error_msg = 'size with a dim over an allocatable is not supported'
+            if (nargs == 2) then
+                call eval_i32_constant(arena, node%arg_indices(2), context, &
+                                       dim_val, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (dim_val < 1_c_int64_t .or. dim_val > int( &
+                        context%symbols(source_index)%array_rank, c_int64_t)) then
+                    error_msg = 'size dim out of range for: '//trim(array_name)
+                    return
+                end if
+                call allocatable_descriptor_extent_i32(context, source_index, &
+                                                       int(dim_val), value, error_msg)
                 return
             end if
             if (context%symbols(source_index)%allocatable_static_size <= 0) then
@@ -4053,6 +4062,7 @@
         integer(c_int64_t) :: a_col_base
         integer(c_int64_t) :: b_row_base
         integer(c_int64_t) :: b_col_base
+        logical :: a_is_alloc_result, b_is_alloc_result
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -4064,12 +4074,36 @@
                 error_msg = 'matmul requires exactly two array arguments'
                 return
             end if
-            call resolve_i32_array_argument(arena, rhs, 1, context, 'matmul', &
-                                            'left operand', a_index, error_msg)
+            a_is_alloc_result = is_alloc_array_result_call(arena, &
+                rhs%arg_indices(1), context)
+            b_is_alloc_result = is_alloc_array_result_call(arena, &
+                rhs%arg_indices(2), context)
+            if (a_is_alloc_result) then
+                call materialize_matmul_alloc_result(arena, rhs%arg_indices(1), &
+                    context, a_index, error_msg)
+            else
+                call resolve_i32_array_argument(arena, rhs, 1, context, 'matmul', &
+                                                'left operand', a_index, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
-            call resolve_i32_array_argument(arena, rhs, 2, context, 'matmul', &
-                                            'right operand', b_index, error_msg)
+            if (b_is_alloc_result) then
+                call materialize_matmul_alloc_result(arena, rhs%arg_indices(2), &
+                    context, b_index, error_msg)
+            else
+                call resolve_i32_array_argument(arena, rhs, 2, context, 'matmul', &
+                                                'right operand', b_index, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
+
+            if (a_is_alloc_result .and. context%symbols(a_index)%array_rank == 2 &
+                .and. context%symbols(b_index)%array_rank == 1 .and. &
+                context%symbols(symbol_index)%array_rank == 1) then
+                call lower_allocatable_matvec_assignment(a_index, b_index, &
+                    symbol_index, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call release_matmul_alloc_result(a_index, context, error_msg)
+                return
+            end if
 
             if (context%symbols(a_index)%array_rank /= 2) then
                 error_msg = 'matmul requires rank-2 left operand arrays'
@@ -4163,6 +4197,58 @@
             return
         end select
     end subroutine lower_matmul_assignment
+
+    subroutine materialize_matmul_alloc_result(arena, value_index, context, &
+                                                symbol_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: function_name
+        character(len=64) :: temporary_name
+        integer :: element_kind, rank
+        logical :: ok
+
+        symbol_index = 0
+        select type (call_node => arena%entries(value_index)%node)
+        type is (call_or_subscript_node)
+            function_name = call_node%name
+        class default
+            error_msg = 'matmul array result operand is not a function call'
+            return
+        end select
+        call alloc_array_result_kind(arena, context, function_name, element_kind, &
+                                     rank, ok)
+        if (.not. ok) then
+            error_msg = 'matmul array result function is not allocatable'
+            return
+        end if
+        write (temporary_name, '("__ffc.matmul.arg.",I0)') context%symbol_count + 1
+        call declare_allocatable(context, trim(temporary_name), rank, element_kind, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, trim(temporary_name))
+        if (symbol_index <= 0) then
+            error_msg = 'matmul array result temporary was not declared'
+            return
+        end if
+        call lower_alloc_array_result_assignment(arena, value_index, symbol_index, &
+                                                 context, error_msg)
+    end subroutine materialize_matmul_alloc_result
+
+    subroutine release_matmul_alloc_result(symbol_index, context, error_msg)
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine release_matmul_alloc_result
 
     subroutine lower_transpose_assignment(arena, node, symbol_index, context, &
                                           error_msg)

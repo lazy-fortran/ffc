@@ -1329,6 +1329,8 @@
         type(lr_operand_desc_t) :: sum_entry, sum_header, sum_backedge
         type(lr_operand_desc_t) :: a_col_offset, a_linear, b_col_offset, b_linear
         type(lr_operand_desc_t) :: a_value, b_value, product, next_sum, output_index
+        type(lr_operand_desc_t) :: target_desc, old_data, target_data
+        type(lr_operand_desc_t) :: a_rows64, b_cols64, total64, extents64(2)
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: one
         integer(c_int32_t) :: outer_entry, outer_header, outer_body, outer_latch, &
@@ -1383,6 +1385,32 @@
         call allocatable_descriptor_extent_i32(context, b_sym, 1, b_rows, error_msg)
         if (len_trim(error_msg) > 0) return
         call allocatable_descriptor_extent_i32(context, b_sym, 2, b_cols, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! Assignment to an unallocated allocatable (and to a shape-changing
+        ! allocatable) owns the result shape.  Materialize the target storage
+        ! from the operand extents before the runtime loops first dereference
+        ! its descriptor; otherwise the null data pointer reaches the element
+        ! address helper and the generated program crashes.
+        if (.not. emit_liric_i32_to_i64(context%session, a_rows, a_rows64, &
+                                       error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, b_cols, b_cols64, &
+                                       error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, a_rows64, b_cols64, &
+                                  total64, error_msg)) return
+        target_desc = context%symbols(target_sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, target_desc, old_data, error_msg)) &
+            return
+        if (.not. emit_free(context%session, old_data, error_msg)) return
+        if (.not. emit_malloc(context%session, total64, target_data, error_msg, &
+                elem_size=i64_immediate(context%session, int( &
+                    allocatable_elem_size(value_kind), c_int64_t)))) return
+        if (.not. emit_ptr_store(context%session, target_data, target_desc, &
+                                error_msg)) return
+        extents64(1) = a_rows64
+        extents64(2) = b_cols64
+        call emit_alloc_desc_allocate_shape(context, target_desc, value_kind, 2, &
+                                            extents64, error_msg)
         if (len_trim(error_msg) > 0) return
 
         one = i32_immediate(context%session, 1_c_int64_t)
@@ -1532,6 +1560,165 @@
         if (.not. enter_liric_block(context, outer_exit, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocatable_matmul_assignment
+
+    subroutine lower_allocatable_matvec_assignment(a_sym, b_sym, target_sym, &
+                                                   context, error_msg)
+        !! Evaluate a rank-2 allocatable matrix times a rank-1 vector into a
+        !! fixed-size rank-1 target.  The matrix extents come from its
+        !! descriptor, so the generated loop remains bounded at runtime.
+        integer, intent(in) :: a_sym, b_sym, target_sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: value_kind
+        type(lr_operand_desc_t) :: a_rows, a_cols
+        type(lr_operand_desc_t) :: entry_i, header_i, backedge_i, next_i
+        type(lr_operand_desc_t) :: entry_k, header_k, backedge_k, next_k
+        type(lr_operand_desc_t) :: sum_entry, sum_header, sum_backedge
+        type(lr_operand_desc_t) :: a_col_offset, a_linear
+        type(lr_operand_desc_t) :: a_value, b_value, product, next_sum
+        type(lr_operand_desc_t) :: condition, one
+        integer(c_int32_t) :: outer_entry, outer_header, outer_body, outer_latch, &
+                               outer_exit, inner_header, inner_body, inner_latch, &
+                               inner_exit
+        integer(c_int32_t) :: i_vreg, k_vreg, sum_vreg
+
+        call set_empty(error_msg)
+        if (context%symbols(a_sym)%array_rank /= 2 .or. &
+            context%symbols(b_sym)%array_rank /= 1 .or. &
+            context%symbols(target_sym)%array_rank /= 1) then
+            error_msg = 'allocatable matvec requires matrix and vector arrays'
+            return
+        end if
+        value_kind = context%symbols(target_sym)%value_kind
+        if (context%symbols(a_sym)%value_kind /= value_kind .or. &
+            context%symbols(b_sym)%value_kind /= value_kind) then
+            error_msg = 'matvec operands and result must have the same kind'
+            return
+        end if
+        if (value_kind /= VALUE_F32 .and. value_kind /= VALUE_F64 .and. &
+            value_kind /= VALUE_I32) then
+            error_msg = 'allocatable matvec supports real and default integer arrays'
+            return
+        end if
+
+        call allocatable_descriptor_extent_i32(context, a_sym, 1, a_rows, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call allocatable_descriptor_extent_i32(context, a_sym, 2, a_cols, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        one = i32_immediate(context%session, 1_c_int64_t)
+        entry_i = i32_immediate(context%session, 0_c_int64_t)
+        outer_entry = context%current_block_id
+        outer_header = create_liric_block(context%session)
+        outer_body = create_liric_block(context%session)
+        outer_latch = create_liric_block(context%session)
+        outer_exit = create_liric_block(context%session)
+        inner_header = create_liric_block(context%session)
+        inner_body = create_liric_block(context%session)
+        inner_latch = create_liric_block(context%session)
+        inner_exit = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, outer_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_header, error_msg)) return
+        i_vreg = reserve_i32_vreg(context%session)
+        if (i_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve the matvec row loop vreg'
+            return
+        end if
+        backedge_i = i32_vreg(context%session, i_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_i, outer_entry, &
+                backedge_i, outer_latch, header_i, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_i, &
+                a_rows, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, outer_body, &
+                outer_exit, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_body, error_msg)) return
+        entry_k = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_br(context%session, inner_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_header, error_msg)) return
+        k_vreg = reserve_i32_vreg(context%session)
+        sum_vreg = reserve_i32_vreg(context%session)
+        if (k_vreg <= 0_c_int32_t .or. sum_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve the matvec reduction vregs'
+            return
+        end if
+        backedge_k = i32_vreg(context%session, k_vreg)
+        if (value_kind == VALUE_F32) then
+            sum_entry = liric_f32_immediate(context%session, 0.0_c_float)
+            sum_backedge = f32_vreg(context%session, sum_vreg)
+        else if (value_kind == VALUE_F64) then
+            sum_entry = liric_f64_immediate(context%session, 0.0_c_double)
+            sum_backedge = f64_vreg(context%session, sum_vreg)
+        else
+            sum_entry = i32_immediate(context%session, 0_c_int64_t)
+            sum_backedge = i32_vreg(context%session, sum_vreg)
+        end if
+        if (.not. emit_liric_i32_phi(context%session, entry_k, outer_body, &
+                backedge_k, inner_latch, header_k, error_msg)) return
+        if (.not. emit_liric_phi(context%session, sum_entry, outer_body, &
+                sum_backedge, inner_latch, sum_header, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_k, &
+                a_cols, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, inner_body, &
+                inner_exit, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_body, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, header_k, a_rows, &
+                a_col_offset, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, header_i, &
+                a_col_offset, a_linear, error_msg)) return
+        call load_array_element_at_operand(context, a_sym, a_linear, a_value, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
+        call load_array_element_at_operand(context, b_sym, header_k, b_value, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (value_kind == VALUE_F32) then
+            if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, a_value, &
+                    b_value, product, error_msg)) return
+            if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, sum_header, &
+                    product, next_sum, error_msg)) return
+        else if (value_kind == VALUE_F64) then
+            if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, a_value, &
+                    b_value, product, error_msg)) return
+            if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, sum_header, &
+                    product, next_sum, error_msg)) return
+        else
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, a_value, b_value, &
+                    product, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, sum_header, &
+                    product, next_sum, error_msg)) return
+        end if
+        if (.not. emit_liric_br(context%session, inner_latch, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_latch, error_msg)) return
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_k, one, &
+                k_vreg, next_k, error_msg)) return
+        if (value_kind == VALUE_F32 .or. value_kind == VALUE_F64) then
+            if (.not. emit_real_copy_to(context%session, next_sum, sum_vreg, &
+                    sum_backedge, error_msg)) return
+        else
+            if (.not. emit_i32_copy_to(context%session, next_sum, sum_vreg, &
+                    sum_backedge, error_msg)) return
+        end if
+        if (.not. emit_liric_br(context%session, inner_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_exit, error_msg)) return
+        call store_array_element_at_operand(context, target_sym, header_i, &
+                                            sum_header, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, outer_latch, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_latch, error_msg)) return
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_i, one, &
+                i_vreg, next_i, error_msg)) return
+        if (.not. emit_liric_br(context%session, outer_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_exit, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_matvec_assignment
 
     logical function enter_liric_block(context, block_id, error_msg) result(ok)
         type(lowering_context_t), intent(inout) :: context

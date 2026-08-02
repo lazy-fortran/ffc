@@ -20,7 +20,7 @@
     subroutine lower_alloc_array_result_assignment(arena, value_index, &
                                                    dest_symbol_index, context, &
                                                    error_msg)
-        ! lhs = alloc_fn(...): pass a zeroed temporary descriptor as the hidden
+        ! lhs = alloc_fn(...): pass a zeroed canonical descriptor as the hidden
         ! sret pointer, let the callee allocate into it, then move that descriptor
         ! into lhs (freeing lhs's prior storage first).
         type(ast_arena_t), intent(in) :: arena
@@ -61,7 +61,7 @@
                     int(ALLOC_DESCRIPTOR_BYTES, c_int64_t)), temp_desc, &
                 error_msg)) return
         zero = i64_immediate(context%session, 0_c_int64_t)
-        do i = 0, 4
+        do i = 0, ALLOC_DESCRIPTOR_BYTES / 8 - 1
             if (.not. emit_i64_store_at(context%session, zero, temp_desc, &
                     int(i * 8, c_int64_t), error_msg)) return
         end do
@@ -88,7 +88,10 @@
             return
         if (.not. emit_ptr_store(context%session, moved_ptr, dest_desc, &
                 error_msg)) return
-        do i = 1, 4
+        ! Copy the complete canonical descriptor, not just the legacy prefix:
+        ! rank-2 results need the second dimension and every descriptor keeps
+        ! lower bounds, extents, and byte strides in the dimension records.
+        do i = 1, ALLOC_DESCRIPTOR_BYTES / 8 - 1
             off = int(i * 8, c_int64_t)
             if (.not. emit_i64_load_at(context%session, temp_desc, off, field, &
                     error_msg)) return
