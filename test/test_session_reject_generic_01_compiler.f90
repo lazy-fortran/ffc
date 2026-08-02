@@ -290,23 +290,35 @@ contains
 
     logical function test_generic_identifier_accepted()
         !! Corrected neighbour of generic_29: a well formed GENERIC binding
-        !! passes this rule; what is left is the unrelated unsupported
-        !! type-bound procedure diagnostic, never a malformed-GENERIC one.
+        !! is accepted and dispatches to its one-argument specific.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
             '    integer :: n'//new_line('a')// &
             '  contains'//new_line('a')// &
             '    generic :: g => f1, f2'//new_line('a')// &
+            '    procedure :: f1'//new_line('a')// &
+            '    procedure :: f2'//new_line('a')// &
             '  end type t'//new_line('a')// &
             '  type(t) :: x'//new_line('a')// &
             '  x%n = 1'//new_line('a')// &
+            '  call x%g(2)'//new_line('a')// &
             '  stop x%n'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine f1(self, n)'//new_line('a')// &
+            '    class(t), intent(inout) :: self'//new_line('a')// &
+            '    integer, intent(in) :: n'//new_line('a')// &
+            '    self%n = self%n + n'//new_line('a')// &
+            '  end subroutine f1'//new_line('a')// &
+            '  subroutine f2(self, n, m)'//new_line('a')// &
+            '    class(t), intent(inout) :: self'//new_line('a')// &
+            '    integer, intent(in) :: n, m'//new_line('a')// &
+            '    self%n = self%n + n + m'//new_line('a')// &
+            '  end subroutine f2'//new_line('a')// &
             'end program main'
 
-        test_generic_identifier_accepted = expect_error_contains( &
-            source, 'type-bound procedure', &
-            '/tmp/ffc_reject_generic_01_wellformed')
+        test_generic_identifier_accepted = expect_exit_status( &
+            source, 3, '/tmp/ffc_reject_generic_01_wellformed')
     end function test_generic_identifier_accepted
 
     logical function test_distinguishable_implicit_interfaces()

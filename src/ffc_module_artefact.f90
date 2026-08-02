@@ -25,7 +25,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 10
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 11
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -68,6 +68,10 @@ module ffc_module_artefact
     type :: fmod_binding_t
         character(len=:), allocatable :: method_name
         character(len=:), allocatable :: target_name
+        ! Space-joined specific targets for a type-bound generic. The first
+        ! target_name is retained for readers of schema 10; newer readers use
+        ! this list to resolve the actual argument signature.
+        character(len=:), allocatable :: specific_names
         character(len=:), allocatable :: pass_name
         logical :: pass_arg = .true.
     end type fmod_binding_t
@@ -583,7 +587,8 @@ contains
             item = field(bindings(i)%method_name)//'=>'// &
                    field(bindings(i)%target_name)//'|'// &
                    field(bindings(i)%pass_name)//'|'// &
-                   bool_text(bindings(i)%pass_arg)
+                   bool_text(bindings(i)%pass_arg)//'|'// &
+                   field(bindings(i)%specific_names)
             if (len_trim(text) > 0) text = text//';'
             text = text//item
         end do
@@ -592,7 +597,8 @@ contains
     subroutine parse_binding_list(text, bindings)
         character(len=*), intent(in) :: text
         type(fmod_binding_t), allocatable, intent(out) :: bindings(:)
-        character(len=:), allocatable :: rest, token, target_part, pass_part
+        character(len=:), allocatable :: rest, token, target_part, pass_part, &
+            pass_arg_part
         integer :: sep, arrow, bar, count
 
         allocate (bindings(0))
@@ -616,6 +622,7 @@ contains
             bar = index(target_part, '|')
             if (bar == 0) then
                 bindings(count)%target_name = trim(target_part)
+                bindings(count)%specific_names = trim(target_part)
                 bindings(count)%pass_name = ''
                 bindings(count)%pass_arg = .true.
                 cycle
@@ -626,10 +633,21 @@ contains
             if (bar == 0) then
                 bindings(count)%pass_name = trim(pass_part)
                 bindings(count)%pass_arg = .true.
+                bindings(count)%specific_names = bindings(count)%target_name
             else
                 bindings(count)%pass_name = trim(pass_part(1:bar - 1))
-                bindings(count)%pass_arg = trim(pass_part(bar + 1:)) /= '0'
+                pass_arg_part = pass_part(bar + 1:)
+                bar = index(pass_arg_part, '|')
+                if (bar == 0) then
+                    bindings(count)%pass_arg = trim(pass_arg_part) /= '0'
+                    bindings(count)%specific_names = bindings(count)%target_name
+                else
+                    bindings(count)%pass_arg = trim(pass_arg_part(1:bar - 1)) /= '0'
+                    bindings(count)%specific_names = trim(pass_arg_part(bar + 1:))
+                end if
             end if
+            if (.not. allocated(bindings(count)%specific_names)) &
+                bindings(count)%specific_names = bindings(count)%target_name
         end do
     end subroutine parse_binding_list
 

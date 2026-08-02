@@ -261,9 +261,17 @@ explicit decision.
   compile/link/run chain and the equivalent gfortran chain both print
   `running modules_31 program`. The three stale XFAIL rows were removed only
   after the receiver-slot regression and focused ABI tests were green. The
-  next task is the next smallest owned XFAIL tranche from the manifest (the
-  current modules-family candidates begin with `modules_33_module1.f90` and
-  `modules_33_module3.f90`, tested with their sibling sources).
+  next task was the modules33 sibling closure. That four-source family is now
+  green: normal and XFAIL-disabled exact runs report `PASS=4`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0`; the independent gfortran module-chain oracle and
+  complete ffc object/link/run chain both print `running modules_33 program`.
+  FFC now preserves multi-specific type-bound generic metadata through
+  schema-11 `.fmod` files, resolves imported generic calls, and handles scalar
+  nested receivers without contaminating later derived layouts. The positive
+  direct-session generic dispatch regression and the batched five-target
+  focused test pass. The next XFAIL-first tranche is the modules34 sibling
+  family: `modules_34_module1a` is an XPASS candidate and
+  `modules_34_module3` still exposes the transitive-USE export gap.
 - The focused constant-expression rejection regression is green again:
   `test_session_reject_const_01_compiler` passes after `HUGE` bounds stop being
   misclassified as runtime extents. The constant-overflow checker is now a real
@@ -277,6 +285,15 @@ whole corpus, and increase the sample only after repeated 100%-clean subsets.
 Finish the owned XFAIL-first tranche at zero before moving to another corpus
 area or increasing the count. Keep compiler jobs sequential and bounded to
 avoid OOM.
+
+The conformance script's exit status is not by itself a clean-sample proof:
+`NOREF`, `SKIP`, and `XFAIL` can be reported without failing the wrapper, and
+module-only siblings legitimately produce `NOREF`. For every tranche and
+random sample, inspect the summary and require zero `FAIL`, `XPASS`, `XFAIL`,
+timeouts, and OOMs; treat every `NOREF`/`SKIP` as an explicit reviewed
+classification, never as a behavioral pass. Keep each invocation isolated
+with `TMPDIR=$(mktemp -d)` and a private `--ref-cache`. Until the harness has
+a strict pass-only mode, this summary check is mandatory.
 
 ## XFAIL-zero work gate
 
@@ -403,10 +420,11 @@ sample modestly.
    oracle. Its stale XFAIL rows are removed. The modules30 family
    (`modules_30.f90` and `modules_30_module2.f90`) is also green after exact
    normal/no-XFAIL checks and the independent gfortran module-chain oracle;
-   its two XFAIL rows are removed. The modules31 family is now complete as
-   recorded above; select the next smallest owned XFAIL tranche from the
-   manifest, beginning with the modules33 sibling closure when its owners and
-   independent oracle are prepared.
+   its two XFAIL rows are removed. The modules31 and modules33 families are
+   complete as recorded above. Select the next smallest owned XFAIL tranche
+   from the manifest: modules34 as a sibling closure, with module1a's XPASS
+   promotion and module3's transitive-USE export failure handled before any
+   sample increase.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,

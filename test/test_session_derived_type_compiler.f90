@@ -1,6 +1,5 @@
 program test_session_derived_type_compiler
-    use ffc_test_support, only: expect_exit_status, expect_output, &
-        expect_error_contains
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -16,7 +15,7 @@ program test_session_derived_type_compiler
     if (.not. test_scalar_constructor()) all_passed = .false.
     if (.not. test_inheritance_parent_component()) all_passed = .false.
     if (.not. test_type_bound_binding_compiles()) all_passed = .false.
-    if (.not. test_generic_binding_diagnostic()) all_passed = .false.
+    if (.not. test_generic_binding_dispatch()) all_passed = .false.
     if (.not. test_final_binding_ignored()) all_passed = .false.
     if (.not. test_nested_component_default_propagates()) all_passed = .false.
     if (.not. test_nested_component_default_constructor()) all_passed = .false.
@@ -407,23 +406,37 @@ contains
             source, 15, '/tmp/ffc_session_derived_return_arg_test')
     end function test_function_returns_derived_with_arg
 
-    logical function test_generic_binding_diagnostic()
+    logical function test_generic_binding_dispatch()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
             '    integer :: n'//new_line('a')// &
             '  contains'//new_line('a')// &
             '    generic :: g => f1, f2'//new_line('a')// &
+            '    procedure :: f1'//new_line('a')// &
+            '    procedure :: f2'//new_line('a')// &
             '  end type t'//new_line('a')// &
             '  type(t) :: x'//new_line('a')// &
             '  x%n = 1'//new_line('a')// &
+            '  call x%g(2)'//new_line('a')// &
+            '  call x%g(2, 3)'//new_line('a')// &
             '  stop x%n'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine f1(self, n)'//new_line('a')// &
+            '    class(t), intent(inout) :: self'//new_line('a')// &
+            '    integer, intent(in) :: n'//new_line('a')// &
+            '    self%n = self%n + n'//new_line('a')// &
+            '  end subroutine f1'//new_line('a')// &
+            '  subroutine f2(self, n, m)'//new_line('a')// &
+            '    class(t), intent(inout) :: self'//new_line('a')// &
+            '    integer, intent(in) :: n, m'//new_line('a')// &
+            '    self%n = self%n + n + m'//new_line('a')// &
+            '  end subroutine f2'//new_line('a')// &
             'end program main'
 
-        test_generic_binding_diagnostic = expect_error_contains( &
-            source, 'type-bound procedure', &
-            '/tmp/ffc_session_generic_bound_test')
-    end function test_generic_binding_diagnostic
+        test_generic_binding_dispatch = expect_exit_status( &
+            source, 8, '/tmp/ffc_session_generic_bound_test')
+    end function test_generic_binding_dispatch
 
     logical function test_final_binding_ignored()
         ! A type with a FINAL binding registers and lowers; ffc does not model

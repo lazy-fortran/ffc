@@ -496,6 +496,10 @@ module session_program_lowering_types
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)
+        ! Space-joined target names for a type-bound generic. The first name
+        ! mirrors binding_target_names; the complete set is used for overload
+        ! selection and is carried through .fmod metadata.
+        character(len=1024), allocatable :: binding_specific_names(:)
         ! Empty unless the binding declared pass(name); names the dummy that
         ! receives the passed object.
         character(len=64), allocatable :: binding_pass_names(:)

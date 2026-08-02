@@ -275,8 +275,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(module_info_t) :: info
-        character(len=:), allocatable :: name, path
-        integer :: i, j, b
+        character(len=:), allocatable :: name, path, targets, target
+        integer :: i, j, b, sep
         type(use_statement_node) :: dependency_use
 
         call set_empty(error_msg)
@@ -323,15 +323,29 @@
             do i = 1, size(info%derived_types)
                 if (.not. allocated(info%derived_types(i)%bindings)) cycle
                 do b = 1, size(info%derived_types(i)%bindings)
-                    if (len_trim(info%derived_types(i)%bindings(b)%target_name) == 0) cycle
-                    do j = 1, size(info%procedures)
-                        if (.not. allocated(info%procedures(j)%name)) cycle
-                        if (.not. same_name(info%procedures(j)%name, &
-                            info%derived_types(i)%bindings(b)%target_name)) cycle
-                        call import_fmod_procedure(use_node, name, &
-                            info%procedures(j), context, error_msg, force=.true.)
-                        if (len_trim(error_msg) > 0) return
-                        exit
+                    targets = ''
+                    if (allocated(info%derived_types(i)%bindings(b)%specific_names)) &
+                        targets = trim(info%derived_types(i)%bindings(b)%specific_names)
+                    if (len_trim(targets) == 0) targets = trim( &
+                        info%derived_types(i)%bindings(b)%target_name)
+                    do while (len_trim(targets) > 0)
+                        sep = index(targets, ' ')
+                        if (sep == 0) then
+                            target = trim(targets)
+                            targets = ''
+                        else
+                            target = trim(targets(1:sep - 1))
+                            targets = adjustl(targets(sep + 1:))
+                        end if
+                        if (len_trim(target) == 0) cycle
+                        do j = 1, size(info%procedures)
+                            if (.not. allocated(info%procedures(j)%name)) cycle
+                            if (.not. same_name(info%procedures(j)%name, target)) cycle
+                            call import_fmod_procedure(use_node, name, &
+                                info%procedures(j), context, error_msg, force=.true.)
+                            if (len_trim(error_msg) > 0) return
+                            exit
+                        end do
                     end do
                 end do
             end do
@@ -500,6 +514,8 @@
                 allocate(context%derived_types(type_index_new)% &
                     binding_target_names(size(dtype%bindings)))
                 allocate(context%derived_types(type_index_new)% &
+                    binding_specific_names(size(dtype%bindings)))
+                allocate(context%derived_types(type_index_new)% &
                     binding_pass_names(size(dtype%bindings)))
                 allocate(context%derived_types(type_index_new)% &
                     binding_pass_args(size(dtype%bindings)))
@@ -508,6 +524,8 @@
                         binding_method_names(k) = dtype%bindings(k)%method_name
                     context%derived_types(type_index_new)% &
                         binding_target_names(k) = dtype%bindings(k)%target_name
+                    context%derived_types(type_index_new)% &
+                        binding_specific_names(k) = dtype%bindings(k)%specific_names
                     context%derived_types(type_index_new)% &
                         binding_pass_names(k) = dtype%bindings(k)%pass_name
                     context%derived_types(type_index_new)% &

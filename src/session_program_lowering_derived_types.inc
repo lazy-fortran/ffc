@@ -640,6 +640,48 @@
         call grow_derived_types(context)
 
         type_index = context%derived_type_count + 1
+        ! A module may reject a type after partially collecting its layout. The
+        ! module collector intentionally keeps going for unrelated declarations;
+        ! clear the reusable slot first so the failed type cannot contaminate
+        ! the next type's layout or its exported .fmod record.
+        context%derived_types(type_index)%component_count = 0
+        context%derived_types(type_index)%binding_count = 0
+        context%derived_types(type_index)%parent_name = ''
+        context%derived_types(type_index)%final_proc_name = ''
+        context%derived_types(type_index)%duplicate_binding_name = ''
+        context%derived_types(type_index)%is_imported = .false.
+        if (allocated(context%derived_types(type_index)%component_names)) &
+            deallocate(context%derived_types(type_index)%component_names)
+        if (allocated(context%derived_types(type_index)%component_has_default)) &
+            deallocate(context%derived_types(type_index)%component_has_default)
+        if (allocated(context%derived_types(type_index)%component_default_value)) &
+            deallocate(context%derived_types(type_index)%component_default_value)
+        if (allocated(context%derived_types(type_index)%component_array_size)) &
+            deallocate(context%derived_types(type_index)%component_array_size)
+        if (allocated(context%derived_types(type_index)%component_value_kind)) &
+            deallocate(context%derived_types(type_index)%component_value_kind)
+        if (allocated(context%derived_types(type_index)%component_type_index)) &
+            deallocate(context%derived_types(type_index)%component_type_index)
+        if (allocated(context%derived_types(type_index)%component_is_allocatable)) &
+            deallocate(context%derived_types(type_index)%component_is_allocatable)
+        if (allocated(context%derived_types(type_index)%component_is_pointer)) &
+            deallocate(context%derived_types(type_index)%component_is_pointer)
+        if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
+            deallocate(context%derived_types(type_index)%component_is_alloc_array)
+        if (allocated(context%derived_types(type_index)%component_char_length)) &
+            deallocate(context%derived_types(type_index)%component_char_length)
+        if (allocated(context%derived_types(type_index)%component_dim1)) &
+            deallocate(context%derived_types(type_index)%component_dim1)
+        if (allocated(context%derived_types(type_index)%binding_method_names)) &
+            deallocate(context%derived_types(type_index)%binding_method_names)
+        if (allocated(context%derived_types(type_index)%binding_target_names)) &
+            deallocate(context%derived_types(type_index)%binding_target_names)
+        if (allocated(context%derived_types(type_index)%binding_specific_names)) &
+            deallocate(context%derived_types(type_index)%binding_specific_names)
+        if (allocated(context%derived_types(type_index)%binding_pass_names)) &
+            deallocate(context%derived_types(type_index)%binding_pass_names)
+        if (allocated(context%derived_types(type_index)%binding_pass_args)) &
+            deallocate(context%derived_types(type_index)%binding_pass_args)
         context%derived_types(type_index)%name = trim(layout_name)
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then
@@ -685,9 +727,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, b, inherited, new_total, slot
         character(len=64) :: method_name_buf, target_name_buf, pass_name_buf
+        character(len=1024) :: specific_names_buf
         logical :: overrides, pass_arg_buf, generic_alias
         character(len=64), allocatable :: old_methods(:), old_targets(:), old_passes(:)
+        character(len=1024), allocatable :: old_specifics(:)
         logical, allocatable :: old_pass_args(:)
+        integer :: g
 
         call set_empty(error_msg)
         if (.not. allocated(node%binding_indices)) return
@@ -700,34 +745,43 @@
             allocate(context%derived_types(type_index)% &
                 binding_target_names(size(node%binding_indices)))
             allocate(context%derived_types(type_index)% &
+                binding_specific_names(size(node%binding_indices)))
+            allocate(context%derived_types(type_index)% &
                 binding_pass_names(size(node%binding_indices)))
             allocate(context%derived_types(type_index)% &
                 binding_pass_args(size(node%binding_indices)))
             context%derived_types(type_index)%binding_pass_names = ''
+            context%derived_types(type_index)%binding_specific_names = ''
             context%derived_types(type_index)%binding_pass_args = .false.
         else
             ! Inherited bindings exist: grow arrays to hold inherited + new own.
             new_total = inherited + size(node%binding_indices)
             old_methods = context%derived_types(type_index)%binding_method_names
             old_targets = context%derived_types(type_index)%binding_target_names
+            old_specifics = context%derived_types(type_index)%binding_specific_names
             old_passes  = context%derived_types(type_index)%binding_pass_names
             old_pass_args = context%derived_types(type_index)%binding_pass_args
             deallocate(context%derived_types(type_index)%binding_method_names)
             deallocate(context%derived_types(type_index)%binding_target_names)
+            deallocate(context%derived_types(type_index)%binding_specific_names)
             deallocate(context%derived_types(type_index)%binding_pass_names)
             deallocate(context%derived_types(type_index)%binding_pass_args)
             allocate(context%derived_types(type_index)%binding_method_names(new_total))
             allocate(context%derived_types(type_index)%binding_target_names(new_total))
+            allocate(context%derived_types(type_index)%binding_specific_names(new_total))
             allocate(context%derived_types(type_index)%binding_pass_names(new_total))
             allocate(context%derived_types(type_index)%binding_pass_args(new_total))
             context%derived_types(type_index)%binding_method_names = ''
             context%derived_types(type_index)%binding_target_names = ''
+            context%derived_types(type_index)%binding_specific_names = ''
             context%derived_types(type_index)%binding_pass_names = ''
             context%derived_types(type_index)%binding_pass_args = .false.
             context%derived_types(type_index)%binding_method_names(1:inherited) = &
                 old_methods(1:inherited)
             context%derived_types(type_index)%binding_target_names(1:inherited) = &
                 old_targets(1:inherited)
+            context%derived_types(type_index)%binding_specific_names(1:inherited) = &
+                old_specifics(1:inherited)
             context%derived_types(type_index)%binding_pass_names(1:inherited) = &
                 old_passes(1:inherited)
             context%derived_types(type_index)%binding_pass_args(1:inherited) = &
@@ -745,18 +799,8 @@
                 ! slot.  Keep that slot so an extending type can override it;
                 ! the vtable emitter already leaves an unresolved target null.
                 if (binding%is_generic) then
-                    ! A one-specific generic is exactly a static alias for the
-                    ! direct-session ABI. Keep the narrow case usable without
-                    ! pretending to implement overload resolution.
                     if (.not. allocated(binding%generic_list) .or. &
-                        size(binding%generic_list) /= 1 .or. &
-                        len_trim(binding%generic_list(1)%s) == 0) then
-                        call unsupported_feature_error('type-bound procedure', &
-                            node%line, node%column, &
-                            'direct LIRIC session supports one-specific '// &
-                            'generic bindings only', error_msg)
-                        return
-                    end if
+                        size(binding%generic_list) == 0) cycle
                     generic_alias = .true.
                 end if
                 ! FINAL names a destructor, not a callable method: record it
@@ -795,6 +839,20 @@
                 else
                     target_name_buf = trim(binding%binding_name)
                 end if
+                specific_names_buf = ''
+                if (generic_alias) then
+                    do g = 1, size(binding%generic_list)
+                        if (len_trim(binding%generic_list(g)%s) == 0) cycle
+                        if (len_trim(specific_names_buf) > 0) then
+                            specific_names_buf = trim(specific_names_buf)//' '// &
+                                trim(binding%generic_list(g)%s)
+                        else
+                            specific_names_buf = trim(binding%generic_list(g)%s)
+                        end if
+                    end do
+                else
+                    specific_names_buf = trim(target_name_buf)
+                end if
                 pass_name_buf = ''
                 if (allocated(binding%pass_name)) then
                     if (len_trim(binding%pass_name) > 0) &
@@ -808,6 +866,8 @@
                               binding_method_names(b)) == trim(method_name_buf)) then
                         context%derived_types(type_index)%binding_target_names(b) = &
                             target_name_buf
+                        context%derived_types(type_index)%binding_specific_names(b) = &
+                            specific_names_buf
                         context%derived_types(type_index)%binding_pass_names(b) = &
                             pass_name_buf
                         context%derived_types(type_index)%binding_pass_args(b) = &
@@ -835,6 +895,8 @@
                         method_name_buf
                     context%derived_types(type_index)%binding_target_names(slot) = &
                         target_name_buf
+                    context%derived_types(type_index)%binding_specific_names(slot) = &
+                        specific_names_buf
                     context%derived_types(type_index)%binding_pass_names(slot) = &
                         pass_name_buf
                     context%derived_types(type_index)%binding_pass_args(slot) = &
@@ -922,6 +984,7 @@
                             binding_method_names)) return
         allocate(context%derived_types(type_index)%binding_method_names(pc))
         allocate(context%derived_types(type_index)%binding_target_names(pc))
+        allocate(context%derived_types(type_index)%binding_specific_names(pc))
         allocate(context%derived_types(type_index)%binding_pass_names(pc))
         allocate(context%derived_types(type_index)%binding_pass_args(pc))
         do slot = 1, pc
@@ -929,6 +992,8 @@
                 context%derived_types(parent_index)%binding_method_names(slot)
             context%derived_types(type_index)%binding_target_names(slot) = &
                 context%derived_types(parent_index)%binding_target_names(slot)
+            context%derived_types(type_index)%binding_specific_names(slot) = &
+                context%derived_types(parent_index)%binding_specific_names(slot)
             context%derived_types(type_index)%binding_pass_names(slot) = &
                 context%derived_types(parent_index)%binding_pass_names(slot)
             context%derived_types(type_index)%binding_pass_args(slot) = &

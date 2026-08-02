@@ -1736,6 +1736,7 @@
         integer, intent(out), optional :: binding_slot
         character(len=:), allocatable :: var_name, method_name
         integer :: symbol_index, type_index, b
+        logical :: pass_arg
 
         found = .false.
         base_var_index = 0
@@ -1767,11 +1768,15 @@
         do b = 1, context%derived_types(type_index)%binding_count
             if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
                 method_name) then
-                impl_name = trim(context%derived_types(type_index)% &
-                                 binding_target_names(b))
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))
+                pass_arg = .true.
+                if (allocated(context%derived_types(type_index)%binding_pass_args)) &
+                    pass_arg = context%derived_types(type_index)%binding_pass_args(b)
+                call resolve_type_bound_target(arena, type_index, b, &
+                    node%arg_indices, pass_arg, context, impl_name, error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (present(receiver_symbol)) receiver_symbol = symbol_index
                 if (present(binding_slot)) binding_slot = b
                 found = .true.
@@ -1779,6 +1784,233 @@
             end if
         end do
     end subroutine method_call_info
+
+    subroutine resolve_type_bound_target(arena, type_index, binding_slot, &
+                                         arg_indices, pass_arg, context, &
+                                         impl_name, error_msg)
+        ! Resolve a type-bound generic from the actual signature. The type
+        ! record stores the complete target set; local procedures use the
+        ! registered AST signature and imported procedures use their .fmod
+        ! signature. A single non-generic binding remains a direct alias.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: type_index, binding_slot
+        integer, allocatable, intent(in) :: arg_indices(:)
+        logical, intent(in) :: pass_arg
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: impl_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: targets, target
+        integer :: actual_count, position, i, k, sep, fn_idx, ext_idx
+        integer :: expected_count, expected_kind, expected_rank
+        integer :: actual_kinds(MAX_PROC_ARGS), actual_ranks(MAX_PROC_ARGS)
+        logical :: matches, matched
+
+        call set_empty(error_msg)
+        call set_empty(impl_name)
+        if (type_index <= 0) return
+        if (binding_slot <= 0) return
+        if (allocated(context%derived_types(type_index)%binding_specific_names)) then
+            targets = trim(context%derived_types(type_index)% &
+                binding_specific_names(binding_slot))
+        else
+            targets = trim(context%derived_types(type_index)% &
+                binding_target_names(binding_slot))
+        end if
+        if (len_trim(targets) == 0) targets = trim(context%derived_types(type_index)% &
+            binding_target_names(binding_slot))
+        if (len_trim(targets) == 0) return
+        if (index(trim(targets), ' ') == 0) then
+            impl_name = trim(targets)
+            return
+        end if
+
+        actual_count = 0
+        if (allocated(arg_indices)) actual_count = size(arg_indices)
+        if (pass_arg) actual_count = actual_count + 1
+        if (actual_count > MAX_PROC_ARGS) then
+            error_msg = 'too many actual arguments for type-bound procedure'
+            return
+        end if
+        actual_kinds = VALUE_I32
+        actual_ranks = 0
+        position = 0
+        if (pass_arg) position = 1
+        k = 0
+        do i = 1, actual_count
+            if (i == position) then
+                actual_kinds(i) = VALUE_DERIVED
+            else
+                k = k + 1
+                if (allocated(arg_indices)) then
+                    actual_kinds(i) = expression_value_kind(arena, &
+                        arg_indices(k), context, VALUE_I32)
+                    actual_ranks(i) = expression_value_rank(arena, &
+                        arg_indices(k), context)
+                end if
+            end if
+        end do
+
+        matched = .false.
+        do while (len_trim(targets) > 0)
+            sep = index(targets, ' ')
+            if (sep == 0) then
+                target = trim(targets)
+                targets = ''
+            else
+                target = trim(targets(1:sep - 1))
+                targets = adjustl(targets(sep + 1:))
+            end if
+            if (len_trim(target) == 0) cycle
+            expected_count = 0
+            ext_idx = 0
+            fn_idx = find_function_index(context, target)
+            if (fn_idx > 0) then
+                expected_count = context%function_param_counts(fn_idx)
+            else
+                ext_idx = external_procedure_index(context, target)
+                if (ext_idx > 0) expected_count = &
+                    context%external_procedures(ext_idx)%arg_count
+            end if
+            if (fn_idx <= 0) then
+                if (ext_idx <= 0) cycle
+            end if
+            if (expected_count /= actual_count) cycle
+            matches = .true.
+            do i = 1, actual_count
+                ! The passed object is the dispatch receiver, not an
+                ! overload operand. Local AST scans may not see its dummy
+                ! declaration in the procedure body; ABI compatibility is
+                ! established by the type-bound slot itself.
+                if (i == position) cycle
+                if (fn_idx > 0) then
+                    expected_kind = specific_arg_kind(context, fn_idx, i)
+                    expected_rank = specific_arg_rank(context, fn_idx, i)
+                else if (ext_idx > 0) then
+                    expected_kind = context%external_procedures(ext_idx)% &
+                        arg_value_kinds(i)
+                    expected_rank = context%external_procedures(ext_idx)% &
+                        arg_ranks(i)
+                else
+                    matches = .false.
+                    exit
+                end if
+                if (fn_idx == 0) then
+                    if (context%external_procedures(ext_idx)%arg_is_opaque(i)) cycle
+                end if
+                if (expected_kind /= actual_kinds(i) .or. &
+                    expected_rank /= actual_ranks(i)) then
+                    matches = .false.
+                    exit
+                end if
+            end do
+            if (matches) then
+                if (matched) then
+                    error_msg = 'ambiguous type-bound generic binding for '// &
+                        trim(context%derived_types(type_index)% &
+                             binding_method_names(binding_slot))
+                    return
+                end if
+                impl_name = trim(target)
+                matched = .true.
+            end if
+        end do
+        if (.not. matched) then
+            error_msg = 'no matching specific for type-bound generic binding "'// &
+                trim(context%derived_types(type_index)% &
+                     binding_method_names(binding_slot))//'"'
+        end if
+    end subroutine resolve_type_bound_target
+
+    subroutine resolve_named_derived_instance(context, path, address, type_index, &
+                                              root_symbol, nested, error_msg)
+        ! Resolve a scalar derived path such as `model%deps` and return the
+        ! address and final derived type. Type-bound subroutine calls arrive
+        ! from the parser as a dotted name, so this is the address equivalent
+        ! of the AST component projection path used by expression lowering.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: path
+        type(lr_operand_desc_t), intent(out) :: address
+        integer, intent(out) :: type_index, root_symbol
+        logical, intent(out) :: nested
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: rest, part
+        integer :: sep, symbol_index, component_index, next_type, start
+
+        call set_empty(error_msg)
+        type_index = 0
+        root_symbol = 0
+        nested = .false.
+        rest = trim(path)
+        sep = index(rest, '%')
+        if (sep == 0) then
+            part = trim(rest)
+            rest = ''
+        else
+            part = trim(rest(1:sep - 1))
+            rest = adjustl(rest(sep + 1:))
+        end if
+        symbol_index = find_symbol_compat(context, part)
+        if (symbol_index <= 0) then
+            error_msg = 'type-bound call base was not declared: '//trim(part)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_derived) then
+            error_msg = 'type-bound call base is not a derived type: '//trim(part)
+            return
+        end if
+        root_symbol = symbol_index
+        type_index = context%symbols(symbol_index)%derived_type_index
+        address = context%symbols(symbol_index)%element_address
+        do while (len_trim(rest) > 0)
+            nested = .true.
+            sep = index(rest, '%')
+            if (sep == 0) then
+                part = trim(rest)
+                rest = ''
+            else
+                part = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            component_index = find_derived_component(context, type_index, part)
+            if (component_index <= 0) then
+                error_msg = 'component is not declared for type '// &
+                    trim(context%derived_types(type_index)%name)//': '//trim(part)
+                return
+            end if
+            next_type = context%derived_types(type_index)% &
+                component_type_index(component_index)
+            if (next_type <= 0) then
+                error_msg = 'type-bound call base component is not a derived type: '// &
+                    trim(part)
+                return
+            end if
+            if (component_is_allocatable(context, type_index, component_index)) then
+                error_msg = 'type-bound call base cannot use an allocatable component: '// &
+                    trim(part)
+                return
+            end if
+            if (component_is_alloc_array(context, type_index, component_index)) then
+                error_msg = 'type-bound call base cannot use an array component: '// &
+                    trim(part)
+                return
+            end if
+            if (component_is_pointer(context, type_index, component_index)) then
+                error_msg = 'type-bound call base cannot use a pointer component: '// &
+                    trim(part)
+                return
+            end if
+            if (context%derived_types(type_index)%component_array_size(component_index) &
+                /= total_component_slots(context, next_type)) then
+                error_msg = 'type-bound call base must be a scalar derived component: '// &
+                    trim(part)
+                return
+            end if
+            start = component_start_slot(context, type_index, component_index)
+            if (.not. emit_ptr_offset(context%session, address, &
+                    int(start * 4, c_int64_t), address, error_msg)) return
+            type_index = next_type
+        end do
+    end subroutine resolve_named_derived_instance
 
     function type_bound_emit_name(arena, impl_name, context) result(emit_name)
         ! Imported type-bound implementations are registered as external
@@ -1916,44 +2148,42 @@
         character(len=:), allocatable :: pass_name
         integer :: pct, symbol_index, type_index, b, n, position, i, k, slot
         logical :: pass_arg
+        logical :: nested_receiver
         type(lr_operand_desc_t), allocatable :: method_args(:), all_args(:)
+        type(lr_operand_desc_t) :: receiver_addr
         type(lr_operand_desc_t) :: callee_ptr
         integer, allocatable :: copyback_indices(:)
 
         call set_empty(error_msg)
-        pct = index(name, '%')
+        pct = index(name, '%', back=.true.)
         var_name = trim(name(1:pct - 1))
         method_name = trim(name(pct + 1:))
-        symbol_index = find_symbol_compat(context, var_name)
-        if (symbol_index <= 0) then
-            error_msg = 'type-bound call base was not declared: '//var_name
-            return
-        end if
-        if (.not. context%symbols(symbol_index)%is_derived) then
-            error_msg = 'type-bound call base is not a derived type: '//var_name
-            return
-        end if
-        type_index = context%symbols(symbol_index)%derived_type_index
+        call resolve_named_derived_instance(context, var_name, receiver_addr, &
+            type_index, symbol_index, nested_receiver, error_msg)
+        if (len_trim(error_msg) > 0) return
         call set_empty(impl_name)
         call set_empty(pass_name)
         pass_arg = .true.
+        slot = 0
         do b = 1, context%derived_types(type_index)%binding_count
             if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
                 method_name) then
-                impl_name = trim(context%derived_types(type_index)% &
-                                 binding_target_names(b))
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))
                 if (allocated(context%derived_types(type_index)%binding_pass_args)) &
                     pass_arg = context%derived_types(type_index)%binding_pass_args(b)
+                slot = b
                 exit
             end if
         end do
-        if (len_trim(impl_name) == 0) then
+        if (slot <= 0) then
             error_msg = 'no type-bound procedure "'//method_name//'" on '//var_name
             return
         end if
+        call resolve_type_bound_target(arena, type_index, slot, arg_indices, &
+            pass_arg, context, impl_name, error_msg)
+        if (len_trim(error_msg) > 0) return
 
         position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
         if (allocated(arg_indices)) then
@@ -1969,8 +2199,13 @@
         if (position > 0) then
             allocate (all_args(n + 1))
             if (position > n + 1) position = 1
-            call class_receiver_argument(context, arena, impl_name, position, &
-                                         symbol_index, all_args(position), error_msg)
+            if (nested_receiver) then
+                all_args(position) = receiver_addr
+                call set_empty(error_msg)
+            else
+                call class_receiver_argument(context, arena, impl_name, position, &
+                                             symbol_index, all_args(position), error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
             k = 0
             do i = 1, n + 1
@@ -1985,7 +2220,6 @@
         ! A receiver that carries a runtime type identity dispatches through
         ! its dynamic type's vtable, so an override of the most-derived type is
         ! reached instead of the declared type's implementation (#420).
-        slot = type_binding_slot(context, type_index, method_name)
         if (pass_arg .and. slot > 0 .and. &
             class_receiver_dispatches_dynamically(context, symbol_index)) then
             call class_dispatch_callee(context, symbol_index, slot, callee_ptr, &

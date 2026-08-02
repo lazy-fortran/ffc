@@ -1350,6 +1350,8 @@ contains
                 binding_method_names(b))
             dtype%bindings(b)%target_name = trim(context%derived_types(type_index)% &
                 binding_target_names(b))
+            dtype%bindings(b)%specific_names = trim(context%derived_types(type_index)% &
+                binding_specific_names(b))
             dtype%bindings(b)%pass_name = trim(context%derived_types(type_index)% &
                 binding_pass_names(b))
             dtype%bindings(b)%pass_arg = context%derived_types(type_index)% &
