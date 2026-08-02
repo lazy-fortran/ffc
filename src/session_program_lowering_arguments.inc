@@ -465,10 +465,15 @@
         is_signature = .false.
         if (node_index <= 0 .or. .not. node_exists(arena, node_index)) return
         parent_index = arena%entries(node_index)%parent_index
-        if (parent_index <= 0) return
-        parent_type = get_node_type_at(arena, parent_index)
-        is_signature = parent_type == 'interface_block_node' .or. &
-                       parent_type == 'interface_block'
+        do while (parent_index > 0)
+            parent_type = get_node_type_at(arena, parent_index)
+            if (parent_type == 'interface_block_node' .or. &
+                parent_type == 'interface_block') then
+                is_signature = .true.
+                return
+            end if
+            parent_index = arena%entries(parent_index)%parent_index
+        end do
     end function procedure_node_is_interface_signature
 
     logical function procedure_body_node_present(arena, context, name) &

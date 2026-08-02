@@ -1173,7 +1173,9 @@
         integer :: idx
 
         idx = find_symbol_compat(context, name)
-        ok = idx > 0 .and. context%symbols(idx)%is_proc_pointer
+        ok = .false.
+        if (idx <= 0) return
+        ok = context%symbols(idx)%is_proc_pointer
     end function is_proc_pointer_call
 
     subroutine resolve_proc_pointer_callee_name(arena, ptr_name, callee_name)

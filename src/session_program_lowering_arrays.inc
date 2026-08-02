@@ -1299,6 +1299,7 @@
         integer(c_int64_t) :: lower_value
         integer(c_int64_t) :: upper_value
         integer :: i
+        logical :: runtime_bound
 
         array_lower_bound = 1
         array_size = 0
@@ -1319,6 +1320,18 @@
             if (.not. node_exists(context%arena, dim_index)) then
                 error_msg = 'array dimension index does not reference an AST node'
                 return
+            end if
+
+            runtime_bound = bound_expr_references_variable(context%arena, &
+                                                            dim_index, context)
+            if (runtime_bound) then
+                ! Explicit-shape dummies may use another dummy as an extent,
+                ! e.g. `real :: x(n)`.  That is a runtime bound, not a missing
+                ! PARAMETER; retain the zero-size sentinel and let declaration
+                ! lowering record the runtime operand.
+                if (i == 1) array_lower_bound = 1
+                array_size = 0
+                cycle
             end if
 
             select type (dim_node => context%arena%entries(dim_index)%node)
@@ -2312,6 +2325,41 @@
                 context%symbols(index)%array_dim_sizes(i) = assumed_extents(i)
             end do
             context%symbols(index)%element_address = param_base
+            call set_empty(error_msg)
+            return
+        end if
+
+        ! An explicit-shape dummy can carry a runtime extent in a separate
+        ! dummy argument, as in `real :: x(n)` inside an interface signature.
+        ! Keep its address as the passed base and retain the runtime bound for
+        ! later element/whole-array lowering instead of folding it as a named
+        ! constant.
+        if (is_dummy .and. declaration_is_runtime_rank1(node, context)) then
+            context%symbols(index)%array_size = 0
+            do i = 1, dim_count
+                context%symbols(index)%array_dim_lowers(i) = 1
+                dim_index = node%dimension_indices(i)
+                select type (dim_node => context%arena%entries(dim_index)%node)
+                type is (range_expression_node)
+                    if (dim_node%end_index <= 0) then
+                        error_msg = 'runtime array dummy bound is missing'
+                        return
+                    end if
+                    call lower_i32_expression(context%arena, dim_node%end_index, &
+                                               context, runtime_extent, error_msg)
+                class default
+                    call lower_i32_expression(context%arena, dim_index, context, &
+                                               runtime_extent, error_msg)
+                end select
+                if (len_trim(error_msg) > 0) return
+                context%symbols(index)%has_runtime_dim_size(i) = .true.
+                context%symbols(index)%runtime_dim_size(i) = runtime_extent
+            end do
+            context%symbols(index)%element_address = param_base
+            context%symbols(index)%is_runtime_array = .true.
+            context%symbols(index)%has_runtime_array_stride = .true.
+            context%symbols(index)%runtime_array_stride_bytes = &
+                i64_immediate(context%session, allocatable_elem_size(value_kind))
             call set_empty(error_msg)
             return
         end if

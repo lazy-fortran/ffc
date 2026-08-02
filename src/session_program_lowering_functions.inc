@@ -288,6 +288,8 @@
         end if
         if (.not. allocated(body_indices)) return
         do i = 1, size(body_indices)
+            if (procedure_node_is_interface_signature(arena, body_indices(i))) &
+                cycle
             node_type = get_node_type_at(arena, body_indices(i))
             if (node_type == 'function_def_node' .or. &
                 node_type == 'function_def' .or. &
@@ -2438,6 +2440,8 @@
         end if
         if (size(body_indices) == 0) return
         do i = 1, size(body_indices)
+            if (procedure_node_is_interface_signature(arena, body_indices(i))) &
+                cycle
             node_type = get_node_type_at(arena, body_indices(i))
             if (node_type == 'function_def_node' .or. &
                 node_type == 'function_def' .or. &
@@ -2627,6 +2631,8 @@
         if (.not. allocated(body_indices)) return
         do i = 1, size(body_indices)
             if (.not. node_exists(arena, body_indices(i))) cycle
+            if (procedure_node_is_interface_signature(arena, body_indices(i))) &
+                cycle
             node_type = get_node_type_at(arena, body_indices(i))
             if (node_type == 'function_def_node' .or. &
                 node_type == 'function_def' .or. &
