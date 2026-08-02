@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `8f86ffb` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `20398f7` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -183,14 +183,24 @@ explicit decision.
   routes compatible class-pointer associations through the existing derived
   pointer path. The XFAIL row was removed only after both bounded runs and the
   existing independent derived-pointer regression passed.
+- The `modules_25.f90` class/runtime-character tranche (#350/#417) is green:
+  exact named runs of `modules_25.f90`, `modules_25_module.f90`, and
+  `modules_25_module1.f90` report `PASS=3`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`
+  in both normal and no-manifest modes (`NOREF=3` for compile-only module
+  units). Inherited derived components now preserve pointer/descriptor flags,
+  named class dummies bind through the polymorphic descriptor, and module
+  companions are supplied through the explicit extra-source manifest. The
+  XFAIL rows were removed only after the independent gfortran/oracle gauntlet
+  passed in both modes.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
   helpers are a real module, literal-utils is a real submodule, and the unused
-  `session_program_lowering_text.inc` fragment is gone. A clean sequential
-  `fo build` and nine named behavior tests pass. The remaining rejection and
-  other host-coupled fragments stay live until their dependencies are extracted
-  safely.
+  `session_program_lowering_text.inc` fragment is gone, and declaration-conflict
+  and generic-rejection checks are now real submodules with explicit build-order
+  units. A clean sequential `fo build` and focused behavior tests pass. The
+  remaining rejection and other host-coupled fragments stay live until their
+  dependencies are extracted safely.
 - The `modules_15b.f90` module-interface companion compiles with ffc and
   gfortran as an explicit `NOREF=compile-only` case. Its runnable companion is
   now covered by the verified BIND(C) ABI tranche above.
@@ -224,8 +234,8 @@ not a substitute for fixing the behavior.
    `modules_18.f90`/`modules_18b.f90`, and `modules_19.f90`/`modules_19b.f90`
    only after the exact C-plus-gfortran oracle and normal-manifest run were
    both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair is now
-   green; the next XFAIL-first target is `modules_25.f90` and its module
-   companions (#350/#417), which remain in the module/class identity tranche.
+   green; the next XFAIL-first target is `modules_26.f90` (#376), which remains
+   in the module/runtime tranche.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
