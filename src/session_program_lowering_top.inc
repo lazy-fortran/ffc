@@ -1328,7 +1328,6 @@
     include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'
-    include 'session_program_lowering_enum.inc'
     include 'session_program_lowering_namelist.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)

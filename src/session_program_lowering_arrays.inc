@@ -57,9 +57,18 @@
         rank = size(node%dimension_indices)
         if (rank < 1 .or. rank > 2) return
         if (declaration_is_assumed_shape(node, context)) return
+        ! Assumed-size dummies have an intentionally unknown trailing extent.
+        ! They use the dedicated base-address path below; treating the bare
+        ! asterisk as a runtime integer bound sends external procedures through
+        ! the adjustable-array classifier instead (#584).
+        if (declaration_is_assumed_size(node, context)) return
         do d = 1, rank
             dim_index = node%dimension_indices(d)
             if (.not. node_exists(context%arena, dim_index)) return
+            if (bound_expr_references_variable(context%arena, dim_index, context)) then
+                is_runtime = .true.
+                cycle
+            end if
             select type (dim_node => context%arena%entries(dim_index)%node)
             type is (range_expression_node)
                 call eval_i32_constant(context%arena, dim_node%end_index, &

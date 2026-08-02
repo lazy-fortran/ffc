@@ -2274,6 +2274,27 @@ module session_program_lowering
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_purity_attribute_restrictions
     end interface
+    interface
+        module subroutine lower_enum_block(arena, node_index, context, error_msg, &
+                                           handled)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical, intent(out) :: handled
+        end subroutine lower_enum_block
+        module function enumerator_value(node, idx) result(value)
+            type(enum_node), intent(in) :: node
+            integer, intent(in) :: idx
+            integer(c_int64_t) :: value
+        end function enumerator_value
+        module subroutine bind_enum_constant(context, name, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer(c_int64_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_enum_constant
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

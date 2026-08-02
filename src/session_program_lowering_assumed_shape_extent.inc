@@ -615,8 +615,12 @@
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
         context%current_block_terminated = .false.
-        call load_array_element_at_runtime_index(context, source_index, &
-                                                 header_idx, element, error_msg)
+        ! Runtime automatic arrays and descriptor-bound dummies carry a zero
+        ! static-size sentinel. Use the descriptor/stride-aware operand
+        ! loader here; the fixed-array helper would reject that sentinel even
+        ! though the counted loop already has the runtime extent.
+        call load_array_element_at_operand(context, source_index, header_idx, &
+                                            element, error_msg)
         if (len_trim(error_msg) > 0) return
         call runtime_sum_accumulate(context, value_kind, accumulator, element, &
                                     error_msg)
