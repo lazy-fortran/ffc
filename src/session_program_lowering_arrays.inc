@@ -4002,7 +4002,7 @@
 
     subroutine resolve_i32_array_argument(arena, node, arg_pos, context, &
                                           intrinsic_name, arg_role, symbol_index, &
-                                          error_msg)
+                                          error_msg, allow_complex, allow_logical)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         integer, intent(in) :: arg_pos
@@ -4011,6 +4011,8 @@
         character(len=*), intent(in) :: arg_role
         integer, intent(out) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: allow_complex
+        logical, intent(in), optional :: allow_logical
         character(len=:), allocatable :: arg_name
 
         symbol_index = 0
@@ -4041,6 +4043,16 @@
         select case (context%symbols(symbol_index)%value_kind)
         case (VALUE_I32, VALUE_F32, VALUE_F64)
             ! integer, real(4), and real(8) arrays are supported
+        case (VALUE_C4, VALUE_C8)
+            if (.not. present(allow_complex) .or. .not. allow_complex) then
+                error_msg = trim(intrinsic_name)//' only supports integer and real arrays'
+                return
+            end if
+        case (VALUE_LOGICAL)
+            if (.not. present(allow_logical) .or. .not. allow_logical) then
+                error_msg = trim(intrinsic_name)//' only supports integer and real arrays'
+                return
+            end if
         case default
             error_msg = trim(intrinsic_name)//' only supports integer and real arrays'
             return
@@ -4512,6 +4524,9 @@
         integer(c_int64_t) :: source_row
         integer(c_int64_t) :: source_col
         integer(c_int64_t) :: linear_index
+        integer :: source_vk, target_vk
+        integer :: source_linear, target_linear
+        type(lr_operand_desc_t) :: re_value, im_value, re_addr, im_addr
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -4524,7 +4539,8 @@
                 return
             end if
             call resolve_i32_array_argument(arena, rhs, 1, context, 'transpose', &
-                                            'source array', source_index, error_msg)
+                                            'source array', source_index, error_msg, &
+                                            .true., .true.)
             if (len_trim(error_msg) > 0) return
             if (context%symbols(source_index)%array_rank /= 2) then
                 error_msg = 'transpose requires a rank-2 source array'
@@ -4532,6 +4548,12 @@
             end if
             if (context%symbols(symbol_index)%array_rank /= 2) then
                 error_msg = 'transpose result must be assigned to a rank-2 array'
+                return
+            end if
+            source_vk = context%symbols(source_index)%value_kind
+            target_vk = context%symbols(symbol_index)%value_kind
+            if (source_vk /= target_vk) then
+                error_msg = 'transpose source and result must have the same kind'
                 return
             end if
 
@@ -4557,13 +4579,36 @@
                 do i = 0, int(target_rows) - 1
                     source_row = source_row_base + int(j, c_int64_t)
                     source_col = source_col_base + int(i, c_int64_t)
-                    call load_i32_array_element(context, source_index, source_row, &
-                                                value, error_msg, source_col)
-                    if (len_trim(error_msg) > 0) return
                     linear_index = int(i, c_int64_t) + target_rows * int(j, c_int64_t)
-                    call store_array_linear_element(context, symbol_index, &
-                                                    linear_index, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (source_vk == VALUE_C4 .or. source_vk == VALUE_C8) then
+                        source_linear = int(source_row - source_row_base) + &
+                                        int(source_rows) * int(source_col - source_col_base)
+                        target_linear = int(linear_index)
+                        call complex_array_linear_addresses(context, source_index, &
+                            source_linear, source_vk, re_addr, im_addr, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (source_vk == VALUE_C4) then
+                            if (.not. emit_liric_f32_load(context%session, re_addr, &
+                                                         re_value, error_msg)) return
+                            if (.not. emit_liric_f32_load(context%session, im_addr, &
+                                                         im_value, error_msg)) return
+                        else
+                            if (.not. emit_liric_f64_load(context%session, re_addr, &
+                                                         re_value, error_msg)) return
+                            if (.not. emit_liric_f64_load(context%session, im_addr, &
+                                                         im_value, error_msg)) return
+                        end if
+                        call store_complex_array_element(context, symbol_index, &
+                            target_linear, target_vk, re_value, im_value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    else
+                        call load_i32_array_element(context, source_index, source_row, &
+                                                    value, error_msg, source_col)
+                        if (len_trim(error_msg) > 0) return
+                        call store_array_linear_element(context, symbol_index, &
+                                                        linear_index, value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
                 end do
             end do
             call set_empty(error_msg)
@@ -5591,6 +5636,12 @@
         call resolve_reshape_args(arena, rhs, source_index, shape_index, &
                                   pad_index, order_index, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%value_kind == VALUE_C4 .or. &
+            context%symbols(symbol_index)%value_kind == VALUE_C8) then
+            call lower_complex_reshape_literal(arena, source_index, order_index, &
+                                               symbol_index, context, error_msg)
+            return
+        end if
         if (context%symbols(symbol_index)%array_rank < 1 .or. &
             context%symbols(symbol_index)%array_rank > 2) then
             error_msg = 'reshape result must be assigned to a rank-1 or rank-2 array'
@@ -5605,6 +5656,63 @@
         call lower_reshape_source(arena, source_index, pad_index, order_perm, &
                                   symbol_index, context, error_msg)
     end subroutine lower_reshape_call
+
+    subroutine lower_complex_reshape_literal(arena, source_index, order_index, &
+                                              symbol_index, context, error_msg)
+        ! Complex RESHAPE uses the split real/imaginary array representation.
+        ! Keep the element lowering typed instead of routing complex literals
+        ! through the integer constructor path.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_index, order_index, symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:), order_perm(:)
+        integer :: vk, i
+        integer(c_int64_t) :: target_slot
+        type(lr_operand_desc_t) :: re_value, im_value
+
+        call set_empty(error_msg)
+        if (order_index > 0) then
+            error_msg = 'complex reshape order is not supported'
+            return
+        end if
+        select type (source => arena%entries(source_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(source%element_indices)) then
+                error_msg = 'complex reshape source is empty'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, source%element_indices, flat, &
+                                               error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'complex reshape requires a literal source array'
+            return
+        end select
+        if (size(flat) /= context%symbols(symbol_index)%array_size) then
+            error_msg = 'complex reshape requires source and target arrays of equal size'
+            return
+        end if
+        vk = context%symbols(symbol_index)%value_kind
+        allocate (order_perm(0))
+        do i = 1, size(flat)
+            if (vk == VALUE_C4) then
+                call eval_c4_rhs(arena, flat(i), context, re_value, im_value, &
+                                 error_msg)
+            else
+                call eval_c8_rhs(arena, flat(i), context, re_value, im_value, &
+                                 error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            target_slot = reshape_target_slot(order_perm, symbol_index, context, &
+                                              int(i - 1, c_int64_t))
+            call store_complex_array_element(context, symbol_index, int(target_slot), &
+                                             vk, re_value, im_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_complex_reshape_literal
 
     ! Resolve the order= actual into a compile-time permutation of the target
     ! dimensions. An absent order yields a zero-sized permutation, meaning the

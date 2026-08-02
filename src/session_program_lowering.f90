@@ -1153,6 +1153,8 @@ contains
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
+    ! Array lowering is included here; keep this unit invalidated when the include changes.
+    ! Typed TRANSPOSE also shares this include's complex and logical paths.
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_const_fold.inc'
     include 'session_program_lowering_array_elements.inc'
