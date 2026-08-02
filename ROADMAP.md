@@ -27,9 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `c4ab943` (structured DO WHILE lowering, array-valued predicates, bare
-  Lazy logical literals, and scalar logical connectives, with sampled manifest
-  dispositions through seed 1037).
+- Main: `d0ea170` (structured DO WHILE lowering, array-valued predicates, bare
+  Lazy logical literals, scalar logical connectives, and logical DOT_PRODUCT,
+  with sampled manifest dispositions through seed 1037).
   FortFront `0f49d25c`. LIRIC `5436e5c`.
 - `fo build` passes for ffc 405/405 and FortFront 376/376 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -52,6 +52,9 @@ explicit decision.
 - The scalar logical tranche is green too: `logical3.f90` passes against the
   gfortran behavioral oracle with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Shared
   lowering now handles `.xor.` and keeps `.eqv.` inversion operands distinct.
+- The logical reduction tranche is green: `logical_dot_product.f90` passes in
+  gfortran.dg with `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Logical DOT_PRODUCT now
+  lowers through the shared array element engine as `ANY(a .AND. b)`.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
