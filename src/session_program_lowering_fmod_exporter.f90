@@ -44,8 +44,10 @@ contains
         type(module_exports_t), intent(in) :: export
         type(module_info_t), intent(out) :: info
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, j, module_index, derived_count, use_count
+        integer :: i, j, module_index, derived_count, imported_count, use_count
+        integer :: type_index
         integer, allocatable :: derived_indices(:)
+        integer, allocatable :: imported_type_indices(:)
 
         call set_empty(error_msg)
         info%name = trim(export%module_name)
@@ -114,6 +116,28 @@ contains
                 derived_count = derived_count + 1
             end do
         end if
+        ! A public module also re-exports a public derived type admitted by a
+        ! USE statement. The lowering context already reconstructed that type
+        ! from the dependency's .fmod; preserve it in this module's artefact
+        ! so a further separately compiled user sees the same public name
+        ! (#447).
+        imported_count = 0
+        do i = 1, context%derived_type_count
+            if (.not. context%derived_types(i)%is_imported) cycle
+            if (module_reexports_type(arena, module_index, &
+                                      context%derived_types(i)%name)) then
+                imported_count = imported_count + 1
+            end if
+        end do
+        allocate (imported_type_indices(imported_count))
+        j = 0
+        do i = 1, context%derived_type_count
+            if (.not. context%derived_types(i)%is_imported) cycle
+            if (.not. module_reexports_type(arena, module_index, &
+                                            context%derived_types(i)%name)) cycle
+            j = j + 1
+            imported_type_indices(j) = i
+        end do
         allocate (derived_indices(derived_count))
         j = 0
         if (module_index > 0) then
@@ -125,7 +149,7 @@ contains
                 derived_indices(j) = i
             end do
         end if
-        allocate (info%derived_types(derived_count))
+        allocate (info%derived_types(derived_count + imported_count))
         do i = 1, derived_count
             call build_fmod_derived_type(arena, context, &
                                          derived_indices(i), &
@@ -133,6 +157,15 @@ contains
             if (len_trim(error_msg) > 0) return
         end do
         deallocate (derived_indices)
+        do i = 1, imported_count
+            type_index = imported_type_indices(i)
+            call build_fmod_derived_type_from_context(context, type_index, &
+                                                      info%derived_types( &
+                                                      derived_count + i), &
+                                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        deallocate (imported_type_indices)
         ! Scalar module variables round-trip so a separately compiled program
         ! can bind the shared global on USE (#274).
         allocate (info%variables(export%variable_count))
@@ -153,6 +186,34 @@ contains
         call build_fmod_generics(arena, trim(export%module_name), &
                                  info%procedures, info%generics, error_msg)
     end subroutine build_module_info
+
+    module function module_reexports_type(arena, module_index, type_name) &
+            result(reexports)
+        logical :: reexports
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: module_index
+        character(len=*), intent(in) :: type_name
+        integer :: i
+
+        reexports = .false.
+        if (module_index <= 0) return
+        select type (module => arena%entries(module_index)%node)
+        type is (module_node)
+            if (.not. allocated(module%declaration_indices)) return
+            do i = 1, size(module%declaration_indices)
+                if (.not. node_exists(arena, module%declaration_indices(i))) cycle
+                select type (use_node => arena%entries( &
+                        module%declaration_indices(i))%node)
+                type is (use_statement_node)
+                    if (.not. allocated(use_node%module_name)) cycle
+                    if (use_only_wants(use_node, trim(type_name))) then
+                        reexports = .true.
+                        return
+                    end if
+                end select
+            end do
+        end select
+    end function module_reexports_type
 
     module subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1293,7 +1354,7 @@ contains
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: type_name
-        integer :: type_index, k, offset, nested, b
+        integer :: type_index
 
         call set_empty(error_msg)
         dtype%name = ''
@@ -1312,6 +1373,26 @@ contains
             allocate (dtype%components(0))
             return
         end if
+        call build_fmod_derived_type_from_context(context, type_index, dtype, &
+                                                  error_msg)
+    end subroutine build_fmod_derived_type
+
+    module subroutine build_fmod_derived_type_from_context(context, type_index, &
+                                                           dtype, error_msg)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        type(fmod_derived_type_t), intent(out) :: dtype
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: k, offset, nested, b
+
+        call set_empty(error_msg)
+        dtype%name = ''
+        dtype%parent_name = ''
+        if (type_index <= 0 .or. type_index > context%derived_type_count) then
+            error_msg = 'invalid derived type context index for .fmod export'
+            return
+        end if
+        dtype%name = trim(context%derived_types(type_index)%name)
         dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
         allocate (dtype%components( &
             context%derived_types(type_index)%component_count))
@@ -1357,7 +1438,7 @@ contains
             dtype%bindings(b)%pass_arg = context%derived_types(type_index)% &
                 binding_pass_args(b)
         end do
-    end subroutine build_fmod_derived_type
+    end subroutine build_fmod_derived_type_from_context
 
     module function fmod_component_kind_token(context, type_index, comp_index) &
             result(token)

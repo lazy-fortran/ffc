@@ -1176,6 +1176,20 @@ module session_program_lowering
             type(fmod_derived_type_t), intent(out) :: dtype
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine build_fmod_derived_type
+        module function module_reexports_type(arena, module_index, type_name) &
+                result(reexports)
+            logical :: reexports
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: module_index
+            character(len=*), intent(in) :: type_name
+        end function module_reexports_type
+        module subroutine build_fmod_derived_type_from_context(context, type_index, &
+                dtype, error_msg)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+            type(fmod_derived_type_t), intent(out) :: dtype
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine build_fmod_derived_type_from_context
         module function fmod_component_kind_token(context, type_index, comp_index) &
                 result(token)
             type(lowering_context_t), intent(in) :: context
