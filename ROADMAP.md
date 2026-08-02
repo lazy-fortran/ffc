@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `a00246b` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `12dcb1f` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -192,6 +192,13 @@ explicit decision.
   companions are supplied through the explicit extra-source manifest. The
   XFAIL rows were removed only after the independent gfortran/oracle gauntlet
   passed in both modes.
+- The `modules_26.f90` interface-procedure/runtime-archive case (#376) is
+  green: exact normal-manifest and no-manifest runs both report `PASS=1`,
+  `XFAIL=0`, `XPASS=0`, and `FAIL=0`. Runtime-archive loading and an
+  independent gfortran comparison also pass; interface dummy extents such as
+  `real :: x(n)` now remain runtime bounds instead of being looked up as named
+  compile-time parameters. The XFAIL row was removed only after all bounded
+  checks passed.
 - Architecture migration has its first verified seams: diagnostics and
   constant-folding are real module/submodule units, the scalar-kind helpers
   and scalar-expression engine are real module/submodule units, FMod token
@@ -233,9 +240,11 @@ not a substitute for fixing the behavior.
 2. Completed: promote the BIND(C) tranche consisting of `modules_15.f90`,
    `modules_18.f90`/`modules_18b.f90`, and `modules_19.f90`/`modules_19b.f90`
    only after the exact C-plus-gfortran oracle and normal-manifest run were
-   both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair is now
-   green; the next XFAIL-first target is `modules_26.f90` (#376), which remains
-   in the module/runtime tranche.
+   both green. The `modules_22.f90`/`modules_22_module.f90` (#584) pair,
+   `modules_24.f90` (#417), the three-file `modules_25.f90` class/runtime-
+   character tranche (#350/#417), and `modules_26.f90` (#376) are now green
+   after bounded normal and no-manifest runs. The next XFAIL-first target is
+   `modules_27_module2.f90` (#457), which remains in the module/runtime tranche.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
