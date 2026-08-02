@@ -503,6 +503,11 @@ module session_program_lowering_types
         ! false identifies an explicit NOPASS binding, whose call has no
         ! implicit receiver argument.
         logical, allocatable :: binding_pass_args(:)
+        ! True when the layout and bindings came from an imported .fmod. The
+        ! defining module owns the per-type vtable global; importing units use
+        ! the binding metadata for direct calls but must not emit a duplicate
+        ! definition at link time.
+        logical :: is_imported = .false.
         ! Non-empty when the type declares the same binding name twice. Such a
         ! type has no single occupant for that vtable slot, so it is reported
         ! when the vtables are emitted rather than when it is collected: a

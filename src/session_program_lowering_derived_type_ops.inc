@@ -124,6 +124,7 @@
 
         component_is_alloc_char = .false.
         if (.not. component_is_allocatable(context, type_index, comp_index)) return
+        if (component_is_alloc_array(context, type_index, comp_index)) return
         if (.not. allocated(context%derived_types(type_index)% &
                             component_value_kind)) return
         component_is_alloc_char = &
@@ -1266,6 +1267,12 @@
         if (component_is_alloc_array(context, type_index, component_index)) then
             if (present(comp_kind)) &
                 comp_kind = component_kind(context, type_index, component_index)
+            if (component_kind(context, type_index, component_index) == &
+                    VALUE_CHARACTER) then
+                error_msg = 'character allocatable array component element access '// &
+                            'is not supported'
+                return
+            end if
             call alloc_array_component_element_address(arena, access_index, &
                 sub_index, context, &
                 component_kind(context, type_index, component_index), addr, &
@@ -1773,6 +1780,25 @@
         end do
     end subroutine method_call_info
 
+    function type_bound_emit_name(arena, impl_name, context) result(emit_name)
+        ! Imported type-bound implementations are registered as external
+        ! procedures under their Fortran name, while their link name is the
+        ! module-mangled c_name. Local implementations keep the ordinary
+        ! call_emit_name path.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: impl_name
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: emit_name
+        integer :: external_index
+
+        external_index = external_procedure_index(context, trim(impl_name))
+        if (external_index > 0) then
+            emit_name = trim(context%external_procedures(external_index)%c_name)
+        else
+            emit_name = call_emit_name(arena, impl_name, context)
+        end if
+    end function type_bound_emit_name
+
     integer function impl_pass_position(arena, impl_name, pass_name, pass_arg) &
             result(pos)
         ! 1-based position of the dummy named pass_name in impl's parameter
@@ -1969,7 +1995,7 @@
                     all_args, error_msg)) return
         else
             if (.not. emit_void_call(context%session, &
-                    call_emit_name(arena, impl_name, context), all_args, &
+                    type_bound_emit_name(arena, impl_name, context), all_args, &
                     error_msg)) return
         end if
         call copy_back_reference_args(context, method_args, copyback_indices, &
@@ -2017,7 +2043,7 @@
                     value, error_msg)) return
         else
             if (.not. emit_i32_call(context%session, &
-                    call_emit_name(arena, impl_name, context), args, value, &
+                    type_bound_emit_name(arena, impl_name, context), args, value, &
                     error_msg)) return
         end if
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
@@ -2101,6 +2127,11 @@
 
         comp_kind = derived_component_access_kind(arena, target, context)
         if (comp_kind == VALUE_CHARACTER) then
+            if (component_access_is_alloc_array(arena, target, context)) then
+                error_msg = 'character allocatable array component assignment '// &
+                            'is not supported'
+                return
+            end if
             call lower_derived_component_address(arena, target, context, &
                 component_address, error_msg, &
                 'derived type character component assignment target')
@@ -2624,6 +2655,11 @@
                 if (.not. component_access_is_alloc_array(arena, base, context)) &
                     return
                 comp_kind = derived_component_access_kind(arena, base, context)
+                if (comp_kind == VALUE_CHARACTER) then
+                    error_msg = 'character allocatable array component allocation '// &
+                                'is not supported'
+                    return
+                end if
                 base_type = component_base_type_index(arena, base%base_expr_index, &
                                                       context)
                 if (base_type > 0) then
@@ -3792,6 +3828,13 @@
                     trim(node%component_name), error_msg)
                 return
             end if
+            if (component_is_alloc_array(context, base_type, component_index) .and. &
+                component_kind(context, base_type, component_index) == &
+                    VALUE_CHARACTER) then
+                error_msg = 'character allocatable array component access is not '// &
+                            'supported'
+                return
+            end if
             if (.not. emit_ptr_offset(context%session, element_ptr, &
                     int(component_start_slot(context, base_type, component_index) &
                         * 4, c_int64_t), component_address, error_msg)) return
@@ -3816,6 +3859,14 @@
                                            trim(context%derived_types(type_index)%name)// &
                                            ': '//trim(node%component_name), &
                                            error_msg)
+            return
+        end if
+
+        if (component_is_alloc_array(context, type_index, component_index) .and. &
+            component_kind(context, type_index, component_index) == &
+                VALUE_CHARACTER) then
+            error_msg = 'character allocatable array component access is not '// &
+                        'supported'
             return
         end if
 
@@ -3908,6 +3959,11 @@
         if (type_index <= 0 .or. comp_index <= 0) then
             error_msg = 'derived type character component expression is not '// &
                         'declared: '//trim(node%component_name)
+            return
+        end if
+        if (component_is_alloc_array(context, type_index, comp_index)) then
+            error_msg = 'character allocatable array component expression is '// &
+                        'not supported'
             return
         end if
         if (component_is_alloc_char(context, type_index, comp_index)) then

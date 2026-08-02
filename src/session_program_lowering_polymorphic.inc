@@ -221,6 +221,7 @@
         allocate (table(context%derived_type_count + 1))
         table = ''
         do t = 1, context%derived_type_count
+            if (context%derived_types(t)%is_imported) cycle
             if (len_trim(context%derived_types(t)%duplicate_binding_name) > 0) then
                 error_msg = 'type "'//trim(context%derived_types(t)%name)// &
                     '" declares the type-bound procedure "'// &

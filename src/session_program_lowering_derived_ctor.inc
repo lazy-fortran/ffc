@@ -262,11 +262,19 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dest_index, src_index
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: type_index, slots, s
+        integer :: type_index, slots, s, c
         type(lr_operand_desc_t) :: src_addr, dst_addr, val
 
         call set_empty(error_msg)
         type_index = context%symbols(dest_index)%derived_type_index
+        do c = 1, context%derived_types(type_index)%component_count
+            if (component_is_alloc_array(context, type_index, c) .and. &
+                component_kind(context, type_index, c) == VALUE_CHARACTER) then
+                error_msg = 'copying a derived value with a character '// &
+                            'allocatable array component is not supported'
+                return
+            end if
+        end do
         slots = total_component_slots(context, type_index)
         ! The destination's own allocatable character data is released before
         ! its descriptor is overwritten, so each owned buffer is freed exactly
@@ -537,6 +545,7 @@
             if (context%derived_types(type_index)%component_array_size(comp_index) &
                 == 1) constructor_component_storeable = .true.
         case (VALUE_CHARACTER)
+            if (component_is_alloc_array(context, type_index, comp_index)) return
             if (derived_component_char_length(context, type_index, comp_index) &
                 > 0) constructor_component_storeable = .true.
         end select
@@ -706,6 +715,12 @@
 
         comp_kind = component_kind(context, type_index, comp_index)
         nested_type = context%derived_types(type_index)%component_type_index(comp_index)
+        if (component_is_alloc_array(context, type_index, comp_index) .and. &
+            comp_kind == VALUE_CHARACTER) then
+            error_msg = 'character allocatable array component constructors are '// &
+                        'not supported'
+            return
+        end if
         if (nested_type /= 0) then
             call emit_component_slot_address(context, symbol_index, type_index, &
                                              comp_index, nested_address, error_msg)
@@ -837,6 +852,11 @@
         end if
         comp_kind = component_kind(context, type_index, comp_index)
         if (comp_kind == VALUE_CHARACTER) then
+            if (component_is_alloc_array(context, type_index, comp_index)) then
+                error_msg = 'character allocatable array component constructors are '// &
+                            'not supported'
+                return
+            end if
             dest_len = derived_component_char_length(context, type_index, comp_index)
             if (dest_len <= 0) then
                 error_msg = 'derived type character component constructor '// &

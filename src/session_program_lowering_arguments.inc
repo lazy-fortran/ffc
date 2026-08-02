@@ -49,6 +49,7 @@
         integer :: hidden_count
         integer :: sp
         integer :: param_count
+        integer :: explicit_param_count
         logical :: handled_by_value
         logical :: supplied, is_optional, is_value
         integer :: intent_code, p
@@ -77,16 +78,20 @@
         ! the contract check aligned with the implementation's dummies.
         param_count = arena_proc_param_count(arena, callee_name)
         if (param_count < 0) param_count = proc_param_count(context, callee_name)
-        if (param_count >= 0 .and. visible_count > param_count) then
+        explicit_param_count = param_count
+        if (sp > 0 .and. explicit_param_count >= 0) then
+            explicit_param_count = max(explicit_param_count - 1, 0)
+        end if
+        if (explicit_param_count >= 0 .and. visible_count > explicit_param_count) then
             error_msg = 'More actual than formal arguments in call to '// &
                 trim(callee_name)
             return
         end if
         if (param_count >= 0) then
-            if (size(arg_indices) < param_count) then
+            if (size(arg_indices) < explicit_param_count) then
                 block
                     integer, allocatable :: padded_indices(:)
-                    allocate (padded_indices(param_count))
+                    allocate (padded_indices(explicit_param_count))
                     padded_indices = 0
                     if (size(arg_indices) > 0) padded_indices(1:size(arg_indices)) = &
                         arg_indices
@@ -94,6 +99,10 @@
                 end block
             end if
             do p = 1, param_count
+                ! lower_method_subroutine_call supplies the passed-object
+                ! receiver after this routine returns; it is not among the
+                ! explicit actuals being checked here.
+                if (sp > 0 .and. p == sp) cycle
                 supplied = .false.
                 do i = 1, size(arg_indices)
                     if (arg_indices(i) <= 0) cycle
@@ -189,14 +198,16 @@
             ! character(len=*); otherwise fall through to the scalar path (which
             ! rejects an unsupported character actual).
             if (actual_is_character(arena, arg_indices(i), context) .and. &
-                callee_dummy_char_writable(arena, callee_name, i)) then
+                callee_dummy_char_writable(arena, callee_name, &
+                                           call_arg_param_pos(i, sp))) then
                 ! intent(out)/(inout) allocatable character: pass the actual's
                 ! own descriptor so the callee's writes land in the caller.
                 call char_actual_inout_descriptor(arena, arg_indices(i), &
                                                    context, args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_character(arena, arg_indices(i), context) .and. &
-                     (callee_dummy_is_character(arena, callee_name, i) .or. &
+                     (callee_dummy_is_character(arena, callee_name, &
+                                                call_arg_param_pos(i, sp)) .or. &
                       external_dummy_value_kind(context, callee_name, &
                           call_arg_param_pos(i, sp)) == VALUE_CHARACTER)) then
                 call char_actual_descriptor(arena, arg_indices(i), context, &
@@ -210,9 +221,12 @@
                 ! dynamic type; a type(t) dummy takes the bare base address of
                 ! the component storage.
                 call class_or_derived_actual(arena, arg_indices(i), context, &
-                                             callee_name, i, args(i), error_msg)
+                                             callee_name, &
+                                             call_arg_param_pos(i, sp), &
+                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
-            else if (callee_dummy_is_class_star(arena, callee_name, i)) then
+            else if (callee_dummy_is_class_star(arena, callee_name, &
+                                                call_arg_param_pos(i, sp))) then
                 ! Box the actual into a {data, type_id} descriptor for a
                 ! class(*) dummy (#141).
                 call box_class_star_actual(arena, arg_indices(i), context, &
@@ -233,7 +247,7 @@
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_whole_array(arena, arg_indices(i), context) .and. &
                      callee_dummy_is_array_ctx(arena, context, callee_name, &
-                                               i)) then
+                                               call_arg_param_pos(i, sp))) then
                 ! Explicit-shape array actual to an array dummy: pass the
                 ! contiguous base address; the callee binds it as its dummy view.
                 call whole_array_actual_address(arena, arg_indices(i), context, &
@@ -264,7 +278,7 @@
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_allocatable_array(arena, arg_indices(i), context) &
                      .and. callee_dummy_is_allocatable_array(arena, callee_name, &
-                                                             i)) then
+                                                             call_arg_param_pos(i, sp))) then
                 ! Allocatable array actual to an allocatable array dummy: pass
                 ! the caller's own descriptor address so the callee aliases it
                 ! (allocate/deallocate inside the callee are visible to the
@@ -286,7 +300,9 @@
             else
                 call prepare_reference_arg(arena, arg_indices(i), context, &
                                            arg_default_kind(arena, context, &
-                                                callee_name, i, default_kind), &
+                                                callee_name, &
+                                                call_arg_param_pos(i, sp), &
+                                                default_kind), &
                                            args(i), copyback_indices(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             end if

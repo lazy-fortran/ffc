@@ -1293,7 +1293,7 @@ contains
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: type_name
-        integer :: type_index, k, offset, nested
+        integer :: type_index, k, offset, nested, b
 
         call set_empty(error_msg)
         dtype%name = ''
@@ -1315,6 +1315,8 @@ contains
         dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
         allocate (dtype%components( &
             context%derived_types(type_index)%component_count))
+        allocate (dtype%bindings( &
+            context%derived_types(type_index)%binding_count))
         offset = 0
         do k = 1, context%derived_types(type_index)%component_count
             associate (comp => dtype%components(k))
@@ -1342,6 +1344,16 @@ contains
                                       component_is_alloc_array(k)
                 offset = offset + comp%slot_count
             end associate
+        end do
+        do b = 1, context%derived_types(type_index)%binding_count
+            dtype%bindings(b)%method_name = trim(context%derived_types(type_index)% &
+                binding_method_names(b))
+            dtype%bindings(b)%target_name = trim(context%derived_types(type_index)% &
+                binding_target_names(b))
+            dtype%bindings(b)%pass_name = trim(context%derived_types(type_index)% &
+                binding_pass_names(b))
+            dtype%bindings(b)%pass_arg = context%derived_types(type_index)% &
+                binding_pass_args(b)
         end do
     end subroutine build_fmod_derived_type
 

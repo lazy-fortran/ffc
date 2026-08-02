@@ -685,7 +685,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i, b, inherited, new_total, slot
         character(len=64) :: method_name_buf, target_name_buf, pass_name_buf
-        logical :: overrides, pass_arg_buf
+        logical :: overrides, pass_arg_buf, generic_alias
         character(len=64), allocatable :: old_methods(:), old_targets(:), old_passes(:)
         logical, allocatable :: old_pass_args(:)
 
@@ -739,17 +739,25 @@
             select type (binding => &
                 context%arena%entries(node%binding_indices(i))%node)
             type is (type_binding_node)
+                generic_alias = .false.
                 ! A deferred binding on an abstract type has no implementation
                 ! to emit, but its name still occupies an inherited vtable
                 ! slot.  Keep that slot so an extending type can override it;
                 ! the vtable emitter already leaves an unresolved target null.
                 if (binding%is_generic) then
-                    call unsupported_feature_error('type-bound procedure', &
-                        node%line, node%column, &
-                        'direct LIRIC session only supports plain '// &
-                        '(procedure :: m => fn) bindings, not generic or '// &
-                        'final', error_msg)
-                    return
+                    ! A one-specific generic is exactly a static alias for the
+                    ! direct-session ABI. Keep the narrow case usable without
+                    ! pretending to implement overload resolution.
+                    if (.not. allocated(binding%generic_list) .or. &
+                        size(binding%generic_list) /= 1 .or. &
+                        len_trim(binding%generic_list(1)%s) == 0) then
+                        call unsupported_feature_error('type-bound procedure', &
+                            node%line, node%column, &
+                            'direct LIRIC session supports one-specific '// &
+                            'generic bindings only', error_msg)
+                        return
+                    end if
+                    generic_alias = .true.
                 end if
                 ! FINAL names a destructor, not a callable method: record it
                 ! so an owned scalar value of this type is finalized once at
@@ -779,6 +787,8 @@
                     ! unit. Keep the slot for extensions and leave its target
                     ! null so an abstract module can still be linked.
                     target_name_buf = ''
+                else if (generic_alias) then
+                    target_name_buf = trim(binding%generic_list(1)%s)
                 else if (allocated(binding%implementation) .and. &
                          len_trim(binding%implementation) > 0) then
                     target_name_buf = trim(binding%implementation)
@@ -1147,18 +1157,21 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     comp_allocatable = .false.
                 end select
             end if
-            ! A rank-1 allocatable array component of intrinsic numeric/logical
-            ! type stores an inline 16-byte descriptor (data pointer + i64
-            ! extent). Higher ranks, character, pointer, and c_ptr element types
-            ! stay unsupported and fall through to the fixed-size array path,
-            ! which declines them.
+            ! A rank-1 allocatable array component of intrinsic type stores an
+            ! inline 16-byte descriptor (data pointer + i64 extent). Character
+            ! elements use the same descriptor layout; their fixed element
+            ! length remains metadata until character component element access
+            ! is lowered. Higher ranks, pointer, and c_ptr element types stay
+            ! unsupported and fall through to the fixed-size array path, which
+            ! declines them.
             comp_alloc_array = component%is_allocatable .and. &
                                component%is_array .and. &
                                .not. component%is_pointer .and. &
                                component_alloc_array_rank_one(component)
             if (comp_alloc_array) then
                 select case (value_kind)
-                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+                case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, &
+                      VALUE_CHARACTER)
                 case default
                     comp_alloc_array = .false.
                 end select
@@ -1168,7 +1181,12 @@ subroutine collect_component_declaration(component_index, parent_line, &
             default_value = 0_c_int64_t
             array_size = 1
             char_length = 0
-            if (comp_alloc_array) then
+            if (comp_alloc_array .and. value_kind == VALUE_CHARACTER) then
+                array_size = 1
+                call declaration_character_length(context, component, &
+                                                  char_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (comp_alloc_array) then
                 array_size = 1
             else if (component%is_array) then
                 call component_array_count(component, context, array_size, &
@@ -1519,9 +1537,19 @@ subroutine collect_component_declaration(component_index, parent_line, &
             ! f64 array element spans two i32 slots (handled by slot width).
         case (VALUE_CHARACTER)
             if (component%is_array) then
-                call unsupported_feature_error('derived type array component', &
-                    component%line, component%column, 'character array '// &
-                    'components are not supported; only scalar', error_msg)
+                if (.not. component%is_allocatable .or. component%is_pointer .or. &
+                    .not. component_alloc_array_rank_one(component)) then
+                    call unsupported_feature_error( &
+                        'derived type array component', component%line, &
+                        component%column, 'character array components are not '// &
+                        'supported; only rank-1 allocatable arrays', error_msg)
+                    return
+                end if
+                ! A fixed-length character allocatable array has a four-slot
+                ! data/extent descriptor. Element access remains rejected until
+                ! the derived-component character descriptor path is complete.
+                call validate_character_component_length(component, context, &
+                                                         error_msg)
                 return
             end if
             ! A scalar allocatable character component stores an inline data

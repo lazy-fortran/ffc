@@ -345,9 +345,9 @@
         ! dummy position. self_position <= 0 means the call has no implicit
         ! passed-object receiver (the common case: identity mapping). A
         ! positive self_position is the dummy slot a type-bound subroutine
-        ! call's receiver occupies (lower_method_subroutine_call): explicit
-        ! arguments before that slot map 1:1, explicit arguments at or after
-        ! it are shifted right by the one slot the receiver consumes.
+        ! call's receiver occupies: explicit arguments before that slot map
+        ! 1:1, explicit arguments at or after it are shifted right by the one
+        ! slot the receiver consumes.
         integer, intent(in) :: arg_pos
         integer, intent(in) :: self_position
 

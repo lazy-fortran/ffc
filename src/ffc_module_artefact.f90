@@ -9,6 +9,7 @@ module ffc_module_artefact
 
     public :: fmod_parameter_t
     public :: fmod_component_t
+    public :: fmod_binding_t
     public :: fmod_derived_type_t
     public :: fmod_variable_t
     public :: fmod_procedure_t
@@ -24,7 +25,7 @@ module ffc_module_artefact
     ! other value, and an artefact without the field, so a stale or
     ! newer-than-supported artefact is diagnosed instead of silently misread
     ! (#397).
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 9
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 10
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -61,11 +62,22 @@ module ffc_module_artefact
         logical :: is_alloc_array = .false.
     end type fmod_component_t
 
+    ! One static type-bound binding. The defining unit exports the resolved
+    ! method/target pair so a separately compiled user can dispatch the same
+    ! direct alias without reparsing the type declaration.
+    type :: fmod_binding_t
+        character(len=:), allocatable :: method_name
+        character(len=:), allocatable :: target_name
+        character(len=:), allocatable :: pass_name
+        logical :: pass_arg = .true.
+    end type fmod_binding_t
+
     type :: fmod_derived_type_t
         character(len=:), allocatable :: name
         ! Name of the type this one extends; empty when it extends nothing.
         character(len=:), allocatable :: parent_name
         type(fmod_component_t), allocatable :: components(:)
+        type(fmod_binding_t), allocatable :: bindings(:)
     end type fmod_derived_type_t
 
     type :: fmod_variable_t
@@ -204,6 +216,8 @@ contains
                     end do
                 end if
                 write (unit, '(A)') ']'
+                write (unit, '(A)') 'bindings = "'// &
+                    binding_list(info%derived_types(i)%bindings)// '"'
             end do
         end if
 
@@ -391,6 +405,7 @@ contains
                 call grow_dtypes(dtypes, ndtype)
                 dtypes(ndtype)%name = ''
                 allocate (dtypes(ndtype)%components(0))
+                allocate (dtypes(ndtype)%bindings(0))
                 deallocate (comps); allocate (comps(0)); ncomp = 0
                 cycle
             end if
@@ -422,6 +437,8 @@ contains
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
                 if (key == 'parent_name') &
                     dtypes(ndtype)%parent_name = unquote(val)
+                if (key == 'bindings') &
+                    call parse_binding_list(unquote(val), dtypes(ndtype)%bindings)
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
@@ -553,6 +570,68 @@ contains
             ', pointer = '//bool_text(comp%is_pointer)// &
             ', alloc_array = '//bool_text(comp%is_alloc_array)//' },'
     end function component_line
+
+    function binding_list(bindings) result(text)
+        type(fmod_binding_t), allocatable, intent(in) :: bindings(:)
+        character(len=:), allocatable :: text
+        character(len=:), allocatable :: item
+        integer :: i
+
+        text = ''
+        if (.not. allocated(bindings)) return
+        do i = 1, size(bindings)
+            item = field(bindings(i)%method_name)//'=>'// &
+                   field(bindings(i)%target_name)//'|'// &
+                   field(bindings(i)%pass_name)//'|'// &
+                   bool_text(bindings(i)%pass_arg)
+            if (len_trim(text) > 0) text = text//';'
+            text = text//item
+        end do
+    end function binding_list
+
+    subroutine parse_binding_list(text, bindings)
+        character(len=*), intent(in) :: text
+        type(fmod_binding_t), allocatable, intent(out) :: bindings(:)
+        character(len=:), allocatable :: rest, token, target_part, pass_part
+        integer :: sep, arrow, bar, count
+
+        allocate (bindings(0))
+        rest = trim(text)
+        count = 0
+        do while (len_trim(rest) > 0)
+            sep = index(rest, ';')
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = rest(1:sep - 1)
+                rest = adjustl(rest(sep + 1:))
+            end if
+            arrow = index(token, '=>')
+            if (arrow <= 1) cycle
+            count = count + 1
+            call grow_bindings(bindings, count)
+            bindings(count)%method_name = trim(token(1:arrow - 1))
+            target_part = token(arrow + 2:)
+            bar = index(target_part, '|')
+            if (bar == 0) then
+                bindings(count)%target_name = trim(target_part)
+                bindings(count)%pass_name = ''
+                bindings(count)%pass_arg = .true.
+                cycle
+            end if
+            bindings(count)%target_name = trim(target_part(1:bar - 1))
+            pass_part = target_part(bar + 1:)
+            bar = index(pass_part, '|')
+            if (bar == 0) then
+                bindings(count)%pass_name = trim(pass_part)
+                bindings(count)%pass_arg = .true.
+            else
+                bindings(count)%pass_name = trim(pass_part(1:bar - 1))
+                bindings(count)%pass_arg = trim(pass_part(bar + 1:)) /= '0'
+            end if
+        end do
+    end subroutine parse_binding_list
 
     subroutine parse_component_line(line, comp)
         ! Parse one component row back into its record.
@@ -687,6 +766,17 @@ contains
         tmp(1:size(arr)) = arr
         call move_alloc(tmp, arr)
     end subroutine grow_comps
+
+    subroutine grow_bindings(arr, n)
+        type(fmod_binding_t), allocatable, intent(inout) :: arr(:)
+        integer, intent(in) :: n
+        type(fmod_binding_t), allocatable :: tmp(:)
+
+        if (n <= size(arr)) return
+        allocate (tmp(n))
+        tmp(1:size(arr)) = arr
+        call move_alloc(tmp, arr)
+    end subroutine grow_bindings
 
     subroutine grow_vars(arr, n)
         type(fmod_variable_t), allocatable, intent(inout) :: arr(:)

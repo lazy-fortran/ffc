@@ -276,7 +276,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(module_info_t) :: info
         character(len=:), allocatable :: name, path
-        integer :: i
+        integer :: i, j, b
         type(use_statement_node) :: dependency_use
 
         call set_empty(error_msg)
@@ -315,6 +315,27 @@
         ! and a nested component must find its inner type already registered.
         call import_fmod_derived_types(use_node, info, context, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! A type-bound target is an implementation detail of the exported
+        ! type, not a name users need to repeat in USE ONLY. Import its
+        ! callable procedure explicitly so imported dispatch can lower to the
+        ! defining module's symbol.
+        if (allocated(info%derived_types) .and. allocated(info%procedures)) then
+            do i = 1, size(info%derived_types)
+                if (.not. allocated(info%derived_types(i)%bindings)) cycle
+                do b = 1, size(info%derived_types(i)%bindings)
+                    if (len_trim(info%derived_types(i)%bindings(b)%target_name) == 0) cycle
+                    do j = 1, size(info%procedures)
+                        if (.not. allocated(info%procedures(j)%name)) cycle
+                        if (.not. same_name(info%procedures(j)%name, &
+                            info%derived_types(i)%bindings(b)%target_name)) cycle
+                        call import_fmod_procedure(use_node, name, &
+                            info%procedures(j), context, error_msg, force=.true.)
+                        if (len_trim(error_msg) > 0) return
+                        exit
+                    end do
+                end do
+            end do
+        end if
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
                 call import_fmod_parameter(use_node, info%parameters(i), &
@@ -407,6 +428,7 @@
         context%derived_types(type_index_new)%name = trim(dtype%name)
         context%derived_types(type_index_new)%component_count = 0
         context%derived_types(type_index_new)%parent_name = ''
+        context%derived_types(type_index_new)%is_imported = .true.
         if (allocated(dtype%parent_name)) &
             context%derived_types(type_index_new)%parent_name = &
                 trim(dtype%parent_name)
@@ -469,6 +491,30 @@
                 offset = offset + comp%slot_count
             end associate
         end do
+        if (allocated(dtype%bindings)) then
+            if (size(dtype%bindings) > 0) then
+                context%derived_types(type_index_new)%binding_count = &
+                    size(dtype%bindings)
+                allocate(context%derived_types(type_index_new)% &
+                    binding_method_names(size(dtype%bindings)))
+                allocate(context%derived_types(type_index_new)% &
+                    binding_target_names(size(dtype%bindings)))
+                allocate(context%derived_types(type_index_new)% &
+                    binding_pass_names(size(dtype%bindings)))
+                allocate(context%derived_types(type_index_new)% &
+                    binding_pass_args(size(dtype%bindings)))
+                do k = 1, size(dtype%bindings)
+                    context%derived_types(type_index_new)% &
+                        binding_method_names(k) = dtype%bindings(k)%method_name
+                    context%derived_types(type_index_new)% &
+                        binding_target_names(k) = dtype%bindings(k)%target_name
+                    context%derived_types(type_index_new)% &
+                        binding_pass_names(k) = dtype%bindings(k)%pass_name
+                    context%derived_types(type_index_new)% &
+                        binding_pass_args(k) = dtype%bindings(k)%pass_arg
+                end do
+            end if
+        end if
     end subroutine import_fmod_derived_type
 
     function integer_text(value) result(text)
