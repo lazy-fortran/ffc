@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `58341c1` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `e6a6612` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, typed file-I/O size/stream transfer, logical-kind byte transfer, and
@@ -39,7 +39,8 @@ explicit decision.
   mixed-rank runtime section expressions, allocatable function-result MATMUL
   matrix-vector lowering, rank-2 automatic array-result materialisation, typed
   integer/real/double/complex/logical TRANSPOSE lowering, compile-time
-  parameter TRANSPOSE initialization, and mixed-kind integer MIN/MAX lowering,
+  parameter TRANSPOSE initialization, mixed-kind integer MIN/MAX lowering, and
+  legacy typed MIN aliases,
   with
   sampled manifest dispositions through seed 1037). FortFront `4948ec2a`.
   LIRIC `5436e5c`.
@@ -138,11 +139,13 @@ explicit decision.
   covered by the same run. The compile-time parameter TRANSPOSE tranche is
   green too: `matrix_03_transpose_param.f90` passes against the gfortran oracle
   with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The mixed-kind integer
-  MIN/MAX tranche is green: `max_02.f90` compiles and exits normally with
-  `PASS=1`, `XFAIL=0`, `XPASS=0`, `FAIL=0`, and `NOREF=1` because it reads an
-  uninitialized value; a deterministic initialized mixed-kind check matches
-  gfortran exactly. The next XFAIL-first case is `min_01.f90`; keep the sample
-  count at 900.
+  MIN/MAX tranche is green: `max_02.f90` and `min_02.f90` compile and exit
+  normally with `PASS=2`, `XFAIL=0`, `XPASS=0`, `FAIL=0`, and `NOREF=2`
+  because they read uninitialized values; deterministic initialized mixed-kind
+  checks match gfortran exactly. `min_01.f90` also passes with `PASS=1`,
+  `XFAIL=0`, `XPASS=0`, and `FAIL=0`; typed `MIN0`, `AMIN0`, `MIN1`, `AMIN1`,
+  and `DMIN1` reuse the scalar min/max engines. The next XFAIL-first case is
+  `minmax_01.f90`; keep the sample count at 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
 
