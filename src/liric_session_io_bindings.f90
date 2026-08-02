@@ -11,6 +11,7 @@ module liric_session_io_bindings
         emit_liric_f64_binary, &
         materialize_liric_string, &
         emit_liric_i32_to_f64, &
+        emit_liric_i1_to_i32, &
         emit_liric_f64_to_i32, &
         emit_liric_char_byte_zext, &
         emit_liric_i32_to_i64, &
@@ -48,6 +49,7 @@ module liric_session_io_bindings
     public :: emit_liric_print_f32_value
     public :: emit_liric_f64_binary
     public :: emit_liric_i32_to_f64
+    public :: emit_liric_i1_to_i32
     public :: emit_liric_f64_to_i32
     public :: emit_liric_char_byte_zext
     public :: emit_liric_i32_to_i64

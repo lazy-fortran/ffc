@@ -69,9 +69,27 @@
         integer :: symbol_index
         character(len=:), allocatable :: lit_value, lit_type
         character(len=:), allocatable :: id_name
+        type(lr_operand_desc_t) :: raw_value, logical_value
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'logical expression index does not reference an AST node'
+            return
+        end if
+
+        ! Lazy/LFortran permits the scalar integer-to-logical conversion used by
+        ! its typed array and assignment examples. Keep the conversion at this
+        ! shared value boundary so scalar assignments and array constructors use
+        ! identical nonzero/zero semantics.
+        if (is_integer_operand(arena, node_index, context)) then
+            call lower_i32_expression(arena, node_index, context, raw_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, raw_value, &
+                                         i32_immediate(context%session, &
+                                                       0_c_int64_t), logical_value, &
+                                         error_msg)) return
+            if (.not. emit_liric_i1_to_i32(context%session, logical_value, value, &
+                                           error_msg)) return
             return
         end if
 
@@ -84,13 +102,14 @@
         end if
 
         if (is_literal(arena, node_index)) then
-            if (.not. is_logical_literal(arena, node_index)) then
-                error_msg = 'direct LIRIC session expected a logical literal'
-                return
-            end if
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
+            if (.not. is_logical_literal(arena, node_index)) then
+                error_msg = 'direct LIRIC session expected a logical literal: '// &
+                            trim(lit_value)//' (type='//trim(lit_type)//')'
+                return
+            end if
             value = i32_immediate(context%session, logical_i32_value(lit_value))
             call set_empty(error_msg)
             return
@@ -338,7 +357,8 @@
             if (is_character_literal(arena, node_index)) return
             call get_literal_info(arena, node_index, lit_value, lit_type, id_err)
             if (len_trim(id_err) > 0) return
-            is_int = trim(lit_type) == 'integer'
+            is_int = trim(lit_type) == 'integer' .or. &
+                     is_integer_literal_text(lit_value)
             return
         end if
 
@@ -364,8 +384,13 @@
             call get_binary_op_info(arena, node_index, bin_op, bl, br, &
                                     blin, bcol, id_err)
             if (len_trim(id_err) > 0) return
-            is_int = is_integer_operand(arena, bl, context) .and. &
-                     is_integer_operand(arena, br, context)
+            select case (trim(adjustl(lowercase_text(bin_op))))
+            case ('+', '-', '*', '/', '**')
+                is_int = is_integer_operand(arena, bl, context) .and. &
+                         is_integer_operand(arena, br, context)
+            case default
+                is_int = .false.
+            end select
         end if
     end function is_integer_operand
 
