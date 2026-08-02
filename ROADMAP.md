@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-02)
 
-- Main: `423ee10` (structured DO WHILE lowering, array-valued predicates, bare
+- Main: `32e79ad` (structured DO WHILE lowering, array-valued predicates, bare
   Lazy logical literals, scalar logical connectives, logical DOT_PRODUCT,
   scalar logical/integer casts, and logical array expressions in reductions and
   I/O, with sampled manifest dispositions through seed 1037). FortFront
@@ -73,6 +73,12 @@ explicit decision.
   constructor-shaped output, and nested masks in reductions. FortFront
   `cc39c3bc` makes I/O argument parsing consume full logical expressions. The
   XFAIL entry was removed after the named behavioral run. The sample count
+  remains 900.
+- The typed file-I/O tranche is green: `logical_kind_01.f90` passes in the
+  LFortran suite with `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. `INQUIRE`
+  `SIZE=` now reports file and connected-unit byte counts, and stream writes
+  preserve scalar integer and logical kind widths. The independent inquiry
+  compiler test and runtime-link contract test also pass. The sample count
   remains 900.
 - No whole-corpus run has been performed under the bounded-sampling policy.
   `XFAIL`, `NOREF`, and `SKIP` are classifications, not behavioral passes.
