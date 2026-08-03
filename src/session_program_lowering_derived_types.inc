@@ -7,36 +7,52 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, value_kind
-        character(len=:), allocatable :: kind_err, decl_err
-
         call set_empty(error_msg)
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             if (.not. allocated(program%body_indices)) return
-            do i = 1, size(program%body_indices)
-                select type (node => arena%entries(program%body_indices(i))%node)
-                type is (declaration_node)
-                    if (.not. node%is_parameter) cycle
-                    if (node%is_array .or. node%is_multi_declaration) cycle
-                    if (.not. allocated(node%var_name)) cycle
-                    call declaration_value_kind(node, value_kind, kind_err, &
-                                                context)
-                    if (len_trim(kind_err) > 0) cycle
-                    if (value_kind /= VALUE_I32) cycle
-                    if (.not. node%has_initializer) cycle
-                    ! Best effort: ignore errors here; body lowering reports them.
-                    call lower_constant_declaration(node, context, VALUE_I32, &
-                                                    decl_err)
-                    if (len_trim(decl_err) == 0) then
-                        call register_declaration_bindings(context, node, &
-                            program%body_indices(i))
-                    end if
-                end select
-            end do
+            call collect_parameter_declarations(arena, program%body_indices, &
+                                                context, error_msg)
+        type is (module_node)
+            if (.not. allocated(program%declaration_indices)) return
+            call collect_parameter_declarations(arena, &
+                program%declaration_indices, context, error_msg)
         end select
         call collect_old_style_parameters(arena, context, error_msg)
     end subroutine collect_program_parameters
+
+    subroutine collect_parameter_declarations(arena, indices, context, error_msg)
+        ! Bind scalar integer parameters before derived-type collection. Module
+        ! kind parameters are needed while laying out components in the same
+        ! module; treating them as a later export leaves an incomplete .fmod.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, value_kind
+        character(len=:), allocatable :: kind_err, decl_err
+
+        call set_empty(error_msg)
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) cycle
+            select type (node => arena%entries(indices(i))%node)
+            type is (declaration_node)
+                if (.not. node%is_parameter) cycle
+                if (node%is_array .or. node%is_multi_declaration) cycle
+                if (.not. allocated(node%var_name)) cycle
+                call declaration_value_kind(node, value_kind, kind_err, context)
+                if (len_trim(kind_err) > 0) cycle
+                if (value_kind /= VALUE_I32) cycle
+                if (.not. node%has_initializer) cycle
+                ! Best effort: the declaration pass reports unsupported forms.
+                call lower_constant_declaration(node, context, VALUE_I32, &
+                                                decl_err)
+                if (len_trim(decl_err) == 0) then
+                    call register_declaration_bindings(context, node, indices(i))
+                end if
+            end select
+        end do
+    end subroutine collect_parameter_declarations
 
     subroutine collect_old_style_parameters(arena, context, error_msg)
         ! An old-style PARAMETER statement whose name has no type declaration
