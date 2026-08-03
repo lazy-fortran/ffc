@@ -325,12 +325,26 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: int_value
+        type(lr_operand_desc_t) :: wide_value
 
         if (is_integer_operand(arena, node_index, context)) then
             call lower_i32_expression(arena, node_index, context, int_value, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_i32_to_f32(context%session, int_value, value, &
+                                            error_msg)) return
+            return
+        end if
+        ! A wider real subexpression used in an f32 context is evaluated at its
+        ! declared kind and narrowed only after the operation. This matters for
+        ! unary expressions such as ``-real8_value``: the unary node itself is
+        ! lowered by the f32 expression path when its array/assignment target is
+        ! default real, but its operand must not be treated as an f32 identifier.
+        if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
+            call lower_f64_expression(arena, node_index, context, wide_value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_to_f32(context%session, wide_value, value, &
                                             error_msg)) return
             return
         end if
