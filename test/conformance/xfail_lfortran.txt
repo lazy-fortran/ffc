@@ -121,7 +121,6 @@ array_op_13.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-ex
 arrays_01_complex.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_01_logical.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_01_multi_dim.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-arrays_01_size.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 arrays_02_size.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 arrays_03_size.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 arrays_04_func.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
@@ -833,7 +832,6 @@ derived_types_118.f90 # owner=lazy-fortran/ffc#368; reason=deduplicate derived a
 derived_types_119.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 derived_types_11.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 derived_types_120.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-shape arrays by descriptor
-derived_types_121.f90 # owner=lazy-fortran/ffc#413; reason=diagnose unsupported numeric kinds without narrowing
 derived_types_122.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 derived_types_124.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
 derived_types_125.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors

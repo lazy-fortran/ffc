@@ -27,7 +27,11 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `9253efa` (selected-real-kind module dummy metadata now preserves the
+- Main: `a492132` (module integer parameters are bound before derived-type
+  layout, promoting `derived_types_121.f90`; `arrays_01_size.f90` is also
+  promoted after keyword mapping for constant/runtime paths. Both exact normal
+  and no-XFAIL gates are green, with focused regressions and independent
+  gfortran oracles. Selected-real-kind module dummy metadata preserves the
   resolved f64 ABI; `issue_1771_module_parameter_types.f90` is promoted after
   normal/no-XFAIL exact gates, an independent gfortran oracle, and a focused
   compiler regression. Deferred-character calls also reuse canonical reference
@@ -131,6 +135,13 @@ explicit decision.
   ABI. Normal and XFAIL-disabled exact runs both report `PASS=1`, `XFAIL=0`,
   `XPASS=0`, and `FAIL=0`; the independent gfortran output is `Square: 6.25`.
   Its exact XFAIL row was removed only after the rebuilt main binary passed.
+- `arrays_01_size.f90` and `derived_types_121.f90` are now promoted. The SIZE
+  lowering maps keyword and positional `ARRAY`, `DIM`, and `KIND` actuals; the
+  derived-type collector binds imported module integer parameters before layout.
+  Both normal and XFAIL-disabled exact runs report `PASS=2`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0`, with focused tests and independent gfortran oracles
+  green. Their XFAIL rows were removed only after the rebuilt main binary
+  passed.
 - Bounded Luna triage on 2026-08-03 rejected several proposed shortcuts without
   edits or manifest drift: `issue_1968_lazy_function_result.lf` still has an
   invalid inferred-array dimension node; `allocatable_component_struct_array_01.f90`
