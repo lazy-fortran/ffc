@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `abd0b59` (FLOOR optional `KIND=8` lowering and public-session
+- Main: `2ded673` (comparison typechecking is now a real submodule, on top of
+  the FLOOR optional `KIND=8` lowering and public-session
   f64-to-i64 conversion are now green, on top of the storage-rejection checks
   as a real submodule, on top of
   the bare-character SELECT CASE fix and the contained f64 calls in f32
@@ -65,7 +66,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `9ff6605e`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 448/448 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 450/450 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -154,11 +155,15 @@ explicit decision.
   the default integer kind. Normal and XFAIL-disabled exact runs both report
   `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; the focused integer-intrinsic
   compiler test and independent gfortran oracle agree. The sample remains 900.
-- The comparison-submodule migration remains unpromoted: its source compiles,
-  but the isolated link still cannot find `libliric.a`; `issue_256` still has
-  only a focused parser-test result while its parent ffc gates are unverified.
-  Keep both bounded candidates ahead of sample expansion and do not alter their
-  manifests without a complete independent gate.
+- `cmp_typecheck.inc` is now a real comparison-typecheck submodule with the
+  missing public relational-operator interface supplied. The focused behavioral
+  compiler test passes, `fo build` is `450/450`, and no corpus manifest changed.
+- `allocated_1.f90` remains unpromoted: an isolated keyword-unwrapping attempt
+  could not pass its exact gates because the rebuilt ffc binary still selected
+  the old lowering path. FortFront `issue_256` has a focused parser-test and
+  FortFront build commit, but its parent ffc gates remain unverified. Keep both
+  ahead of sample expansion and do not alter their manifests without complete
+  independent gates.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
