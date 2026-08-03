@@ -21,6 +21,7 @@ program test_session_deferred_char_compiler
     if (.not. test_function_returns_concatenated_deferred_character()) &
         all_passed = .false.
     if (.not. test_function_returns_input_with_suffix()) all_passed = .false.
+    if (.not. test_class_derived_actual_to_deferred_result()) all_passed = .false.
     if (.not. test_function_result_prints_directly()) all_passed = .false.
     if (.not. test_pass_deferred_to_assumed_length_dummy_uses_len()) &
         all_passed = .false.
@@ -635,5 +636,46 @@ contains
             source, ' hello, world'//new_line('a'), &
             '/tmp/ffc_deferred_char_func_print')
     end function test_function_result_prints_directly
+
+    logical function test_class_derived_actual_to_deferred_result()
+        ! The visible actual of a deferred-character result call still follows
+        ! the ordinary class descriptor ABI. This is the regression for a
+        ! class(child_t) dummy reached through a type(child_t) actual.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: state_t'//new_line('a')// &
+            '    integer :: state = 0'//new_line('a')// &
+            '  end type state_t'//new_line('a')// &
+            '  type, extends(state_t) :: child_t'//new_line('a')// &
+            '  end type child_t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  function message(this) result(msg)'//new_line('a')// &
+            '    class(child_t), intent(in) :: this'//new_line('a')// &
+            '    character(len=:), allocatable :: msg'//new_line('a')// &
+            '    if (this%state == 0) then'//new_line('a')// &
+            '      msg = "ok"'//new_line('a')// &
+            '    else'//new_line('a')// &
+            '      msg = "error"'//new_line('a')// &
+            '    end if'//new_line('a')// &
+            '  end function message'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  type(child_t) :: c'//new_line('a')// &
+            '  character(len=:), allocatable :: msg'//new_line('a')// &
+            '  c%state = 0'//new_line('a')// &
+            '  msg = message(c)'//new_line('a')// &
+            '  print *, msg'//new_line('a')// &
+            '  c%state = 1'//new_line('a')// &
+            '  msg = message(c)'//new_line('a')// &
+            '  print *, msg'//new_line('a')// &
+            'end program main'
+
+        test_class_derived_actual_to_deferred_result = expect_output(source, &
+            ' ok'//new_line('a')// &
+            ' error'//new_line('a'), &
+            '/tmp/ffc_deferred_char_class_derived_actual')
+    end function test_class_derived_actual_to_deferred_result
 
 end program test_session_deferred_char_compiler

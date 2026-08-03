@@ -488,121 +488,24 @@ integer function resolve_concat_operand(arena, node_index, context, &
                 error_msg)) return
     end subroutine release_character_descriptor_storage
 
-    subroutine prepare_deferred_char_actual(arena, node_index, context, arg, &
-                                            error_msg)
-        use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: arg
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: data_addr
-        type(lr_operand_desc_t) :: len_addr
-        type(lr_operand_desc_t) :: data_value
-        type(lr_operand_desc_t) :: len_value
-        character(len=:), allocatable :: literal_text
-        character(len=:), allocatable :: lit_value, lit_type
-        integer :: symbol_index
-
-        call allocate_deferred_char_descriptor(context, arg, data_addr, &
-                                               len_addr, error_msg)
-        if (len_trim(error_msg) > 0) return
-
-        if (is_literal(arena, node_index)) then
-            call get_literal_info(arena, node_index, lit_value, lit_type, &
-                                  error_msg)
-            if (len_trim(error_msg) > 0) return
-            call strip_literal_quotes(lit_value, literal_text)
-            call materialize_concat_literal(context, literal_text, data_value, &
-                                            len_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_ptr_store(context%session, data_value, data_addr, &
-                error_msg)) return
-            if (.not. emit_i64_store(context%session, len_value, len_addr, &
-                error_msg)) return
-            call set_empty(error_msg)
-            return
-        end if
-
-        if (is_identifier(arena, node_index)) then
-            call get_identifier_name(arena, node_index, lit_value, error_msg)
-            if (len_trim(error_msg) > 0) return
-            symbol_index = find_symbol_compat(context, lit_value)
-            if (symbol_index <= 0 .or. &
-                context%symbols(symbol_index)%value_kind /= VALUE_CHARACTER) then
-                error_msg = 'character argument is not declared: '//trim(lit_value)
-                return
-            end if
-            if (context%symbols(symbol_index)%is_deferred_character) then
-                if (.not. emit_ptr_load(context%session, &
-                    context%symbols(symbol_index)%deferred_data, data_value, &
-                    error_msg)) return
-                if (.not. emit_i64_load(context%session, &
-                    context%symbols(symbol_index)%deferred_length, len_value, &
-                    error_msg)) return
-            else
-                data_value = context%symbols(symbol_index)%value
-                len_value = i64_immediate(context%session, &
-                    int(context%symbols(symbol_index)%character_length, c_int64_t))
-            end if
-        else
-            error_msg = 'direct LIRIC session cannot pass this character argument'
-            return
-        end if
-
-        if (.not. emit_ptr_store(context%session, data_value, data_addr, &
-            error_msg)) return
-        if (.not. emit_i64_store(context%session, len_value, len_addr, &
-            error_msg)) return
-        call set_empty(error_msg)
-    end subroutine prepare_deferred_char_actual
-
     subroutine prepare_deferred_char_call_args(arena, arg_indices, context, &
-                                               args, copyback_indices, &
-                                               error_msg)
+                                               callee_name, args, &
+                                               copyback_indices, error_msg)
+        ! The hidden result descriptor is specific to a deferred-character
+        ! result, but its visible arguments use the callee's ordinary ABI.
+        ! Reuse the canonical argument preparer so class(t)/type(t) actuals
+        ! receive their descriptor or storage address instead of being
+        ! mistaken for scalar values.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
         type(lr_operand_desc_t), allocatable, intent(out) :: args(:)
         integer, allocatable, intent(out) :: copyback_indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        logical :: handled
-        integer :: i
-        integer :: symbol_index
-        character(len=:), allocatable :: id_name
-
-        allocate (args(size(arg_indices)))
-        allocate (copyback_indices(size(arg_indices)))
-        copyback_indices = 0
-
-        do i = 1, size(arg_indices)
-            handled = .false.
-            if (is_literal(arena, arg_indices(i))) then
-                if (is_character_literal(arena, arg_indices(i))) then
-                    call prepare_deferred_char_actual(arena, arg_indices(i), &
-                        context, args(i), error_msg)
-                    handled = .true.
-                end if
-            else if (is_identifier(arena, arg_indices(i))) then
-                call get_identifier_name(arena, arg_indices(i), id_name, error_msg)
-                if (len_trim(error_msg) > 0) return
-                symbol_index = find_symbol_compat(context, id_name)
-                if (symbol_index > 0 .and. &
-                    context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
-                    call prepare_deferred_char_actual(arena, arg_indices(i), &
-                        context, args(i), error_msg)
-                    handled = .true.
-                end if
-            end if
-            if (len_trim(error_msg) > 0) return
-            if (.not. handled) then
-                call prepare_reference_arg(arena, arg_indices(i), context, &
-                                           VALUE_I32, args(i), &
-                                           copyback_indices(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-        end do
-        call set_empty(error_msg)
+        call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
+                                    callee_name, args, copyback_indices, &
+                                    error_msg)
     end subroutine prepare_deferred_char_call_args
 
     subroutine lower_deferred_char_result_call(arena, node, context, &
@@ -664,7 +567,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         if (allocated(call_node%arg_indices)) then
             call prepare_deferred_char_call_args(arena, call_node%arg_indices, &
-                context, user_args, copyback_indices, error_msg)
+                context, call_node%name, user_args, copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))
@@ -758,7 +661,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         if (allocated(call_node%arg_indices)) then
             call prepare_deferred_char_call_args(arena, call_node%arg_indices, &
-                context, user_args, copyback_indices, error_msg)
+                context, call_node%name, user_args, copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))
@@ -818,7 +721,7 @@ integer function resolve_concat_operand(arena, node_index, context, &
 
         if (allocated(node%arg_indices)) then
             call prepare_deferred_char_call_args(arena, node%arg_indices, &
-                context, user_args, copyback_indices, error_msg)
+                context, node%name, user_args, copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
             allocate (user_args(0))
