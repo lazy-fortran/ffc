@@ -27,7 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `d638f02` (contained f64 calls in f32 expressions on top of the lazy
+- Main: `2f26020` (storage-rejection checks are now a real submodule, on top of
+  the bare-character SELECT CASE fix and the contained f64 calls in f32
+  expressions, on top of the lazy
   whole-array constructor reallocation fix and the
   mixed-kind unary real promotion and the
   ANY DIM assignment promotion and the
@@ -61,7 +63,7 @@ explicit decision.
   with
   sampled manifest dispositions through seed 1037). FortFront `9ff6605e`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 446/446 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 448/448 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -106,6 +108,26 @@ explicit decision.
   dynamic-loop patch emitted malformed LIR; `derived_types_121.f90` still needs
   the deferred-character dummy contract propagated into class/derived actual
   lowering. Neither case has been promoted or hidden in its manifest.
+- Bounded Luna triage on 2026-08-03 rejected several proposed shortcuts without
+  edits or manifest drift: `issue_1968_lazy_function_result.lf` still has an
+  invalid inferred-array dimension node; `allocatable_component_struct_array_01.f90`
+  still rejects `variants_array(1)` as a derived actual; `arrays_01_size.f90`
+  and `intrinsics_114/115.f90` still fail with XFAIL disabled; and `sin_01.f90`
+  still rejects `DSIN` as an unsupported scalar real call. `case_05.f90` is the
+  only active repair from this probe and currently mismatches the behavioral
+  oracle (`Invalid grade` instead of the `B` branch). None of these rows was
+  removed or hidden; keep the sample at 900 and the XFAIL-first queue intact.
+- `case_05.f90` is now promoted: bare `character` declarations materialize
+  default length one, so the initialized `grade = 'B'` reaches the matching
+  empty SELECT CASE arm and prints the expected value. Normal and XFAIL-
+  disabled exact runs both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`,
+  with the focused SELECT CASE test and gfortran output oracle green.
+- `session_program_lowering_reject_storage.inc` is now a real
+  `session_program_lowering_reject_storage` submodule with an explicit build
+  order module; the include and its references are gone. `fo build` passes
+  448/448, `git diff --check` is clean, and an isolated storage-rejection
+  source produced identical diagnostic text and exit status before and after
+  migration. No manifest row was changed, and the sample remains 900.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
