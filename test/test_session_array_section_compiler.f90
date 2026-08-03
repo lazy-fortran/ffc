@@ -1,5 +1,5 @@
 program test_session_array_section_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
